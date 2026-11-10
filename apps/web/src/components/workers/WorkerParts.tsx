@@ -25,10 +25,10 @@ import {
   IconUser,
   IconX,
 } from '../../icons'
-import { BARE_BUTTON, Button, IconButton, StatusDot, cx } from '../../ui'
+import { BARE_BUTTON, Button, StatusDot, cx } from '../../ui'
 import { Markdown } from '../Markdown'
 import { FeatureActionsMenu, type FeatureAction } from '../FeatureActionsMenu'
-import { RAISED, WELL } from '../chat/thread/surfaces'
+import { INSET, RAISED, WELL } from '../chat/thread/surfaces'
 import { Delta, FilePath } from '../chat/thread/Work'
 
 /**
@@ -100,7 +100,8 @@ export function WorkerHeaderActions({
   )
 }
 
-const KIND_ICON: Record<WorkerKind, ReactNode> = {
+/** A worker's kind as a 14px glyph: the assignment card's, the workers card's rows. */
+export const WORKER_KIND_ICON: Record<WorkerKind, ReactNode> = {
   'with-you': <IconUser size={14} />,
   'on-its-own': <IconActivity size={14} />,
   review: <IconEye size={14} />,
@@ -109,54 +110,86 @@ const KIND_ICON: Record<WorkerKind, ReactNode> = {
 }
 
 /**
- * What the worker was asked to do, atop its chat (decision 21): its label and
- * kind, who started it, its one-line purpose, then the goal, the done-when and
- * the model. It stays at the top while the chat scrolls under it, so it folds
- * to its first two lines (`defaultOpen`: a caller folds it once the chat is long). A worker started with "+" has no assignment: the card
- * says so, and names only its model.
+ * The one line a worker is known by (calmer-worker-chats decision 10): the
+ * purpose its lead wrote for it, or, without one, the first line of its goal.
+ * Empty when it has neither (a worker started with "+").
  */
-export function AssignmentCard({ assignment, defaultOpen = true }: { assignment: WorkerAssignment; defaultOpen?: boolean }) {
+export function workerLine(w: { purpose: string; goal?: string | undefined }): string {
+  return w.purpose.trim() || (w.goal ?? '').trim().split('\n', 1)[0]!.trim()
+}
+
+/**
+ * How tall a long text in a card may grow before it scrolls: a handback's
+ * report opened, an assignment opened (calmer-worker-chats decisions 2, 3).
+ * The same cap for both, so no card takes over the column.
+ */
+const CAPPED_BOX = cx(INSET, 'max-h-96 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:var(--color-border-strong)_transparent]')
+
+/**
+ * What the worker was asked to do, pinned atop its chat (decision 21;
+ * calmer-worker-chats decision 3). Folded — as it starts — it is one line:
+ * the kind's glyph, the worker's name and its purpose; a click anywhere on it
+ * opens it. Open, it adds its kind and who started it, then the goal, the
+ * done-when and the model in a box that scrolls past the cap, so pinned it
+ * never covers the conversation. A worker started with "+" has no assignment:
+ * the line says so, and the box names only its model.
+ */
+export function AssignmentCard({ assignment, defaultOpen = false }: { assignment: WorkerAssignment; defaultOpen?: boolean }) {
   const a = assignment
   const [open, setOpen] = useState(defaultOpen)
-  const facts: { label: string; value: string }[] = [
-    ...(a.goal ? [{ label: 'Goal', value: a.goal }] : []),
-    ...(a.doneWhen ? [{ label: 'Done when', value: a.doneWhen }] : []),
+  // The goal and done-when are the lead's Markdown; the model is a name.
+  const facts: { label: string; value: string; prose?: boolean }[] = [
+    ...(a.goal ? [{ label: 'Goal', value: a.goal, prose: true }] : []),
+    ...(a.doneWhen ? [{ label: 'Done when', value: a.doneWhen, prose: true }] : []),
     { label: 'Model', value: a.model },
   ]
+  const line = workerLine(a) || (a.kind ? '' : 'No assignment: it knows the feature and the lead’s latest turns, and waits for you.')
+  const startedBy = a.startedBy === 'lead' ? 'Started by the lead' : 'Started by you'
   return (
     // An opaque ground under the well, so the chat scrolling beneath it does not show through.
     <section aria-label={`Assignment: ${a.label}`} className="rounded-lg bg-surface">
-      <div className={cx(WELL, 'flex flex-col px-4 py-3')}>
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="min-w-0 truncate text-md font-medium text-text">{a.label}</span>
-          {a.kind && (
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-text-secondary [&_svg]:text-icon">
-              {KIND_ICON[a.kind]}
-              {WORKER_KIND_WORDS[a.kind]}
-            </span>
+      <div className={cx(WELL, 'flex flex-col')}>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={`${open ? 'Fold' : 'Show'} the assignment: ${a.label}`}
+          onClick={() => setOpen(!open)}
+          className={cx(
+            BARE_BUTTON,
+            'group/head flex h-10 min-w-0 cursor-pointer items-center gap-2.5 rounded-lg px-4 text-left',
+            'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover',
           )}
-          <span className="flex-1" />
-          <span className="shrink-0 text-xs text-text-tertiary">{a.startedBy === 'lead' ? 'Started by the lead' : 'Started by you'}</span>
-          <IconButton
-            size="sm"
-            label={open ? 'Fold the assignment' : 'Show the assignment'}
-            icon={<IconChevronRight className={cx('transition-transform duration-(--dur-2) ease-app', open && 'rotate-90')} />}
-            onClick={() => setOpen(!open)}
-            className="-mr-1.5"
+        >
+          <span className="inline-flex shrink-0 text-icon" title={a.kind ? WORKER_KIND_WORDS[a.kind] : startedBy}>
+            {a.kind ? WORKER_KIND_ICON[a.kind] : <IconUser size={14} />}
+          </span>
+          <span className="max-w-[45%] shrink-0 truncate text-md font-medium text-text">{a.label}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-text-secondary" title={line}>
+            {line}
+          </span>
+          <IconChevronRight
+            size={14}
+            className={cx('shrink-0 text-icon transition-transform duration-(--dur-2) ease-app', open && 'rotate-90')}
           />
-        </div>
-        <p className="m-0 truncate text-sm text-text-secondary" title={a.purpose}>
-          {a.kind ? a.purpose : a.purpose || 'No assignment: it knows the feature and the lead’s latest turns, and waits for you.'}
-        </p>
+        </button>
         {open && (
-          <dl className="m-0 mt-3 grid animate-fade-in grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1.5 border-t border-border-subtle pt-3 text-sm">
-            {facts.map((f) => (
-              <div key={f.label} className="contents">
-                <dt className="text-text-tertiary">{f.label}</dt>
-                <dd className="m-0 min-w-0 text-text">{f.value}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="flex min-w-0 flex-col gap-2 px-4 pb-3.5 pl-[42px] animate-fade-in">
+            <p className="m-0 text-xs text-text-tertiary">
+              {a.kind ? `${WORKER_KIND_WORDS[a.kind]} · ${startedBy}` : startedBy}
+            </p>
+            <div data-assignment-box className={cx(CAPPED_BOX, 'px-3.5 py-3')}>
+              <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
+                {facts.map((f) => (
+                  <div key={f.label} className="contents">
+                    <dt className="text-text-tertiary">{f.label}</dt>
+                    <dd className="m-0 min-w-0 break-words text-text">
+                      {f.prose ? <Markdown source={f.value} size="sm" tone="primary" /> : f.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
         )}
       </div>
     </section>
@@ -329,10 +362,59 @@ export function HandbackOutcomeLine({ outcome }: { outcome: HandbackOutcome }) {
   )
 }
 
+/** Past this many characters a report's first paragraph is clamped to four lines until opened. */
+const LONG_FIRST = 420
+
+/**
+ * A report cut where its first paragraph ends (calmer-worker-chats decision
+ * 2): the text up to the first blank line — a heading alone is taken with the
+ * block after it, and a code fence is never cut — then the rest.
+ */
+export function splitReport(source: string): { first: string; rest: string } {
+  const blocks = source.trim().split(/\n\s*\n/)
+  let n = 1
+  if (/^#{1,6}\s/.test(blocks[0] ?? '') && !blocks[0]!.includes('\n') && blocks.length > 1) n = 2
+  // An open fence keeps its blocks together up to its close.
+  while (n < blocks.length && (blocks.slice(0, n).join('\n\n').match(/^```/gm)?.length ?? 0) % 2 === 1) n++
+  return { first: blocks.slice(0, n).join('\n\n'), rest: blocks.slice(n).join('\n\n') }
+}
+
+/**
+ * A handback's report, capped (calmer-worker-chats decisions 2, 9): its first
+ * paragraph (four lines at most while folded), then "Show more", which opens
+ * the rest in a box that scrolls past the cap, so the card never takes over
+ * the screen. The worker's handback and the lead's to the orchestrator share it.
+ */
+export function CappedReport({ source }: { source: string }) {
+  const [open, setOpen] = useState(false)
+  const { first, rest } = splitReport(source)
+  const long = first.length > LONG_FIRST
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-2">
+      <Markdown source={first} size="sm" tone="primary" className={cx('w-full', !open && long && '[&>p]:line-clamp-4')} />
+      {open && rest && (
+        <div data-report-box className={cx(CAPPED_BOX, 'w-full px-3.5 py-3 animate-fade-in')}>
+          <Markdown source={rest} size="sm" tone="primary" />
+        </div>
+      )}
+      {(rest || long) && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="cursor-pointer text-sm text-text-tertiary underline-offset-2 hover:text-text-secondary hover:underline"
+        >
+          {open ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 /**
  * A worker's handback in the lead's chat (decisions 4, 21): who handed back and
- * what kind of work it was, its summary, its commits, the files it changed
- * (folded), a way to its chat, and beneath the card what the lead did with it.
+ * what kind of work it was, its report capped to its first paragraph, its
+ * commits, the files it changed (folded), a way to its chat, and beneath the card what the lead did with it.
  */
 export function HandbackCard({ handback, onOpenWorker }: { handback: Handback; onOpenWorker: (workerId: string) => void }) {
   const h = handback
@@ -367,7 +449,7 @@ export function HandbackCard({ handback, onOpenWorker }: { handback: Handback; o
           )}
         </p>
         <div className="px-4 pt-2.5 pb-3.5 pl-[42px]">
-          <Markdown source={h.summary} size="sm" tone="primary" />
+          <CappedReport source={h.summary} />
         </div>
         {h.files.length > 0 && <HandbackFiles files={h.files} />}
       </article>
@@ -410,7 +492,7 @@ export function FeatureHandbackCard({
       </header>
       <p className="m-0 pl-[42px] pr-4 text-xs text-text-tertiary">{state}</p>
       <div className="px-4 pt-2.5 pb-3.5 pl-[42px]">
-        <Markdown source={summary} size="sm" tone="primary" />
+        <CappedReport source={summary} />
       </div>
     </article>
   )
