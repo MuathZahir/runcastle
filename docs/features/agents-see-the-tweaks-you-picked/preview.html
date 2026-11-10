@@ -272,22 +272,19 @@ pre.mono{white-space:pre-wrap;margin:4px 0 0;padding:10px 12px;border-radius:var
     ['Only the open design', 'The open design is what the human is talking about; the others are noise.'],
     ['Drop the copy-paste readout line', 'It was a workaround for exactly this gap; the Tweaks menu itself stays.'],
     ['No silent gaps', 'When a page reported nothing, the agent is told so, never left to assume defaults.'],
-    ['The design page reports; runcastle only relays', 'One standard browser message works in any framework, on desktop and through the phone proxy.', 'assumed'],
-    ['Runcastle keeps each design\'s last report', 'Approve then works from a card, the phone, or with the frame not loaded.', 'assumed'],
-    ['Approval carries each approved design\'s values in the one line', 'Values are kept at each click and sent in the existing quiet-until-last line; approval rules untouched.', 'assumed'],
+    ['The design page reports; runcastle only relays', 'One standard browser message works in any framework, on desktop and through the phone proxy.'],
+    ['Runcastle keeps each design\'s last report', 'Approve then works from a card, the phone, or with the frame not loaded.'],
+    ['Approval carries each approved design\'s values in the one line', 'Values are kept at each click and sent in the existing quiet-until-last line; approval rules untouched.'],
     ['On the phone, the design you just left counts as open', 'Superseded by 12: chat messages carry nothing.'],
     ['You see what goes along with your message', 'Superseded by 12: nothing new on screen.'],
-    ['"No Tweaks menu" is said by the page, never guessed', 'An empty set means no menu; a missing one means the page did not say, so a forgotten wiring is never hidden.', 'assumed'],
-    ['A page remembers its tweaks across a reload', 'Otherwise a reload reports defaults and quietly overwrites your picks before Approve.', 'assumed'],
+    ['"No Tweaks menu" is said by the page, never guessed', 'An empty set means no menu; a missing one means the page did not say, so a forgotten wiring is never hidden.'],
+    ['A page remembers its tweaks across a reload', 'Otherwise a reload reports defaults and quietly overwrites your picks before Approve.'],
     ['The values go to the agent only on Approve', 'Your call: Approve is when the picks matter; sending them with messages or behind a button was machinery you did not want.']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [11, 'Runcastle sends stored values back into the page on load', 'Asks every design page to keep its tweaks in its own storage; the other way is a two-way exchange', 'guide'],
-    [6, 'Keep the values only in the browser tab', 'Adds stored state on each design so Approve works after a reload or from the phone', 'storage']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
