@@ -3403,7 +3403,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Wait for the human',
         description:
           'Say that nothing moves until the human acts, and why; use it for a yes, a decision, or ' +
-          'when stuck. The human’s next message or your next dispatch clears it.',
+          'when stuck. Only the human’s next message to you clears it (or your orchestrator’s, when one holds ' +
+          'the feature); starting a worker or a review does not.',
         inputSchema: {
           why: z.string().min(1).describe('A few words on what you wait for.'),
           kind: WaitingKind.optional().describe('`plan`, `design` (a recorded design), `stuck`, or `answer` (default).'),

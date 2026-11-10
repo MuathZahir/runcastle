@@ -162,6 +162,23 @@ function haltsAgent(need: FeatureNeed): boolean {
 const SHOWN_WHILE_WORKING: ReadonlySet<NeedKind> = new Set(['permission', 'conflict', 'worker'])
 
 /**
+ * A need the human holds beats workers at work, as it does on the sidebar row
+ * (triage-batch decision 13): the lead's own wait, a worker needing them, a
+ * conflict, a drive to try. The server already drops the lead's quiet "it
+ * replied" need while workers work; a need a chat holds sits under them.
+ */
+function beatsWorkers(input: FeatureStatusInput): boolean {
+  const need = input.need
+  return (
+    input.feature.status !== 'shipped' &&
+    input.workersWorking > 0 &&
+    !!need &&
+    !need.held &&
+    (!input.agentWorking || SHOWN_WHILE_WORKING.has(need.kind))
+  )
+}
+
+/**
  * The status line of a need: its words split at the first "·" into the label
  * and the reason after it, so "Needs permission · Bash: git push" and "With the
  * orchestrator · Plan to approve" read the same as on the sidebar row.
@@ -187,6 +204,8 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  * - Needs permission · <call>, or a question box's Needs your answer — an open
  *   ask halts the agent mid-turn, so it shows even over workers at work or a
  *   self-planning run, whose Stop then waits in "⋯" (`stop`).
+ * - A need the human holds while workers work — it reads as on the sidebar row
+ *   (triage-batch decision 13), their Stop waiting in "⋯" (`stop`).
  * - Working · N workers at work — the feature's workers are working or queued.
  * - Planning by itself — a self-planning run is live.
  * - The need (you-always-know-what-s-waiting decisions 1, 17, 18) — the
@@ -208,7 +227,7 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   // A permission prompt halts the agent mid-turn, workers or self-plan included,
   // so it outranks their Stop: Show request leads and Stop waits in "⋯".
   // Driving keeps its own button: the human is at the drive.
-  if (input.need && haltsAgent(input.need) && !input.driving) {
+  if (input.need && (haltsAgent(input.need) || beatsWorkers(input)) && !input.driving) {
     const stop = input.workersWorking > 0 ? 'stop' : input.selfPlanning ? 'stopSelfPlan' : undefined
     return stop ? { ...status, stop } : status
   }
@@ -237,9 +256,9 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
     workers > 0
       ? { kind: 'working', label: 'Working', why: `${workers} ${workers === 1 ? 'worker' : 'workers'} at work` }
       : { kind: 'working', label: 'Working' }
-  if (workers > 0) return working()
+  if (workers > 0 && !beatsWorkers(input)) return working()
 
-  if (input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
+  if (workers === 0 && input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
 
   if (need && (!agentWorking || SHOWN_WHILE_WORKING.has(need.kind))) {
     const status = needStatus(need)

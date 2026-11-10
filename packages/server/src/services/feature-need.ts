@@ -163,6 +163,7 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
     status: feature.status,
     ...ownerFacts(feature, inputs.chat ?? ((id) => chatActivity(ctx, id))),
     agentWorking: hasActiveRun(ctx, feature.id) || lead.working,
+    workersAtWork: workersAtWork(ctx, feature.id),
     waiting: feature.waitingReason
       ? { reason: feature.waitingReason, kind: feature.waitingKind, since: timeline.waitingSetAt ?? 0 }
       : null,
@@ -181,6 +182,19 @@ export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}
     workerNeedsYou: workerNeedsYou(ctx, feature.id),
     handback: feature.handback,
   }
+}
+
+/**
+ * Any worker of the feature working or queued (triage-batch decision 13): the
+ * same count the header's "N workers at work" reads.
+ */
+function workersAtWork(ctx: AppCtx, featureId: string): boolean {
+  return !!ctx.db
+    .select({ id: workers.id })
+    .from(workers)
+    .where(and(eq(workers.featureId, featureId), inArray(workers.status, ['working', 'queued'])))
+    .limit(1)
+    .get()
 }
 
 /**

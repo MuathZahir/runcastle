@@ -91,14 +91,8 @@ describe('featureStatus', () => {
     ).toEqual({ kind: 'waiting', label: 'Handed back', why: 'Ready to merge', primary: 'chat' })
   })
 
-  it('reads Working, not the need, while workers work or a self-planning run is live — but keeps Stop', () => {
+  it('reads Planning by itself, not the need, while a self-planning run is live — but keeps Stop', () => {
     const plan = need('plan', 'Plan to approve')
-    expect(featureStatus(input({ need: plan, workersWorking: 2 }))).toEqual({
-      kind: 'working',
-      label: 'Working',
-      why: '2 workers at work',
-      primary: 'stop',
-    })
     expect(featureStatus(input({ need: plan, selfPlanning: true }))).toEqual({
       kind: 'working',
       label: 'Planning by itself',
@@ -341,11 +335,24 @@ describe('the header’s share of the row', () => {
   })
 
   it('keeps Stop as the button while workers work, with Merge & ship beside it', () => {
-    expect(header({ need: need('plan', 'Plan to approve'), workersWorking: 2 })).toEqual({
+    expect(header({ workersWorking: 2 })).toEqual({
       action: { label: 'Stop', kind: 'stopAgent', danger: true },
       merge: MERGE,
       overflow: [],
     })
+  })
+
+  it('lets the human’s own need beat workers at work, their Stop kept in "⋯" (triage-batch decision 13)', () => {
+    expect(header({ need: need('plan', 'Plan to approve'), workersWorking: 2 })).toEqual({
+      action: { label: 'Open plan', kind: 'openPlan' },
+      merge: MERGE,
+      overflow: [{ label: 'Stop', kind: 'stopAgent', danger: true }],
+    })
+  })
+
+  it('keeps workers at work over a need a chat holds', () => {
+    const held = need('plan', 'With Notes triage · Plan to approve', { held: true })
+    expect(featureStatus(input({ need: held, workersWorking: 1 }))).toMatchObject({ label: 'Working', why: '1 worker at work', primary: 'stop' })
   })
 
   it('shows Merge & ship once, as the button, when the feature is ready to merge — Start test drive goes to "⋯"', () => {

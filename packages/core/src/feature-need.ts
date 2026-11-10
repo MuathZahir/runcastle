@@ -103,6 +103,12 @@ export interface NeedFacts {
   askingChat: string | null
   /** A round runs, or the lead is mid-turn: nothing is waited on but a permission prompt. */
   agentWorking: boolean
+  /**
+   * Any worker of the feature is working or queued (triage-batch decision 13):
+   * the lead's quiet "it replied, so it may await you" need does not stand
+   * while its workers are at work. A real wait still does.
+   */
+  workersAtWork: boolean
   /** The feature's waiting reason, its kind, and when it was set. */
   waiting: { reason: string; kind: WaitingKind | null; since: number } | null
   /** The lead replied, or asks, and the human has not answered; `since` is when its turn ended. */
@@ -260,8 +266,9 @@ function candidates(facts: NeedFacts): Array<() => Bare | null> {
       if (!idle) return null
       if (waitingKind === 'answer') return { kind: 'answer', why: waiting!.reason, since: waiting!.since }
       // A lead that declared ready waits on the drive, not on an answer; one that
-      // handed back waits on its orchestrator, and its handback speaks for it.
-      if (!waiting && !ready && !facts.handback && facts.leadAwaitsHuman) return { kind: 'answer', since: facts.leadAwaitsHuman.since, quiet: true }
+      // handed back waits on its orchestrator, and its handback speaks for it. A
+      // lead whose workers are at work is not idle: their handbacks wake it.
+      if (!waiting && !ready && !facts.handback && !facts.workersAtWork && facts.leadAwaitsHuman) return { kind: 'answer', since: facts.leadAwaitsHuman.since, quiet: true }
       return null
     },
     () => idle && waitingKind === 'plan' ? { kind: 'plan', since: waiting!.since } : null,
