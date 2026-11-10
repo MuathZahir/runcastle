@@ -141,7 +141,7 @@ describe('hand_back from a lead', () => {
 describe('the handback mark', () => {
   const cleared = (featureId: string) => listAfter(ctx, featureId, 0).filter((e) => e.type === HANDBACK_CLEARED)
 
-  it('is written by hand_back, reads With the orchestrator, and a second handback replaces it', async () => {
+  it('is written by hand_back, reads With <its chat>, and a second handback replaces it', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'marked', heldBy: orchestrator() })
     const before = Date.now()
     await toolHandBack(ctx, leadOf(f.id), { summary: 'Blocked on a conflict in api.ts. Details follow.' })
@@ -152,7 +152,7 @@ describe('the handback mark', () => {
     expect(needOf(ctx, getFeatureRow(ctx, f.id))).toMatchObject({
       kind: 'handback',
       held: true,
-      words: 'With the orchestrator · Blocked on a conflict in api.ts',
+      words: 'With Working by itself · Blocked on a conflict in api.ts',
     })
 
     await toolHandBack(ctx, leadOf(f.id), { summary: 'Ready to merge.' })

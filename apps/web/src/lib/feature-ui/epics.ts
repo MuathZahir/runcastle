@@ -1,6 +1,7 @@
 import type { FeatureListItem } from '../api'
 import type { ThreadEntry } from '../chat-thread'
 import { triageOf, type TriageKey } from './sidebar'
+import { askingAboutLine } from '../sidebar-threads'
 
 /**
  * The sidebar as a list of epics (docs/features/orchestrator-chats-become-epics):
@@ -141,20 +142,13 @@ export function epicHolder(
  * What a waiting chat asks about, for its epic row's "Asking about <feature>"
  * (decision 11): the first feature it names, then "+N" for the rest. Null when
  * the chat is not waiting or its question names no feature it can find, and the
- * row reads "Asking you".
- *
- * TODO(every-feature-has-one-owner): the owner feature's thread-list fact
- * `askingAbout` (feature ids, `featuresAskedAbout` in packages/core/src/thread.ts)
- * and its words (`askingAboutLine` in lib/sidebar-threads.tsx) were not on this
- * branch when this was written. This reads the field if the list carries it;
- * once merged, type it on `ThreadEntry` and share `askingAboutLine`'s words.
+ * row reads "Asking you". The words and the "+N" rule are the owner feature's
+ * (`askingAboutLine`, over the chat list's `askingAbout`), less its "Asking
+ * about " head, which the epic row writes.
  */
 export function asksAboutOf(chat: ThreadEntry, features: readonly FeatureListItem[]): string | null {
   if (chat.state !== 'waiting') return null
-  const ids = (chat as ThreadEntry & { askingAbout?: readonly string[] }).askingAbout ?? []
-  const titles = ids.flatMap((id) => features.find((f) => f.id === id)?.title ?? [])
-  if (titles.length === 0) return null
-  return titles.length === 1 ? titles[0]! : `${titles[0]!} +${titles.length - 1}`
+  return askingAboutLine(chat, features)?.replace(/^Asking about /, '') ?? null
 }
 
 /**

@@ -619,6 +619,12 @@ export interface ThreadEntry {
   epicNamed?: boolean
   /** The human renamed this chat, which outranks every other name. Absent (false) on a thread with no log. */
   humanNamed?: boolean
+  /**
+   * An orchestrator chat's: the features it is asking the human about now
+   * ({@link featuresAskedAbout}), by id; absent when none. While any are, the
+   * chat waits on the human (`state` is `waiting`).
+   */
+  askingAbout?: string[]
 }
 
 /** Prompts runcastle sends wear this; the fold shows them as runcastle's line, not the human's bubble. */
@@ -808,6 +814,41 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
   if (!replied) return 'idle'
   const stillWorking = running && (subagents > 0 || (commands > 0 && now - endedAt < BACKGROUND_WINDOW_MS))
   return stillWorking && !ENDS_ASKING.test(lastSaid.trimEnd()) ? 'background' : 'replied'
+}
+
+/**
+ * Which features an orchestrator chat is asking the human about
+ * (every-feature-has-one-owner decision 17): when the chat waits on the human
+ * with a question — an ask still open while its process runs, or its last turn
+ * ended on a message holding a question mark anywhere (real orchestrator turns
+ * often ask, then add a recommendation: "Start it now? I recommend yes.") — the features whose plan, design or review card it showed in
+ * that turn, in the order first shown. Otherwise none: a chat that is working,
+ * idle, or ended its turn on words that ask nothing is asking about nothing. A
+ * card from an earlier turn never counts, nor one shown before the human last
+ * wrote. A card logged before cards carried their feature names none.
+ */
+export function featuresAskedAbout(events: readonly ThreadEvent[], running: boolean, now: number): string[] {
+  const activity = threadActivity(events, running, now)
+  if (activity !== 'asking' && activity !== 'replied') return []
+  let shown: string[] = []
+  let lastSaid = ''
+  let lastMessage: string | undefined
+  for (const e of outsideCompactions(liveEvents(events))) {
+    if ((e.type === 'prompt' && !e.held && !e.hidden) || e.type === 'turn_started') {
+      shown = []
+      if (e.type === 'turn_started') {
+        lastSaid = ''
+        lastMessage = undefined
+      }
+    } else if (e.type === 'agent_text') {
+      lastSaid = e.messageId === lastMessage ? lastSaid + e.text : e.text
+      lastMessage = e.messageId
+    } else if (e.type === 'plan_shown' || e.type === 'design_shown' || e.type === 'review_package') {
+      if (e.featureId && !shown.includes(e.featureId)) shown.push(e.featureId)
+    }
+  }
+  if (activity === 'replied' && !/[?？؟]/.test(lastSaid)) return []
+  return shown
 }
 
 /**

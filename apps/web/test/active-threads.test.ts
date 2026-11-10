@@ -7,6 +7,7 @@ import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
 import { Crumbs } from '../src/ui/page'
 import {
+  askingAboutLine,
   featureEpic,
   originFeatures,
   orchestratorLanding,
@@ -195,5 +196,35 @@ describe('the rows', () => {
     const html = list({ threads, more: undefined })
     expect(html).toContain('Show 2 more')
     expect(html).toMatch(/[0-9]+d</)
+  })
+})
+
+/** every-feature-has-one-owner decisions 8, 17, 30: the chat row names what it asks about, plainly. */
+describe('a chat asking about features it owns', () => {
+  const features = [held('Export notes', 'a'), held('Sync offline', 'a'), held('Not its own', 'b')]
+
+  it('reads Asking about the first, +N for the rest, only for features it owns', () => {
+    expect(askingAboutLine(thread('a', { askingAbout: ['Export notes'] }), features)).toBe('Asking about Export notes')
+    expect(askingAboutLine(thread('a', { askingAbout: ['Export notes', 'Not its own', 'Sync offline'] }), features)).toBe('Asking about Export notes +1')
+    expect(askingAboutLine(thread('a', { askingAbout: ['Not its own'] }), features)).toBeNull()
+    expect(askingAboutLine(thread('a'), features)).toBeNull()
+  })
+
+  it('shows the line under the title, with the amber dot the only mark of the question', () => {
+    const asking = thread('a', { state: 'waiting', askingAbout: ['Export notes'] })
+    const html = renderToStaticMarkup(
+      createElement(SidebarThreadList, {
+        threads: [asking, thread('b')],
+        current: null,
+        onOpen: () => {},
+        actionsFor: () => [],
+        keep: () => true,
+        aboutFor: (t) => askingAboutLine(t, features),
+      }),
+    )
+    expect(html).toContain('>Asking about Export notes<')
+    expect(html).toContain('title="a — Asking about Export notes"')
+    expect(html.match(/aria-label="Waiting for you"/g)).toHaveLength(1)
+    expect(html).toContain('title="b"')
   })
 })

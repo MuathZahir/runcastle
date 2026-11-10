@@ -39,10 +39,15 @@ describe('eventToNotification', () => {
     expect(n).toEqual({ title: 'Ready to merge', body: 'your feature' })
   })
 
-  it('stays quiet for a need its orchestrator is handling, and for the human’s own Stop', () => {
-    expect(
-      eventToNotification(ev({ data: { kind: 'handback', words: 'With the orchestrator · Ready to merge', held: true, why: 'Ready to merge' } })),
-    ).toBeNull()
+  it('stays quiet for a need its owner chat or the chat it asks is handling, and for the human’s own Stop', () => {
+    const held: Array<[string, string]> = [
+      ['handback', 'With Notes triage · Ready to merge'],
+      ['plan', 'With Notes triage · Plan to approve'],
+      ['design', 'With Notes triage · Design to approve'],
+      ['handback', 'With Notes triage · asking you'],
+      ['handback', 'Asking Notes triage · Which feature owns the inbox?'],
+    ]
+    for (const [kind, words] of held) expect(eventToNotification(ev({ data: { kind, words, held: true, why: null } }))).toBeNull()
     expect(
       eventToNotification(ev({ data: { kind: 'stopped', words: 'Stopped · you stopped it', held: false, why: 'you stopped it' } })),
     ).toBeNull()

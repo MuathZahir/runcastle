@@ -93,6 +93,17 @@ export function originFeatures(threadId: string, features: readonly FeatureListI
 }
 
 /**
+ * An Orchestrator chat's second line while it asks the human about features it
+ * owns (every-feature-has-one-owner decisions 8, 17, 30): "Asking about <the
+ * first one>", "+N" for the rest. Null when it asks about none it owns.
+ */
+export function askingAboutLine(thread: Pick<ThreadEntry, 'id' | 'askingAbout'>, features: readonly FeatureListItem[]): string | null {
+  const owned = (thread.askingAbout ?? []).flatMap((id) => features.find((f) => f.id === id && f.heldBy === thread.id) ?? [])
+  if (!owned.length) return null
+  return `Asking about ${owned[0].title}${owned.length > 1 ? ` +${owned.length - 1}` : ''}`
+}
+
+/**
  * Whether the sidebar lists a chat (the-sidebar-shows-only-active-threads, with
  * orchestrator-chats-become-epics decision 16): it is working or asking, a
  * feature it cut is in flight or up next, it is in front, or the human wrote in
