@@ -74,6 +74,59 @@ describe('foldThread: features card and prompt display', () => {
   })
 })
 
+describe('foldThread: workers card', () => {
+  const started = (workerId: string): ThreadEventBody => ({
+    type: 'worker_started',
+    workerId,
+    label: `Worker ${workerId}`,
+    purpose: `Does ${workerId}`,
+    kind: workerId === 'review' ? 'review' : 'on-its-own',
+  })
+  const running: ThreadEventBody[] = [prompt('p1'), { type: 'process', state: 'running' }, { type: 'turn_started' }]
+  const tool = (id: string, status: 'in_progress' | 'completed' = 'completed'): ThreadEventBody => ({
+    type: 'tool',
+    call: { id, kind: 'other', title: 'mcp__runcastle__start_worker', status },
+  })
+  const end: ThreadEventBody = { type: 'turn_ended', reason: 'end_turn' }
+  const say = (messageId: string, text: string): ThreadEventBody => ({ type: 'agent_text', messageId, text })
+  const cards = (v: ReturnType<typeof foldThread>) =>
+    v.items.filter((x): x is Extract<ThreadItem, { kind: 'workers_card' }> => x.kind === 'workers_card')
+
+  it('gathers a turn\'s starts into one card, rows in start order, even with words between them', () => {
+    const v = foldThread(
+      log(...running, tool('c1'), started('a'), say('m1', 'Started a.'), tool('c2'), started('b'), say('m2', 'And b.'), tool('c3'), started('review'), end),
+    )
+    expect(cards(v)).toHaveLength(1)
+    expect(cards(v)[0]!.rows.map((r) => r.workerId)).toEqual(['a', 'b', 'review'])
+    expect(cards(v)[0]!.rows[2]).toEqual({ workerId: 'review', label: 'Worker review', purpose: 'Does review', kind: 'review' })
+    // It closes the turn, after the lead's last words.
+    expect(kinds(v.items)).toEqual(['user', 'work', 'agent', 'work', 'agent', 'work', 'workers_card'])
+  })
+
+  it('stands on its own: never inside a run of work, live or settled', () => {
+    const live = foldThread(log(...running, tool('c1'), started('a'), tool('c2', 'in_progress')))
+    expect(kinds(live.items)).toEqual(['user', 'work', 'workers_card'])
+    const w = work(live)
+    expect(w?.live).toBe(true)
+    expect(w?.steps.every((s) => s.kind === 'tools')).toBe(true)
+    const settled = foldThread(log(...running, tool('c1'), started('a'), tool('c2'), say('m1', 'Done.'), end))
+    expect(kinds(settled.items)).toEqual(['user', 'work', 'agent', 'workers_card'])
+  })
+
+  it('makes one card per turn, and a worker started twice is one row', () => {
+    const v = foldThread(
+      log(...running, started('a'), started('a'), started('b'), end, prompt('p2'), { type: 'turn_started' }, started('c'), say('m', 'Started c.'), end),
+    )
+    expect(cards(v).map((c) => c.rows.map((r) => r.workerId))).toEqual([['a', 'b'], ['c']])
+    expect(kinds(v.items)).toEqual(['user', 'workers_card', 'user', 'agent', 'workers_card'])
+  })
+
+  it('starts a new card after a steered prompt', () => {
+    const v = foldThread(log(...running, started('a'), prompt('p2', 'steer', { steered: true }), started('b'), end))
+    expect(cards(v).map((c) => c.rows.map((r) => r.workerId))).toEqual([['a'], ['b']])
+  })
+})
+
 describe('foldThread: shown files', () => {
   const file = (id: string): ShownFile => ({ id, src: `/f/${id}.png`, name: `${id}.png`, path: `${id}.png`, size: 1, as: 'image' })
   const shown = (id: string): ThreadEventBody => ({ type: 'file_shown', file: file(id) })
