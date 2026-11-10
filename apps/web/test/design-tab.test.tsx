@@ -24,6 +24,7 @@ const design = (id: string, title: string, shownAt: number, state: DesignEntry['
   state,
   isNew: state === 'waiting',
   shownAt,
+  report: null,
 })
 
 /** The design server up at a URL, as `design.status` reports a running one. */

@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/sql-js'
 import { simpleGit } from 'simple-git'
 import initSqlJs from 'sql.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { features, readyDeclarations, reviewFindings, schema, sessions, tickets, workers } from '../src/db/schema'
+import { designs, features, readyDeclarations, reviewFindings, schema, sessions, tickets, workers } from '../src/db/schema'
 import { runMigrations } from '../src/db/migrate'
 import type { AppCtx, Db } from '../src/db/types'
 import { openProject } from '../src/services/projects'
@@ -212,6 +212,33 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
     const leadLog = readFileSync(join(dataDir, 'sessions', lead.id, 'thread.jsonl'), 'utf8')
     expect(leadLog).toContain('"held":true')
     expect(leadLog).toContain(`"branch":"${feature!.branch}"`)
+  })
+
+  // `.runcastle/scenarios/designs/feature-with-designs-waiting.ts` (agents-see-the-tweaks-you-picked).
+  it('seeds a feature with three waiting designs and a recorded design server command, and prints its page', async () => {
+    const out = runScenario(
+      { RUNCASTLE_DATA_DIR: dataDir, RUNCASTLE_SCENARIO_RUN: 'abc123' },
+      join('.runcastle', 'scenarios', 'designs', 'feature-with-designs-waiting.ts'),
+    )
+    expect(out.stderr).not.toMatch(/\[feature-with-designs-waiting\]/)
+    expect(out.status).toBe(0)
+    expect(out.stdout.split(/\r?\n/).filter((l) => l.startsWith('ENTRY_URL='))).toEqual([
+      `ENTRY_URL=/p/${projectId}/f/designs-waiting-abc123`,
+    ])
+
+    const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
+    const feature = ctx.db.select().from(features).where(eq(features.slug, 'designs-waiting-abc123')).get()
+    const rows = ctx.db.select().from(designs).where(eq(designs.featureId, feature!.id)).all()
+    expect(rows.map((d) => [d.title, d.path, d.state]).sort()).toEqual([
+      ['Invoice list', '/preview/invoice-list.html', 'waiting'],
+      ['Profile', '/preview/profile.html', 'waiting'],
+      ['Settings', '/preview/settings.html', 'waiting'],
+    ])
+    const tree = join(dataDir, 'worktrees', projectId, feature!.slug)
+    const recorded = JSON.parse(readFileSync(join(tree, '.runcastle', 'design.json'), 'utf8')) as { command: string }
+    expect(recorded.command).toContain('$RUNCASTLE_DESIGN_PORT')
+    expect(readFileSync(join(tree, 'preview', 'invoice-list.html'), 'utf8')).toContain('runcastle-design-report')
+    expect(readFileSync(join(tree, 'preview', 'settings.html'), 'utf8')).not.toContain('runcastle-design-report')
   })
 
   it('exits non-zero with a readable message when the project is not registered', () => {

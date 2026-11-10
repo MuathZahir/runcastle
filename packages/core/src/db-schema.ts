@@ -244,6 +244,14 @@ export const designs = sqliteTable(
     /** When the human last opened it; null until they have. */
     seenAt: integer('seen_at'),
     createdAt: integer('created_at').notNull(),
+    /**
+     * The page's last report (agents-see-the-tweaks-you-picked decisions 5, 6):
+     * a `DesignReport` as JSON, and when it arrived (ms). Null until one did.
+     */
+    report: text('report'),
+    reportedAt: integer('reported_at'),
+    /** `report` as it stood at the human's Approve click (decision 7); null without one. */
+    approvedReport: text('approved_report'),
   },
   (t) => [uniqueIndex('designs_feature_path').on(t.featureId, t.path)],
 )

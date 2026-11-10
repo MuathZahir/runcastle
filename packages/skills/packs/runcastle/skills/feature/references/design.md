@@ -45,11 +45,13 @@ a small corner panel labelled "Design · states" and styled apart from the
 product; every state a visible button (never a dropdown), the current one
 marked; the state in the address as `?state=<name>`; the page stays live; a theme
 toggle beside the states where the project has themes; the Tweaks folded into the
-panel. A single-state screen needs none.
+panel. A single-state screen needs none. The switcher **reports** its current
+state to the Design tab (section 4).
 
 **A design page is a dead end on purpose**: intercept link clicks and router
 navigation and do nothing, since other routes have no fakes. A flow is one page
-per screen. In runcastle's own repo start from `.runcastle/preview/`.
+per screen. In runcastle's own repo start from `.runcastle/preview/`; its
+`design-report.ts` reports and keeps the tweaks for you.
 
 ## 3. Serve it and show it
 
@@ -76,14 +78,38 @@ The human talks, or points with **Select area**; a crop reaches you as
 
 **Tweaks.** For a choice genuinely still open (accent, density, which layout),
 add a small collapsible **Tweaks** menu to the design page, three or four controls
-at most, showing its current values as one line of text the human can paste.
-**Never show the choice as two designs.** Everything the menu switches between
-lives in the design page, never in the app's own files: deleting it leaves nothing.
+at most. **Never show the choice as two designs.** Everything the menu switches
+between lives in the design page, never in the app's own files: deleting it
+leaves nothing.
+
+**Every design page reports**, single-state ones and pages without Tweaks
+included. On load and on every change of state or tweak it posts one message to
+the window around it, `window.parent.postMessage(report, '*')`, where `report` is
+`{ type: 'runcastle-design-report', state, tweaks }`: `state` is the switcher's current
+state (`null` on a single-state page), `tweaks` the menu's values keyed by the
+labels it shows (`{}` when the page has no Tweaks menu). When the human clicks
+**Approve**, runcastle hands you the values the page last reported.
+
+**The page remembers its tweaks**: it keeps them in `localStorage` under a key
+that includes the design's path, so two designs on one server never overwrite
+each other, and restores them on load. A reload then shows the human's picks,
+not your defaults. In plain browser JavaScript:
+
+```js
+const key = 'tweaks:' + location.pathname
+const tweaks = { accent: 'teal', density: 'compact', ...JSON.parse(localStorage.getItem(key) || '{}') }
+const report = () => parent.postMessage({ type: 'runcastle-design-report', state: currentState, tweaks }, '*')
+function setTweak(name, value) { tweaks[name] = value; localStorage.setItem(key, JSON.stringify(tweaks)); render(); report() }
+report() // on load; call it again whenever the switcher changes state
+```
 
 ## 5. Approve and commit
 
-1. Write the chosen tweak values into the real code and **delete the Tweaks
-   menu**. **Keep the state switcher**: it is committed with the design page.
+1. The chosen tweak values arrive in the approval line (`with tweaks accent =
+   teal, …`, or `(no Tweaks menu)`, or `(this design reported no tweak values)`:
+   then ask the human what they picked). Write them into the code and **delete the Tweaks
+   menu**. **Keep the state switcher** and its report: they are committed with
+   the design page.
 2. Commit the component, its design page and sample data as `design: <what>`,
    with `.runcastle/design.json` if new or changed.
 3. **Never commit unapproved work.** Before you start workers or the review, commit
@@ -95,7 +121,7 @@ lives in the design page, never in the app's own files: deleting it leaves nothi
    an approval in words, `'dropped'` for a rejection (there is no Drop button).
 6. **Button approvals are quiet** until the last waiting design is approved:
    then one `[runcastle]` line names them all; commit them. Otherwise read
-   `get_feature_context` (`designs[]`: `state`, `approvedBy`, `opened`).
+   `get_feature_context` (`designs[]`: `state`, `approvedBy`, `opened`, `report`).
 
 ## 6. Keep to UI
 

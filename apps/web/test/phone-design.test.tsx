@@ -30,6 +30,7 @@ const design = (id: string, title: string, shownAt: number, state: DesignEntry['
   state,
   isNew: state === 'waiting',
   shownAt,
+  report: null,
 })
 
 function server(designs: DesignEntry[]) {

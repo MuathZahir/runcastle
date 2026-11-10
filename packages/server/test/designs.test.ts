@@ -9,7 +9,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, { featureContext } from '../src/mcp/server'
 import designsApp from '../src/routes/designs'
-import { recordDesign } from '../src/services/designs'
+import { allApprovedLine, recordDesign, reportDesign, setDesignState } from '../src/services/designs'
 import { setWaiting } from '../src/services/lead-status'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
@@ -232,8 +232,8 @@ describe('set_design_state', () => {
     expect(missing.text).toMatch(/no design is recorded at \/preview\/c\.html/)
 
     expect(featureContext(ctx, { featureId: feature.id }).designs).toEqual([
-      { title: 'A', path: '/preview/a.html', state: 'approved', approvedBy: 'lead', opened: false },
-      { title: 'B', path: '/preview/b.html', state: 'dropped', approvedBy: null, opened: false },
+      { title: 'A', path: '/preview/a.html', state: 'approved', approvedBy: 'lead', opened: false, report: null },
+      { title: 'B', path: '/preview/b.html', state: 'dropped', approvedBy: null, opened: false, report: null },
     ])
   })
 })
@@ -303,5 +303,120 @@ describe('design.approve', () => {
     expect(featureContext(ctx, { featureId: feature.id }).designs[0].opened).toBe(true)
     recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
     expect((await list()).designs[0].isNew).toBe(true)
+  })
+})
+
+/** agents-see-the-tweaks-you-picked: the page's report, kept and copied at the click into the approval line. */
+describe('design.report', () => {
+  function leadChat(): void {
+    const row = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo })
+    markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
+    markSessionEnded(ctx, row.id)
+  }
+  const delivered = () => events('lead.message_queued').map((e) => (e.data as { text: string }).text)
+  const report = (tweaks?: Record<string, string | number | boolean>, state: string | null = 'full') => ({
+    type: 'runcastle-design-report' as const,
+    state,
+    ...(tweaks ? { tweaks } : {}),
+  })
+
+  it('keeps the last report on the design, in the list and the lead’s context, and tells nobody', async () => {
+    leadChat()
+    const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    expect((await list()).designs[0].report).toBeNull()
+
+    expect(await caller().design.report({ designId: a.id, report: report({ accent: 'red' }) })).toEqual({ ok: true })
+    await caller().design.report({ designId: a.id, report: report({ accent: 'teal', compact: true }, 'empty') })
+
+    const stored = report({ accent: 'teal', compact: true }, 'empty')
+    expect((await list()).designs[0].report).toEqual(stored)
+    expect(featureContext(ctx, { featureId: feature.id }).designs[0].report).toEqual(stored)
+    expect(events('design.reported')).toHaveLength(2)
+    expect(delivered()).toEqual([])
+  })
+
+  it('trims a report over the cap rather than dropping it', () => {
+    const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    const tweaks = Object.fromEntries(Array.from({ length: 15 }, (_, i) => [`t${i}`, 'v'.repeat(100)]))
+    const kept = reportDesign(ctx, a.id, report(tweaks)).report!
+    expect(Object.keys(kept.tweaks!)).toHaveLength(12)
+    expect(kept.tweaks!['t0']).toHaveLength(80)
+  })
+
+  it('refuses a malformed report and keeps nothing', async () => {
+    const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    const bad = (r: unknown) => caller().design.report({ designId: a.id, report: r as ReturnType<typeof report> })
+    await expect(bad({ type: 'something-else', state: null })).rejects.toThrow()
+    await expect(bad({ type: 'runcastle-design-report', state: null, tweaks: { accent: { r: 1 } } })).rejects.toThrow()
+    await expect(bad({ type: 'runcastle-design-report' })).rejects.toThrow()
+    expect((await list()).designs[0].report).toBeNull()
+    expect(events('design.reported')).toEqual([])
+  })
+
+  it('names one approved design’s tweaks as they stood at the click; a later report changes nothing', async () => {
+    leadChat()
+    const a = recordDesign(ctx, feature.id, { path: '/preview/invoice-list', title: 'Invoice list' })
+    reportDesign(ctx, a.id, report({ accent: 'teal', density: 'compact' }))
+    await caller().design.approve({ designId: a.id })
+    reportDesign(ctx, a.id, report({ accent: 'red', density: 'loose' }))
+
+    expect(delivered()).toEqual([
+      '[runcastle] The human approved the 1 design in the Design tab: “Invoice list” (/preview/invoice-list) with tweaks accent = teal, density = compact. ' +
+        'Write those values into the code, delete its Tweaks menu, and commit it as "design: Invoice list".',
+    ])
+    expect((await list()).designs[0].report?.tweaks).toEqual({ accent: 'red', density: 'loose' })
+  })
+
+  it('forgets an earlier click’s values once the design is shown again', async () => {
+    leadChat()
+    const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    const b = recordDesign(ctx, feature.id, { path: '/preview/b.html', title: 'B' })
+    reportDesign(ctx, a.id, report({ accent: 'coral' }))
+    await caller().design.approve({ designId: a.id })
+    recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    reportDesign(ctx, a.id, report({}))
+    setDesignState(ctx, feature.id, { path: '/preview/a.html', state: 'approved' })
+    await caller().design.approve({ designId: b.id })
+
+    expect(delivered()).toHaveLength(1)
+    expect(delivered()[0]).toContain('“A” (/preview/a.html) (no Tweaks menu)')
+    expect(delivered()[0]).not.toContain('coral')
+  })
+
+  it('names each of several designs: reported values, an empty set, a missing field and no report', async () => {
+    leadChat()
+    const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    const b = recordDesign(ctx, feature.id, { path: '/preview/b.html', title: 'B' })
+    const c = recordDesign(ctx, feature.id, { path: '/preview/c.html', title: 'C' })
+    const d = recordDesign(ctx, feature.id, { path: '/preview/d.html', title: 'D' })
+    reportDesign(ctx, a.id, report({ accent: 'teal', columns: 3, dark: false }))
+    reportDesign(ctx, b.id, report({}, null))
+    reportDesign(ctx, c.id, report(undefined, 'empty'))
+    for (const x of [a, b, c, d]) await caller().design.approve({ designId: x.id })
+
+    expect(delivered()).toHaveLength(1)
+    expect(delivered()[0]).toBe(
+      '[runcastle] The human approved all 4 designs in the Design tab: ' +
+        '“A” (/preview/a.html) with tweaks accent = teal, columns = 3, dark = false; ' +
+        '“B” (/preview/b.html) (no Tweaks menu); ' +
+        '“C” (/preview/c.html) (this design reported no tweak values); ' +
+        '“D” (/preview/d.html) (this design reported no tweak values). ' +
+        'Write each one’s values into the code, delete its Tweaks menu, and commit each one not yet committed as "design: <title>".',
+    )
+  })
+
+  it('reads one design with an empty set or no report plainly', () => {
+    const empty = JSON.stringify(report({}))
+    expect(allApprovedLine([{ title: 'Cart', path: '/preview/cart', approvedReport: empty }])).toContain('“Cart” (/preview/cart) (no Tweaks menu).')
+    expect(allApprovedLine([{ title: 'Cart', path: '/preview/cart', approvedReport: null }])).toContain(
+      '“Cart” (/preview/cart) (this design reported no tweak values).',
+    )
+  })
+
+  it('falls back to the last report for a design approved in words, with no click', () => {
+    const last = JSON.stringify(report({ accent: 'teal' }))
+    expect(allApprovedLine([{ title: 'Cart', path: '/preview/cart', approvedReport: null, report: last }])).toContain(
+      '“Cart” (/preview/cart) with tweaks accent = teal.',
+    )
   })
 })

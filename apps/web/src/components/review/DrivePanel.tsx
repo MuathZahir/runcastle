@@ -111,6 +111,7 @@ export function DrivePanel({
   width,
   onCapture,
   copy = 'note',
+  frameRef,
 }: {
   url: string
   agentDriving?: boolean
@@ -137,6 +138,8 @@ export function DrivePanel({
   onCapture?: (png: Blob) => void
   /** Which words the frame says things in. */
   copy?: keyof typeof CAPTURE_COPY
+  /** Given the page's frame, for a caller that listens to it (the design view's reports). */
+  frameRef?: RefObject<HTMLIFrameElement | null>
 }) {
   const toast = useToast()
   const words = CAPTURE_COPY[copy]
@@ -351,6 +354,7 @@ export function DrivePanel({
             it lays out at the pane's own width. */}
         <iframe
           key={`${frameKey}:${generation}`}
+          ref={frameRef}
           className={frame.chosen === 'fit' ? 'min-h-0 flex-1 border-0' : 'absolute top-0 origin-top-left border-0'}
           style={
             frame.chosen === 'fit'

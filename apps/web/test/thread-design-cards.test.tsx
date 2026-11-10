@@ -23,6 +23,7 @@ const design = (id: string, title: string, over: Partial<DesignEntry> = {}): Des
   state: 'waiting',
   isNew: true,
   shownAt: 1,
+  report: null,
   ...over,
 })
 
