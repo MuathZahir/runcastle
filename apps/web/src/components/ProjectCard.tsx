@@ -30,8 +30,8 @@ const RENAME_INPUT = `${TEXT_INPUT} h-7 w-full font-medium`
 const SIZE = {
   /** Beside a name in a quiet line: 20px. */
   sm: 'size-5 rounded-sm text-xs',
-  /** In a card's head: 32px. */
-  md: 'size-8 rounded-md text-sm',
+  /** In a card's head: 36px. */
+  md: 'size-9 rounded-md text-sm',
 } as const
 
 /**
@@ -228,14 +228,14 @@ export function ProjectCard({
           </span>
         </span>
       </span>
-      <span className="relative flex min-w-0 flex-1 flex-col gap-1">
+      <span className="pointer-events-none relative flex min-w-0 flex-1 flex-col gap-1">
         {lines.waiting.map(({ feature, words }) => (
           <button
             key={feature.id}
             type="button"
             title={`Open ${feature.title}`}
             onClick={() => onOpenFeature(feature.slug)}
-            className="group/line flex min-w-0 cursor-pointer items-center gap-2 text-left text-sm"
+            className="group/line pointer-events-auto flex min-w-0 cursor-pointer items-center gap-2 text-left text-sm"
           >
             <StatusDot tone="warning" />
             <span className="min-w-0 truncate text-text-secondary group-hover/line:text-text">{feature.title}</span>
@@ -251,7 +251,7 @@ export function ProjectCard({
             type="button"
             title={`Open ${f.title}`}
             onClick={() => onOpenFeature(f.slug)}
-            className="min-w-0 cursor-pointer truncate text-left text-sm text-text-tertiary hover:text-text-secondary"
+            className="pointer-events-auto min-w-0 cursor-pointer truncate text-left text-sm text-text-tertiary hover:text-text-secondary"
           >
             {f.title}
           </button>
