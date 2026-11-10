@@ -288,20 +288,26 @@ describe('runcastle on a phone', () => {
     expect(screen.queryByText('Loading feature…')).toBeNull()
   })
 
-  it('starts a new epic and opens note capture from the list’s +', async () => {
+  it('opens note capture from the list’s +, which no longer offers New epic', async () => {
     render(<Root path={LIST} />)
     await onList()
     fireEvent.click(screen.getByRole('button', { name: 'New' }))
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'New' })).getByRole('button', { name: /Jot a note/ }))
+    const sheet = screen.getByRole('dialog', { name: 'New' })
+    expect(within(sheet).queryByRole('button', { name: /New epic/ })).toBeNull()
+    fireEvent.click(within(sheet).getByRole('button', { name: /Jot a note/ }))
     await screen.findByRole('textbox', { name: /what did you just notice/i })
+  })
 
-    cleanup()
-    render(<Root path={LIST} />)
+  it('starts a new epic from the list’s dotted slot, saving nothing until its first message (epics-that-look-alive decision 5)', async () => {
+    const created: unknown[] = []
+    render(<Root path={LIST} extra={{ thread: { new: (input: unknown) => (created.push(input), { threadId: 'th_born' }) } } as TrpcFakes} />)
     await onList()
-    fireEvent.click(screen.getByRole('button', { name: 'New' }))
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'New' })).getByRole('button', { name: /New epic/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'New epic' }))
     await waitFor(() => expect(window.location.pathname).toBe(`/p/${PROJECT_ID}/chat`))
     expect(await screen.findByRole('button', { name: 'Back to the list' })).toBeTruthy()
+    expect(await screen.findByText('What are we building?')).toBeTruthy()
+    await act(() => new Promise((settled) => setTimeout(settled, 50)))
+    expect(created).toEqual([])
   })
 
   it('runs the project rail across the top of the list: a tap switches, as Alt+digit does', async () => {

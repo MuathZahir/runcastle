@@ -201,6 +201,10 @@ export function epicsFrom(
     features: moving
       .filter((f) => f.chatId === chat.id)
       .map((feature) => ({ feature, holder: epicHolder(feature, chat.id, chats) })),
+    color: chat.color ?? null,
+    icon: chat.icon ?? null,
+    // The list carries shipped features for the Shipped shelf, so the count needs no server read.
+    shipped: features.filter((f) => f.status === 'shipped' && f.chatId === chat.id).length,
   }))
   const other = moving.filter((f) => !f.chatId || !ids.has(f.chatId))
   return { epics, other }

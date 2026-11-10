@@ -75,7 +75,7 @@ export function epicCrumb(
         {epic.title}
       </span>
     ),
-    icon: <EpicGlyph small />,
+    icon: <EpicGlyph small color={epic.color} icon={epic.icon} />,
     onClick: () => onOpen(epic.id),
     // It gives way with the owner and the title, down to a few letters.
     shrink: true,
@@ -113,7 +113,7 @@ export function epicOwnerCrumbs(
       // The epic's name gives way down to a few letters; the finish words after it never do.
       shrink: true,
       ...(epic.title.length > 6 ? { floor: owner.planning ? 'min-w-56' : 'min-w-44' } : {}),
-      icon: <EpicGlyph small />,
+      icon: <EpicGlyph small color={epic.color} icon={epic.icon} />,
       label: (
         <span className="inline-flex min-w-0 items-center">
           <button
@@ -178,7 +178,7 @@ export function SidebarEpicRow({
         onClick={() => onOpen(chat.id)}
         className="flex w-full cursor-pointer items-start gap-2 rounded-[inherit] py-1.5 pr-2.5 pl-2.5 text-left"
       >
-        <EpicGlyph />
+        <EpicGlyph color={chat.color} icon={chat.icon} />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex h-5 min-w-0 items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-md font-medium text-text">{chat.title}</span>

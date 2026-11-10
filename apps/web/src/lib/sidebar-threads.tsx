@@ -28,6 +28,8 @@ export interface SidebarThreads {
   workers?: readonly WorkerEntry[]
   /** The Conversations page, where every conversation is listed ("All N conversations"). */
   allConversations?: () => void
+  /** An empty new epic is in front, not saved until its first message (epics-that-look-alive decision 5): the dotted slot shows it open. */
+  newEpicOpen?: boolean
 }
 
 const Published = createContext<SidebarThreads | null>(null)

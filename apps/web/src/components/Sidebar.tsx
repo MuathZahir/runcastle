@@ -32,7 +32,6 @@ import {
   IconDoc,
   IconGitMerge,
   IconList,
-  IconOrchestrator,
   IconPencil,
   IconSearch,
   IconX,
@@ -63,6 +62,7 @@ import {
   SidebarWorkerItem,
 } from './SidebarParts'
 import { SidebarEpics } from './SidebarEpics'
+import { EpicLookPopover } from './EpicLookPopover'
 import { RenameThreadDialog } from './chat/thread/RenameThreadDialog'
 
 /**
@@ -88,7 +88,7 @@ export interface SidebarProps {
   onSelect: (featureId: string | null) => void
   /** The project's chats: its latest. */
   onSelectProject: () => void
-  /** New epic: the project's chats on a fresh conversation. */
+  /** New epic, the list's dotted slot: the project's chats on an empty epic, saved on its first message. */
   onNewChat: () => void
   /** An epic's row: open that chat, from whatever page is open. */
   onOpenChat?: (threadId: string) => void
@@ -124,9 +124,10 @@ function byLastMoved(features: FeatureListItem[]): FeatureListItem[] {
  * The project sidebar (DESIGN.md §Frame, "The project sidebar") on the canvas,
  * composed from the pieces in `SidebarParts`:
  *
- * - head — the current project’s name (the project rail, left of it, switches), Search (⌘/Ctrl K), a Create menu (New epic ·
- *   Add to backlog · Jot a note) and the collapse button, over the halftone;
- * - the epics (docs/features/orchestrator-chats-become-epics): each listed
+ * - head — the current project’s name (the project rail, left of it, switches), Search (⌘/Ctrl K), a Create menu (Add
+ *   to backlog · Jot a note) and the collapse button, over the halftone;
+ * - the epics (docs/features/orchestrator-chats-become-epics): the dotted New
+ *   epic slot (epics-that-look-alive decision 5), then each listed
  *   orchestrator chat with the features it cut that are in motion or up next
  *   nested under it, then "Other features", then "All N epics" — on every
  *   page and on the phone;
@@ -270,9 +271,12 @@ export function Sidebar(props: SidebarProps) {
   const published = useSidebarThreads()
   const threadActions = useThreadActions()
   const [renaming, setRenaming] = useState<{ threadId: string; title: string } | null>(null)
+  // The epic whose colour-and-icon picker is open (epics-that-look-alive decision 3).
+  const [lookOf, setLookOf] = useState<ThreadEntry | null>(null)
   // A chat nobody has started has no thread yet: nothing to rename or export.
   const threadActionsFor = (t: ThreadEntry): FeatureAction[] => t.id === UNSTARTED_CHAT ? [] : [
     { key: 'rename', label: 'Rename…', onSelect: () => setRenaming({ threadId: t.id, title: t.title }) },
+    ...(t.role === 'project' ? [{ key: 'look', label: 'Colour and icon…', onSelect: () => setLookOf(t) }] : []),
     { key: 'export', label: 'Export as Markdown', icon: <IconDoc />, onSelect: () => threadActions.exportMarkdown(t.id, t.title) },
     ...(published?.errand?.threadId === t.id
       ? [{ key: 'close-errand', label: 'Close the scenario chat', icon: <IconX />, onSelect: published.errand.close }]
@@ -290,9 +294,13 @@ export function Sidebar(props: SidebarProps) {
   const chats = withStandIns(threadList ?? [], projectThreads?.threads.filter((t) => t.role === 'project') ?? [])
   const currentChat = projectThreads?.current ?? null
   const now = Date.now()
+  // A chat nobody has sent anything in is no epic yet (epics-that-look-alive
+  // decision 5): the dotted slot shows it open, and its card comes with its first message.
   const { epics, other } = epicsFrom(chats, features, (t) =>
-    threadIsActive(t, { current: currentChat, features, now, drafted: hasDraft }),
+    t.id !== UNSTARTED_CHAT && threadIsActive(t, { current: currentChat, features, now, drafted: hasDraft }),
   )
+  // The slot opens an empty epic on the chats page, or takes the shell there from any other.
+  const newEpic = projectThreads ? projectThreads.newThread : onNewChat
   const allEpics = chats.filter((t) => t.role === 'project' && t.id !== UNSTARTED_CHAT).length
   // On the chats page its own pick, which leaves the Epics page for the chat; elsewhere the shell's door.
   const openEpic = (id: string) => (projectThreads ? projectThreads.pick(id) : onOpenChat?.(id))
@@ -407,7 +415,7 @@ export function Sidebar(props: SidebarProps) {
       <SidebarBackdrop />
       {phone ? (
         <>
-          <PhoneListHead nav={nav} onNewChat={onNewChat} {...(onOpenNote ? { onOpenNote } : {})} />
+          <PhoneListHead nav={nav} {...(onOpenNote ? { onOpenNote } : {})} />
           <ComputerUnreachable failed={list.isError} readAt={list.dataUpdatedAt} />
         </>
       ) : (
@@ -421,7 +429,7 @@ export function Sidebar(props: SidebarProps) {
             tooltipSide="bottom"
             onClick={onOpenCmdk}
           />
-          <CreateMenu onNewChat={onNewChat} onDraft={onDraft} onOpenNote={onOpenNote} />
+          <CreateMenu onDraft={onDraft} onOpenNote={onOpenNote} />
           <CollapseSidebarButton />
         </SidebarHead>
       )}
@@ -450,6 +458,8 @@ export function Sidebar(props: SidebarProps) {
               workersFor={workersFor}
               ownerChoicesFor={ownerChoicesFor}
               {...(phone ? {} : { epicActions: threadActionsFor })}
+              onNewEpic={newEpic}
+              newEpicOpen={!phone && !!projectThreads?.newEpicOpen}
             />
           )}
           {list.data && list.data.length === 0 && epics.length === 0 && (
@@ -491,6 +501,7 @@ export function Sidebar(props: SidebarProps) {
           returnFocusRef={pendingDelete.returnFocusRef}
         />
       )}
+      {lookOf && <EpicLookPopover key={lookOf.id} chat={lookOf} onClose={() => setLookOf(null)} />}
       {renaming && (
         <RenameThreadDialog
           title={renaming.title}
@@ -506,16 +517,15 @@ export function Sidebar(props: SidebarProps) {
 }
 
 /**
- * The Create menu beside the project’s name — the three doors onto new work, split
- * by whether it starts now (decisions.md #12): New chat is where work is born,
- * the backlog is where an idea is parked, and a note is a thing you noticed.
+ * The Create menu beside the project’s name — the doors onto new work that is
+ * not an epic (decisions.md #12): the backlog is where an idea is parked, and a
+ * note is a thing you noticed. A new epic starts from the epic list's dotted
+ * slot, its one way in (epics-that-look-alive decision 5).
  */
 export function CreateMenu({
-  onNewChat,
   onDraft,
   onOpenNote,
 }: {
-  onNewChat: () => void
   onDraft: () => void
   onOpenNote?: () => void
 }) {
@@ -525,12 +535,6 @@ export function CreateMenu({
         <IconButton label="Create" size="sm" icon={<IconPencil />} tooltipSide="bottom" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <CreateItem
-          icon={<IconOrchestrator />}
-          label="New epic"
-          hint="A new chat for one topic — talk an idea through, and it cuts the features"
-          onSelect={onNewChat}
-        />
         <CreateItem
           icon={<IconDoc />}
           label="Add to backlog"

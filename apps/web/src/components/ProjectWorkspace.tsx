@@ -27,6 +27,9 @@ import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive, type SlotDrive } from '../lib/use-project-drive'
 import { useIsPhone } from '../lib/use-phone'
 import { PhoneChatBar } from './phone/PhoneChatBar'
+
+/** What the header calls a new epic nobody has written in yet. */
+const NEW_EPIC_TITLE = 'New epic'
 import { threadPhoneStatus } from './phone/phone-views'
 
 /**
@@ -134,9 +137,16 @@ export function ProjectWorkspace({
   // With no active chat the page lists them all, at this address: nothing to
   // push, so Back does not land here again. Latched, as the pick below is.
   const [listing, setListing] = useState(false)
+  // A new epic in front that has no session row yet (epics-that-look-alive
+  // decision 5): the dotted slot opened it, and its first message saves it.
+  const [drafting, setDrafting] = useState(false)
+  // The epic a draft became: its column keeps its key through the start, so
+  // the first message stays on screen while the chat takes its id.
+  const [born, setBorn] = useState<string | null>(null)
   // Arriving, or an errand's chat closing, lands once: a chat in front stays
   // there while others post, and so does the list while a chat turns active.
   const landingOnLatest =
+    !drafting &&
     !opening &&
     !threadRequest &&
     !listing &&
@@ -172,20 +182,24 @@ export function ProjectWorkspace({
   const open = (threadId: string): void => {
     setFront(threadId)
     setListing(false)
+    setDrafting(false)
     if (conversations) onCloseConversations?.()
   }
   const runtimeOf = (id: string) => threads.find((t) => t.id === id)?.runtime
-  // Every new-chat door — New chat, the shell's New, the sidebar's "+" —
-  // opens an empty thread, whatever else is running (decision 14); its first
-  // message starts it.
+  // Every new-epic door — the sidebar's dotted slot, the shell's request —
+  // opens an empty epic, whatever else is running (decision 14). Nothing is
+  // saved on the click: its first message creates the thread
+  // (epics-that-look-alive decision 5), so an abandoned one leaves nothing behind.
   const create = trpc.thread.new.useMutation({
-    onSuccess: ({ threadId }) => {
-      open(threadId)
-      void utils.thread.list.invalidate({ projectId })
-    },
-    onError: (e) => toast.push(e.message),
+    onSuccess: () => void utils.thread.list.invalidate({ projectId }),
   })
-  const newChat = (): void => create.mutate({ projectId })
+  const startEpic = async (): Promise<string> => (await create.mutateAsync({ projectId })).threadId
+  const newChat = (): void => {
+    setFront(undefined)
+    setListing(false)
+    setDrafting(true)
+    if (conversations) onCloseConversations?.()
+  }
   // The doors where the Orchestrator speaks first — Start the project, and the
   // drive's "set it up" doors that used to open Preparation
   // (the-orchestrator-prepares-the-project decisions 1, 6): a fresh chat
@@ -294,13 +308,21 @@ export function ProjectWorkspace({
       : {}),
     workers: workers.map(workerEntry),
     ...(onOpenConversations ? { allConversations: onOpenConversations } : {}),
+    newEpicOpen: drafting && !allChats,
   })
   // An unstarted project's one action is its Start button: the header names nothing more.
+  const inFrontEntry = inFront && !workerFront ? threads.find((t) => t.id === inFront) : undefined
   const inFrontTitle = !inFront
-    ? undefined
+    ? drafting
+      ? NEW_EPIC_TITLE
+      : undefined
     : workerFront
       ? (workerRow?.label ?? SCENARIOS_LABEL)
-      : threads.find((t) => t.id === inFront)?.title
+      : inFrontEntry?.title
+  // The header's epic glyph, in the epic's colour and icon (epics-that-look-alive decision 1).
+  const inFrontGlyph = <EpicGlyph small color={inFrontEntry?.color} icon={inFrontEntry?.icon} />
+  // The chat column: an epic in front, or the new one the slot opened.
+  const chatInFront = !allChats && !chatHidden && (drafting || (!!inFront && !workerFront))
 
   const panelView = (view: PanelView) => {
     switch (view) {
@@ -360,7 +382,7 @@ export function ProjectWorkspace({
           allChats
             ? [{ label: 'Epics', icon: <EpicGlyph small /> }]
             : inFrontTitle
-              ? [{ label: inFrontTitle, ...(workerFront ? {} : { icon: <EpicGlyph small /> }) }]
+              ? [{ label: inFrontTitle, ...(workerFront ? {} : { icon: inFrontGlyph }) }]
               : []
         }
         trail
@@ -394,26 +416,39 @@ export function ProjectWorkspace({
             <>
               {allChats && !chatHidden && <ConversationsPage threads={listed} pending={listQ.isPending} onOpen={open} />}
               {!allChats && opening && !chatHidden && <ThreadOpening />}
-              {!allChats && inFront && !chatHidden &&
-                (workerFront ? (
-                  // The project drive's Scenarios worker, with the worker's assignment card and foot.
-                  <ThreadColumn
-                    key={inFront}
-                    label="Worker"
-                    threadId={inFront}
-                    onOpenThread={open}
-                    {...workerProps}
-                    emptyHint={scenarioInFront ? scenarioErrandHint(scenarioChat.errand) : (workerProps?.emptyHint ?? '')}
-                  />
-                ) : (
-                  <ProjectChat
-                    key={inFront}
-                    threadId={inFront}
-                    {...(runtimeOf(inFront) ? { runtime: runtimeOf(inFront) } : {})}
-                    onOpenThread={open}
-                    landing={landing}
-                  />
-                ))}
+              {!allChats && inFront && !chatHidden && workerFront && (
+                // The project drive's Scenarios worker, with the worker's assignment card and foot.
+                <ThreadColumn
+                  key={inFront}
+                  label="Worker"
+                  threadId={inFront}
+                  onOpenThread={open}
+                  {...workerProps}
+                  emptyHint={scenarioInFront ? scenarioErrandHint(scenarioChat.errand) : (workerProps?.emptyHint ?? '')}
+                />
+              )}
+              {chatInFront && (
+                // One element for a new epic and the chat it becomes: its key holds
+                // through the start, so the first message stays on screen.
+                <ProjectChat
+                  key={drafting || (inFront !== null && inFront === born) ? 'new-epic' : (inFront ?? 'new-epic')}
+                  threadId={drafting ? null : inFront}
+                  {...(!drafting && inFront && runtimeOf(inFront) ? { runtime: runtimeOf(inFront) } : {})}
+                  // Only the new epic starts, and takes the words left unsent in it.
+                  {...(drafting || (inFront !== null && inFront === born)
+                    ? {
+                        start: startEpic,
+                        startsAs: { projectId, kind: 'project' as const },
+                        onStarted: (id: string) => {
+                          setBorn(id)
+                          open(id)
+                        },
+                      }
+                    : {})}
+                  onOpenThread={open}
+                  landing={landing}
+                />
+              )}
               {/* A project with no chats yet opens on its one button
                   (the-orchestrator-prepares-the-project decision 1): the
                   Orchestrator's first chat starts on the click and speaks first. */}

@@ -141,7 +141,7 @@ function DesignSidebar({ state, current, onPick }: { state: State; current: stri
           <ProjectSwitcher nav={nav} />
         </div>
         <IconButton label="Search or jump to" kbd={shortcut('K')} size="sm" icon={<IconSearch />} tooltipSide="bottom" />
-        <CreateMenu onNewChat={noop} onDraft={noop} onOpenNote={noop} />
+        <CreateMenu onDraft={noop} onOpenNote={noop} />
         <CollapseSidebarButton />
       </div>
       <div className="mt-3">

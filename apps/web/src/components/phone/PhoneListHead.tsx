@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconList, IconOrchestrator, IconPencil, IconPlus } from '../../icons'
+import { IconList, IconPencil, IconPlus } from '../../icons'
 import { relTimeAgo } from '../../lib/format'
 import { useLiveStatus } from '../../lib/live'
 import type { ProjectNavApi } from '../../lib/use-project-nav'
@@ -10,18 +10,17 @@ import { useOpenGlossary } from '../GlossaryDialog'
 
 /**
  * The phone list's head (docs/features/runcastle-on-your-phone decision 7):
- * the project rail's row of tiles (one tap switches), the project's name, and a "+" whose sheet holds the two things worth doing
- * with a thumb — a new Orchestrator chat and a note — and the Glossary, which
- * the phone has no help menu for. Adding to the backlog is
- * asked of the Orchestrator in chat.
+ * the project rail's row of tiles (one tap switches), the project's name, and
+ * a "+" whose sheet holds a note and the Glossary, which the phone has no help
+ * menu for. Adding to the backlog is asked of the Orchestrator in chat. A new
+ * epic starts from the list's dotted slot (epics-that-look-alive decision 5),
+ * not from here.
  */
 export function PhoneListHead({
   nav,
-  onNewChat,
   onOpenNote,
 }: {
   nav: ProjectNavApi
-  onNewChat: () => void
   onOpenNote?: () => void
 }) {
   const [creating, setCreating] = useState(false)
@@ -36,7 +35,6 @@ export function PhoneListHead({
       <SidebarHead name={nav.currentProject?.name} phone>
         <IconButton label="New" size="lg" icon={<IconPlus />} onClick={() => setCreating(true)} />
         <Sheet open={creating} onClose={() => setCreating(false)} label="New">
-          <SheetRow icon={<IconOrchestrator />} label="New epic" hint="A new chat for one topic — talk an idea through, and it cuts the features" onClick={pick(onNewChat)} />
           {onOpenNote && (
             <SheetRow icon={<IconPencil />} label="Jot a note" hint="What you just noticed — triage it later" onClick={pick(onOpenNote)} />
           )}
