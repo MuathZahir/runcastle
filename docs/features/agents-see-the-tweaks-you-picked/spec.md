@@ -33,7 +33,9 @@ type DesignReport = {
 
 An empty `tweaks` means the page has no Tweaks menu; a missing `tweaks` means
 the page did not say (decision 10). The page keeps its tweak values in its own
-browser storage and restores them on load (decision 11). The guide's readout
+browser storage, under a key that includes the design's path so two designs on
+one design server never overwrite each other's values, and restores them on
+load (decision 11). The guide's readout
 line goes (decision 3). The guide's Tweaks and switcher sections gain these
 rules with a few-line example in plain browser JavaScript, and runcastle's own
 design-page starter (`.runcastle/preview/`) gets a switcher helper that reports,
