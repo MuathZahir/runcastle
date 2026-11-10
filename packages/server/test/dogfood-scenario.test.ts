@@ -151,6 +151,11 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
     expect(kinds.filter((k) => k === 'chat')).toHaveLength(1)
     expect(kinds.filter((k) => k === 'side')).toHaveLength(1)
     expect(kinds.filter((k) => k === 'worker')).toHaveLength(rows.length)
+    // The lead's chat folds its worker starts into one card per turn (calmer-worker-chats decision 6).
+    const lead = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().find((s) => s.kind === 'chat')!
+    const leadLog = readFileSync(join(dataDir, 'sessions', lead.id, 'thread.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as ThreadEvent)
+    const cards = foldThread(leadLog).items.flatMap((x) => (x.kind === 'workers_card' ? [x.rows.length] : []))
+    expect(cards).toEqual([rows.length - 1, 1])
   })
 
   // `.runcastle/scenarios/chat/words-between-work.ts` (every-word-the-agent-writes-stays-in-view): a project chat to read.
