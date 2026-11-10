@@ -1057,7 +1057,9 @@ class Host implements AgentHost {
   /** The row pointed at the model a thread nobody picked one in starts on, so its launch and its session both run on it. */
   private followSettings(row: SessionRow): SessionRow {
     const log = readThreadEvents(row.id)
-    if (lastPickedModel(log)) return row
+    // A pick waiting for the session (a launch's or a first message's, made
+    // before any model was logged) is the human's: the row keeps it.
+    if (lastPickedModel(log) || this.pendingConfig.get(row.id)?.model !== undefined) return row
     const model = this.startModel(row, log)
     if (!model || model === row.model) return row
     setSessionModel(this.ctx, row.id, model)

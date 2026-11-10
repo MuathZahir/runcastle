@@ -1,4 +1,4 @@
-import { FeatureFinish, FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
+import { Effort, FeatureFinish, FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import { endSession, launchSession } from '../../launcher/launcher'
 import { listFeatureSessions } from '../../services/conversations'
@@ -90,9 +90,16 @@ export const featureRouter = router({
         purpose: SessionPurpose.optional(),
         purposeData: MergeBranchPair.optional(),
         holdOpening: z.boolean().optional(),
+        // The composer's pick for a chat not started yet (a-new-feature-waits-for-start decision 10).
+        model: z.string().optional(),
+        effort: Effort.optional(),
+        fast: z.boolean().optional(),
       }),
     )
-    .mutation(({ ctx, input: { holdOpening, ...input } }) => launchSession(ctx, input, { holdOpening })),
+    .mutation(({ ctx, input: { holdOpening, model, effort, fast, ...input } }) => {
+      const pick = model || effort || fast !== undefined ? { model, effort, fast } : undefined
+      return launchSession(ctx, { ...input, ...(pick ? { pick } : {}) }, { holdOpening })
+    }),
 
   // "Fix drive" — the one click that turns a failed drive into an agent already
   // holding the failure (multi-service decision 9): the feature's Fix-drive

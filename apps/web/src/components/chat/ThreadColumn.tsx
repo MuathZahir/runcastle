@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { subscribeInbox, takeFromInbox } from '../../lib/composer-inbox'
 import { useIsPhone } from '../../lib/use-phone'
-import { promptIdFor, useThread, type ThreadStart } from '../../lib/use-thread'
+import { promptIdFor, useThread, type ModelPick, type ThreadStart } from '../../lib/use-thread'
 import { Spinner } from '../../ui'
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from './thread/AskDock'
 import { ChatThread } from './thread/ChatThread'
@@ -47,6 +47,8 @@ export function ThreadColumn({
   start,
   startsAs,
   onStarted,
+  onPick,
+  locked,
   onOpenThread,
   draftKey,
   inbox,
@@ -70,6 +72,10 @@ export function ThreadColumn({
   /** Where `start` starts it, so the model controls show before the first message. */
   startsAs?: ThreadStart
   onStarted?: (threadId: string) => void
+  /** The unstarted chat's model pick, as it changes: for a launch that carries it without a message (Start). */
+  onPick?: (pick: ModelPick) => void
+  /** The composer takes no message yet (a chat waiting for Start); its model controls still work. */
+  locked?: boolean
   /** Bring another thread to the front (a branch made from a message here). */
   onOpenThread?: (threadId: string) => void
   /** Where an unstarted thread keeps its draft. */
@@ -100,7 +106,7 @@ export function ThreadColumn({
   /** A line right above the composer, only while it shows: the owner strip (every-feature-has-one-owner decision 23). */
   composerStrip?: ReactNode
 }) {
-  const t = useThread({ threadId, draftKey, start, onStarted, ...(startsAs ? { startsAs } : {}) })
+  const t = useThread({ threadId, draftKey, start, onStarted, ...(startsAs ? { startsAs } : {}), ...(onPick ? { onPick } : {}) })
   const root = useRef<HTMLElement>(null)
   const { view } = t
   const onRuntime = t.runtime ?? runtime ?? 'claude-code'
@@ -167,6 +173,7 @@ export function ThreadColumn({
       commands={view.commands}
       files={t.files}
       state={view.state}
+      {...(locked ? { locked } : {})}
       {...(placeholder ? { placeholder } : {})}
       onSend={() => void t.send()}
       onStop={t.stop}
@@ -219,7 +226,7 @@ export function ThreadColumn({
           state={view.state}
           // A thread that takes no messages takes no edits either; a branch opens only where a page can bring it to the front.
           {...(closed ? {} : { actions: { onEdit: t.edit, ...(onOpenThread ? { onBranch: (id: string) => void branch(id) } : {}), canUndoFiles: onRuntime === 'claude-code' } })}
-          onDropImages={t.attach}
+          {...(locked ? {} : { onDropImages: t.attach })}
           emptyHint={emptyHint}
           {...(empty ? { empty } : {})}
           loading={t.loading}
