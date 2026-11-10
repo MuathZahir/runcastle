@@ -114,7 +114,10 @@ describe('the feature page header', () => {
   it('swaps the primary for Stop drive while driving, and Stop while a round runs', () => {
     expect(buttons(header({ driving: true }))).toContain('Stop drive')
     expect(buttons(header({ driving: true }))).not.toContain('Start test drive')
-    expect(buttons(header({ running: true }))).toContain('Stop')
+    // Ready to test is the human's own need, so it keeps its button over workers
+    // at work, as the sidebar row does (triage-batch decision 13); Stop waits in ⋯.
+    expect(buttons(header({ running: true }))).toContain('Start test drive')
+    expect(header({ running: true })).toContain('data-overflow="Stop|Resolve conflict"')
   })
 
   it('says nothing of what to test — the agent says it in the chat', () => {

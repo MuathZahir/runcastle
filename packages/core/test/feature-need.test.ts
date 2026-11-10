@@ -11,6 +11,7 @@ function facts(over: Partial<NeedFacts> = {}): NeedFacts {
     owner: null,
     askingChat: null,
     agentWorking: false,
+    workersAtWork: false,
     waiting: null,
     leadAwaitsHuman: null,
     openAsk: null,
@@ -301,6 +302,36 @@ describe('featureNeed', () => {
       expect(handbackLine('v1.2 shipped')).toBe('v1.2 shipped')
       expect(handbackLine('x'.repeat(200))).toHaveLength(80)
       expect(featureNeed(facts({ handback: { at: 1, summary: '  ' } }), NOW)?.words).toBe('Handed back')
+    })
+  })
+})
+
+/** triage-batch decisions 13, 14: workers at work count as work; a real wait still wins. */
+describe('featureNeed with workers at work', () => {
+  const replied = { leadAwaitsHuman: { since: 4_000 }, workersAtWork: true }
+
+  it('gives no need for a lead that replied while its workers work or wait to start', () => {
+    expect(featureNeed(facts(replied), NOW)).toBeNull()
+    expect(featureNeed(facts({ ...replied, owner: CHAT }), NOW)).toBeNull()
+  })
+
+  it('still gives the lead’s own wait_for_you, plan included', () => {
+    expect(featureNeed(facts({ ...replied, waiting: waiting('which model?') }), NOW)).toMatchObject({
+      kind: 'answer', words: 'Needs your answer · which model?', held: false,
+    })
+    expect(featureNeed(facts({ ...replied, waiting: waiting('plan', 'plan') }), NOW)).toMatchObject({ kind: 'plan' })
+  })
+
+  it('still gives an open question box and a permission prompt', () => {
+    const ask = { kind: 'question' as const, title: 'Which database?', threadId: 'chat_1', since: 3_000 }
+    expect(featureNeed(facts({ ...replied, openAsk: ask }), NOW)).toMatchObject({ kind: 'answer', threadId: 'chat_1' })
+    expect(featureNeed(facts({ ...replied, openAsk: approval }), NOW)).toMatchObject({ kind: 'permission' })
+  })
+
+  it('still gives a worker that needs the human', () => {
+    const worker = { label: 'Honest statuses', threadId: 'wk_1', since: 6_000 }
+    expect(featureNeed(facts({ ...replied, workerNeedsYou: worker }), NOW)).toMatchObject({
+      kind: 'worker', words: 'Honest statuses needs you', threadId: 'wk_1',
     })
   })
 })

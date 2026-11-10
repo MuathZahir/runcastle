@@ -14,7 +14,7 @@ import {
   workerFeatureId,
 } from '@runcastle/core'
 import { reviewWalkthroughPath, sessionDir } from '@runcastle/core/paths'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
@@ -77,7 +77,7 @@ const machine: ReviewDriveHost = {
     return driveWithheldReason(probe.browserPath, project.devCommand, probe.browserFailure, probe.ffmpegPath)
   },
   async take(ctx, project, feature) {
-    const started = await reviewDrive(ctx, project, feature, 'start')
+    const started = await reviewDrive(ctx, project, feature, 'start', driveReviewOf(ctx, feature.id))
     if (started.ok) return { ok: true }
     return { ok: false, retriable: started.retriable ?? false, reason: started.deniedReason ?? 'the review drive would not start' }
   },
@@ -85,6 +85,22 @@ const machine: ReviewDriveHost = {
     await reapRecorder(passId)
     if (reviewDriveFor(project.id, feature.id)) await releaseReviewDrive(project.id)
   },
+}
+
+/**
+ * The feature's drive review still at work, which is the one taking the drive
+ * (triage-batch decision 5): the drive names it and opens its chat. The newest,
+ * should an older one linger.
+ */
+export function driveReviewOf(ctx: AppCtx, featureId: string): { id: string; label: string } | undefined {
+  const w = ctx.db
+    .select({ id: workers.id, label: workers.label, reviewMode: workers.reviewMode, status: workers.status })
+    .from(workers)
+    .where(and(eq(workers.featureId, featureId), eq(workers.kind, 'review')))
+    .orderBy(desc(workers.createdAt))
+    .all()
+    .find((row) => row.reviewMode === 'drive' && (row.status === 'working' || row.status === 'queued' || row.status === 'needs-you'))
+  return w ? { id: w.id, label: w.label } : undefined
 }
 
 let host: ReviewDriveHost = machine

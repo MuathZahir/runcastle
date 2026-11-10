@@ -1,5 +1,7 @@
 import type { StandingNotice } from './chat-notices'
 import {
+  agentDriver,
+  agentDriveLine,
   holderSentence,
   ONE_TERMINAL_WARNING,
   type MergeConflictState,
@@ -51,6 +53,12 @@ export interface SlotBlocker {
   holderLabel: string
   cutOff: boolean
   stop: SlotStop | null
+  /**
+   * A Review worker's live drive (triage-batch decision 16): who drives, the
+   * feature it tries, and whether that is this one. The human's Test drive
+   * waits for it; its chat is one click away.
+   */
+  agent?: { featureId: string; workerId?: string; name: string; thisFeature: boolean; branch: string }
 }
 
 /** The project's drive slot as `feature.driveInfo` reports it. */
@@ -61,6 +69,9 @@ export interface SlotDriveInfo {
   projectDrive?: boolean
   dryRun?: boolean
   purpose?: 'human' | 'review'
+  workerId?: string
+  workerLabel?: string
+  branch?: string
   cutOff?: boolean
 }
 
@@ -81,6 +92,17 @@ export function slotBlocker(
 ): SlotBlocker | null {
   if (!drive) return null
   const cutOff = !!drive.cutOff
+  // A Review worker's live drive is named as the agent's, this feature's own
+  // included: the human's Test drive is refused while it holds the slot.
+  const driver = agentDriver(drive)
+  if (driver && !cutOff && drive.featureId) {
+    return {
+      holderLabel: drive.holderLabel,
+      cutOff,
+      stop: null,
+      agent: { ...driver, featureId: drive.featureId, thisFeature: drive.featureId === feature.id, branch: drive.branch ?? '' },
+    }
+  }
   if (!cutOff && (driveUp || drive.featureId === feature.id)) return null
   const stop: SlotStop | null = drive.projectDrive
     ? { kind: 'project', projectId: drive.projectId ?? feature.projectId }
@@ -98,6 +120,8 @@ export interface StandingActs {
   dismissDenial: () => void
   stopDrive: () => void
   stopping: boolean
+  /** Open a worker's chat on its feature's page: the Review worker's, when it holds the slot. */
+  openWorker?: (featureId: string, workerId: string) => void
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -159,7 +183,21 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
     })
   }
   const blocker = input.blockingDrive
-  if (blocker) {
+  const agent = blocker?.agent
+  if (agent) {
+    const open = acts.openWorker
+    rows.push({
+      key: 'slot-drive',
+      hue: 'review',
+      title: agent.thisFeature
+        ? agentDriveLine(agent)
+        : `${agent.name} is trying ${agent.branch || 'another feature'}`,
+      subtitle: 'it holds the drive slot, so your test drive waits until the review hands back',
+      ...(agent.workerId && open
+        ? { action: { label: 'Open its chat', onClick: () => open(agent.featureId, agent.workerId!) } }
+        : {}),
+    })
+  } else if (blocker) {
     const holder = holderSentence(blocker.holderLabel)
     rows.push({
       key: 'slot-drive',
