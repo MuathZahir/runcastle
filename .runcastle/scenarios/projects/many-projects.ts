@@ -83,11 +83,20 @@ function makeRepo(repo: string, name: string): void {
   git(repo, ['-c', 'user.name=Scenario', '-c', 'user.email=scenario@example.com', 'commit', '-m', 'Initial commit'])
 }
 
-/** The project called `name`: already registered, or opened from a fresh repo. */
-async function projectNamed(ctx: AppCtx, root: string, name: string): Promise<Project> {
-  const known = listProjects(ctx).find((p) => p.name === name || basename(p.repoPath) === name)
-  if (known) return known
+/**
+ * The project called `name`. A project that gets seeded features always lives
+ * in its own repo under `root`: a drive's database may be a copy of the
+ * owner's, where a project of the same name points at their real repo, and
+ * creating a feature there would cut a real branch and worktree in it. A quiet
+ * project (no features seeded) may reuse a registered one, since nothing is
+ * written to its repo.
+ */
+async function projectNamed(ctx: AppCtx, root: string, name: string, seeded: boolean): Promise<Project> {
   const repo = join(root, name)
+  const known = listProjects(ctx).find((p) =>
+    seeded ? resolve(p.repoPath) === resolve(repo) : p.name === name || basename(p.repoPath) === name,
+  )
+  if (known) return known
   makeRepo(repo, name)
   return openProject(ctx, repo)
 }
@@ -100,6 +109,9 @@ async function featureIn(ctx: AppCtx, project: Project, title: string) {
   return { id: feature.id, fresh: true, project, feature }
 }
 
+/** The projects this scenario creates features in; each gets its own repo under the drive. */
+const SEEDED = new Set(['clawflow', 'JanaLearn_Updated', 'terminal-wait-game'])
+
 async function main(): Promise<void> {
   const dataDir = driveDataDir()
   process.env.RUNCASTLE_DATA_DIR = dataDir
@@ -110,7 +122,7 @@ async function main(): Promise<void> {
     const ctx: AppCtx = { db, config: loadConfig() }
 
     const opened: Record<string, Project> = {}
-    for (const name of NAMES) opened[name] = await projectNamed(ctx, root, name)
+    for (const name of NAMES) opened[name] = await projectNamed(ctx, root, name, SEEDED.has(name))
 
     // Needs you: an active feature whose lead has asked something and waits.
     for (const [name, title, ask] of [
