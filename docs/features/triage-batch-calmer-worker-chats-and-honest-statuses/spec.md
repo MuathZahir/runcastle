@@ -136,7 +136,8 @@ restyle. The drive slot change is a label and a click and was not designed.
 
 ## Open questions
 
-- What a review does when the human stops its drive from the slot (does the Review worker carry on
-  without the app, or fail?). The builder finds out and the confirm's words say it truthfully.
+- Stopping the Review worker's drive does not stop the review: it may start the drive again or
+  finish by reading the code, and the confirm says so (decision 20). Whether Stop should keep the
+  slot is a possible follow-up.
 - Whether a lead's plain-words question while workers run should be caught some other way
   (decision 13's challenge); left to the human.

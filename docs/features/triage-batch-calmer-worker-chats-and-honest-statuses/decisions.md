@@ -101,3 +101,13 @@ Phone and desktop alerts read the same need, so they stop firing for it too.
 **Decision:** When a lead's background helper finishes, Claude Code hands its result to the lead as a new prompt that opens with `<task-notification>`. The lead's prompt hook (`handleLeadPrompt` in packages/server/src/routes/hooks.ts) counts every prompt without runcastle's tag as the human typing. That moves a chat-owned feature to the human and clears what the feature waits on. From now on, such machine-made prompts change nothing: the owner stays the same and no human-message mark is set. The builder looks for other prompts of the same kind, checks whether the Codex runtime has an equivalent, and covers the fix with a test. It goes to the "Honest statuses" worker.
 **Why:** During this feature's own planning run, seven helper results moved the feature to the human and cleared its waiting marks, though the human never typed. Same family as decision 4: a status must say who is really acting.
 **The human's**, added to the brief as item 7 through the orchestrator on 2026-11-10.
+
+## 19. The header follows the sidebar: a real need shows over workers at work
+**Decision:** With workers at work, the feature header used to say "Working" over a plan to approve, an answer or Ready to test, while the sidebar said the human was needed. The header now shows any need not held by an orchestrator chat over workers, as the sidebar does; the workers' Stop moves to the header's "⋯" menu. A need a chat holds still sits under workers. A test feeds the same facts to both and checks they agree.
+**Why:** Decision 13 says the sidebar and header follow one rule; the "Honest statuses" worker found the header broke it the other way too.
+**Assumed** (the builder's, landed by the lead). Alternative: keep the header's workers-first rule and change only the sidebar.
+
+## 20. Stopping the Review worker's drive does not stop the review
+**Decision:** The drive slot's Stop ends the drive, not the Review worker. Its drive tools then refuse, and by its skill it may start the drive again or finish by reading the code. The confirm says exactly that.
+**Why:** Found while building decision 15: the review has no "the human took the slot back" state. Making Stop really keep the slot needs the review's drive tool to refuse a restart after the human stopped it, a change to the review flow beyond this feature.
+**Assumed.** Follow-up if wanted: the review drive refuses to restart after the human's Stop.
