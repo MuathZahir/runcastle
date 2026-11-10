@@ -181,3 +181,19 @@ export function epicNameOf(f: Pick<FeatureListItem, 'chatId'>, chats: readonly T
   if (!f.chatId) return null
   return chats.find((t) => t.id === f.chatId && t.role === 'project')?.title ?? null
 }
+
+/**
+ * How a feature header's trail opens (decision 15, as the orchestrator changed
+ * it): `owner`, no epic, so the owner control stands alone; `one`, the epic's
+ * chat owns it (or takes it after the plan), so the epic and the owner are one
+ * crumb ("◆ Payment System · you merge ▾"); `two`, the human or a different
+ * chat owns it, so both show ("◆ Payment System › Yours ▾").
+ */
+export function epicOwnerJoin(
+  epicId: string | null,
+  owner: { owner: { kind: 'you' | 'chat' }; holderId?: string; chatId?: string },
+): 'owner' | 'one' | 'two' {
+  if (!epicId) return 'owner'
+  if (owner.owner.kind !== 'chat') return 'two'
+  return (owner.holderId ?? owner.chatId) === epicId ? 'one' : 'two'
+}

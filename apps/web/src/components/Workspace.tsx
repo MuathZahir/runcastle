@@ -18,7 +18,7 @@ import { Button,
   type MetaItem,
 } from '../ui'
 import { IconPlay, IconX, ProgressIcon } from '../icons'
-import { epicCrumb } from './SidebarEpics'
+import { epicOwnerCrumbs } from './SidebarEpics'
 import {
   isNewThreadHotkey,
   newThreadShortcut,
@@ -621,7 +621,6 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
-  const epic = onOpenThread ? epicCrumb(feature, projectThreads.data ?? [], onOpenThread) : null
   const owner = ownerReading(feature, projectThreads.data ?? [])
   const threadCrumb = isDraft ? undefined : inFrontTitle
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
@@ -1170,19 +1169,19 @@ export function Workspace({
       ) : (
       <PageTopbar
         crumbs={[
-          ...(epic ? [epic] : []),
-          {
-            // Who owns it, and how far its chat takes it (every-feature-has-one-owner decisions 11, 12, 14, 21).
-            label: (
-              <OwnerControl
-                owner={owner.owner}
-                {...(owner.chatName ? { chatName: owner.chatName } : {})}
-                planning={owner.planning}
-                feature={feature.title}
-                onChoose={(choice) => setOwner(featureId, choice)}
-              />
-            ),
-          },
+          // Its epic, then who owns it and how far its chat takes it: one crumb when the
+          // epic's chat owns it (every-feature-has-one-owner decisions 11, 12, 14, 21;
+          // orchestrator-chats-become-epics decision 15).
+          ...epicOwnerCrumbs(feature, projectThreads.data ?? [], onOpenThread, owner, (inEpic) => (
+            <OwnerControl
+              owner={owner.owner}
+              {...(owner.chatName ? { chatName: owner.chatName } : {})}
+              planning={owner.planning}
+              feature={feature.title}
+              inEpic={inEpic}
+              onChoose={(choice) => setOwner(featureId, choice)}
+            />
+          )),
           {
             label: feature.title,
             icon: (

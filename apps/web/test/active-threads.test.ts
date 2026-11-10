@@ -1,11 +1,14 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { epicCrumb } from '../src/components/SidebarEpics'
+import { epicCrumb, epicOwnerCrumbs } from '../src/components/SidebarEpics'
+import { OwnerControl } from '../src/components/workspace/OwnerControl'
+import { ownerReading } from '../src/lib/feature-owner'
+import { TooltipProvider } from '../src/ui/tooltip'
 import { HoldMark, SidebarThreadList } from '../src/components/SidebarParts'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
-import { Crumbs } from '../src/ui/page'
+import { Crumbs, type Crumb } from '../src/ui/page'
 import {
   askingAboutLine,
   featureEpic,
@@ -152,6 +155,71 @@ describe('the epic a feature names (decision 15)', () => {
 
   it('gives a feature with no epic no crumb', () => {
     expect(epicCrumb(listItem({ chatId: null }), threads, open)).toBeNull()
+  })
+})
+
+/** The orchestrator's change to decision 15: the epic and the owner control share one crumb when the epic's chat owns it. */
+describe('the feature header: epic and owner', () => {
+  const threads = [thread('a', { title: 'Payment System' }), thread('b', { title: 'Notes Triage' })]
+  const open = vi.fn()
+
+  /** The header's crumbs before the feature's own, and their text, crumbs joined by " › ". */
+  function header(f: FeatureListItem, onOpen: ((id: string) => void) | undefined = open): { crumbs: Crumb[]; text: string; html: string } {
+    const r = ownerReading(f, threads)
+    const crumbs = epicOwnerCrumbs(f, threads, onOpen, r, (inEpic) =>
+      createElement(OwnerControl, {
+        owner: r.owner,
+        ...(r.chatName ? { chatName: r.chatName } : {}),
+        planning: r.planning,
+        feature: f.title,
+        inEpic,
+        onChoose: () => {},
+      }),
+    )
+    const html = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(Crumbs, { items: crumbs })))
+    return { crumbs, html, text: html.replace(/<\/li>/g, ' › ').replace(/<[^>]*>/g, '').replace(/ › $/, '').replace(/\s*·\s*/g, ' · ') }
+  }
+
+  it('makes one crumb when the epic chat owns it: the name opens the chat, the finish words the menu', () => {
+    const { crumbs, text, html } = header(cut('f', 'a', { finish: 'show' }))
+    expect(crumbs).toHaveLength(1)
+    expect(crumbs[0]!.onClick).toBeUndefined()
+    expect(html).toMatch(/<button type="button" title="Epic: Payment System"[^>]*>Payment System<\/button>/)
+    expect(html).toContain('aria-haspopup="menu"')
+    expect(html).toContain('title="Who finishes this feature: Payment System · you merge"')
+    expect(text).toBe('Payment System · you merge')
+    expect(text.match(/Payment System/g)).toHaveLength(1)
+    const merge = header(cut('f', 'a', { finish: 'merge' })).text
+    expect(merge).toBe('Payment System · merges it')
+  })
+
+  it('keeps it one crumb while the human plans a feature the epic takes after the plan', () => {
+    const { crumbs, text } = header(cut('f', 'a', { heldBy: undefined, finish: 'show' }))
+    expect(crumbs).toHaveLength(1)
+    expect(text).toBe('Payment System · yours to plan first')
+  })
+
+  it('keeps both when the human took it', () => {
+    const { crumbs, text } = header(cut('f', 'a', { heldBy: undefined, finish: 'you' }))
+    expect(crumbs).toHaveLength(2)
+    expect(text).toContain('Payment System')
+    expect(text).toContain('Yours')
+  })
+
+  it('keeps both when another chat runs it', () => {
+    const { crumbs, text } = header(cut('f', 'a', { heldBy: 'b', finish: 'merge' }))
+    expect(crumbs).toHaveLength(2)
+    expect(text).toContain('Payment System')
+    expect(text).toContain('Notes Triage · merges it')
+  })
+
+  it('leaves the owner control alone with no epic', () => {
+    const none = header(listItem({ chatId: null }) as FeatureListItem)
+    expect(none.crumbs).toHaveLength(1)
+    expect(none.text).toBe('Yours')
+    const unopenable = header(cut('f', 'a', { finish: 'show' }), undefined)
+    expect(unopenable.crumbs).toHaveLength(1)
+    expect(unopenable.text).toBe('Payment System · you merge')
   })
 })
 

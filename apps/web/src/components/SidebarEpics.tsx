@@ -3,7 +3,8 @@ import { cx, IconButton, SectionLabel, StatusDot } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry } from '../lib/chat-thread'
 import { IconArrowRight, IconList, IconOrchestrator, IconPlus } from '../icons'
-import { nestedFeatureWords, orderEpicList, type Epic } from '../lib/feature-ui/epics'
+import { epicOwnerJoin, nestedFeatureWords, orderEpicList, type Epic } from '../lib/feature-ui/epics'
+import type { OwnerReading } from '../lib/feature-owner'
 import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
@@ -66,6 +67,48 @@ export function epicCrumb(
     icon: <EpicGlyph small />,
     onClick: () => onOpen(epic.id),
   }
+}
+
+/**
+ * A feature header's opening crumbs (decision 15, as the orchestrator changed
+ * it): the epic, then the owner control, made one crumb when the epic's chat
+ * owns the feature. There the name opens the chat and the finish words open
+ * the owner menu: "◆ Payment System · you merge ▾". With no epic (or no way to
+ * open one), the owner control stands alone. `control` draws the owner control,
+ * `inEpic` when it follows its epic's name.
+ */
+export function epicOwnerCrumbs(
+  feature: { chatId?: string | null | undefined },
+  threads: readonly ThreadEntry[],
+  onOpen: ((chatId: string) => void) | undefined,
+  owner: Pick<OwnerReading, 'owner' | 'holderId' | 'chatId'>,
+  control: (inEpic: boolean) => ReactNode,
+): Crumb[] {
+  const epic = onOpen ? featureEpic(feature, threads) : null
+  const join = epicOwnerJoin(epic?.id ?? null, owner)
+  if (!epic || !onOpen || join === 'owner') return [{ label: control(false) }]
+  if (join === 'two') return [epicCrumb(feature, threads, onOpen)!, { label: control(false) }]
+  return [
+    {
+      icon: <EpicGlyph small />,
+      label: (
+        <span className="inline-flex min-w-0 items-center">
+          <button
+            type="button"
+            onClick={() => onOpen(epic.id)}
+            title={`Epic: ${epic.title}`}
+            className="block max-w-44 cursor-pointer truncate rounded-md hover:text-text"
+          >
+            {epic.title}
+          </button>
+          <span aria-hidden="true" className="pl-1 text-text-tertiary">
+            ·
+          </span>
+          {control(true)}
+        </span>
+      ),
+    },
+  ]
 }
 
 /** What an epic's row says under its name (decision 11): what its chat asks, that it works, or nothing. */

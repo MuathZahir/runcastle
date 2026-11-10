@@ -8,6 +8,7 @@ import {
   asksAboutOf,
   epicHolder,
   epicNameOf,
+  epicOwnerJoin,
   epicsFrom,
   nestedFeatureWords,
   orderEpicList,
@@ -221,5 +222,24 @@ describe('the list (SidebarEpics, static markup)', () => {
     expect(html).toContain('With Shipping · Agent working')
     expect(html).toContain('Other features')
     expect(html.indexOf('Payment System')).toBeLessThan(html.indexOf('Other features'))
+  })
+})
+
+describe('the header joins the epic and its owner (decision 15, changed by the orchestrator)', () => {
+  const chat = (id: string, holder = true) => ({ owner: { kind: 'chat' as const }, chatId: id, ...(holder ? { holderId: id } : {}) })
+
+  it('is one crumb when the epic chat owns it, held or still being planned', () => {
+    expect(epicOwnerJoin('a', chat('a'))).toBe('one')
+    expect(epicOwnerJoin('a', chat('a', false))).toBe('one')
+  })
+
+  it('is two when the human or another chat owns it', () => {
+    expect(epicOwnerJoin('a', { owner: { kind: 'you' }, chatId: 'a' })).toBe('two')
+    expect(epicOwnerJoin('a', chat('b'))).toBe('two')
+  })
+
+  it('is the owner alone with no epic', () => {
+    expect(epicOwnerJoin(null, chat('a'))).toBe('owner')
+    expect(epicOwnerJoin(null, { owner: { kind: 'you' } })).toBe('owner')
   })
 })

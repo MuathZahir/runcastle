@@ -98,6 +98,7 @@ Check first: 4, 6, 12, 13, 14
 **Decision:** A feature's header trail starts with its epic (its origin chat): the epic's glyph and name, then the feature, then the chat in front. Clicking it opens the epic's chat. It stays after the feature ships. A feature with no epic starts with the feature, as today. This replaces `the-sidebar-shows-only-active-threads` decision 13, which named the holder.
 **Why:** The crumb says where the feature lives, which is its epic; who runs it is shown by its status words.
 **Assumed.** Alternative: keep naming the holding chat.
+**Changed by the orchestrator:** (2026-11-10) with "Every feature has one owner" merged in, its owner control follows the epic in the header. When the feature's epic chat is also its owner, the two are one crumb: "◆ Payment System · you merge ▾ › Feature". Clicking the name opens the chat; the finish words ("you merge", "merges it", or "yours to plan first" while the human plans it) open the owner menu. When they differ, both stay: "◆ Payment System › Yours ▾ › Feature" (the human took it), or "◆ Payment System › Notes Triage · merges it ▾ › Feature" (another chat runs it). With no epic, the owner control stands alone. The reason: the same name twice in a row reads as two things.
 **For the human.**
 
 ## 16. An epic stays listed while it has work in motion

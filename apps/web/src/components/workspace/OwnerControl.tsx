@@ -36,6 +36,9 @@ export interface OwnerLabels {
   noChat: (feature: string) => string
 }
 
+/** The button's words while the human plans a feature its epic's chat takes after the plan, drawn after the epic's name. */
+const IN_EPIC_PLANNING = 'yours to plan first'
+
 /** The words the control ships with (decision 12). */
 export const OWNER_LABELS: OwnerLabels = {
   you: 'Yours',
@@ -74,6 +77,7 @@ export function OwnerControl({
   planning = false,
   feature,
   labels: overrides,
+  inEpic = false,
   onChoose,
 }: {
   owner: FeatureOwner
@@ -85,16 +89,32 @@ export function OwnerControl({
   feature?: string
   /** Another set of words, for a design to compare (decision 12). */
   labels?: Partial<OwnerLabels>
+  /**
+   * Drawn right after its own epic's name, in one crumb (orchestrator-chats-become-epics
+   * decision 15): a chat owner's name and glyph go, leaving the finish words
+   * ("you merge", "merges it", "yours to plan first").
+   */
+  inEpic?: boolean
   onChoose: (choice: OwnerChoice) => void
 }) {
   const w: OwnerLabels = { ...OWNER_LABELS, ...overrides }
   const chat = owner.kind === 'chat' ? owner.name : chatName
   const current: OwnerChoice = owner.kind === 'chat' ? owner.finish : 'you'
 
-  const lead = owner.kind === 'you' ? w.you : planning ? w.planning(owner.name) : owner.name
-  const tail = owner.kind === 'chat' && !planning ? ` · ${owner.finish === 'show' ? w.show : w.merge}` : ''
+  const finishWords = owner.kind === 'chat' ? (owner.finish === 'show' ? w.show : w.merge) : ''
+  const nameless = inEpic && owner.kind === 'chat'
+  const lead = nameless
+    ? planning
+      ? IN_EPIC_PLANNING
+      : finishWords
+    : owner.kind === 'you'
+      ? w.you
+      : planning
+        ? w.planning(owner.name)
+        : owner.name
+  const tail = !nameless && owner.kind === 'chat' && !planning ? ` · ${finishWords}` : ''
   const words = lead + tail
-  const icon = owner.kind === 'chat' && !planning ? <IconOrchestrator size={14} /> : <IconUser size={14} />
+  const icon = nameless ? null : owner.kind === 'chat' && !planning ? <IconOrchestrator size={14} /> : <IconUser size={14} />
   // The crumb that holds the control clips its overflow, so the focus ring is drawn inside the control's edge.
   const look =
     'inline-flex h-6 max-w-96 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm text-text-tertiary focus-visible:outline-offset-[-2px]!'
@@ -117,7 +137,7 @@ export function OwnerControl({
         <button
           type="button"
           data-owner-control=""
-          title={`Who finishes this feature: ${words}`}
+          title={`Who finishes this feature: ${nameless && owner.kind === 'chat' ? `${owner.name} · ${words}` : words}`}
           className={cx(
             look,
             'group/owner cursor-pointer',
@@ -125,7 +145,7 @@ export function OwnerControl({
             'data-[state=open]:bg-surface-selected data-[state=open]:text-text',
           )}
         >
-          <span className="inline-flex shrink-0 text-icon">{icon}</span>
+          {icon && <span className="inline-flex shrink-0 text-icon">{icon}</span>}
           {/* One run of words: the tail's own space is the only gap after the name. */}
           <span className="flex min-w-0">
             <span className="min-w-0 truncate">{lead}</span>
