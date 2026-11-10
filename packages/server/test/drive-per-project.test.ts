@@ -23,6 +23,7 @@ import {
   testDrive,
 } from '../src/services/git'
 import { prepView } from '../src/services/prep'
+import { reviewDriveHost } from '../src/workers/review'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
@@ -227,6 +228,33 @@ describe('one drive slot per project', () => {
     expect(status.drive).toEqual(activeDriveInfo(b.project.id))
     // A's human drive never noticed.
     expect(activeDriveInfo(a.project.id)).toEqual(held)
+  })
+
+  it('a review drive’s info names its Review worker; a human drive’s says human and names none (triage-batch decision 5)', async () => {
+    const session = seedHostReview(ctx, b.feature, b.project.repoPath)
+    // The worker service's way in: the drive host names the feature's drive review itself.
+    expect((await reviewDriveHost().take(ctx, b.project, b.feature)).ok).toBe(true)
+    const review = await createCallerFactory(appRouter)(ctx).feature.driveInfo({ projectId: b.project.id })
+    expect(review).toMatchObject({
+      featureId: b.feature.id,
+      purpose: 'review',
+      workerId: session.id,
+      workerLabel: 'Review',
+      holderLabel: "the Review worker's drive of feature/beta",
+    })
+    await releaseReviewDrive(b.project.id)
+
+    // The review's own review_drive start names it too.
+    expect((await toolReviewDrive(ctx, { session }, { action: 'start' })).ok).toBe(true)
+    expect(activeDriveInfo(b.project.id)).toMatchObject({ purpose: 'review', workerId: session.id })
+    await releaseReviewDrive(b.project.id)
+
+    expect((await testDrive(ctx, a.project, a.feature, 'start')).ok).toBe(true)
+    const human = await createCallerFactory(appRouter)(ctx).feature.driveInfo({ projectId: a.project.id })
+    expect(human).toMatchObject({ featureId: a.feature.id, purpose: 'human' })
+    expect(human?.workerId).toBeUndefined()
+    expect(human?.workerLabel).toBeUndefined()
+    await testDrive(ctx, a.project, a.feature, 'stop')
   })
 
   it("prepView reports only this project's dry run", async () => {

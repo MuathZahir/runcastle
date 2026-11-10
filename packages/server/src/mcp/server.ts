@@ -1391,7 +1391,7 @@ export async function toolReviewDrive(
 ): Promise<git.ReviewDriveResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
   const feature = getFeatureRow(ctx, workerFeatureId(reviewer))
-  return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
+  return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action, { id: reviewer.id, label: reviewer.label })
 }
 
 /** A refused `scenario` / `try_call`: nothing ran and nothing was sent. */
