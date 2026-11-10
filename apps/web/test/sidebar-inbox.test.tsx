@@ -172,6 +172,24 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
     expect(onOpenChat).toHaveBeenCalledWith('pay')
   })
 
+  it('names another chat that runs a nested feature, in its own words, and keeps a permission prompt yellow', () => {
+    data.threads = [epic('pay', 'Payment System', { state: 'working' }), epic('notes', 'Notes triage', { state: 'working' })]
+    data.features = [
+      titled('Billing emails', {
+        chatId: 'pay',
+        heldBy: 'notes',
+        need: need('test', 'With Notes triage · Ready to test · Invoices', { held: true }),
+      }),
+      titled('Export to CSV', { chatId: 'pay', heldBy: 'pay', need: need('permission', 'Needs permission · Bash: git push') }),
+    ]
+    rail()
+    const nested = screen.getByRole('group', { name: 'Payment System' })
+    expect(within(nested).getByText('With Notes triage · Ready to test · Invoices')).toBeTruthy()
+    expect(within(nested).getByText('Needs permission · Bash: git push')).toBeTruthy()
+    // Needs you first inside the epic (decision 8).
+    expect(nested.textContent!.indexOf('Export to CSV')).toBeLessThan(nested.textContent!.indexOf('Billing emails'))
+  })
+
   it('puts a feature with no epic under Other features', () => {
     data.features = [titled('Loose', { need: need('test', 'Ready to test') })]
     rail()
