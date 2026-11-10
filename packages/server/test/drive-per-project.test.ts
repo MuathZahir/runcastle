@@ -242,6 +242,10 @@ describe('one drive slot per project', () => {
       workerLabel: 'Review',
       holderLabel: "the Review worker's drive of feature/beta",
     })
+    // The human's own Test drive is still refused (ADR-0014), and the refusal names the Review worker.
+    expect((await testDrive(ctx, b.project, b.feature, 'start')).deniedReason).toBe(
+      'The Review worker is trying feature/beta — it holds the drive slot until the review hands back',
+    )
     await releaseReviewDrive(b.project.id)
 
     // The review's own review_drive start names it too.

@@ -34,6 +34,8 @@ import {
   deferredScope,
   dependencyCandidates,
   freshness,
+  humanDriving,
+  agentDriveRefusal,
   isSelfPlanRun,
   lastTestDriveAt,
   mergeSummary,
@@ -154,6 +156,9 @@ export function Workspace({
   onOpenThread,
   onDeleted,
   onBackToList,
+  workerRequest = null,
+  onConsumeWorkerRequest,
+  onOpenWorkerChat,
 }: {
   featureId: string
   /** The panel view beside the chat, or `chat` for none — the shell's, so the address bar can name it. */
@@ -171,6 +176,11 @@ export function Workspace({
   onDeleted?: () => void
   /** On a phone, the chat bar's Back: the list. */
   onBackToList?: () => void
+  /** A worker's chat the shell asked for (the drive slot's agent card): brought to the front once listed. */
+  workerRequest?: { featureId: string; workerId: string } | null
+  onConsumeWorkerRequest?: () => void
+  /** Open a worker's chat on its feature's page, this one or another (triage-batch decision 16). */
+  onOpenWorkerChat?: (featureId: string, workerId: string) => void
 }) {
   const phone = useIsPhone()
   const utils = trpc.useUtils()
@@ -288,7 +298,10 @@ export function Workspace({
   // open — the shell's, shown only while it is still offered (a drive that
   // stopped takes its view with it). Design is offered on every feature not
   // shipped, its home the list; opening a design starts its server.
-  const isDriving = driving?.featureId === featureId
+  // Only the human's own drive (triage-batch decisions 5, 15): during the Review
+  // worker's drive the feature reads as a worker at work, with no Stop drive and
+  // no "the agent can't land its own edits" line.
+  const isDriving = humanDriving(driving, featureId)
   // A Test drive click is the drive's page at once, before the server answers.
   const [driveStarting, setDriveStarting] = useState(false)
   const requested = viewProp === 'chat' ? null : viewProp
@@ -574,6 +587,7 @@ export function Workspace({
     drive: driveQ.data,
     driveUp: driveActive,
     resolveConflict,
+    openWorkerChat: (owner, workerId) => openWorkerChat(owner, workerId),
   })
 
   const [deleteOpener, setDeleteOpener] = useState<RefObject<HTMLButtonElement | null> | null>(null)
@@ -713,6 +727,22 @@ export function Workspace({
     column.pick(threadId)
     const v = panel.state.view
     if (v === 'drive' || (v && !panel.state.collapsed && panel.state.share >= 1)) panel.dispatch({ type: 'close' })
+  }
+
+  // The shell asked for one of this feature's workers (the drive slot's agent
+  // card): it comes to the front once the thread list holds it.
+  const requestedWorker = workerRequest?.featureId === featureId ? workerRequest.workerId : null
+  const requestedListed = !!requestedWorker && column.threads.some((t) => t.id === requestedWorker)
+  useEffect(() => {
+    if (!requestedWorker || !requestedListed) return
+    bringForward(requestedWorker)
+    onConsumeWorkerRequest?.()
+    // bringForward is rebuilt each render; the request is what this answers.
+  }, [requestedWorker, requestedListed])
+  /** Open a worker's chat: in this page's column when it is this feature's, else on its own feature's page. */
+  const openWorkerChat = (ownerFeatureId: string, workerId: string) => {
+    if (ownerFeatureId === featureId) bringForward(workerId)
+    else onOpenWorkerChat?.(ownerFeatureId, workerId)
   }
 
   const runAction = (kind: ActionKind) => {
@@ -922,7 +952,17 @@ export function Workspace({
   }
   // The one header row's share of the status line's actions (decision 6): the
   // primary, Merge & ship beside it, the rest for "⋯".
-  const headerRow: HeaderActions = status ? headerActions(ns, status) : { overflow: [] }
+  // While the Review worker holds the drive slot, Test drive waits and says who
+  // holds it (triage-batch decision 16); its chat opens from the note over the chat.
+  const driveRefusal = agentDriveRefusal(driveQ.data, featureId)
+  const refuseDrive = (a: NextAction | undefined): NextAction | undefined =>
+    a && driveRefusal && a.kind === 'testDriveStart' ? { ...a, disabled: driveRefusal } : a
+  const unrefused: HeaderActions = status ? headerActions(ns, status) : { overflow: [] }
+  const headerRow: HeaderActions = {
+    ...unrefused,
+    ...(unrefused.action ? { action: refuseDrive(unrefused.action) } : {}),
+    overflow: unrefused.overflow.map((a) => refuseDrive(a)!),
+  }
 
   // A parked draft keeps its next-step bar in its header, where its body is the page.
   const draftRow = isDraft && (

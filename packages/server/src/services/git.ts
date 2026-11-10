@@ -2306,6 +2306,11 @@ function liveHolderLabel(state: DriveState): string {
 
 /** A refusal that names the drive holding the slot. */
 function slotHeldReason(state: DriveState): string {
+  // The Review worker's live drive is not the human's to stop from a refusal
+  // (triage-batch decision 16): it is named, and the drive waits for the review.
+  if (state.kind === 'feature' && state.purpose === 'review' && !state.cutOff) {
+    return `The Review worker is trying ${state.branch} — it holds the drive slot until the review hands back`
+  }
   const label = holderLabel(state)
   return `${label[0].toUpperCase()}${label.slice(1)} is running — stop it first`
 }

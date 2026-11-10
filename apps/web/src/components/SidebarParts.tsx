@@ -1,7 +1,8 @@
 import { HelpMenu } from './HelpMenu'
 import { createContext, Fragment, useContext, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { cx, IconButton, Spinner, StatusDot, Tooltip } from '../ui'
+import { Button, cx, Dialog, DialogFooter, DialogHeader, IconButton, Spinner, StatusDot, Tooltip } from '../ui'
+import type { DriveState } from '../lib/workspace'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
@@ -9,7 +10,10 @@ import { OLD_CHAT_WORDS, WORKER_STATUS_WORDS, workerGroups, workerStatusWhy } fr
 import type { WorkerEntry } from '../lib/workers'
 import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
+  agentDriveLine,
+  agentDriver,
   needsMe,
+  stopAgentDriveConfirm,
   progressState,
   rowChip,
   ticketShare,
@@ -997,12 +1001,93 @@ export function OrchestratorCard({
  * A live drive, as a card: what is driving (Test drive, Project drive), what
  * it drives in words, and Stop on hover when it can be stopped from here.
  */
+/**
+ * The drive slot's card for a feature drive (triage-batch decisions 5, 15). The
+ * human's own drive reads "Test drive" and opens its drive page; the Review
+ * worker's reads "Review worker is trying this feature", opens that worker's
+ * chat on the feature's page, and its Stop asks first: it ends the review's
+ * drive, not the review.
+ */
+export function FeatureDriveSlot({
+  driving,
+  featureTitle,
+  onOpenDrive,
+  onOpenWorker,
+  onStop,
+  stopping = false,
+}: {
+  driving: DriveState
+  /** The driven feature's title, when the list has it. */
+  featureTitle?: string
+  /** The human's drive: back to its page. */
+  onOpenDrive: (featureId: string) => void
+  /** An agent's drive: its worker's chat on the feature's page. */
+  onOpenWorker: (featureId: string, workerId: string) => void
+  onStop: () => void
+  stopping?: boolean
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const driver = driving.cutOff ? null : agentDriver(driving)
+  const detail = featureTitle ?? <span className="font-mono">{driving.branch}</span>
+  if (!driver) {
+    return (
+      <DriveCard
+        label={driving.cutOff ? 'Test drive (cut off by a restart)' : 'Test drive'}
+        detail={detail}
+        title={
+          driving.cutOff
+            ? `A restart cut off the drive of ${driving.branch} — stop it to return the checkout`
+            : `Driving ${driving.branch} — back to the drive`
+        }
+        onOpen={() => onOpenDrive(driving.featureId)}
+        onStop={onStop}
+        stopping={stopping}
+      />
+    )
+  }
+  const workerId = driver.workerId
+  const ask = stopAgentDriveConfirm(driver)
+  return (
+    <>
+      <DriveCard
+        label={agentDriveLine(driver)}
+        detail={detail}
+        title={workerId ? `${driver.name} is driving ${driving.branch} — open its chat` : `${driver.name} is driving ${driving.branch}`}
+        onOpen={() => (workerId ? onOpenWorker(driving.featureId, workerId) : onOpenDrive(driving.featureId))}
+        onStop={() => setConfirming(true)}
+        stopLabel="Stop the review’s drive"
+        stopping={stopping}
+      />
+      <Dialog open={confirming} onClose={() => setConfirming(false)} size="sm" label={ask.title}>
+        <DialogHeader title={ask.title} description={ask.description} />
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setConfirming(false)}>
+            Keep it driving
+          </Button>
+          <Button
+            variant="danger"
+            icon={<IconStop />}
+            disabled={stopping}
+            onClick={() => {
+              setConfirming(false)
+              onStop()
+            }}
+          >
+            {ask.confirm}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </>
+  )
+}
+
 export function DriveCard({
   label,
   detail,
   title,
   onOpen,
   onStop,
+  stopLabel,
   stopping = false,
 }: {
   label: string
@@ -1011,6 +1096,8 @@ export function DriveCard({
   title?: string
   onOpen?: () => void
   onStop?: () => void
+  /** The Stop button's name; "Stop the <label>" when absent. */
+  stopLabel?: string
   stopping?: boolean
 }) {
   return (
@@ -1034,7 +1121,7 @@ export function DriveCard({
       </button>
       {onStop && (
         <span className={cx('absolute top-1/2 right-1.5 -translate-y-1/2 transition-opacity duration-(--dur-1)', REVEAL_NAV)}>
-          <IconButton size="sm" label={`Stop the ${label.toLowerCase()}`} icon={<IconStop />} disabled={stopping} onClick={onStop} />
+          <IconButton size="sm" label={stopLabel ?? `Stop the ${label.toLowerCase()}`} icon={<IconStop />} disabled={stopping} onClick={onStop} />
         </span>
       )}
     </div>
