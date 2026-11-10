@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useDesignReport } from '../../lib/use-design-report'
+import { useDesignRecord } from '../../lib/use-designs'
 import { trpc } from '../../trpc'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
@@ -140,6 +142,10 @@ export function DesignView({ featureId, path, width, onShowingChange }: DesignVi
   useEffect(() => {
     onShowingChange?.(showing)
   }, [showing, onShowingChange])
+  // The page's state and tweaks, kept on the design it shows (agents-see-the-tweaks-you-picked decision 5).
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const { designs } = useDesignRecord(featureId)
+  useDesignReport(frameRef, designs?.find((d) => d.path === shownPath)?.id)
 
   if (server.address && server.passPort !== undefined) {
     if (pass.reach !== 'reachable') return <PassCheck reach={pass.reach} passPort={server.passPort} onRetry={pass.retry} />
@@ -174,6 +180,7 @@ export function DesignView({ featureId, path, width, onShowingChange }: DesignVi
             putInInbox(mainChatInbox(featureId), [new File([png], 'selection.png', { type: 'image/png' })])
           }
           frameKey={String(homeCount)}
+          frameRef={frameRef}
           url={server.address}
           leading={
             <IconButton

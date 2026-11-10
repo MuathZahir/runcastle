@@ -40,6 +40,8 @@ vi.mock('../src/trpc', () => ({
       restart: { useMutation: () => ({ mutate: restartMutate, ...restart }) },
       heartbeat: { useMutation: () => ({ mutate: heartbeat }) },
       showPath: { useMutation: () => ({ mutate: showPath }) },
+      list: { useQuery: () => ({ data: undefined }) },
+      report: { useMutation: () => ({ mutate: vi.fn() }) },
     },
     notes: { add: { useMutation: () => ({ mutateAsync: vi.fn() }) } },
   },
