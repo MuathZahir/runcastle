@@ -1,5 +1,6 @@
 import * as z from 'zod'
 import { WorkerKind } from './schemas'
+import type { EpicColor, EpicIconId } from './epic-look'
 
 /**
  * Threads (chat-as-web-components; ADR-0015). Every agent conversation is a
@@ -625,6 +626,12 @@ export interface ThreadEntry {
    * chat waits on the human (`state` is `waiting`).
    */
   askingAbout?: string[]
+  /** A project chat's epic colour (epics-that-look-alive decision 2); absent on other roles and on rows from before colours. */
+  color?: EpicColor
+  /** A project chat's epic icon (decision 1); absent until one is picked, when it wears the default. */
+  icon?: EpicIconId
+  /** The human picked the icon (decision 3): the orchestrator no longer changes it. */
+  iconByHuman?: boolean
 }
 
 /** Prompts runcastle sends wear this; the fold shows them as runcastle's line, not the human's bubble. */

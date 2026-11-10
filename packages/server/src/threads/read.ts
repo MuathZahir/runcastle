@@ -191,6 +191,7 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout, leadWaiti
     updatedAt: events.at(-1)?.at ?? row.createdAt ?? 0,
     lastHumanAt: lastHumanAt(events),
     runtime: row.runtime ?? DEFAULT_RUNTIME,
+    ...epicLookOf(row),
   }
 }
 
@@ -306,6 +307,16 @@ export function openAskOf(ctx: AppCtx, featureId: string): OpenAsk | null {
   return found
 }
 
+/** A project chat's epic look, as its row stores it (epics-that-look-alive decisions 1–3); nothing for other kinds. */
+export function epicLookOf(row: SessionRow): Pick<ThreadEntry, 'color' | 'icon' | 'iconByHuman'> {
+  if (row.kind !== 'project') return {}
+  return {
+    ...(row.epicColor ? { color: row.epicColor } : {}),
+    ...(row.epicIcon ? { icon: row.epicIcon } : {}),
+    ...(row.epicIconByHuman ? { iconByHuman: true } : {}),
+  }
+}
+
 /** A thread nothing has been said in yet. */
 function freshEntry(row: SessionRow, about: ThreadAbout): ThreadEntry {
   return {
@@ -316,6 +327,7 @@ function freshEntry(row: SessionRow, about: ThreadAbout): ThreadEntry {
     createdAt: row.createdAt ?? 0,
     updatedAt: row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
+    ...epicLookOf(row),
   }
 }
 
@@ -337,6 +349,7 @@ function transcriptEntry(ctx: AppCtx, row: SessionRow, source: SessionRow): Thre
     updatedAt: row.endedAt ?? row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
     readOnlyTranscript: true,
+    ...epicLookOf(row),
   }
 }
 

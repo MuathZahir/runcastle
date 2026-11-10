@@ -1,5 +1,7 @@
 import {
   AskAnswer,
+  EPIC_COLORS,
+  EPIC_ICON_IDS,
   Effort,
   modelRoster,
   resolveModelEntry,
@@ -18,6 +20,7 @@ import { rosterConfig } from '../../services/model-discovery'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../../services/repo'
 import { threadMarkdown } from '../../threads/controls'
 import { matchWorktreeFiles } from '../../threads/files'
+import { setEpicLook } from '../../threads/epic-look'
 import { hasThreadLog } from '../../threads/log'
 import { threadModels } from '../../threads/model-catalog'
 import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
@@ -207,6 +210,21 @@ export const threadRouter = router({
     appendThreadEvent(input.threadId, { type: 'title', title: input.title, renamed: true })
     return { ok: true }
   }),
+
+  /**
+   * "Colour and icon…" on an epic (epics-that-look-alive decision 3): set its
+   * colour, its icon, or both. An icon set here is the human's, which the
+   * orchestrator's `name_epic` never changes again. Emits an event, so the
+   * lists read it at once.
+   */
+  setLook: publicProcedure
+    .input(threadId.extend({ color: z.enum(EPIC_COLORS).optional(), icon: z.enum(EPIC_ICON_IDS).optional() }))
+    .mutation(({ ctx, input }): Pick<ThreadEntry, 'color' | 'icon' | 'iconByHuman'> =>
+      setEpicLook(ctx, input.threadId, {
+        ...(input.color ? { color: input.color } : {}),
+        ...(input.icon ? { icon: input.icon } : {}),
+      }),
+    ),
 
   /** The thread as Markdown, for Copy / Save. */
   export: publicProcedure.input(threadId).query(({ ctx, input }): { markdown: string } => {

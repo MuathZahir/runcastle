@@ -1,6 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { type Feature, type FeatureAction, type SessionRow, isStoppableHeadlessRun } from '@runcastle/core'
+import {
+  EPIC_ICON_IDS,
+  EPIC_ICON_LABEL,
+  type EpicIconId,
+  type Feature,
+  type FeatureAction,
+  isEpicIconId,
+  isStoppableHeadlessRun,
+  type SessionRow,
+} from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
@@ -31,6 +40,7 @@ import {
   requireProjectById,
   rowToFeature,
 } from '../services/repo'
+import { writeEpicIcon } from '../threads/epic-look'
 import { EPIC_NAME_MAX, writeEpicName } from '../threads/epic-name'
 import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
@@ -144,22 +154,49 @@ export const toolTakeFeature = orchestratorTool(
   },
 )
 
+/** What `name_epic` applied: each of the name and the icon, or the human's own that it kept. */
+export interface EpicNameResult {
+  name: string
+  /** False when the human renamed the chat: `name` is theirs, kept. */
+  nameApplied: boolean
+  icon: EpicIconId | null
+  /** False when the human picked the icon: `icon` is theirs, kept. */
+  iconApplied: boolean
+  /** In words, what was applied and what was kept. */
+  note: string
+}
+
 /**
- * Name this chat's epic (orchestrator-chats-become-epics decision 12): trimmed,
- * non-empty, at most {@link EPIC_NAME_MAX} characters. Refused, with nothing
- * changed, once the human renamed the chat.
+ * Name this chat's epic and pick its icon (orchestrator-chats-become-epics
+ * decision 12; epics-that-look-alive decision 1): the name trimmed, non-empty,
+ * at most {@link EPIC_NAME_MAX} characters; the icon one of the curated ids.
+ * Each applies unless the human set its own — the name after a rename, the
+ * icon after a pick — and the other still applies. Refused, with nothing
+ * changed, only when the human set both.
  */
-export function toolNameEpic(ctx: AppCtx, session: SessionRow, input: { name: string }): { name: string } {
+export function toolNameEpic(ctx: AppCtx, session: SessionRow, input: { name: string; icon: string }): EpicNameResult {
   requireOrchestratorSession(session)
   const name = input.name.replace(/\s+/g, ' ').trim()
   if (!name) throw new InvalidInputError('name the epic: the name is empty.')
   if (name.length > EPIC_NAME_MAX) {
     throw new InvalidInputError(`an epic's name is at most ${EPIC_NAME_MAX} characters; "${name}" has ${name.length}. Use 1–3 words.`)
   }
+  if (!isEpicIconId(input.icon)) {
+    throw new InvalidInputError(`"${input.icon}" is not an epic icon; pick one of: ${EPIC_ICON_IDS.join(', ')}.`)
+  }
   seedFromTranscript(ctx, session.id)
-  const out = writeEpicName(session.id, name)
-  if (!out.named) throw new GateError(`The human named this chat "${out.humanName}"; keep it.`)
-  return { name: out.name }
+  const named = writeEpicName(session.id, name)
+  const iconed = writeEpicIcon(ctx, session.id, input.icon)
+  if (!named.named && !iconed.applied) {
+    throw new GateError(`The human named this chat "${named.humanName}" and picked its icon; keep both.`)
+  }
+  const icon = iconed.applied ? input.icon : iconed.humanIcon
+  const note = !named.named
+    ? `Icon set. The human named this chat "${named.humanName}"; keep it.`
+    : !iconed.applied
+      ? 'Named. The human picked this epic’s icon; keep it.'
+      : 'Named, and the icon set.'
+  return { name: named.named ? named.name : named.humanName, nameApplied: named.named, icon, iconApplied: iconed.applied, note }
 }
 
 /**
@@ -367,9 +404,14 @@ export function registerOrchestratorTools(
     {
       title: 'Name your epic',
       description:
-        'Name this chat, your epic: 1–3 words, Title Case, a noun phrase ("Payment System"). ' +
-        'Refused once the human renamed it.',
-      inputSchema: { name: z.string().describe(`The epic's name, at most ${EPIC_NAME_MAX} characters.`) },
+        'Name this chat, your epic: 1–3 words, Title Case, a noun phrase ("Payment System"), and pick its icon ' +
+        'for the kind of work it is. The human’s rename or icon pick is kept; the other still applies.',
+      inputSchema: {
+        name: z.string().describe(`The epic's name, at most ${EPIC_NAME_MAX} characters.`),
+        icon: z
+          .enum(EPIC_ICON_IDS)
+          .describe(`The epic's icon, by id: ${EPIC_ICON_IDS.map((id) => `${id} (${EPIC_ICON_LABEL[id]})`).join(', ')}.`),
+      },
     },
     toolNameEpic,
   )
