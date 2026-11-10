@@ -34,3 +34,7 @@ Settled with the human in this feature's chat, one at a time. The brief's own
 ## 8. Epics in motion sit above idle ones
 **Decision:** The epic list orders in three bands: epics with something yellow (needing the human) first, then epics in motion, then idle epics (the slim rows) — each band newest started first. "Other features" (features cut outside any epic) still joins the yellow band when something in it is yellow; otherwise it ends the in-motion band, so it never sits among idle epics.
 **Why:** The human, on the design page: "the epics that are working should be at the top. The idle ones should be down." With slim rows mixed among full cards the list read as jumbled. This changes the order the brief kept out of scope ("Orchestrator chats become epics" decision 8, which ordered only yellow-then-rest); the human asked for it.
+
+## 9. The look chosen on the design page
+**Decision:** From the design page's Tweaks the human chose: the **tinted** slim idle row (a lightly tinted strip in the epic's colour, coloured icon, name, "N shipped · 2h"; below ~300px of sidebar only the time); the runcastle logo as a **mark at the top of the rail with the "All projects" grid button directly below it** (the logo is not itself a button); and a **large project name** in the sidebar header beside one tidy group of icon buttons. The app's sidebar width does not change.
+**Why:** The human's picks among the variations shown side by side (supersedes the "one line, no tint" starting point in 4 and the "logo is All projects" recommendation in 7).
