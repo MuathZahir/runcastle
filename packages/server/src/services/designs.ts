@@ -195,10 +195,15 @@ function tweaksWords(report: DesignReport | null): string {
 /**
  * The one line the lead hears when the human's click approves the last waiting
  * design (decision 25), naming each design's tweak values as they stood at its
- * click (agents-see-the-tweaks-you-picked decision 7).
+ * click (agents-see-the-tweaks-you-picked decision 7). A design the lead marked
+ * approved on the human's words had no click, so its last report stands in.
  */
-export function allApprovedLine(approved: readonly Pick<DesignRow, 'title' | 'path' | 'approvedReport'>[]): string {
-  const named = approved.map((d) => `“${d.title}” (${d.path}) ${tweaksWords(readReport(d.approvedReport))}`).join('; ')
+export function allApprovedLine(
+  approved: readonly (Pick<DesignRow, 'title' | 'path' | 'approvedReport'> & { report?: string | null })[],
+): string {
+  const named = approved
+    .map((d) => `“${d.title}” (${d.path}) ${tweaksWords(readReport(d.approvedReport ?? d.report ?? null))}`)
+    .join('; ')
   const only = approved.length === 1 ? approved[0] : undefined
   const count = only ? 'the 1 design' : `all ${approved.length} designs`
   const after = only

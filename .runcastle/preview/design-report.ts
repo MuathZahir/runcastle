@@ -19,7 +19,7 @@ export type Tweaks = NonNullable<DesignReport['tweaks']>
 export function useDesignReport(state: string | null, tweaks: Tweaks = {}): void {
   const key = JSON.stringify([state, tweaks])
   useEffect(() => {
-    const report: DesignReport = { type: 'runcastle:design', state, tweaks }
+    const report: DesignReport = { type: 'runcastle-design-report', state, tweaks }
     if (window.parent !== window) window.parent.postMessage(report, '*')
     // `key` stands for state and tweaks, compared by value.
   }, [key])

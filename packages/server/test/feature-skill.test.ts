@@ -275,7 +275,7 @@ describe('the feature skill, planning with no human present', () => {
     expect(design).not.toContain('one line of text')
     expect(design).toContain('**Every design page reports**, single-state ones and pages without Tweaks included')
     expect(design).toContain("window.parent.postMessage(report, '*')")
-    expect(design).toContain("{ type: 'runcastle:design', state, tweaks }")
+    expect(design).toContain("{ type: 'runcastle-design-report', state, tweaks }")
     expect(design).toContain('`{}` when the page has no Tweaks menu')
     expect(design).toContain('in `localStorage` under a key that includes the design\'s path')
     expect(design).toContain('restores them on load')

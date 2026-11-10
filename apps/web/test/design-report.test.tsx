@@ -44,36 +44,36 @@ describe('useDesignReport', () => {
   it('sends the last report of a burst from its frame, once it settles', async () => {
     const { inputs, frameWindow } = setup('design_a')
     expect(frameWindow).toBeTruthy()
-    post({ type: 'runcastle:design', state: 'full', tweaks: { accent: 'red' } }, frameWindow)
-    post({ type: 'runcastle:design', state: 'full', tweaks: { accent: 'teal' } }, frameWindow)
+    post({ type: 'runcastle-design-report', state: 'full', tweaks: { accent: 'red' } }, frameWindow)
+    post({ type: 'runcastle-design-report', state: 'full', tweaks: { accent: 'teal' } }, frameWindow)
     await wait(DESIGN_REPORT_DEBOUNCE_MS / 3)
     expect(inputs('design.report')).toEqual([])
 
     await wait(DESIGN_REPORT_DEBOUNCE_MS + 100)
     expect(inputs('design.report')).toEqual([
-      { designId: 'design_a', report: { type: 'runcastle:design', state: 'full', tweaks: { accent: 'teal' } } },
+      { designId: 'design_a', report: { type: 'runcastle-design-report', state: 'full', tweaks: { accent: 'teal' } } },
     ])
   })
 
   it('ignores a post from another window, and a message that is not a report', async () => {
     const { inputs, frameWindow } = setup('design_a')
-    post({ type: 'runcastle:design', state: 'full', tweaks: { accent: 'teal' } }, window)
-    post({ type: 'runcastle:design', state: 'full', tweaks: { accent: 'teal' } }, null)
+    post({ type: 'runcastle-design-report', state: 'full', tweaks: { accent: 'teal' } }, window)
+    post({ type: 'runcastle-design-report', state: 'full', tweaks: { accent: 'teal' } }, null)
     post({ type: 'webpackOk' }, frameWindow)
-    post('runcastle:design', frameWindow)
+    post('runcastle-design-report', frameWindow)
     await wait(DESIGN_REPORT_DEBOUNCE_MS + 100)
     expect(inputs('design.report')).toEqual([])
   })
 
   it('sends a report still pending when the view goes, and nothing without a recorded design', async () => {
     const shown = setup('design_a')
-    post({ type: 'runcastle:design', state: null, tweaks: {} }, shown.frameWindow)
+    post({ type: 'runcastle-design-report', state: null, tweaks: {} }, shown.frameWindow)
     shown.view.unmount()
     await wait(0)
-    expect(shown.inputs('design.report')).toEqual([{ designId: 'design_a', report: { type: 'runcastle:design', state: null, tweaks: {} } }])
+    expect(shown.inputs('design.report')).toEqual([{ designId: 'design_a', report: { type: 'runcastle-design-report', state: null, tweaks: {} } }])
 
     const unrecorded = setup(undefined)
-    post({ type: 'runcastle:design', state: null, tweaks: {} }, unrecorded.frameWindow)
+    post({ type: 'runcastle-design-report', state: null, tweaks: {} }, unrecorded.frameWindow)
     await wait(DESIGN_REPORT_DEBOUNCE_MS + 100)
     expect(unrecorded.inputs('design.report')).toEqual([])
   })

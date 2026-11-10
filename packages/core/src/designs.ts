@@ -46,7 +46,7 @@ export const DESIGN_REPORT_MAX_TWEAKS = 12
  * `{}` means the page has no Tweaks menu, a missing field means it did not say.
  */
 export const DesignReport = z.object({
-  type: z.literal('runcastle:design'),
+  type: z.literal('runcastle-design-report'),
   /** The switcher's current state; null for a single-state page. */
   state: z.string().nullable(),
   tweaks: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -64,7 +64,7 @@ export function parseDesignReport(message: unknown): DesignReport | null {
   const parsed = DesignReport.safeParse(message)
   if (!parsed.success) return null
   const { state, tweaks } = parsed.data
-  const report: DesignReport = { type: 'runcastle:design', state: state === null ? null : cut(state) }
+  const report: DesignReport = { type: 'runcastle-design-report', state: state === null ? null : cut(state) }
   if (tweaks) {
     report.tweaks = Object.fromEntries(
       Object.entries(tweaks)

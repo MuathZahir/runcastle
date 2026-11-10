@@ -315,7 +315,7 @@ describe('design.report', () => {
   }
   const delivered = () => events('lead.message_queued').map((e) => (e.data as { text: string }).text)
   const report = (tweaks?: Record<string, string | number | boolean>, state: string | null = 'full') => ({
-    type: 'runcastle:design' as const,
+    type: 'runcastle-design-report' as const,
     state,
     ...(tweaks ? { tweaks } : {}),
   })
@@ -347,8 +347,8 @@ describe('design.report', () => {
     const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
     const bad = (r: unknown) => caller().design.report({ designId: a.id, report: r as ReturnType<typeof report> })
     await expect(bad({ type: 'something-else', state: null })).rejects.toThrow()
-    await expect(bad({ type: 'runcastle:design', state: null, tweaks: { accent: { r: 1 } } })).rejects.toThrow()
-    await expect(bad({ type: 'runcastle:design' })).rejects.toThrow()
+    await expect(bad({ type: 'runcastle-design-report', state: null, tweaks: { accent: { r: 1 } } })).rejects.toThrow()
+    await expect(bad({ type: 'runcastle-design-report' })).rejects.toThrow()
     expect((await list()).designs[0].report).toBeNull()
     expect(events('design.reported')).toEqual([])
   })
@@ -394,6 +394,13 @@ describe('design.report', () => {
     expect(allApprovedLine([{ title: 'Cart', path: '/preview/cart', approvedReport: empty }])).toContain('“Cart” (/preview/cart) (no Tweaks menu).')
     expect(allApprovedLine([{ title: 'Cart', path: '/preview/cart', approvedReport: null }])).toContain(
       '“Cart” (/preview/cart) (this design reported no tweak values).',
+    )
+  })
+
+  it('falls back to the last report for a design approved in words, with no click', () => {
+    const last = JSON.stringify(report({ accent: 'teal' }))
+    expect(allApprovedLine([{ title: 'Cart', path: '/preview/cart', approvedReport: null, report: last }])).toContain(
+      '“Cart” (/preview/cart) with tweaks accent = teal.',
     )
   })
 })

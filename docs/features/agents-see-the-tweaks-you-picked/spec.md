@@ -24,7 +24,7 @@ window on load and on every change of state or tweak:
 ```ts
 // posted with window.parent.postMessage(report, '*')
 type DesignReport = {
-  type: 'runcastle:design'
+  type: 'runcastle-design-report'
   state: string | null                              // the switcher's current state; null for a single-state page
   tweaks?: Record<string, string | number | boolean> // keyed by the label the menu shows; {} = no Tweaks menu
 }

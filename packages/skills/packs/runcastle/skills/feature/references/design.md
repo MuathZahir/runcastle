@@ -85,7 +85,7 @@ leaves nothing.
 **Every design page reports**, single-state ones and pages without Tweaks
 included. On load and on every change of state or tweak it posts one message to
 the window around it, `window.parent.postMessage(report, '*')`, where `report` is
-`{ type: 'runcastle:design', state, tweaks }`: `state` is the switcher's current
+`{ type: 'runcastle-design-report', state, tweaks }`: `state` is the switcher's current
 state (`null` on a single-state page), `tweaks` the menu's values keyed by the
 labels it shows (`{}` when the page has no Tweaks menu). When the human clicks
 **Approve**, runcastle hands you the values the page last reported.
@@ -98,7 +98,7 @@ not your defaults. In plain browser JavaScript:
 ```js
 const key = 'tweaks:' + location.pathname
 const tweaks = { accent: 'teal', density: 'compact', ...JSON.parse(localStorage.getItem(key) || '{}') }
-const report = () => parent.postMessage({ type: 'runcastle:design', state: currentState, tweaks }, '*')
+const report = () => parent.postMessage({ type: 'runcastle-design-report', state: currentState, tweaks }, '*')
 function setTweak(name, value) { tweaks[name] = value; localStorage.setItem(key, JSON.stringify(tweaks)); render(); report() }
 report() // on load; call it again whenever the switcher changes state
 ```
