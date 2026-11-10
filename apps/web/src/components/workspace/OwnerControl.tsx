@@ -51,7 +51,7 @@ export const OWNER_LABELS: OwnerLabels = {
   hintYou: 'You talk to its agent, test it and merge it.',
   hintShow: 'It plans or builds, gets it reviewed, and asks you to test before merging.',
   hintMerge: 'It merges once the review is clean and the checks pass.',
-  noChat: (feature) => `Yours. To hand it to an orchestrator chat, tell it: run “${feature}” for me.`,
+  noChat: (feature) => `Yours. To hand it to an epic, tell its chat: run “${feature}” for me.`,
 }
 
 /**

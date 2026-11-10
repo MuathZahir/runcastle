@@ -572,7 +572,7 @@ describe('launching, resuming and landing an orchestrator', () => {
 
     expect(sessionId).not.toBe(prior.sessionId)
     const said = kickoffOf(sessionId)
-    expect(promptsOf(sessionId)[0]).toMatchObject({ display: { summary: 'Started this orchestrator chat' } })
+    expect(promptsOf(sessionId)[0]).toMatchObject({ display: { summary: 'Started this epic' } })
     expect(said).toContain('list_project_notes')
     expect(said).toContain('/runcastle:project')
     expect(listByProject(ctx, project.id).map((e) => e.type)).not.toContain('session.resumed')

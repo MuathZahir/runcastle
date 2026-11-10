@@ -248,7 +248,7 @@ export function openingSummary(row: SessionRow, selfPlan = false): string | unde
     case 'chat':
       return selfPlan ? 'Started this chat to plan the feature by itself' : 'Started this chat'
     case 'project':
-      return 'Started this orchestrator chat'
+      return 'Started this epic'
     default:
       return undefined
   }
