@@ -30,4 +30,47 @@ export interface DesignEntry {
   isNew: boolean
   /** When it was last shown. */
   shownAt: number
+  /** The page's last report (agents-see-the-tweaks-you-picked decision 6); null until it sent one. */
+  report: DesignReport | null
+}
+
+/** The longest key, value or state a design report keeps (agents-see-the-tweaks-you-picked). */
+export const DESIGN_REPORT_MAX_CHARS = 80
+/** The most tweaks a design report keeps. */
+export const DESIGN_REPORT_MAX_TWEAKS = 12
+
+/**
+ * What a design page posts to the window around it (agents-see-the-tweaks-you-picked
+ * decisions 5, 10), with `window.parent.postMessage(report, '*')`, on load and on
+ * every change of state or tweak. `tweaks` is keyed by the label the menu shows;
+ * `{}` means the page has no Tweaks menu, a missing field means it did not say.
+ */
+export const DesignReport = z.object({
+  type: z.literal('runcastle:design'),
+  /** The switcher's current state; null for a single-state page. */
+  state: z.string().nullable(),
+  tweaks: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+})
+export type DesignReport = z.infer<typeof DesignReport>
+
+const cut = (s: string): string => s.slice(0, DESIGN_REPORT_MAX_CHARS)
+
+/**
+ * A message as a design report, capped: at most 12 tweaks; keys, string values
+ * and the state at most 80 characters. Over the cap it is trimmed, never
+ * dropped; a foreign or malformed message is null.
+ */
+export function parseDesignReport(message: unknown): DesignReport | null {
+  const parsed = DesignReport.safeParse(message)
+  if (!parsed.success) return null
+  const { state, tweaks } = parsed.data
+  const report: DesignReport = { type: 'runcastle:design', state: state === null ? null : cut(state) }
+  if (tweaks) {
+    report.tweaks = Object.fromEntries(
+      Object.entries(tweaks)
+        .slice(0, DESIGN_REPORT_MAX_TWEAKS)
+        .map(([key, value]) => [cut(key), typeof value === 'string' ? cut(value) : value]),
+    )
+  }
+  return report
 }
