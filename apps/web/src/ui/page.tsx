@@ -31,6 +31,12 @@ export interface Crumb {
    * rather than pushing the trail past its edge. A node label truncates itself.
    */
   shrink?: boolean
+  /**
+   * How far a shrinking parent may give way: a `min-w-*` class, written out
+   * whole so Tailwind sees it. Set it only when the label is surely wider, or
+   * the item grows to it.
+   */
+  floor?: string
 }
 
 /**
@@ -65,7 +71,10 @@ export function Crumbs({ items, className, trail }: { items: Crumb[]; className?
           )
           return (
             // The last item gives way well before a shrinking parent does, so a long thread name never squeezes the title.
-            <li key={i} className={cx('flex min-w-0 items-center gap-1', last ? 'shrink-[6]' : !c.shrink && 'shrink-0')}>
+            <li
+              key={i}
+              className={cx('flex min-w-0 items-center gap-1', last ? 'shrink-[50]' : !c.shrink ? 'shrink-0' : c.floor)}
+            >
               {last ? (
                 <span aria-current="page" className={itemClass}>
                   {content}

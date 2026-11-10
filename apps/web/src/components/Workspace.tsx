@@ -1161,10 +1161,13 @@ export function Workspace({
                 onChoose={(choice) => setOwner(featureId, choice)}
               />
             ),
+            // A chat's control gives way down to "Runc… · merges it"; "Yours" is narrow and never does.
+            ...(owner.owner.kind === 'chat' ? { shrink: true, floor: 'min-w-44' } : {}),
           },
           {
             label: feature.title,
             shrink: true,
+            ...(feature.title.length > 12 ? { floor: 'min-w-22' } : {}),
             icon: (
               <ProgressIcon
                 state={isDraft ? 'draft' : shipped ? 'shipped' : 'active'}
