@@ -25,7 +25,7 @@ export interface OwnerReading {
 }
 
 /** The name a chat goes by before the thread list has it (or after it is gone from it). */
-export const UNNAMED_CHAT = 'Orchestrator chat'
+export const UNNAMED_CHAT = 'Unnamed epic'
 
 /**
  * Read the owner off a feature (decisions 1, 11, 12, 14, 21): a chat owns it

@@ -464,7 +464,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sessionBranch: {
     label: 'Commits land on',
     tooltip:
-      'The branch the orchestrator’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
+      'The branch an epic’s commits (charter, ADRs) land on when its chat’s terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
     control: 'text',
     page: 'project',
     group: 'chat',

@@ -77,7 +77,7 @@ export function workerColumnProps(
         <HandedBackLine
           commits={row.handbackCommits?.length ?? 0}
           files={row.handbackFiles?.length ?? 0}
-          {...(row.featureId === null ? { to: 'the orchestrator' as const } : {})}
+          {...(row.featureId === null ? { to: 'its epic' as const } : {})}
           {...(drive ? { branch: row.featureBranch } : {})}
         />
       </div>
