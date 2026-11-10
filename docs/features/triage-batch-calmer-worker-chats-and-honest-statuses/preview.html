@@ -165,7 +165,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <section id="show">
   <h2>The show</h2>
   <!-- FILL:show -->
-  <p class="hint">Six fixes. The chat pieces are designed live (two design pages, waiting for your Approve); the status and drive fixes are drawn here.</p>
+  <p class="hint">Seven fixes. The chat pieces are designed live (two design pages, waiting for your Approve); the status and drive fixes are drawn here.</p>
 
   <div class="sub">
     <h3>1 · Work rows say what ran <a class="pin" data-d="1">1</a> <a class="pin" data-d="7">7</a> <a class="pin" data-d="8">8</a></h3>
@@ -232,11 +232,23 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   </div>
 
   <div class="sub">
+    <h3>7 · A helper's result is not you typing <a class="pin" data-d="18">18</a></h3>
+    <div class="ba">
+      <div><div class="lab">Today · a lead's helper finishes</div>
+        <div class="row muted">Owner: Notes Triage → <span class="bad">Yours</span></div>
+        <div class="row muted">Waiting marks <span class="bad">cleared</span>, as if you had replied</div></div>
+      <div><div class="lab">After</div>
+        <div class="row muted">Owner: Notes Triage, unchanged</div>
+        <div class="row muted">Waiting marks stay until you really type</div></div>
+    </div>
+  </div>
+
+  <div class="sub">
     <h3>Who builds what</h3>
     <p class="hint">Your yes starts these. The designs need their own Approve first; only approved ones are committed before the workers start.</p>
     <div class="who">
       <span class="k">on its own</span><b>Chat pieces</b><p>Wires the approved designs to real data: the worker-started thread event and its one-card-per-turn fold, live statuses, opening a worker's chat, tests for the summary and the cap.</p>
-      <span class="k">on its own</span><b>Honest statuses</b><p>The need fix and its tests, the wait tool's corrected words, "who started the drive" from server to slot, banner and header, Stop's confirm, the refusal's reason.</p>
+      <span class="k">on its own</span><b>Honest statuses</b><p>The need fix and its tests, the wait tool's corrected words, "who started the drive" from server to slot, banner and header, Stop's confirm, the refusal's reason, and machine-made prompts no longer counting as you typing.</p>
       <span class="k">me</span><b>Lead</b><p>Docs, landing both workers, the project's checks, small fixes.</p>
       <span class="k">review</span><b>Review worker</b><p>Drives the app at the end: a lead chat starting a worker, a review drive, the sidebar while workers work.</p>
     </div>
@@ -281,6 +293,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <li><b>Work summary</b>: a pure function over a stretch's steps, in the web, reusing the call-group words ("Read 3 files"); one work-row component serves every chat.</li>
         <li><b>Workers card</b>: the workers service appends a worker-started event (id, label, purpose, kind) to the lead's thread on start_worker and start_review; the core thread fold gathers one turn's events into one card, outside any work row; rows read live status from the feature's worker list, as feature cards read live features.</li>
         <li><b>Status fix</b>: a new "workers at work" fact in the feature need; the quiet "lead replied" branch does not stand while it is true. Sidebar, header and alerts all read that need.</li>
+        <li><b>Typed prompts</b>: the lead's prompt hook skips prompts Claude Code makes itself (they open with <code>&lt;task-notification&gt;</code>), as it already skips the compaction command; the Codex runtime is checked for the same.</li>
         <li><b>Drive</b>: the server's drive state already records purpose (human or review); it gains the worker id when the Review worker takes the slot; the drive info and the web's drive state carry both; the feature view's "is driving" becomes "the human is driving".</li>
         <li><b>Seams</b>: the thread fold, the summary function, the feature need, the workers service, the drive info, the drive slot and notices, the handback and assignment cards.</li>
       </ul>
@@ -316,7 +329,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ["A lead's own wait stays until you reply; the tool's words are corrected", "Clearing it on a worker start could make a real question vanish.", "assumed"],
     ["The agent's drive in the slot: named, opens its chat, Stop asks first", "You must be able to take the slot back without dropping the whole review.", "assumed"],
     ["Your own Test drive while the agent drives stays refused, and says why", "Queuing or taking over would change the one-drive-slot rule.", "assumed"],
-    ["The Review Package keeps its own layout", "It is the page you accept the feature from, built to be read in full.", "assumed"]
+    ["The Review Package keeps its own layout", "It is the page you accept the feature from, built to be read in full.", "assumed"],
+    ["Prompts Claude Code makes on its own never count as you typing", "A helper's result moved this very feature to you and cleared its waits seven times."]
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]

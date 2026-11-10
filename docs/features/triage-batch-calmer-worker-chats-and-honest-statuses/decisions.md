@@ -96,3 +96,8 @@ Phone and desktop alerts read the same need, so they stop firing for it too.
 **Decision:** The cap of decision 2 applies to worker handback cards (and the orchestrator's twin, decision 9). The Review Package, the review's own attachment with screenshots and findings, keeps its layout.
 **Why:** It is the page the human accepts the feature from, built to be read in full; capping it is a different question from the one the brief raised.
 **Assumed.** Alternative: cap the Review Package's text the same way.
+
+## 18. Prompts Claude Code makes on its own never count as the human typing
+**Decision:** When a lead's background helper finishes, Claude Code hands its result to the lead as a new prompt that opens with `<task-notification>`. The lead's prompt hook (`handleLeadPrompt` in packages/server/src/routes/hooks.ts) counts every prompt without runcastle's tag as the human typing. That moves a chat-owned feature to the human and clears what the feature waits on. From now on, such machine-made prompts change nothing: the owner stays the same and no human-message mark is set. The builder looks for other prompts of the same kind, checks whether the Codex runtime has an equivalent, and covers the fix with a test. It goes to the "Honest statuses" worker.
+**Why:** During this feature's own planning run, seven helper results moved the feature to the human and cleared its waiting marks, though the human never typed. Same family as decision 4: a status must say who is really acting.
+**The human's**, added to the brief as item 7 through the orchestrator on 2026-11-10.

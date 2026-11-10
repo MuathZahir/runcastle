@@ -3,7 +3,7 @@
 ## Problem
 
 The feature loop (a lead starting workers, the Review worker driving, the human test-driving)
-is what runcastle is for, and in six places it is noisy, hidden or mislabelled:
+is what runcastle is for, and in seven places it is noisy, hidden or mislabelled:
 
 - A chat's work rows read "Worked for 17s >" over and over and say nothing about what ran.
 - A worker's handback card prints its whole report in the lead's chat, a screen and a half.
@@ -12,6 +12,8 @@ is what runcastle is for, and in six places it is noisy, hidden or mislabelled:
 - When the Review worker drives the app, the drive slot looks like the human's own drive, and the
   feature chat warns that "the agent can't land its own edits".
 - A lead that starts a worker leaves nothing clickable in its chat; the human hunts for it in the side panel.
+- A lead's background helper finishing counts as the human typing: the feature moves to the human
+  and its waiting marks clear.
 
 ## Approach
 
@@ -80,6 +82,15 @@ The one-drive-slot rule (ADR-0014) is untouched. The phone has no drive slot and
 drive; its chat bar's status words and the chat banner read the same feature status, so they follow
 the desktop with no phone-only work.
 
+**A helper's result is not the human typing (decision 18, brief item 7).** The lead's prompt hook
+(`handleLeadPrompt`, packages/server/src/routes/hooks.ts) treats any prompt without runcastle's tag
+as typed by the human: it moves a chat-owned feature to the human and stamps the human-message mark,
+which clears the feature's waiting reason, stopped mark and outstanding handback. Claude Code
+delivers a finished background helper's result to the lead as a prompt opening with
+`<task-notification>`, so every helper result did both. The hook skips such machine-made prompts,
+the same way it already skips runcastle's compaction command. The builder lists any other
+machine-made prompt shapes it finds and checks the Codex runtime's prompt path for the same flaw.
+
 **Designs.** Two design pages hold the look of the chat pieces, waiting for the human's approval:
 "Worker chat" (states: folded, assignment-open) and "Lead chat — worker cards" (states: started,
 handed-back, report-open). They change the real work-row, assignment-card and handback-card
@@ -103,6 +114,10 @@ restyle. The drive slot change is a label and a click and was not designed.
   a human drive carries purpose `human`.
 - **The drive slot and drive notices** (existing, web): rendered for a human drive and an agent drive —
   label, click target, Stop confirm, banner present only for the human's.
+- **The lead's prompt hook** (existing, server route): post a UserPromptSubmit for a lead whose
+  feature a chat owns, with a `<task-notification>` prompt, and observe that the owner and the
+  waiting marks are unchanged and no human-message event is emitted; a plainly typed prompt still
+  moves the feature and stamps the mark.
 - **The handback card and assignment card** (existing, web): folded by default, Show more reveals the
   capped box.
 
