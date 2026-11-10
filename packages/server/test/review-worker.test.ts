@@ -11,6 +11,7 @@ import { listByFeature as listFindings, reportFinding } from '../src/services/re
 import { reviewPackage, workerPass } from '../src/services/review-package'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
+import { readThreadEvents } from '../src/threads/log'
 import type { AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import { type DriveTaken, hostReviewEnv, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
@@ -356,5 +357,28 @@ describe('a verify review', () => {
     expect(assignment).not.toContain('The header overflows')
 
     await expect(toolStartReview(ctx, leadSession(), { verify: { findingIds: ['finding_nope'], commits: [] } })).rejects.toThrow(/no finding finding_nope/)
+  })
+})
+
+describe("a review in the lead's workers card", () => {
+  const started = () =>
+    readThreadEvents(lead).flatMap((e) => (e.type === 'worker_started' ? [{ workerId: e.workerId, label: e.label, purpose: e.purpose, kind: e.kind }] : []))
+
+  it("appends a worker_started event to the lead's chat for a gates review and a verify review", async () => {
+    realHost(reviewer(() => {}))
+    const first = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
+    const fixed = reportFinding(ctx, { featureId: feature.id, reviewWorker: getWorker(ctx, first.workerId)!, input: defect('The theme does not persist') }).finding
+    const verify = await toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: [fixed.id], commits: ['abc1234 fix'] } })
+    expect(started()).toEqual([
+      { workerId: first.workerId, label: getWorker(ctx, first.workerId)!.label, purpose: 'Reads the feature for review', kind: 'review' },
+      { workerId: verify.workerId, label: 'Review: verify', purpose: 'Verifies 1 fixed finding(s)', kind: 'review' },
+    ])
+  })
+
+  it('appends one for a drive review as it starts queued', async () => {
+    drive.answers = [{ ok: false, retriable: true, reason: 'A test drive of feature/work is running — stop it first' }]
+    realHost(reviewer(() => {}))
+    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    expect(started()).toEqual([expect.objectContaining({ workerId, kind: 'review', purpose: 'Drives the feature for review' })])
   })
 })
