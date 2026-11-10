@@ -24,3 +24,7 @@ The brief's "every project's features shown at once" form is dropped: at seven p
 ## 5. Rail order: fixed, drag to reorder
 **Decision:** The rail keeps a fixed order the human sets by dragging tiles, on desktop and on the phone strip. The order is saved on the server, per project, so every device shows the same order. A newly opened project goes to the end. The "All projects" page and the Ctrl+K palette's project group follow the same order.
 **Why:** A rail is fast because each project stays in the same spot; recency would move tiles on every switch. The human chose drag over the insertion order so they can put the projects they use most on top.
+
+## 6. Alt+1–9 jumps to a project
+**Decision:** Alt+1 to Alt+9 switch to the first nine projects in the rail's order, from anywhere in the app (including while focus is in a chat). A tile's tooltip shows its shortcut beside the name (e.g. "clawflow  Alt+2"). There is no other new shortcut; the Ctrl+K palette stays the way to reach a project by name.
+**Why:** Ctrl+1–9 is taken by the browser for its own tabs; Alt+digit is unused in runcastle, cheap, and the order the human drags becomes their keyboard map.
