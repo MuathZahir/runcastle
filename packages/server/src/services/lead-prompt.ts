@@ -38,6 +38,36 @@ export function isRuncastlePrompt(prompt: string): boolean {
   return text.startsWith(RUNCASTLE_PROMPT_TAG) || HOOK_FEEDBACK_LINE.test(text)
 }
 
+/**
+ * The tags Claude Code wraps a prompt it makes itself in (triage-batch decision
+ * 18), read off the 2.1.x bundle: a finished background command, subagent,
+ * remote task or Monitor event (`task-notification`), and messages from other
+ * agents, sessions or channels. None is the human typing.
+ */
+const MACHINE_PROMPT_TAGS = [
+  'task-notification',
+  'teammate-message',
+  'cross-session-message',
+  'agent-message',
+  'coordinator-relay',
+  'channel',
+  'remote-review',
+  'remote-review-progress',
+  'slack-ping',
+  'slack-tag-message',
+] as const
+
+const MACHINE_PROMPT = new RegExp(`^<(?:${MACHINE_PROMPT_TAGS.join('|')})(?=[\\s>])`)
+
+/**
+ * Whether a submitted prompt is one Claude Code made on its own: a background
+ * helper's result, a peer's message. The lead's prompt hook skips it, as it
+ * skips the compaction command: it moves no feature and clears no wait.
+ */
+export function isMachinePrompt(prompt: string): boolean {
+  return MACHINE_PROMPT.test(prompt.trimStart())
+}
+
 /** How an opening held for the human's first message ends: that message follows it, in the same prompt. */
 export const HELD_OPENING_END = "The human's message follows."
 

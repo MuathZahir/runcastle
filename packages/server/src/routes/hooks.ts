@@ -21,7 +21,7 @@ import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt, stagedPathsAt } from '../services/git'
 import { featureStateLine } from '../services/feature-state'
 import { isLeadSession } from '../services/lead-delivery'
-import { isRuncastlePrompt, typedAfterOpening } from '../services/lead-prompt'
+import { isMachinePrompt, isRuncastlePrompt, typedAfterOpening } from '../services/lead-prompt'
 import { releaseOnTyped } from '../services/holding'
 import { markHumanMessage } from '../services/lead-status'
 import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
@@ -392,11 +392,14 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
  * feature's last-human-message mark. A payload with no prompt text says
  * nothing about who wrote it, so it stamps nothing. Nor does the compaction
  * command: runcastle sends it, and stamping it would clear what the feature
- * waits on (lead-chats-stay-small decision 14).
+ * waits on (lead-chats-stay-small decision 14). Nor does a prompt Claude Code
+ * makes itself — a background helper's `<task-notification>`, a peer's message
+ * (triage-batch decision 18): it would move a chat-owned feature to the human
+ * and clear its waiting reason, stopped mark and handback.
  */
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt === undefined || COMPACT_TEXT.test(prompt.trimStart())) return
+  if (prompt === undefined || COMPACT_TEXT.test(prompt.trimStart()) || isMachinePrompt(prompt)) return
   // A chat nobody started opens on the human's first message, behind runcastle's held opening: still typed.
   if (isRuncastlePrompt(prompt) && typedAfterOpening(prompt) === null) return
   // Typing in the lead's main chat takes a chat-owned feature (every-feature-has-one-owner
