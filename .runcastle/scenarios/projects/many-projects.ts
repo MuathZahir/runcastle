@@ -36,7 +36,7 @@ import { runMigrations } from '../../../packages/server/src/db/migrate.ts'
 import type { AppCtx } from '../../../packages/server/src/db/types.ts'
 import { createFeature, list as listFeatures } from '../../../packages/server/src/services/features.ts'
 import { setWaiting } from '../../../packages/server/src/services/lead-status.ts'
-import { listProjects, openProject } from '../../../packages/server/src/services/projects.ts'
+import { closeProject, listProjects, openProject } from '../../../packages/server/src/services/projects.ts'
 import { createSessionRow, markSessionEnded, setSessionTitle } from '../../../packages/server/src/launcher/sessions.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from '../../drive-dir.ts'
 
@@ -123,6 +123,21 @@ async function main(): Promise<void> {
 
     const opened: Record<string, Project> = {}
     for (const name of NAMES) opened[name] = await projectNamed(ctx, root, name, SEEDED.has(name))
+
+    // On a copy of the owner's database, a seeded project's namesake (their real
+    // repo) is open too, so the rail would show it twice. Close the namesake in
+    // this drive's database only: closing writes a row here and touches no repo.
+    for (const name of SEEDED) {
+      const own = opened[name]!.id
+      for (const p of listProjects(ctx)) {
+        if (p.id === own || (p.name !== name && basename(p.repoPath) !== name)) continue
+        try {
+          closeProject(ctx, p.id)
+        } catch {
+          // A run in flight keeps it open; a duplicate tile beats a failed scenario.
+        }
+      }
+    }
 
     // Needs you: an active feature whose lead has asked something and waits.
     for (const [name, title, ask] of [
