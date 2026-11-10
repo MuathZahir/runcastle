@@ -38,7 +38,7 @@ vi.mock('../src/trpc', () => ({
   },
 }))
 
-const project = { id: 'p1', name: 'runcastle', repoPath: '/home/you/code/runcastle' }
+const project = { id: 'p1', name: 'runcastle', repoPath: '/home/you/code/runcastle', position: 0 }
 
 const stats = (over: Partial<ProjectStats> = {}): ProjectStats => ({
   total: 3,

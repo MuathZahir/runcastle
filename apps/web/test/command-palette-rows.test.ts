@@ -15,15 +15,15 @@ import type { ProjectNavApi } from '../src/lib/use-project-nav'
  */
 const nav: ProjectNavApi = {
   projects: [
-    { id: 'p1', name: 'runcastle', repoPath: '/repo/runcastle' },
-    { id: 'p2', name: 'terminal-wait-game', repoPath: '/repo/twg' },
+    { id: 'p1', name: 'runcastle', repoPath: '/repo/runcastle', position: 0 },
+    { id: 'p2', name: 'terminal-wait-game', repoPath: '/repo/twg', position: 0 },
   ],
   loading: false,
   doctorError: null,
   recheckDoctor: () => undefined,
   view: 'project',
   currentProjectId: 'p1',
-  currentProject: { id: 'p1', name: 'runcastle', repoPath: '/repo/runcastle' },
+  currentProject: { id: 'p1', name: 'runcastle', repoPath: '/repo/runcastle', position: 0 },
   goHome: () => undefined,
   enterProject: () => undefined,
   showOpen: () => undefined,

@@ -306,13 +306,13 @@ function mountWithSidebar(
 }
 
 const sidebarNav = {
-  projects: [{ id: 'proj_1', name: 'nav-project', repoPath: '/repo' }],
+  projects: [{ id: 'proj_1', name: 'nav-project', repoPath: '/repo', position: 0 }],
   loading: false,
   doctorError: null,
   recheckDoctor: () => {},
   view: 'project' as const,
   currentProjectId: 'proj_1',
-  currentProject: { id: 'proj_1', name: 'nav-project', repoPath: '/repo' },
+  currentProject: { id: 'proj_1', name: 'nav-project', repoPath: '/repo', position: 0 },
   goHome: () => {},
   enterProject: () => {},
   showOpen: () => {},

@@ -13,8 +13,8 @@ import { openMenu } from './floating'
  */
 
 const projects = [
-  { id: 'p1', name: 'runcastle', repoPath: '/home/you/code/runcastle' },
-  { id: 'p2', name: 'runcastle', repoPath: 'C:\\Users\\you\\forks\\runcastle-fork\\' },
+  { id: 'p1', name: 'runcastle', repoPath: '/home/you/code/runcastle', position: 0 },
+  { id: 'p2', name: 'runcastle', repoPath: 'C:\\Users\\you\\forks\\runcastle-fork\\', position: 0 },
 ]
 
 const navApi = (over: Partial<ProjectNavApi> = {}): ProjectNavApi => ({
@@ -104,9 +104,9 @@ describe('ProjectSwitcher', () => {
     render(
       <ProjectSwitcher
         nav={navApi({
-          projects: [{ id: 'p9', name: 'sandcastle', repoPath: '/home/you/code/sandcastle' }],
+          projects: [{ id: 'p9', name: 'sandcastle', repoPath: '/home/you/code/sandcastle', position: 0 }],
           currentProjectId: 'p9',
-          currentProject: { id: 'p9', name: 'sandcastle', repoPath: '/home/you/code/sandcastle' },
+          currentProject: { id: 'p9', name: 'sandcastle', repoPath: '/home/you/code/sandcastle', position: 0 },
         })}
       />,
     )
@@ -122,7 +122,7 @@ describe('ProjectSwitcher', () => {
   })
 
   it('truncates a long project name rather than widening the sidebar head', () => {
-    const long = { id: 'p3', name: 'a-project-name-long-enough-to-swallow-the-row', repoPath: '/r' }
+    const long = { id: 'p3', name: 'a-project-name-long-enough-to-swallow-the-row', repoPath: '/r', position: 0 }
     render(<ProjectSwitcher nav={navApi({ currentProjectId: 'p3', currentProject: long })} />)
 
     const label = screen.getByTitle(long.name)

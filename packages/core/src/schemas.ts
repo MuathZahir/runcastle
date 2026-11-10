@@ -523,6 +523,11 @@ export const Project = z.object({
    * strip rather than report.
    */
   closedAt: z.number().optional(),
+  /**
+   * Where the project sits on the project rail, ascending; `project.list`
+   * returns open projects in this order and `project.reorder` rewrites it.
+   */
+  position: z.number().int(),
 })
 export type Project = z.infer<typeof Project>
 

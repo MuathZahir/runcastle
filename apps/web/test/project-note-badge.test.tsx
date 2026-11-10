@@ -43,13 +43,13 @@ vi.mock('../src/trpc', () => ({
 const { Sidebar } = await import('../src/components/Sidebar')
 
 const nav = {
-  projects: [{ id: 'project-1', name: 'runcastle', repoPath: '/repo' }],
+  projects: [{ id: 'project-1', name: 'runcastle', repoPath: '/repo', position: 0 }],
   loading: false,
   doctorError: null,
   recheckDoctor: () => {},
   view: 'project' as const,
   currentProjectId: 'project-1',
-  currentProject: { id: 'project-1', name: 'runcastle', repoPath: '/repo' },
+  currentProject: { id: 'project-1', name: 'runcastle', repoPath: '/repo', position: 0 },
   goHome: () => {},
   enterProject: () => {},
   showOpen: () => {},

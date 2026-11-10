@@ -32,9 +32,9 @@ vi.mock('../src/trpc', () => ({
 }))
 
 const projects = [
-  { id: 'p1', name: 'runcastle', repoPath: '/home/you/code/runcastle' },
-  { id: 'p2', name: 'sandcastle', repoPath: '/home/you/code/sandcastle' },
-  { id: 'p3', name: 'lighthouse', repoPath: '/home/you/code/lighthouse' },
+  { id: 'p1', name: 'runcastle', repoPath: '/home/you/code/runcastle', position: 0 },
+  { id: 'p2', name: 'sandcastle', repoPath: '/home/you/code/sandcastle', position: 0 },
+  { id: 'p3', name: 'lighthouse', repoPath: '/home/you/code/lighthouse', position: 0 },
 ]
 
 const nav: ProjectNavApi = {

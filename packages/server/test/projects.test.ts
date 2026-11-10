@@ -236,3 +236,72 @@ describe('projects service — multi-project CRUD (#43)', () => {
     expect(aTypes).not.toContain('project.renamed')
   })
 })
+
+/**
+ * The project rail's order (a-better-way-to-move-between-projects decision 5):
+ * `project.list` returns open projects by position, a new or re-opened project
+ * lands at the end, and `project.reorder` rewrites the order only when handed
+ * every open project exactly once.
+ */
+describe('project rail order', () => {
+  let ctx: AppCtx
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+  })
+
+  it('lists projects in the order they were opened, then in the order reorder sets', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+    const a = await caller.project.open({ repoPath: await gitRepo() })
+    const b = await caller.project.open({ repoPath: await gitRepo() })
+    const c = await caller.project.open({ repoPath: await gitRepo() })
+    expect((await caller.project.list()).map((p) => p.id)).toEqual([a.id, b.id, c.id])
+
+    const returned = await caller.project.reorder({ projectIds: [c.id, a.id, b.id] })
+    expect(returned.map((p) => p.id)).toEqual([c.id, a.id, b.id])
+    expect((await caller.project.list()).map((p) => p.id)).toEqual([c.id, a.id, b.id])
+
+    const events = listByProject(ctx, c.id, 0).filter((e) => e.type === 'project.reordered')
+    expect(events).toHaveLength(1)
+  })
+
+  it('puts a newly opened project at the end of a reordered rail', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+    const a = await caller.project.open({ repoPath: await gitRepo() })
+    const b = await caller.project.open({ repoPath: await gitRepo() })
+    await caller.project.reorder({ projectIds: [b.id, a.id] })
+    const c = await caller.project.open({ repoPath: await gitRepo() })
+    expect((await caller.project.list()).map((p) => p.id)).toEqual([b.id, a.id, c.id])
+  })
+
+  it('puts a re-opened project at the end, and leaves an already-open one in place', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+    const aPath = await gitRepo()
+    const bPath = await gitRepo()
+    const a = await caller.project.open({ repoPath: aPath })
+    const b = await caller.project.open({ repoPath: bPath })
+    const c = await caller.project.open({ repoPath: await gitRepo() })
+
+    await caller.project.open({ repoPath: bPath })
+    expect((await caller.project.list()).map((p) => p.id)).toEqual([a.id, b.id, c.id])
+
+    await caller.project.close({ projectId: a.id })
+    await caller.project.open({ repoPath: aPath })
+    expect((await caller.project.list()).map((p) => p.id)).toEqual([b.id, c.id, a.id])
+  })
+
+  it('refuses an order that does not list every open project exactly once, writing nothing', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+    const a = await caller.project.open({ repoPath: await gitRepo() })
+    const b = await caller.project.open({ repoPath: await gitRepo() })
+    const c = await caller.project.open({ repoPath: await gitRepo() })
+    await caller.project.close({ projectId: c.id })
+
+    const bad = [[b.id], [b.id, a.id, c.id], [b.id, b.id], [b.id, 'proj_nope'], [a.id, b.id, a.id]]
+    for (const projectIds of bad) {
+      await expect(caller.project.reorder({ projectIds })).rejects.toThrow(/every open project/)
+    }
+    expect((await caller.project.list()).map((p) => p.id)).toEqual([a.id, b.id])
+    expect(listByProject(ctx, a.id, 0).some((e) => e.type === 'project.reordered')).toBe(false)
+  })
+})
