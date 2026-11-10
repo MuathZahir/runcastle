@@ -186,6 +186,24 @@ describe('thread router', () => {
     await expect(acpLaunchInput(ctx, getSessionRow(ctx, fix) as SessionRow)).rejects.toThrow(/old drive chat/)
   })
 
+  // every-feature-has-one-owner decision 17: an orchestrator chat's row says which features it asks about.
+  it('lists an orchestrator chat that ended on a question after a plan card as waiting, asking about that feature', async () => {
+    const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
+    const quiet = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
+    for (const id of [row.id, quiet.id]) {
+      appendThreadEvent(id, { type: 'prompt', id: 'p', text: 'run it for me', source: 'human' })
+      appendThreadEvent(id, { type: 'turn_started' })
+      appendThreadEvent(id, { type: 'plan_shown', featureId })
+      appendThreadEvent(id, { type: 'agent_text', messageId: 'm', text: id === row.id ? 'Approve this plan?' : 'Plan posted; building now.' })
+      appendThreadEvent(id, { type: 'turn_ended', reason: 'end_turn' })
+    }
+    const list = await caller.thread.list({ projectId })
+    expect(list.find((t) => t.id === row.id)).toMatchObject({ state: 'waiting', askingAbout: [featureId] })
+    const other = list.find((t) => t.id === quiet.id)
+    expect(other?.state).toBe('idle')
+    expect(other).not.toHaveProperty('askingAbout')
+  })
+
   // decision 14: a thread is named by what it is about, never by its kind.
   it('names each thread by its rename, its generated title, its first message, or New chat', async () => {
     const thread = (log: ThreadEventBody[]): string => {

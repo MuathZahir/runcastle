@@ -43,7 +43,7 @@ import { deliverToLead } from './lead-delivery'
 import { clearHandback } from './lead-status'
 import { refreshFeatureTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
-import { needEventsByProject, needOf } from './feature-need'
+import { chatReader, needEventsByProject, needOf } from './feature-need'
 import {
   getFeatureRow,
   getProjectById,
@@ -477,6 +477,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const workerPages = workersPageByFeature(ctx, projectId)
   const needEvents = needEventsByProject(ctx, projectId)
   const driveConfigured = !!getProjectById(ctx, projectId)?.devCommand
+  const chat = chatReader(ctx)
 
   return projectFeatures.map((feature) => {
     const byStatus = ticketStatuses.get(feature.id)
@@ -504,7 +505,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       dependsOn: deps.dependsOn.get(feature.id) ?? [],
       blocks: deps.blocks.get(feature.id) ?? [],
       upNextProblem: feature.upNext && feature.status === 'draft' ? (problems.get(feature.id) ?? null) : null,
-      need: needOf(ctx, feature, { events: needEvents.get(feature.id) ?? [], lead, driveConfigured }),
+      need: needOf(ctx, feature, { events: needEvents.get(feature.id) ?? [], lead, driveConfigured, chat }),
     }
   })
 }

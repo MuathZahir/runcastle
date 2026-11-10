@@ -19,7 +19,7 @@ import { useIsPhone } from '../lib/use-phone'
 import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
-import { foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
+import { askingAboutLine, foldKey, heldFeatures, sidebarThreadOrder, threadIsActive, useFoldedThreads, useSidebarThreads } from '../lib/sidebar-threads'
 import { FeatureSidebar } from './workers/FeatureSidebar'
 import { hasDraft, useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT, standIn } from '../lib/chat-sessions'
@@ -456,6 +456,7 @@ export function Sidebar(props: SidebarProps) {
                         const held = heldFeatures(t.id, features)
                         return held.length > 0 ? <HoldTip features={held} /> : undefined
                       }}
+                      aboutFor={(t) => askingAboutLine(t, features)}
                       {...(projectThreads.allConversations ? { more: projectThreads.allConversations } : {})}
                     />
                     </>

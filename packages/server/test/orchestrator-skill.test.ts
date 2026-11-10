@@ -110,7 +110,7 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('**`merge`** ("you build and merge it")')
     expect(text).toContain('designs are approved only by the human, never by you')
     expect(text).toContain('**Outside a cut, merge only when the human asks you to.**')
-    expect(text).toContain('**When you ask the human about a feature you own, show its card in the same turn**')
+    expect(text).toContain('**When you ask the human about a feature you own, show its card in the same turn and put your question in words with a question mark**')
     expect(text).toContain('`show_plan({ slug })`')
     expect(text).toContain('Never show a raw `preview.html`.')
     expect(text).toContain('**Drive when a "show me before merging" feature is ready**')

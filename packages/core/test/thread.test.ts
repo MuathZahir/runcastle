@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BACKGROUND_WINDOW_MS,
+  featuresAskedAbout,
   foldThread,
   lastPickedModel,
   liveEvents,
@@ -1270,5 +1271,62 @@ describe('awaitsHuman', () => {
 
   it('an empty thread waits on nobody', () => {
     expect(awaitsHuman([], false)).toBe(false)
+  })
+})
+
+describe('featuresAskedAbout (every-feature-has-one-owner decision 17)', () => {
+  const turn = (words: string, ...cards: ThreadEventBody[]): ThreadEventBody[] => [
+    { type: 'turn_started' },
+    ...cards,
+    { type: 'agent_text', messageId: `m${words.length}`, text: words },
+    { type: 'turn_ended', reason: 'end_turn' },
+  ]
+  const plan = (featureId: string): ThreadEventBody => ({ type: 'plan_shown', featureId })
+  const design = (featureId: string, designId = 'd1'): ThreadEventBody => ({ type: 'design_shown', designId, featureId })
+  const review = (featureId: string): ThreadEventBody => ({ type: 'review_package', ticketId: 't1', featureId })
+  const asked = (...bodies: ThreadEventBody[]) => featuresAskedAbout(log(...bodies), true, 100_000)
+
+  it('names the features whose cards the turn showed when it ended on a question', () => {
+    expect(asked(prompt('p1'), ...turn('Approve these, or change them?', plan('f1'), design('f2'), review('f3'), design('f2', 'd2')))).toEqual(['f1', 'f2', 'f3'])
+  })
+
+  it('names nothing when the turn asked nothing, or showed no card', () => {
+    expect(asked(prompt('p1'), ...turn('Plan posted. Round 1 is running.', plan('f1')))).toEqual([])
+    expect(asked(prompt('p1'), ...turn('Which should go first?'))).toEqual([])
+  })
+
+  it('reads a question followed by a recommendation as asking', () => {
+    expect(asked(prompt('p1'), ...turn('Should I start that drive when it is ready? I recommend yes.', review('f1')))).toEqual(['f1'])
+  })
+
+  it('reads a question with no question mark as asking nothing', () => {
+    expect(asked(prompt('p1'), ...turn('Approve the plan in the card, or tell me what to change.', plan('f1')))).toEqual([])
+  })
+
+  it('weighs only the last turn: a card an earlier turn showed does not count', () => {
+    expect(asked(prompt('p1'), ...turn('Does this look right?', plan('f1')), prompt('p2', 'Yes'), ...turn('Next, the design?', design('f2')))).toEqual(['f2'])
+  })
+
+  it('names nothing once the human has answered, or while the chat works', () => {
+    expect(asked(prompt('p1'), ...turn('Does this look right?', plan('f1')), prompt('p2', 'Yes'))).toEqual([])
+    expect(asked(prompt('p1'), { type: 'turn_started' }, plan('f1'), { type: 'agent_text', messageId: 'm1', text: 'Shall I?' })).toEqual([])
+  })
+
+  it('still names them after a held line arrives, since it answers nothing', () => {
+    const held: ThreadEventBody = { type: 'prompt', id: 'p2', text: '[runcastle] note', source: 'runcastle', held: true }
+    expect(asked(prompt('p1'), ...turn('Approve it?', plan('f1')), held)).toEqual(['f1'])
+  })
+
+  it('names the cards shown so far while an ask is open mid-turn', () => {
+    const ask: ThreadEventBody = { type: 'ask', ask: { kind: 'question', id: 'a1', questions: [] } }
+    expect(asked(prompt('p1'), { type: 'turn_started' }, review('f3'), ask)).toEqual(['f3'])
+  })
+
+  it('still names them once the chat process has stopped (decision 22: it still owns them)', () => {
+    expect(featuresAskedAbout(log(prompt('p1'), ...turn('Merge it?', review('f3')), { type: 'process', state: 'stopped' }), false, 100_000)).toEqual(['f3'])
+  })
+
+  it('ignores a card from an older log that names no feature', () => {
+    expect(asked(prompt('p1'), ...turn('Approve it?', { type: 'plan_shown' }))).toEqual([])
   })
 })

@@ -1,5 +1,4 @@
 import { StrictMode, useState } from 'react'
-import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
@@ -14,11 +13,10 @@ import {
   SidebarBackdrop,
   SidebarFeatureRow,
   SidebarThreadRow,
-  ThreadGlyph,
   WorkingShelf,
 } from '../src/components/SidebarParts'
 import { sidebarLanes } from '../src/lib/feature-ui'
-import { heldFeatures } from '../src/lib/sidebar-threads'
+import { askingAboutLine, heldFeatures } from '../src/lib/sidebar-threads'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry, ThreadState } from '../src/lib/chat-thread'
 import { applyStoredTheme } from '../src/lib/theme'
@@ -33,12 +31,8 @@ import { Switcher, stateFromAddress, stopLinks } from './owner-switcher'
  * feature rows, all real SidebarParts over sample data and the real lanes.
  * The dot sits on the thing you click to answer: the chat row when the chat
  * asks, the feature row only when the feature itself waits on you. States at
- * ?state=. A dead end: nothing navigates.
- *
- * The one piece composed here: a chat row's second line ("Asking about …").
- * The real `SidebarThreadRow` is one line, and the two-line row it would grow
- * from (`TwoLineRow`) is private to SidebarParts, so `AskingThreadRow` below
- * draws the thread row's own columns with a 12px line under the title.
+ * ?state=. A dead end: nothing navigates. The chat row's second line
+ * ("Asking about …") is the real row's `about`, read as the sidebar reads it.
  */
 
 applyStoredTheme()
@@ -122,30 +116,6 @@ function thread(id: string, title: string, state: ThreadState, movedAgo: number)
 
 const noop = () => {}
 
-/**
- * A chat row that names what it asks about: the thread row's three columns
- * (glyph, title, mark) and, under the title, one 12px muted line. Drawn here
- * because the real row is one line (see the header comment).
- */
-function AskingThreadRow({ thread: t, about, mark }: { thread: ThreadEntry; about: string; mark: ReactNode }) {
-  return (
-    <div className="group/thread relative shrink-0 rounded-md transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover">
-      <button
-        type="button"
-        title={`${t.title} — ${about}`}
-        className="flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] px-2.5 py-1.5 text-left"
-      >
-        <span className="flex h-5 w-full min-w-0 items-center gap-2">
-          <ThreadGlyph state={t.state} />
-          <span className="min-w-0 flex-1 truncate text-md text-text">{t.title}</span>
-          <span className="inline-flex shrink-0 items-center text-xs text-text-tertiary tabular-nums">{mark}</span>
-        </span>
-        <span className="min-w-0 truncate pl-6 text-xs text-text-tertiary">{about}</span>
-      </button>
-    </div>
-  )
-}
-
 function DesignSidebar({ k }: { k: Key }) {
   const features = [owned(k), ...(k === 'asking' ? [SIBLING] : []), ...STEADY]
   const { inbox, lanes } = sidebarLanes(features)
@@ -154,7 +124,7 @@ function DesignSidebar({ k }: { k: Key }) {
   const row = (f: FeatureListItem, nested = false) => (
     <SidebarFeatureRow key={f.id} f={f} active={false} onSelect={noop} actions={[]} nested={nested} />
   )
-  const notes = thread(NOTES, 'Notes triage', chatState[k], k === 'quiet-hour' ? 64 * MIN : 3 * MIN)
+  const notes = { ...thread(NOTES, 'Notes triage', chatState[k], k === 'quiet-hour' ? 64 * MIN : 3 * MIN), ...(k === 'asking' ? { askingAbout: ['f_owned'] } : {}) }
   const landing = thread(LANDING, 'Landing page copy', 'idle', 25 * MIN)
   const mark = (t: ThreadEntry) => {
     const held = heldFeatures(t.id, features)
@@ -179,11 +149,8 @@ function DesignSidebar({ k }: { k: Key }) {
               {chats.map((t, i) => (
                 <li key={t.id} className="flex flex-col gap-px">
                   {i > 0 && <span aria-hidden className="mr-2.5 ml-[34px] h-px bg-border-subtle" />}
-                  {t.state === 'waiting' ? (
-                    <AskingThreadRow thread={t} about={`Asking about ${OWNED}`} mark={mark(t)} />
-                  ) : (
-                    <SidebarThreadRow thread={t} active={false} onOpen={noop} actions={[]} mark={mark(t)} />
-                  )}
+                  <SidebarThreadRow thread={t} active={false} onOpen={noop} actions={[]} mark={mark(t)} about={askingAboutLine(t, features)} />
+
                 </li>
               ))}
             </ul>
