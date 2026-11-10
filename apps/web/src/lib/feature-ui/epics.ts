@@ -2,6 +2,8 @@ import type { FeatureListItem } from '../api'
 import type { ThreadEntry } from '../chat-thread'
 import { triageOf, type TriageKey } from './sidebar'
 import { askingAboutLine } from '../sidebar-threads'
+import type { EpicColor, EpicIconId } from '../epic-look'
+import { relTime } from '../format'
 
 /**
  * The sidebar as a list of epics (docs/features/orchestrator-chats-become-epics):
@@ -30,6 +32,12 @@ export interface Epic {
    */
   asksAbout: string | null
   features: EpicFeature[]
+  /** Its colour (epics-that-look-alive decision 2); blue until the server stores one. */
+  color?: EpicColor | null
+  /** Its icon id (decision 1); the default chat bubble while unset. */
+  icon?: EpicIconId | null
+  /** How many of its features shipped (decision 4): the slim row's "3 shipped". */
+  shipped?: number
 }
 
 /** One group of the list, in display order: an epic, or the features with no epic (decision 7). */
@@ -68,9 +76,10 @@ export function orderInEpic<T>(items: readonly T[], featureOf: (x: T) => Feature
 }
 
 /**
- * The list's groups (decision 8): epics with something yellow first, then the
- * rest, each group newest started first; "Other features" ends the group it
- * sorts into (decision 7). Each epic's features come in their own order, only
+ * The list's groups (decision 8): epics with something yellow first, then those
+ * in motion, then idle ones (epics-that-look-alive decision 8), each group newest
+ * started first; "Other features" ends the yellow group or the in-motion one
+ * (decision 7), so it never sits among idle epics. Each epic's features come in their own order, only
  * those in motion or up next, and an empty Other features group is left out.
  */
 export function orderEpicList(epics: readonly Epic[], other: readonly FeatureListItem[] = []): EpicGroup[] {
@@ -82,10 +91,33 @@ export function orderEpicList(epics: readonly Epic[], other: readonly FeatureLis
   }))
   const loose = orderInEpic(other.filter(inEpic), (f) => f)
   const looseYellow = loose.some(featureIsYellow)
+  const idle = (g: EpicGroup) => g.kind === 'epic' && epicIsIdle(g.epic)
   const yellow = groups.filter((g) => g.yellow)
-  const rest = groups.filter((g) => !g.yellow)
+  const busy = groups.filter((g) => !g.yellow && !idle(g))
+  const resting = groups.filter((g) => !g.yellow && idle(g))
   const otherGroup: EpicGroup[] = loose.length > 0 ? [{ kind: 'other', features: loose, yellow: looseYellow }] : []
-  return looseYellow ? [...yellow, ...otherGroup, ...rest] : [...yellow, ...rest, ...otherGroup]
+  return looseYellow
+    ? [...yellow, ...otherGroup, ...busy, ...resting]
+    : [...yellow, ...busy, ...otherGroup, ...resting]
+}
+
+/**
+ * An epic at rest (epics-that-look-alive decision 4): its chat neither works
+ * nor asks, and nothing it cut is in motion or up next. It draws as a slim row.
+ * Pass the epic as `orderEpicList` returns it (its features already filtered).
+ */
+export function epicIsIdle(epic: Pick<Epic, 'chat' | 'features'>): boolean {
+  return epic.chat.state !== 'working' && epic.chat.state !== 'waiting' && epic.features.length === 0
+}
+
+/**
+ * The slim row's quiet facts (decision 4): what it shipped and when its chat
+ * was last active, "3 shipped · 2h"; a fresh epic with nothing shipped says
+ * only "2h".
+ */
+export function idleEpicFacts(epic: Pick<Epic, 'chat' | 'shipped'>, now: number = Date.now()): string {
+  const ago = relTime(epic.chat.updatedAt, now)
+  return epic.shipped && epic.shipped > 0 ? `${epic.shipped} shipped · ${ago}` : ago
 }
 
 /** "With <chat> · " at the head of a feature's words. */
@@ -169,6 +201,10 @@ export function epicsFrom(
     features: moving
       .filter((f) => f.chatId === chat.id)
       .map((feature) => ({ feature, holder: epicHolder(feature, chat.id, chats) })),
+    color: chat.color ?? null,
+    icon: chat.icon ?? null,
+    // The list carries shipped features for the Shipped shelf, so the count needs no server read.
+    shipped: features.filter((f) => f.status === 'shipped' && f.chatId === chat.id).length,
   }))
   const other = moving.filter((f) => !f.chatId || !ids.has(f.chatId))
   return { epics, other }

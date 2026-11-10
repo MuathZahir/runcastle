@@ -146,7 +146,7 @@ function DesignSidebar({ open, onOpen }: { open: Open; onOpen: (o: Open) => void
           <ProjectSwitcher nav={nav} />
         </div>
         <IconButton label="Search or jump to" kbd={shortcut('K')} size="sm" icon={<IconSearch />} tooltipSide="bottom" />
-        <CreateMenu onNewChat={noop} onDraft={noop} onOpenNote={noop} />
+        <CreateMenu onDraft={noop} onOpenNote={noop} />
         <CollapseSidebarButton />
       </div>
       <div className="mt-3">

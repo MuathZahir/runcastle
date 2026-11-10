@@ -84,6 +84,7 @@ import { saveThreadImage } from './images'
 import { withWorkers, workerStallBounds, workerTurnSlot } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
+import { assignEpicColor } from './epic-look'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { catalogEntry, LONG_CONTEXT, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
 import { namesItsSubject, runtimeMayName, threadAbout, threadName } from './naming'
@@ -970,7 +971,7 @@ class Host implements AgentHost {
     }
     const prefix = events.slice(0, turnEndIndex(events, at)).filter((e) => e.type !== 'process')
     const model = row.model ? { model: { id: row.model, runtime: row.runtime ?? DEFAULT_RUNTIME } } : {}
-    const created = createSessionRow(this.ctx, { projectId: row.projectId, kind: 'project', worktreePath: row.worktreePath, ...model })
+    const created = assignEpicColor(this.ctx, createSessionRow(this.ctx, { projectId: row.projectId, kind: 'project', worktreePath: row.worktreePath, ...model }))
     seedThreadLog(created.id, prefix)
     appendThreadEvent(created.id, { type: 'branched', from: threadName(row, readThreadEvents(row.id), threadAbout(this.ctx, row.featureId)) })
     const point = lastAgentMessageId(prefix)

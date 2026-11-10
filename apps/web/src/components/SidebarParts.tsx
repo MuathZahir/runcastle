@@ -64,6 +64,24 @@ const HOVER = 'hover:bg-surface-hover'
 /** The card (theme.css `card`): the selected row, the Working bay, a live drive. */
 export const SIDEBAR_CARD = 'card rounded-lg'
 
+/**
+ * The sidebar's head (epics-that-look-alive decision 7): the project's name,
+ * large, and its controls. On the desktop the controls sit together in one
+ * quiet card; on a phone the head is a little taller and the name a size up.
+ */
+export function SidebarHead({ name, phone = false, children }: { name: string | undefined; phone?: boolean; children: ReactNode }) {
+  return (
+    <div className={cx('flex shrink-0 items-center gap-2', phone ? 'h-11 px-1' : 'h-10')}>
+      <div className="flex min-w-0 flex-1">
+        <span className={cx('truncate px-2 font-semibold tracking-tight text-text', phone ? 'text-xl' : 'text-lg')} title={name}>
+          {name}
+        </span>
+      </div>
+      {phone ? children : <div className="card flex shrink-0 items-center gap-px rounded-lg p-0.5">{children}</div>}
+    </div>
+  )
+}
+
 /** The glyph a row wears: the feature's landed share of tickets (decision 9). */
 export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; size?: number; label?: string }) {
   return <ProgressIcon state={progressState(f)} progress={ticketShare(f)} size={size} label={label} />

@@ -2,6 +2,7 @@ import * as z from 'zod'
 import { AgentRuntime, ModelEntry } from './config'
 import { ReviewGateRun } from './review-gates'
 import { WaitingKind } from './feature-need'
+import { EPIC_COLORS, EPIC_ICON_IDS } from './epic-look'
 
 /**
  * Wire types for tRPC and MCP. Every schema here is the single source of
@@ -692,6 +693,12 @@ export const SessionRow = z.object({
   endedAt: z.number().optional(),
   /** A `side` session's main-chat row at open time; unset on every other kind — see the db schema. */
   openedBeside: z.string().optional(),
+  /** A project chat's epic colour (epics-that-look-alive decision 2); unset on every other kind — see the db schema. */
+  epicColor: z.enum(EPIC_COLORS).optional(),
+  /** A project chat's epic icon (decision 1); unset until one is picked. */
+  epicIcon: z.enum(EPIC_ICON_IDS).optional(),
+  /** The human picked the icon (decision 3); unset reads as false. */
+  epicIconByHuman: z.boolean().optional(),
 })
 export type SessionRow = z.infer<typeof SessionRow>
 

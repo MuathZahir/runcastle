@@ -207,6 +207,21 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
     expect(onOpenConversations).toHaveBeenCalledOnce()
   })
 
+  it('keeps an idle epic’s shipped count at the default width, folding only the time away (epics-that-look-alive decision 10)', () => {
+    data.threads = [epic('dark', 'Dark Mode', { lastHumanAt: Date.now() })]
+    data.features = [
+      titled('Theme tokens', { chatId: 'dark', status: 'shipped' }),
+      titled('Contrast pass', { chatId: 'dark', status: 'shipped' }),
+    ]
+    rail()
+    const facts = epicRow('Dark Mode').lastElementChild as HTMLElement
+    expect(facts.textContent).toMatch(/^2 shipped · /)
+    // The narrow rule hides the time, never the count.
+    const folds = facts.querySelector('.\\@max-\\[300px\\]\\/slim\\:hidden') as HTMLElement
+    expect(folds.textContent).toMatch(/^ · /)
+    expect(folds.textContent).not.toContain('shipped')
+  })
+
   it('keeps no lane headings, Project or Preparation rows, or runs elsewhere', () => {
     data.features = [
       titled('Coupons', { need: need('test', 'Ready to test') }),

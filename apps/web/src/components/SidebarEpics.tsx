@@ -2,8 +2,9 @@ import { Fragment, isValidElement, type ReactNode } from 'react'
 import { cx, StatusDot } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry } from '../lib/chat-thread'
-import { IconArrowRight, IconList, IconOrchestrator } from '../icons'
-import { epicOwnerJoin, nestedFeatureWords, orderEpicList, type Epic } from '../lib/feature-ui/epics'
+import { IconArrowRight, IconList, IconPlus } from '../icons'
+import { EpicIcon, epicStyle, type EpicColor, type EpicIconId } from '../lib/epic-look'
+import { epicIsIdle, epicOwnerJoin, idleEpicFacts, nestedFeatureWords, orderEpicList, type Epic } from '../lib/feature-ui/epics'
 import type { OwnerReading } from '../lib/feature-owner'
 import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
@@ -24,24 +25,34 @@ const REVEAL = 'opacity-0 group-hover/nav:opacity-100 group-has-[:focus-visible]
 const CONCEAL = 'group-hover/nav:opacity-0 group-has-[:focus-visible]/nav:opacity-0'
 
 /**
- * An epic's mark: the hub in a small accent tile, the same on every epic so
- * the column of tiles down the list reads as the epics. `quiet` is the
- * neutral tile of "Other features", which is not a chat.
+ * An epic's mark: its icon in a small tile of its colour (epics-that-look-alive
+ * decisions 1–2). `quiet` is the neutral tile of "Other features", which is not a chat.
  */
-export function EpicGlyph({ quiet = false, small = false }: { quiet?: boolean; small?: boolean }) {
+export function EpicGlyph({
+  quiet = false,
+  small = false,
+  color,
+  icon,
+}: {
+  quiet?: boolean
+  small?: boolean
+  color?: EpicColor | null | undefined
+  icon?: EpicIconId | null | undefined
+}) {
   return (
     <span
       aria-hidden
+      style={quiet ? undefined : epicStyle(color)}
       className={cx(
         'inline-flex shrink-0 items-center justify-center',
         // `small`: the 16px tile a header crumb wears, beside 14px glyphs.
         small ? 'size-4 rounded-sm' : 'size-5 rounded-md',
         quiet
           ? 'bg-fill-well text-icon'
-          : 'bg-[color-mix(in_oklab,var(--color-accent)_16%,transparent)] text-accent-text ring-1 ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)] ring-inset',
+          : 'bg-[color-mix(in_oklab,var(--epic)_16%,transparent)] text-(--epic-text) ring-1 ring-[color-mix(in_oklab,var(--epic)_30%,transparent)] ring-inset',
       )}
     >
-      {quiet ? <IconList size={small ? 10 : 12} /> : <IconOrchestrator size={small ? 11 : 13} />}
+      {quiet ? <IconList size={small ? 10 : 12} /> : <EpicIcon icon={icon} size={small ? 11 : 13} />}
     </span>
   )
 }
@@ -64,7 +75,7 @@ export function epicCrumb(
         {epic.title}
       </span>
     ),
-    icon: <EpicGlyph small />,
+    icon: <EpicGlyph small color={epic.color} icon={epic.icon} />,
     onClick: () => onOpen(epic.id),
     // It gives way with the owner and the title, down to a few letters.
     shrink: true,
@@ -102,7 +113,7 @@ export function epicOwnerCrumbs(
       // The epic's name gives way down to a few letters; the finish words after it never do.
       shrink: true,
       ...(epic.title.length > 6 ? { floor: owner.planning ? 'min-w-56' : 'min-w-44' } : {}),
-      icon: <EpicGlyph small />,
+      icon: <EpicGlyph small color={epic.color} icon={epic.icon} />,
       label: (
         <span className="inline-flex min-w-0 items-center">
           <button
@@ -167,7 +178,7 @@ export function SidebarEpicRow({
         onClick={() => onOpen(chat.id)}
         className="flex w-full cursor-pointer items-start gap-2 rounded-[inherit] py-1.5 pr-2.5 pl-2.5 text-left"
       >
-        <EpicGlyph />
+        <EpicGlyph color={chat.color} icon={chat.icon} />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex h-5 min-w-0 items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-md font-medium text-text">{chat.title}</span>
@@ -198,20 +209,20 @@ export function SidebarEpicRow({
   )
 }
 
-/** The accent wash an epic's head sits on, the Orchestrator card's own: brighter at the tile, fading right. */
+/** The wash an epic's head sits on, in its colour (`--epic`): brighter at the tile, fading right. */
 const EPIC_WASH =
-  'bg-[linear-gradient(100deg,color-mix(in_oklab,var(--color-accent)_14%,var(--color-canvas)),color-mix(in_oklab,var(--color-accent)_4%,var(--color-canvas))_75%)]'
+  'bg-[linear-gradient(100deg,color-mix(in_oklab,var(--epic)_14%,var(--color-canvas)),color-mix(in_oklab,var(--epic)_4%,var(--color-canvas))_75%)]'
 
 /** The same wash, brighter, while the epic's chat is the one in front. */
 const EPIC_WASH_OPEN =
-  'bg-[linear-gradient(100deg,color-mix(in_oklab,var(--color-accent)_26%,var(--color-canvas)),color-mix(in_oklab,var(--color-accent)_9%,var(--color-canvas))_75%)]'
+  'bg-[linear-gradient(100deg,color-mix(in_oklab,var(--epic)_26%,var(--color-canvas)),color-mix(in_oklab,var(--epic)_9%,var(--color-canvas))_75%)]'
 
 /** The fine grid behind an epic's head, fading out leftward under its name. */
 const EPIC_GRID =
-  'pointer-events-none absolute inset-y-0 right-0 -z-10 w-1/2 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--color-accent)_13%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--color-accent)_13%,transparent)_1px,transparent_1px)] [background-size:10px_10px] [mask-image:linear-gradient(to_left,black,transparent)]'
+  'pointer-events-none absolute inset-y-0 right-0 -z-10 w-1/2 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--epic)_13%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--epic)_13%,transparent)_1px,transparent_1px)] [background-size:10px_10px] [mask-image:linear-gradient(to_left,black,transparent)]'
 
-/** An epic's tile in its card's head: the hub, a size up from the list glyph, lit like the Orchestrator's. */
-function EpicTile({ quiet = false, open = false }: { quiet?: boolean; open?: boolean }) {
+/** An epic's tile in its card's head: its icon, a size up from the list glyph, in its colour. */
+function EpicTile({ quiet = false, open = false, icon }: { quiet?: boolean; open?: boolean; icon?: EpicIconId | null | undefined }) {
   return (
     <span
       aria-hidden
@@ -220,14 +231,14 @@ function EpicTile({ quiet = false, open = false }: { quiet?: boolean; open?: boo
         quiet
           ? 'bg-fill-well text-icon ring-border-subtle'
           : cx(
-              'text-accent-text shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] transition-colors duration-(--dur-2) ease-app',
+              'text-(--epic-text) shadow-[inset_0_1px_0_color-mix(in_oklab,var(--color-text)_12%,transparent)] transition-colors duration-(--dur-2) ease-app',
               open
-                ? 'bg-[color-mix(in_oklab,var(--color-accent)_28%,transparent)] ring-[color-mix(in_oklab,var(--color-accent)_60%,transparent)]'
-                : 'bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] ring-[color-mix(in_oklab,var(--color-accent)_35%,transparent)]',
+                ? 'bg-[color-mix(in_oklab,var(--epic)_28%,transparent)] ring-[color-mix(in_oklab,var(--epic)_60%,transparent)]'
+                : 'bg-[color-mix(in_oklab,var(--epic)_18%,transparent)] ring-[color-mix(in_oklab,var(--epic)_35%,transparent)]',
             ),
       )}
     >
-      {quiet ? <IconList size={15} /> : <IconOrchestrator size={17} />}
+      {quiet ? <IconList size={15} /> : <EpicIcon icon={icon} size={17} />}
     </span>
   )
 }
@@ -267,9 +278,15 @@ export function SidebarEpicCard({
   active,
   onOpen,
   actions = [],
+  color,
+  icon,
   children,
 }: {
   chat: ThreadEntry
+  /** Its colour (decision 2): the head's wash, grid and tile. */
+  color?: EpicColor | null | undefined
+  /** Its icon (decision 1); the default chat bubble while unset. */
+  icon?: EpicIconId | null | undefined
   asksAbout?: string | null
   /** Its features in the card, for the resting line. */
   count: number
@@ -286,6 +303,7 @@ export function SidebarEpicCard({
   const rows = children ?? []
   return (
     <div
+      style={epicStyle(color)}
       className={cx(
         // One hairline in every state: the head says which epic is open and which works.
         'card relative isolate shrink-0 overflow-hidden rounded-lg',
@@ -304,7 +322,7 @@ export function SidebarEpicCard({
         <span
           aria-hidden
           data-sheen
-          className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-1/2 [transform:translateX(-110%)] bg-[linear-gradient(100deg,transparent,color-mix(in_oklab,var(--color-accent)_16%,transparent),transparent)]"
+          className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-1/2 [transform:translateX(-110%)] bg-[linear-gradient(100deg,transparent,color-mix(in_oklab,var(--epic)_16%,transparent),transparent)]"
         />
         <button
           type="button"
@@ -313,7 +331,7 @@ export function SidebarEpicCard({
           onClick={() => onOpen(chat.id)}
           className="flex w-full cursor-pointer items-center gap-2.5 py-2 pr-2.5 pl-2 text-left"
         >
-          <EpicTile open={active} />
+          <EpicTile open={active} icon={icon} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-md font-semibold tracking-tight text-text">{chat.title}</span>
@@ -330,7 +348,7 @@ export function SidebarEpicCard({
                   ? 'text-text-secondary'
                   : working
                     ? 'text-shimmer text-text-tertiary'
-                    : 'text-[color-mix(in_oklab,var(--color-accent-text)_70%,var(--color-text-tertiary))]',
+                    : 'text-[color-mix(in_oklab,var(--epic-text)_70%,var(--color-text-tertiary))]',
               )}
             >
               {words}
@@ -352,6 +370,120 @@ export function SidebarEpicCard({
         </div>
       )}
     </div>
+  )
+}
+
+/** An idle epic's slim row: a faint wash of its colour, fading right, like a card's head turned down. */
+const SLIM_WASH =
+  'bg-[linear-gradient(100deg,color-mix(in_oklab,var(--epic)_9%,var(--color-canvas)),color-mix(in_oklab,var(--epic)_2%,var(--color-canvas))_80%)] hover:bg-[linear-gradient(100deg,color-mix(in_oklab,var(--epic)_14%,var(--color-canvas)),color-mix(in_oklab,var(--epic)_4%,var(--color-canvas))_80%)]'
+
+/** The same wash, brighter, while the epic's chat is the one in front. */
+const SLIM_WASH_OPEN =
+  'bg-[linear-gradient(100deg,color-mix(in_oklab,var(--epic)_20%,var(--color-canvas)),color-mix(in_oklab,var(--epic)_6%,var(--color-canvas))_80%)]'
+
+/**
+ * An epic at rest, as one slim line (epics-that-look-alive decision 4): a
+ * card-edged strip on a faint wash of its colour, its icon in that colour
+ * standing in the cards' tile column, its name, and on the right what it
+ * shipped and when it last moved ("3 shipped · 2h"). The wash is a turned-down
+ * card head, so busy cards still stand out over the quiet rows.
+ */
+function SidebarEpicSlimRow({
+  chat,
+  facts,
+  active,
+  onOpen,
+  actions = [],
+  color,
+  icon,
+}: {
+  chat: ThreadEntry
+  /** What it shipped and when it last moved: {@link idleEpicFacts}. */
+  facts: string
+  active: boolean
+  onOpen: (chatId: string) => void
+  actions?: FeatureAction[]
+  color?: EpicColor | null | undefined
+  icon?: EpicIconId | null | undefined
+}) {
+  const cut = facts.lastIndexOf(' · ')
+  const shipped = cut < 0 ? null : facts.slice(0, cut)
+  const ago = cut < 0 ? facts : facts.slice(cut + 3)
+  return (
+    <div
+      data-epic={chat.id}
+      style={epicStyle(color)}
+      className={cx(
+        '@container/slim group/nav card relative shrink-0 overflow-hidden rounded-lg transition-[background] duration-(--dur-1) ease-app',
+        active ? SLIM_WASH_OPEN : SLIM_WASH,
+      )}
+      onContextMenu={actions.length > 0 ? openRowMenu : undefined}
+    >
+      <button
+        type="button"
+        // The facts are on the row itself; the tooltip carries the full name, as the idle card's did.
+        title={chat.title}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => onOpen(chat.id)}
+        // The facts end where the card rows' times do.
+        className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-[inherit] pr-3.5 pl-2 text-left"
+      >
+        <span aria-hidden className="flex w-8 shrink-0 justify-center text-(--epic-text)">
+          <EpicIcon icon={icon} size={15} />
+        </span>
+        <span
+          className={cx(
+            'min-w-0 flex-1 truncate text-md',
+            active ? 'font-medium text-text' : 'text-text-secondary group-hover/nav:text-text',
+          )}
+        >
+          {chat.title}
+        </span>
+        <span className={cx('shrink-0 text-xs text-text-tertiary tabular-nums transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
+          {/* In a narrow sidebar (the default width) one fact stays: what it shipped, else the time. */}
+          {shipped ? (
+            <>
+              {shipped}
+              <span className="@max-[300px]/slim:hidden"> · {ago}</span>
+            </>
+          ) : (
+            ago
+          )}
+        </span>
+      </button>
+      {actions.length > 0 && (
+        <span data-row-actions="" className={cx('absolute top-1/2 right-1 flex -translate-y-1/2 items-center transition-opacity duration-(--dur-1)', REVEAL)}>
+          <FeatureActionsMenu actions={actions} label="Epic actions" />
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The one way into a new epic (decision 5): a dotted slot at the top of the
+ * list. `open` while the new, still-empty chat is in front — it has no card
+ * until its first message is sent, so the slot is what shows it is open.
+ */
+function NewEpicSlot({ open = false, onClick }: { open?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-current={open ? 'page' : undefined}
+      onClick={onClick}
+      className={cx(
+        'group/new flex h-9 w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-dashed pr-2.5 pl-2 text-left text-md transition-colors duration-(--dur-1) ease-app',
+        open
+          ? 'border-[color-mix(in_oklab,var(--color-accent)_55%,transparent)] bg-[color-mix(in_oklab,var(--color-accent)_7%,transparent)] text-text'
+          : 'border-border-strong text-text-tertiary hover:border-[color-mix(in_oklab,var(--color-text-tertiary)_60%,transparent)] hover:bg-surface-hover hover:text-text-secondary',
+      )}
+    >
+      <span aria-hidden className={cx('flex w-8 shrink-0 justify-center', open && 'text-accent-text')}>
+        <IconPlus size={14} />
+      </span>
+      <span className="min-w-0 flex-1 truncate">New epic</span>
+      {open && <span className="shrink-0 text-xs text-text-tertiary">Not sent yet</span>}
+    </button>
   )
 }
 
@@ -396,12 +528,18 @@ export interface SidebarEpicsProps {
   ownerChoicesFor?: (f: FeatureListItem) => ReactNode
   /** What the list calls a chat: "epic" (decision 14), or "chat". */
   noun?: 'epic' | 'chat'
+  /** Start a new epic: the dotted slot on top (epics-that-look-alive decision 5). No slot without it. */
+  onNewEpic?: () => void
+  /** The new, still-empty epic chat is in front: the slot shows it open. */
+  newEpicOpen?: boolean
 }
 
 /**
- * The list of epics, a card each, ending in "All N epics". No label of its
- * own: the cards say what they are, and New epic lives in the create menu. No fold and no lanes: the nesting says what belongs to what,
- * and the yellow-first order keeps the next step on top (decision 8).
+ * The list of epics, ending in "All N epics": the dotted New epic slot on top,
+ * then a card for each epic with something in motion and a slim row for each
+ * at rest (epics-that-look-alive decisions 4–5). No label of its own: the
+ * cards say what they are. No fold and no lanes: the nesting says what belongs
+ * to what, and the yellow-first order keeps the next step on top (decision 8).
  */
 export function SidebarEpics({
   epics,
@@ -417,8 +555,11 @@ export function SidebarEpics({
   workersFor,
   ownerChoicesFor,
   noun = 'epic',
+  onNewEpic,
+  newEpicOpen = false,
 }: SidebarEpicsProps) {
   const groups = orderEpicList(epics, other)
+  const slim = groups.map((g) => g.kind === 'epic' && epicIsIdle(g.epic))
   const many = noun === 'epic' ? 'Epics' : 'Chats'
   const row = (f: FeatureListItem, words: string) => {
     const workers = workersFor?.(f)
@@ -439,10 +580,26 @@ export function SidebarEpics({
   }
   return (
     <section aria-label={many} className="flex flex-col gap-2.5">
-      <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+      {onNewEpic && <NewEpicSlot open={newEpicOpen} onClick={onNewEpic} />}
+      <ul className="m-0 flex list-none flex-col p-0">
         {groups.map((g, i) => (
-          <li key={g.kind === 'epic' ? g.epic.chat.id : 'other'} className="flex animate-rise-in flex-col" style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}>
-            {g.kind === 'epic' ? (
+          <li
+            key={g.kind === 'epic' ? g.epic.chat.id : 'other'}
+            // Slim rows run together as a list; a card keeps its air on both sides.
+            className={cx('flex animate-rise-in flex-col', i > 0 && (slim[i] && slim[i - 1] ? 'mt-1.5' : 'mt-2.5'))}
+            style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
+          >
+            {g.kind === 'epic' && slim[i] ? (
+              <SidebarEpicSlimRow
+                chat={g.epic.chat}
+                facts={idleEpicFacts(g.epic)}
+                active={g.epic.chat.id === currentChat}
+                onOpen={onOpenEpic}
+                actions={epicActions?.(g.epic.chat) ?? []}
+                color={g.epic.color}
+                icon={g.epic.icon}
+              />
+            ) : g.kind === 'epic' ? (
               <SidebarEpicCard
                 chat={g.epic.chat}
                 asksAbout={g.epic.asksAbout}
@@ -450,6 +607,8 @@ export function SidebarEpics({
                 active={g.epic.chat.id === currentChat}
                 onOpen={onOpenEpic}
                 actions={epicActions?.(g.epic.chat) ?? []}
+                color={g.epic.color}
+                icon={g.epic.icon}
               >
                 {g.epic.features.map((x) => row(x.feature, nestedFeatureWords(featureStateWords(x.feature), x.holder, g.epic.chat.title)))}
               </SidebarEpicCard>

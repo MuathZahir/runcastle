@@ -29,11 +29,14 @@ const runScenario = vi.fn()
 const openScenarioChat = vi.fn()
 const threadNew = vi.fn()
 const threadSend = vi.fn()
+/** The chat column's first Send, while the column in front can start its thread. */
+const columnStart = vi.hoisted(() => ({ current: null as (() => Promise<void>) | null }))
 const talkToProject = vi.fn()
 const dryRunStop = vi.fn()
 /** Whether `project.talkToProject` is still launching, so its answer has not come back. */
 let launching = false
 const threadRename = vi.fn()
+const threadSetLook = vi.fn()
 const threadExport = vi.fn((_input: unknown) => ({ markdown: '# Audit the journal\n' }))
 /** What `thread.list` answers for the project. */
 let threads: ThreadEntry[] = []
@@ -96,9 +99,15 @@ vi.mock('../src/trpc', () => {
               threadNew(input)
               opts.onSuccess({ threadId: 'th_new' })
             },
+            mutateAsync: async (input: unknown) => {
+              threadNew(input)
+              opts.onSuccess({ threadId: 'th_new' })
+              return { threadId: 'th_new' }
+            },
           }),
         },
         send: { useMutation: () => ({ isPending: false, mutate: threadSend, mutateAsync: threadSend }) },
+        setLook: { useMutation: () => ({ isPending: false, mutate: threadSetLook }) },
       },
       project: {
         talkToProject: {
@@ -196,9 +205,11 @@ vi.mock('../src/lib/use-session-branch', () => ({
 vi.mock('../src/components/TerminalView', () => ({ TerminalView: () => null }))
 // The thread itself is ThreadColumn's own test; here it names which thread is in front.
 vi.mock('../src/components/chat/ThreadColumn', () => ({
-  ThreadColumn: ({ label, threadId }: { label?: string; threadId: string | null }) => (
-    <section aria-label={label} data-thread-column="" data-thread={threadId ?? 'new'} />
-  ),
+  ThreadColumn: (props: { label?: string; threadId: string | null; start?: () => Promise<string>; onStarted?: (id: string) => void }) => {
+    // What the composer's first Send would call: start the thread, then say its id.
+    columnStart.current = props.start ? async () => props.onStarted?.(await props.start!()) : null
+    return <section aria-label={props.label} data-thread-column="" data-thread={props.threadId ?? 'new'} />
+  },
   ThreadOpening: () => <section aria-label="Chat" aria-busy="true" data-thread-column="" />,
 }))
 vi.mock('../src/lib/project-notes', () => ({
@@ -664,13 +675,36 @@ describe('New chat with a chat running', () => {
   }
 
   // The project page's New door (ProjectShell, the sidebar's Create menu) asks through `newChatRequest`.
-  it('opens an empty new thread from the New door too', () => {
+  // epics-that-look-alive decision 5: the click saves nothing; the first message does.
+  it('opens an empty new epic from the New door too, saved only on its first message', async () => {
     running()
     const consumed = vi.fn()
     render(<ProjectWorkspace projectId="proj_1" talk={talk({ session: liveChat })} newChatRequest={1} onConsumeNewChatRequest={consumed} />)
+    expect(threadNew).not.toHaveBeenCalled()
+    expect(chatInFront()?.dataset.thread).toBe('new')
+    expect(consumed).toHaveBeenCalled()
+    await act(async () => {
+      await columnStart.current?.()
+    })
     expect(threadNew).toHaveBeenCalledTimes(1)
     expect(chatInFront()?.dataset.thread).toBe('th_new')
-    expect(consumed).toHaveBeenCalled()
+  })
+
+  it('opens an unsaved new epic from the dotted slot, shown open there, with no card until its first message', async () => {
+    running()
+    mountWithSidebar(talk({ session: liveChat }))
+    fireEvent.click(screen.getByRole('button', { name: 'New epic' }))
+    expect(threadNew).not.toHaveBeenCalled()
+    expect(chatInFront()?.dataset.thread).toBe('new')
+    expect(screen.getByRole('button', { name: /New epic/ }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByText('Not sent yet')).toBeTruthy()
+    expect(orchestratorChats()).not.toContain('New chat')
+    await act(async () => {
+      await columnStart.current?.()
+    })
+    expect(threadNew).toHaveBeenCalledTimes(1)
+    expect(chatInFront()?.dataset.thread).toBe('th_new')
+    expect(screen.queryByText('Not sent yet')).toBeNull()
   })
 
   it('lists the same chats, names and states on the Epics page as in the sidebar', () => {
@@ -806,6 +840,21 @@ describe('a live project chat', () => {
     fireEvent.submit(again.closest('form')!)
     expect(threadRename).toHaveBeenCalledWith({ threadId: 'sess_1', title: 'Journal audit' })
     expect(screen.queryByRole('dialog', { name: 'Rename chat' })).toBeNull()
+  })
+
+  // epics-that-look-alive decision 3.
+  it('opens "Colour and icon…" from an epic’s menu, saving each pick through thread.setLook', async () => {
+    threads = [{ ...entry('sess_1', 'Audit the journal', 2_000), color: 'teal', icon: 'book' }]
+    mountWithSidebar(talk({ session: liveChat }))
+    openMenu(within(chatRow('Audit the journal')).getByRole('button', { name: 'Epic actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Colour and icon…' }))
+    const colours = await screen.findByRole('radiogroup', { name: 'Colour' })
+    expect(within(colours).getByRole('radio', { name: 'Teal' }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(within(colours).getByRole('radio', { name: 'Rose' }))
+    expect(threadSetLook).toHaveBeenLastCalledWith({ threadId: 'sess_1', color: 'rose' })
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Icon' })).getByRole('radio', { name: 'Launch' }))
+    expect(threadSetLook).toHaveBeenLastCalledWith({ threadId: 'sess_1', icon: 'rocket' })
+    expect(within(colours).getByRole('radio', { name: 'Rose' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('exports a chat from its row’s menu as a downloaded Markdown file named by its title', async () => {

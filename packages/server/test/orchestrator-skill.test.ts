@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { EPIC_ICON_IDS } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 
@@ -61,7 +62,8 @@ describe('the project skill, orchestrating', () => {
   // what every turn needs and points at a reference per job.
   it('keeps only what every turn needs, with a reference per job that exists', () => {
     const text = skill()
-    expect(text.length).toBeLessThanOrEqual(25_000)
+    // Raised from 25_000 for the epic icon ids name_epic picks from (epics-that-look-alive decision 1).
+    expect(text.length).toBeLessThanOrEqual(25_400)
     expect(text).not.toContain('## Your tools')
     expect(text).toContain('**Load your runcastle tools once**')
     const pointers = [...text.matchAll(/\.\/references\/([a-z-]+\.md)/g)].map((m) => m[1])
@@ -86,6 +88,14 @@ describe('the project skill, orchestrating', () => {
     expect(top).toContain("never over the human's rename")
     expect(top).toContain('suggest starting a new epic')
     expect(top).toContain('this chat is "the epic"')
+  })
+
+  it('picks an icon with the name, from the curated ids only, and lists every one (epics-that-look-alive decision 1)', () => {
+    const top = skill().slice(0, skill().indexOf('## 0.'))
+    expect(top).toContain('**Pick an icon with it**')
+    expect(top).toContain('from this list only')
+    for (const id of EPIC_ICON_IDS) expect(top, id).toMatch(new RegExp(`[ :]${id}[,.]`))
+    expect(top).toContain('An icon the human picked is kept')
   })
 
   it('asks the two questions at intake, and reads the finish from the feature while orchestrating', () => {

@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { SessionRow } from '@runcastle/core'
+import { EPIC_ICON_IDS, type SessionRow } from '@runcastle/core'
+import { events } from '../src/db/schema'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { simpleGit } from 'simple-git'
@@ -55,6 +56,14 @@ function orchestratorChat(): SessionRow {
   return getSessionRow(ctx, row.id) as SessionRow
 }
 
+/** The look events emitted for a chat, oldest first. */
+const lookEvents = (sessionId: string) =>
+  ctx.db
+    .select()
+    .from(events)
+    .all()
+    .filter((e) => e.type.startsWith('session.epic_') && (e.data as { sessionId?: string } | null)?.sessionId === sessionId)
+
 const listed = async (id: string) =>
   (await createCallerFactory(appRouter)(ctx).thread.list({ projectId })).find((t) => t.id === id)
 
@@ -72,34 +81,74 @@ describe('name_epic', () => {
     const chat = orchestratorChat()
     expect(await listed(chat.id)).toMatchObject({ title: 'Adding Stripe payments to the checkout page', epicNamed: false, humanNamed: false })
 
-    expect(toolNameEpic(ctx, chat, { name: '  Payment   System ' })).toEqual({ name: 'Payment System' })
+    expect(toolNameEpic(ctx, chat, { name: '  Payment   System ', icon: 'credit-card' })).toMatchObject({ name: 'Payment System', nameApplied: true, icon: 'credit-card', iconApplied: true })
 
-    expect(await listed(chat.id)).toMatchObject({ title: 'Payment System', epicNamed: true, humanNamed: false })
+    expect(await listed(chat.id)).toMatchObject({ title: 'Payment System', epicNamed: true, humanNamed: false, icon: 'credit-card' })
     expect(readThreadEvents(chat.id).at(-1)).toMatchObject({ type: 'title', title: 'Payment System', by: 'orchestrator' })
+    expect(lookEvents(chat.id).map((e) => e.type)).toEqual(['session.epic_icon_named'])
   })
 
-  it("refuses over the human's rename, naming it, and changes nothing", async () => {
+  it("keeps the human's rename, still sets the icon, and says so", async () => {
     const chat = orchestratorChat()
     await createCallerFactory(appRouter)(ctx).thread.rename({ threadId: chat.id, title: 'Money stuff' })
     const before = readThreadEvents(chat.id).length
 
-    expect(() => toolNameEpic(ctx, chat, { name: 'Payment System' })).toThrow(new GateError('The human named this chat "Money stuff"; keep it.'))
+    const out = toolNameEpic(ctx, chat, { name: 'Payment System', icon: 'credit-card' })
+    expect(out).toMatchObject({ name: 'Money stuff', nameApplied: false, icon: 'credit-card', iconApplied: true })
+    expect(out.note).toContain('The human named this chat "Money stuff"; keep it.')
 
     expect(readThreadEvents(chat.id)).toHaveLength(before)
-    expect(await listed(chat.id)).toMatchObject({ title: 'Money stuff', epicNamed: false, humanNamed: true })
+    expect(await listed(chat.id)).toMatchObject({ title: 'Money stuff', epicNamed: false, humanNamed: true, icon: 'credit-card' })
+  })
+
+  it("never changes an icon the human picked, and still names the chat", async () => {
+    const chat = orchestratorChat()
+    await createCallerFactory(appRouter)(ctx).thread.setLook({ threadId: chat.id, icon: 'bug' })
+
+    const out = toolNameEpic(ctx, chat, { name: 'Payment System', icon: 'credit-card' })
+    expect(out).toMatchObject({ name: 'Payment System', nameApplied: true, icon: 'bug', iconApplied: false })
+    expect(await listed(chat.id)).toMatchObject({ title: 'Payment System', icon: 'bug', iconByHuman: true })
+    expect(lookEvents(chat.id).map((e) => e.type)).toEqual(['session.epic_look_set'])
+  })
+
+  it('refuses, changing nothing, when the human set both the name and the icon', async () => {
+    const chat = orchestratorChat()
+    const caller = createCallerFactory(appRouter)(ctx)
+    await caller.thread.rename({ threadId: chat.id, title: 'Money stuff' })
+    await caller.thread.setLook({ threadId: chat.id, icon: 'bug' })
+    expect(() => toolNameEpic(ctx, chat, { name: 'Payment System', icon: 'credit-card' })).toThrow(GateError)
+    expect(await listed(chat.id)).toMatchObject({ title: 'Money stuff', icon: 'bug' })
+  })
+
+  it('refuses an icon outside the curated ids, changing nothing', async () => {
+    const chat = orchestratorChat()
+    expect(() => toolNameEpic(ctx, chat, { name: 'Payment System', icon: 'unicorn' })).toThrow(InvalidInputError)
+    expect(readThreadEvents(chat.id).filter((e) => e.type === 'title' && e.by)).toEqual([])
+    expect((await listed(chat.id))?.icon).toBeUndefined()
+  })
+
+  it('refuses an unknown icon at the MCP boundary too: the input is an enum of the curated ids', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'epic-test', version: '1' })
+    await Promise.all([buildMcpServer('project').connect(serverTransport), client.connect(clientTransport)])
+    const { tools } = await client.listTools()
+    await client.close()
+    const schema = tools.find((t) => t.name === 'name_epic')?.inputSchema as { required?: string[]; properties?: Record<string, { enum?: string[] }> }
+    expect(schema.required).toEqual(expect.arrayContaining(['name', 'icon']))
+    expect(schema.properties?.icon?.enum).toEqual([...EPIC_ICON_IDS])
   })
 
   it('refuses an empty or over-long name', () => {
     const chat = orchestratorChat()
-    expect(() => toolNameEpic(ctx, chat, { name: '   ' })).toThrow(InvalidInputError)
-    expect(() => toolNameEpic(ctx, chat, { name: 'x'.repeat(41) })).toThrow(InvalidInputError)
+    expect(() => toolNameEpic(ctx, chat, { name: '   ', icon: 'rocket' })).toThrow(InvalidInputError)
+    expect(() => toolNameEpic(ctx, chat, { name: 'x'.repeat(41), icon: 'rocket' })).toThrow(InvalidInputError)
     expect(readThreadEvents(chat.id).filter((e) => e.type === 'title' && e.by)).toEqual([])
   })
 
   it("refuses a feature's lead", () => {
     const feature = seedFeature(ctx, projectId, { slug: 'pay' })
     const lead = createSessionRow(ctx, { kind: 'chat', featureId: feature.id, worktreePath: repoPath })
-    expect(() => toolNameEpic(ctx, lead, { name: 'Payment System' })).toThrow(GateError)
+    expect(() => toolNameEpic(ctx, lead, { name: 'Payment System', icon: 'rocket' })).toThrow(GateError)
   })
 
   it('is offered to orchestrator sessions only', async () => {

@@ -81,6 +81,30 @@ describe('membership (decisions 6, 7)', () => {
     expect(other).toEqual([])
   })
 
+  it('counts what each epic shipped from the list the shelves read (epics-that-look-alive decision 4)', () => {
+    const features = [
+      feature('done', 'pay', { status: 'shipped' }),
+      feature('done too', 'pay', { status: 'shipped' }),
+      feature('elsewhere', 'ship', { status: 'shipped' }),
+      feature('loose', null, { status: 'shipped' }),
+      feature('moving', 'pay'),
+      feature('gone', 'pay', { status: 'archived' }),
+    ]
+    const { epics } = epicsFrom([pay, ship], features, everyone)
+    expect(epics.map((e) => [e.chat.id, e.shipped])).toEqual([
+      ['pay', 2],
+      ['ship', 1],
+    ])
+  })
+
+  it("takes each epic's colour and icon from its chat, none while unset", () => {
+    const { epics } = epicsFrom([{ ...pay, color: 'rose', icon: 'rocket' }, ship], [], everyone)
+    expect(epics.map((e) => [e.color, e.icon])).toEqual([
+      ['rose', 'rocket'],
+      [null, null],
+    ])
+  })
+
   it('says who runs each: its epic, you, or another chat by name', () => {
     expect(epicHolder({ heldBy: 'pay' }, 'pay', [pay, ship])).toEqual({ kind: 'epic' })
     expect(epicHolder({}, 'pay', [pay, ship])).toEqual({ kind: 'you' })
@@ -100,9 +124,16 @@ describe('the order (decision 8)', () => {
     expect(groups.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['needs', 'asks', 'quiet'])
   })
 
+  it('puts epics in motion above idle ones, even when the idle one is newer', () => {
+    const working = chat('working', 'Working', { createdAt: 1, state: 'working' })
+    const groups = orderEpicList(epicsFrom([quiet, working], [], everyone).epics, [])
+    expect(groups.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['working', 'quiet'])
+  })
+
   it('floats Other features with the yellow epics only when something in it is yellow', () => {
     const calm = orderEpicList(epicsFrom([quiet, asks], [feature('loose', null)], everyone).epics, [feature('loose', null)])
-    expect(calm.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['asks', 'quiet', 'other'])
+    // Other features is in motion, so it sits above an idle epic either way.
+    expect(calm.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['asks', 'other', 'quiet'])
     const loud = [feature('loose', null, { need: asking('Needs your answer') })]
     const lit = orderEpicList(epicsFrom([quiet, asks], loud, everyone).epics, loud)
     expect(lit.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['asks', 'other', 'quiet'])
@@ -195,12 +226,46 @@ describe('the list (SidebarEpics, static markup)', () => {
   const pay = chat('pay', 'Payment System', { state: 'waiting' })
   const ship = chat('ship', 'Shipping')
 
-  it('has no heading and no "+" of its own (New epic lives in the create menu), and ends in "All N epics"', () => {
+  it('has no heading of its own, and ends in "All N epics"', () => {
     const html = render(epicsFrom([pay, ship], [], everyone).epics, [], 7)
     expect(html).not.toContain('>Epics<')
-    expect(html).not.toContain('aria-label="New epic"')
     expect(html).toContain('All 7 epics')
     expect(html).not.toContain('Orchestrator')
+  })
+
+  it('tops the list with the dotted New epic slot, open with "Not sent yet" while the new epic is in front (epics-that-look-alive decision 5)', () => {
+    const slot = (open: boolean) =>
+      renderToStaticMarkup(
+        createElement(SidebarEpics, {
+          epics: epicsFrom([pay], [], everyone).epics,
+          total: 1,
+          currentChat: null,
+          currentFeature: null,
+          onOpenEpic: () => {},
+          onSelectFeature: () => {},
+          onAllEpics: () => {},
+          onNewEpic: () => {},
+          newEpicOpen: open,
+        }),
+      )
+    const closed = slot(false)
+    expect(closed).toContain('border-dashed')
+    expect(closed.indexOf('New epic')).toBeLessThan(closed.indexOf('Payment System'))
+    expect(closed).not.toContain('Not sent yet')
+    expect(slot(true)).toContain('Not sent yet')
+    expect(render(epicsFrom([pay], [], everyone).epics)).not.toContain('New epic')
+  })
+
+  it("paints each epic in its colour and icon, an idle one as a tinted slim row with what it shipped", () => {
+    const idle = chat('idle', 'Old Work', { color: 'rust', icon: 'wrench', updatedAt: Date.now() - 2 * 3600_000 })
+    const features = [feature('done', 'idle', { status: 'shipped' }), feature('also', 'idle', { status: 'shipped' })]
+    const html = render(epicsFrom([pay, idle], features, everyone).epics)
+    expect(html).toContain('--color-epic-rust')
+    expect(html).toContain('lucide-wrench')
+    expect(html).toContain('2 shipped')
+    // The asking epic, with no colour or icon yet: blue, and the default chat bubble.
+    expect(html).toContain('--color-epic-blue')
+    expect(html).toMatch(/lucide-message-square/)
   })
 
   it('draws an asking epic amber with "Asking about <feature> +N"', () => {

@@ -27,6 +27,7 @@ import { mainChatContext } from '../services/main-chat-excerpt'
 import { featureStateLine } from '../services/feature-state'
 import { HELD_OPENING_END, tagRuncastlePrompt } from '../services/lead-prompt'
 import { hasThreadLog } from '../threads/log'
+import { assignEpicColor } from '../threads/epic-look'
 import { agentHost, appendThreadEvent } from '../threads/types'
 import {
   createSessionRow,
@@ -447,7 +448,8 @@ export async function createProjectThread(ctx: AppCtx, project: Project): Promis
         message: 'created runcastle: initial commit so branches can be cut',
       }),
   )
-  const row = createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath, model })
+  // Its epic colour is stamped as it is first saved (epics-that-look-alive decision 2).
+  const row = assignEpicColor(ctx, createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath, model }))
   emitProject(ctx, project.id, {
     type: 'session.project_opened',
     message: 'orchestrator chat opened',
