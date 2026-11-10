@@ -196,6 +196,15 @@ export const features = sqliteTable('features', {
   planShownAt: integer('plan_shown_at'),
   /** When the human last opened the plan (ms): new to them while older than `planShownAt`. */
   planSeenAt: integer('plan_seen_at'),
+  /**
+   * The lead's outstanding handback to its orchestrator
+   * (`the-status-tells-the-truth-about-who-and-what` decisions 5, 7): when it
+   * handed back (ms) and its summary. Set by `hand_back`, replaced by a newer
+   * one, and cleared by an orchestrator action on the feature, a human message
+   * to the lead, or the hold moving. Both null when none is outstanding.
+   */
+  handbackAt: integer('handback_at'),
+  handbackSummary: text('handback_summary'),
 })
 
 /**

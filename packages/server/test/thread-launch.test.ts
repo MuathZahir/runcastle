@@ -443,3 +443,69 @@ describe('permission posture by kind and runtime', () => {
     expect(await modeOf(kind, runtime)).toBe(mode)
   })
 })
+
+describe('a feature’s launch carries the composer’s pick (a-new-feature-waits-for-start decision 10)', () => {
+  beforeEach(() => {
+    ctx.config = {
+      ...ctx.config,
+      model: 'claude-sonnet-5',
+      models: [
+        { id: 'claude-sonnet-5', runtime: 'claude-code' },
+        { id: 'claude-haiku-5', runtime: 'claude-code' },
+      ],
+    }
+  })
+
+  it('starts the new chat on the picked model, and its opening runs on the pick', async () => {
+    fakeHost()
+    const prompt = vi.spyOn(host!, 'prompt')
+    const f = await feature()
+
+    const { sessionId } = await caller().feature.launchSession({
+      featureId: f.id,
+      kind: 'chat',
+      model: 'claude-haiku-5',
+      effort: 'high',
+      fast: true,
+    })
+
+    // The row is made on the pick, and keeps it once the agent has started
+    // (the host's follow-Settings step leaves a waiting pick alone).
+    await vi.waitFor(() => expect(readThreadEvents(sessionId).some((e) => e.type === 'process' && e.state === 'running')).toBe(true))
+    expect(getSessionRow(ctx, sessionId)?.model).toBe('claude-haiku-5')
+    const launching = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.launching')
+    expect(JSON.stringify(launching?.data)).toContain('claude-haiku-5')
+    expect(prompt).toHaveBeenCalledWith(
+      sessionId,
+      expect.anything(),
+      expect.objectContaining({ source: 'runcastle', model: 'claude-haiku-5', effort: 'high', fast: true }),
+    )
+  })
+
+  it('resolves from Settings when nothing was picked', async () => {
+    fakeHost()
+    const prompt = vi.spyOn(host!, 'prompt')
+    const f = await feature()
+
+    const { sessionId } = await caller().feature.launchSession({ featureId: f.id, kind: 'chat' })
+
+    expect(getSessionRow(ctx, sessionId)?.model).toBe('claude-sonnet-5')
+    const opts = prompt.mock.calls[0]?.[2]
+    expect(opts).not.toHaveProperty('model')
+    expect(opts).not.toHaveProperty('effort')
+    expect(opts).not.toHaveProperty('fast')
+  })
+
+  it('leaves one main chat when two launches come close together', async () => {
+    const f = await feature()
+
+    const [a, b] = await Promise.all([
+      launchSession(ctx, { featureId: f.id, kind: 'chat', pick: { model: 'claude-haiku-5' } }, { spawn: false }),
+      launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false }),
+    ])
+
+    expect(a.sessionId).toBe(b.sessionId)
+    expect(listSessionsByFeature(ctx, f.id).filter((s) => s.kind === 'chat')).toHaveLength(1)
+    expect(promptsOf(a.sessionId)).toHaveLength(1)
+  })
+})

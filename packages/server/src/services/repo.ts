@@ -46,6 +46,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     waitingKind: row.waitingKind,
     lastHumanMessageAt: row.lastHumanMessageAt,
     lastDispatchAt: row.lastDispatchAt,
+    handback: row.handbackAt !== null ? { at: row.handbackAt, summary: row.handbackSummary ?? '' } : null,
   })
 }
 

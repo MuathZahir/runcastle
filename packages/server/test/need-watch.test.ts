@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import { markHumanMessage, setWaiting } from '../src/services/features'
+import { setHandback } from '../src/services/lead-status'
+import { emit } from '../src/services/events'
 import { FEATURE_NEEDS_YOU, NEED_SETTLE_MS, startNeedWatch, type NeedWatch } from '../src/services/need-watch'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -75,13 +77,14 @@ describe('the needs watcher', () => {
     expect(pings(f.id)).toHaveLength(0)
   })
 
-  it('emits a held need on entering it, and once more when its hour passes', async () => {
+  it('emits a held handback on entering it, and once more when its hour passes', async () => {
     const f = seedFeature(ctx, projectId, { heldBy: 'sess_orchestrator' })
     watch = startNeedWatch(ctx, { now: () => clock })
-    setWaiting(ctx, f.id, 'go?', 'plan')
+    setHandback(ctx, f.id, 'Ready to merge.', clock)
+    emit(ctx, f.id, { type: 'lead.handed_back', message: 'handed back' })
     await settle()
     expect(pings(f.id).map((e) => e.data)).toEqual([
-      { kind: 'plan', words: 'With the orchestrator · Plan to approve', held: true, why: null },
+      { kind: 'handback', words: 'With the orchestrator · Ready to merge', held: true, why: 'Ready to merge' },
     ])
 
     watch.sweep()
@@ -91,8 +94,16 @@ describe('the needs watcher', () => {
     watch.sweep()
     watch.sweep()
     expect(pings(f.id).map((e) => e.data)).toEqual([
-      { kind: 'plan', words: 'With the orchestrator · Plan to approve', held: true, why: null },
-      { kind: 'plan', words: 'Plan to approve', held: false, why: null },
+      { kind: 'handback', words: 'With the orchestrator · Ready to merge', held: true, why: 'Ready to merge' },
+      { kind: 'handback', words: 'Handed back · Ready to merge', held: false, why: 'Ready to merge' },
     ])
+  })
+
+  it('pings a plan on a held feature with no handback at once (the-status-tells-the-truth decision 1)', async () => {
+    const f = seedFeature(ctx, projectId, { heldBy: 'sess_orchestrator' })
+    watch = startNeedWatch(ctx, { now: () => clock })
+    setWaiting(ctx, f.id, 'go?', 'plan')
+    await settle()
+    expect(pings(f.id).map((e) => e.data)).toEqual([{ kind: 'plan', words: 'Plan to approve', held: false, why: null }])
   })
 })

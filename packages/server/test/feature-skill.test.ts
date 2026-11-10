@@ -130,6 +130,14 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
     expect(text).toContain('A question only the human can answer is no handback')
   })
 
+  it('keeps wait_for_you for the human and hands the orchestrator its own questions (the-status-tells-the-truth 1, 13)', () => {
+    const text = flat(skill())
+    expect(text).toContain('**`wait_for_you` is always the human\'s.**')
+    expect(text).toContain('goes to it with `hand_back` instead')
+    expect(text).toContain('and a sub-agent for as long as it runs')
+    expect(text).toContain('Until the orchestrator answers, the feature reads "With the orchestrator"')
+  })
+
   it('re-reads the feature state after any compaction', () => {
     expect(flat(skill())).toContain('after any compaction, call `get_feature_context` before you act on the summary')
   })
@@ -207,6 +215,11 @@ describe('the feature skill, planning with no human present', () => {
     const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
     expect(close).toContain('asking the human for their yes to start the work')
     expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start the work?", kind: "plan" })`')
+  })
+
+  it('hands a held plan to the orchestrator for its yes (the-status-tells-the-truth 8)', () => {
+    const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
+    expect(close).toContain('**When an orchestrator holds the feature**, its yes is the orchestrator\'s to give: call `hand_back({ summary })` in place of `wait_for_you`')
   })
 
   it('plans the workers it would offer and starts none', () => {

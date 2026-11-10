@@ -5,6 +5,7 @@ import { agentHost } from '../threads/types'
 import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { holderName, holderOf } from './holding'
+import { setHandback } from './lead-status'
 import { listWorkers } from '../workers/service'
 
 /** The event a lead's handback leaves on its feature's timeline. */
@@ -57,6 +58,9 @@ export async function handBackToOrchestrator(
     { source: 'runcastle', display: { featureHandback: { featureId: feature.id, title: feature.title, summary: summary.trim(), state } } },
   )
   const name = holderName(holder)
+  // Outstanding until the orchestrator acts, the human writes, or the hold moves
+  // (the-status-tells-the-truth decisions 5, 7); a newer handback replaces it.
+  setHandback(ctx, feature.id, summary.trim())
   emit(ctx, feature.id, {
     type: LEAD_HANDED_BACK,
     message: `handed back to the orchestrator chat "${name}"`,

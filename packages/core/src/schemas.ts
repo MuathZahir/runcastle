@@ -596,6 +596,8 @@ export const Feature = z.object({
   lastHumanMessageAt: z.number().nullable().default(null),
   /** When the lead last dispatched a round (ms); null before the first. */
   lastDispatchAt: z.number().nullable().default(null),
+  /** The lead's outstanding handback to its orchestrator — see the db schema. Null when none is. */
+  handback: z.object({ at: z.number(), summary: z.string() }).nullable().default(null),
 })
 export type Feature = z.infer<typeof Feature>
 

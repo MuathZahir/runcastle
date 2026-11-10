@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b55710aa-e806-45e9-93a1-2233c20e2245",
+  "id": "3db237b2-bdf6-44d5-a344-e05abd66db24",
   "prevId": "9059381a-cb29-4cc3-945c-fc81ab49b43a",
   "tables": {
     "designs": {
@@ -399,6 +399,20 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "handback_at": {
+          "name": "handback_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "handback_summary": {
+          "name": "handback_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -626,14 +640,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         },
         "setup_command": {
           "name": "setup_command",

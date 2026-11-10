@@ -84,6 +84,13 @@ export async function blobBase64(blob: Blob): Promise<string> {
 /** Where a chat nobody has started would start: a feature's main chat, or a project's new orchestrator chat. */
 export type ThreadStart = { featureId: string } | { projectId: string; kind: 'project' }
 
+/** What the human picked in an unstarted chat's model controls; an untouched control is absent (Settings resolve it). */
+export interface ModelPick {
+  model?: string
+  effort?: Effort
+  fast?: boolean
+}
+
 let localSeq = 0
 
 /** The prompt id a message's actions act on: the message itself, or the human's message the answer replied to. */
@@ -102,6 +109,7 @@ export function useThread({
   start,
   onStarted,
   startsAs,
+  onPick,
 }: {
   /** The thread; null for one that has never started. */
   threadId: string | null
@@ -113,6 +121,8 @@ export function useThread({
   onStarted?: (threadId: string) => void
   /** Where an unstarted thread would start, so its model controls show before its first message. */
   startsAs?: ThreadStart
+  /** The unstarted thread's pick changed, so a launch made without a message (Start) can carry it. */
+  onPick?: (pick: ModelPick) => void
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -280,6 +290,18 @@ export function useThread({
   // choice is kept here until the first Send carries it.
   const [choice, setChoice] = useState<{ threadId: string | null; model?: string; effort?: Effort; fast?: boolean }>({ threadId })
   const chosen = choice.threadId === threadId ? choice : { threadId }
+  // An unstarted chat says its pick to whoever launches it without a message.
+  const tell = useRef(onPick)
+  tell.current = onPick
+  const unstarted = !threadId
+  useEffect(() => {
+    if (!unstarted) return
+    tell.current?.({
+      ...(chosen.model !== undefined ? { model: chosen.model } : {}),
+      ...(chosen.effort !== undefined ? { effort: chosen.effort } : {}),
+      ...(chosen.fast !== undefined ? { fast: chosen.fast } : {}),
+    })
+  }, [unstarted, chosen.model, chosen.effort, chosen.fast])
   const modelsQ = trpc.thread.models.useQuery(threadId ? { threadId } : (startsAs ?? { threadId: '' }), { enabled: enabled || !!startsAs })
   // While the runtime's list cannot be read, the picker still names the model the thread is on.
   const models: ModelChoice[] = modelsQ.data?.models.length

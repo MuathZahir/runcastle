@@ -49,6 +49,45 @@ export function markHumanMessage(ctx: AppCtx, featureId: string, opts: { typed?:
     message: 'a human message reached the agent',
     data: { at, ...(opts.typed ? { typed: true } : {}) },
   })
+  // The human, or the orchestrator's send_to_feature, has answered the handback.
+  clearHandback(ctx, featureId, 'message')
+}
+
+/** The event that records an outstanding handback's end. */
+export const HANDBACK_CLEARED = 'feature.handback_cleared'
+
+/** What ended a handback (the-status-tells-the-truth decision 7). */
+export type HandbackEnd = 'message' | 'orchestrator' | 'hold' | 'closed'
+
+/**
+ * Record the lead's outstanding handback on its feature
+ * (the-status-tells-the-truth decision 5): when, and its summary. A newer one
+ * replaces it. The caller emits `lead.handed_back`, which says so.
+ */
+export function setHandback(ctx: AppCtx, featureId: string, summary: string, at = Date.now()): void {
+  ctx.db.update(features).set({ handbackAt: at, handbackSummary: summary }).where(eq(features.id, featureId)).run()
+}
+
+/**
+ * End the feature's outstanding handback (decision 7), saying why on its
+ * timeline. Nothing happens, and nothing is emitted, when none stands.
+ */
+export function clearHandback(ctx: AppCtx, featureId: string, cause: HandbackEnd): void {
+  const row = ctx.db.select({ at: features.handbackAt }).from(features).where(eq(features.id, featureId)).get()
+  if (!row || row.at === null) return
+  ctx.db.update(features).set({ handbackAt: null, handbackSummary: null }).where(eq(features.id, featureId)).run()
+  emit(ctx, featureId, {
+    type: HANDBACK_CLEARED,
+    message: `the handback to the orchestrator is answered (${HANDBACK_END_WORDS[cause]})`,
+    data: { cause, handedBackAt: row.at },
+  })
+}
+
+const HANDBACK_END_WORDS: Record<HandbackEnd, string> = {
+  message: 'a message reached the agent',
+  orchestrator: 'the orchestrator acted on the feature',
+  hold: 'the hold moved',
+  closed: 'the feature is no longer active',
 }
 
 /** When the human last typed in the feature's chat, or null if they never have. */

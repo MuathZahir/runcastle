@@ -134,15 +134,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     [select, features],
   )
 
-  // The feature the landing chose by itself, until the human opens one: nobody
-  // asked to open it, so its chat does not start itself (decision 10).
-  const [landedOn, setLandedOn] = useState<string | null>(null)
   // On a phone the list opens a feature on its chat, full screen: its other
   // views are what the chat's "…" opens.
   const phone = useIsPhone()
   const openChosen = useCallback(
     (featureId: string | null, view?: FeatureView) => {
-      setLandedOn(null)
       openFeature(featureId, view ?? (phone ? 'chat' : undefined))
     },
     [openFeature, phone],
@@ -197,19 +193,14 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       if (named) openFeature(named.id, addressedView(addressed))
       else if (phone) select(null)
       else {
-        const target = landingFeature(features)
-        setLandedOn(target?.id ?? null)
-        openFeature(target?.id ?? null)
+        openFeature(landingFeature(features)?.id ?? null)
       }
     } else if (phone) {
       // A phone lands on the list: nothing opens by itself, nothing stored is restored.
       select(null)
     } else if (!selectedFeatureId && !projectSelected) {
       const target = landingFeature(features)
-      if (target) {
-        setLandedOn(target.id)
-        openFeature(target.id)
-      }
+      if (target) openFeature(target.id)
     } else if (selectedFeatureId && !projectSelected) {
       // The restored selection: settle the storage guess now the list can say
       // whether a session is live.
@@ -348,7 +339,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           onViewChange={ws.selectView}
           guidance={ws.guidance}
           driving={driving}
-          landedOn={landedOn === selectedFeatureId}
           onDriveChange={setDriving}
           onOpenThread={(threadId) => {
             setThreadRequest(threadId)

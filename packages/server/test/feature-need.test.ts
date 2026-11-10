@@ -4,6 +4,7 @@ import { projects } from '../src/db/schema'
 import { createSessionRow } from '../src/launcher/sessions'
 import { emit } from '../src/services/events'
 import { declareReady, markHumanMessage, setWaiting } from '../src/services/features'
+import { setHandback } from '../src/services/lead-status'
 import { setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
@@ -115,9 +116,12 @@ describe('feature.list and feature.get carry the need', () => {
     expect((await needs()).get('nodrive')).toMatchObject({ kind: 'merge' })
   })
 
-  it('holds a need for the orchestrator holding the feature', async () => {
+  it('holds only an outstanding handback for the orchestrator holding the feature (the-status-tells-the-truth decisions 1, 5)', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'held', heldBy: 'sess_orchestrator' })
     setWaiting(ctx, f.id, 'start round 1?', 'plan')
-    expect((await needs()).get('held')).toMatchObject({ kind: 'plan', held: true, words: 'With the orchestrator · Plan to approve' })
+    expect((await needs()).get('held')).toMatchObject({ kind: 'plan', held: false, words: 'Plan to approve' })
+    setWaiting(ctx, f.id, null)
+    setHandback(ctx, f.id, 'Plan is ready for your yes.')
+    expect((await needs()).get('held')).toMatchObject({ kind: 'handback', held: true, words: 'With the orchestrator · Plan is ready for your yes' })
   })
 })
