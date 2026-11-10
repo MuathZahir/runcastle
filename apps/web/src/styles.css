@@ -38,13 +38,13 @@ html {
    Text fields are the exception: their ring (drawn on their own border) is in
    theme.css's base layer, so a field that shows focus another way — its
    border, a TextField wrapper — can say `outline-none`. A row that a menu
-   highlights with its own ground, and a panel focused only to hold the
-   keyboard (tabindex -1), show none. */
+   highlights with its own ground, a panel focused only to hold the keyboard
+   (tabindex -1), and a project-rail button (its tile draws the ring) show none. */
 :focus-visible:not(input, textarea, select) {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 :is([tabindex="-1"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"],
-    [role="option"], [cmdk-item]):focus-visible {
+    [role="option"], [cmdk-item], [data-rail] button):focus-visible {
   outline: none;
 }

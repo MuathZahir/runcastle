@@ -91,8 +91,3 @@ export function railShortcutIndex(ev: RailShortcutEvent): number | null {
   const m = /^Digit([1-9])$/.exec(ev.code)
   return m ? Number(m[1]) - 1 : null
 }
-
-/** The hint a tile's tooltip shows beside its name: "Alt+2" (⌥2 on a Mac). */
-export function railShortcutLabel(n: number, mac: boolean): string {
-  return mac ? `⌥${n}` : `Alt+${n}`
-}

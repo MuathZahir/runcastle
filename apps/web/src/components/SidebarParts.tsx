@@ -1,5 +1,5 @@
 import { HelpMenu } from './HelpMenu'
-import { Fragment, useState } from 'react'
+import { createContext, Fragment, useContext, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { cx, IconButton, Spinner, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
@@ -1116,11 +1116,17 @@ export function AccentTile({
   )
 }
 
+/** True inside a frame that already drew the {@link SidebarBackdrop} (rail + sidebar share one). */
+export const SidebarBackdropDrawn = createContext(false)
+
 /**
  * Behind the sidebar's head: a static halftone, dots shrinking away from the
  * top centre. The dots are the text colour at 6%, so they read in both themes.
  */
 export function SidebarBackdrop() {
+  // The desktop frame draws one halftone behind the rail and the sidebar
+  // together; a sidebar inside it does not draw a second.
+  if (useContext(SidebarBackdropDrawn)) return null
   return (
     <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 overflow-hidden">
       <div

@@ -4,12 +4,12 @@ import { relTimeAgo } from '../../lib/format'
 import { useLiveStatus } from '../../lib/live'
 import type { ProjectNavApi } from '../../lib/use-project-nav'
 import { IconButton, Sheet, SheetRow, StatusDot } from '../../ui'
-import { ProjectSwitcher } from '../ProjectSwitcher'
+import { PhoneRail } from '../ProjectRail'
 import { useOpenGlossary } from '../GlossaryDialog'
 
 /**
  * The phone list's head (docs/features/runcastle-on-your-phone decision 7):
- * the project switcher, and a "+" whose sheet holds the two things worth doing
+ * the project rail's row of tiles (one tap switches), the project's name, and a "+" whose sheet holds the two things worth doing
  * with a thumb — a new Orchestrator chat and a note — and the Glossary, which
  * the phone has no help menu for. Adding to the backlog is
  * asked of the Orchestrator in chat.
@@ -30,21 +30,24 @@ export function PhoneListHead({
     act()
   }
   return (
-    <div className="flex h-11 shrink-0 items-center gap-1 px-1">
-      <div className="flex min-w-0 flex-1">
-        <ProjectSwitcher nav={nav} />
+    <>
+      <PhoneRail />
+      <div className="flex h-11 shrink-0 items-center gap-1 px-1">
+        <div className="flex min-w-0 flex-1">
+          <span className="truncate px-2 text-lg font-medium text-text">{nav.currentProject?.name}</span>
+        </div>
+        <IconButton label="New" size="lg" icon={<IconPlus />} onClick={() => setCreating(true)} />
+        <Sheet open={creating} onClose={() => setCreating(false)} label="New">
+          <SheetRow icon={<IconMessage />} label="New chat" hint="A new chat with the orchestrator — talk an idea through before it becomes a feature" onClick={pick(onNewChat)} />
+          {onOpenNote && (
+            <SheetRow icon={<IconPencil />} label="Jot a note" hint="What you just noticed — triage it later" onClick={pick(onOpenNote)} />
+          )}
+          {openGlossary && (
+            <SheetRow icon={<IconList />} label="Glossary" hint="The words runcastle uses, in one sentence each" onClick={pick(() => openGlossary())} />
+          )}
+        </Sheet>
       </div>
-      <IconButton label="New" size="lg" icon={<IconPlus />} onClick={() => setCreating(true)} />
-      <Sheet open={creating} onClose={() => setCreating(false)} label="New">
-        <SheetRow icon={<IconMessage />} label="New chat" hint="A new chat with the orchestrator — talk an idea through before it becomes a feature" onClick={pick(onNewChat)} />
-        {onOpenNote && (
-          <SheetRow icon={<IconPencil />} label="Jot a note" hint="What you just noticed — triage it later" onClick={pick(onOpenNote)} />
-        )}
-        {openGlossary && (
-          <SheetRow icon={<IconList />} label="Glossary" hint="The words runcastle uses, in one sentence each" onClick={pick(() => openGlossary())} />
-        )}
-      </Sheet>
-    </div>
+    </>
   )
 }
 

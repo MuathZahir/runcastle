@@ -1,5 +1,5 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Project } from './api'
+import type { FeatureListItem, Project } from './api'
 import { trpc } from '../trpc'
 import { useLivePoll } from './live'
 import { eventToNotification, type DesktopNotification } from './notifications'
@@ -160,14 +160,23 @@ export function useDesktopNotifications(): NotificationsControl {
 }
 
 /**
- * Keep the browser tab's title counting what needs the human across every open
- * project (decision 13). Reads the same per-project feature lists the portfolio
- * polls, so the queries are shared rather than doubled.
+ * Every open project's feature list, in the projects' order (undefined while
+ * one loads). Run once, in the shell: the tab title and the project rail both
+ * read this one set, and the portfolio's own reads share its query keys, so
+ * the lists are polled once however many places show them.
  */
-export function useNeedsYouTitle(projects: Project[]): void {
+export function useProjectFeatureLists(projects: Project[]): (FeatureListItem[] | undefined)[] {
   const poll = useLivePoll()
   const lists = trpc.useQueries((t) => projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })))
-  const title = tabTitle(lists.map((q) => q.data ?? []))
+  return lists.map((q) => q.data)
+}
+
+/**
+ * Keep the browser tab's title counting what needs the human across every open
+ * project (decision 13), from {@link useProjectFeatureLists}.
+ */
+export function useNeedsYouTitle(lists: (FeatureListItem[] | undefined)[]): void {
+  const title = tabTitle(lists.map((l) => l ?? []))
   useEffect(() => {
     document.title = title
   }, [title])

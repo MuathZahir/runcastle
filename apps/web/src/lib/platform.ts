@@ -89,3 +89,9 @@ export function shiftShortcut(key: string): string {
   const n = nav()
   return isMacLike(n.platform, n.userAgent) ? `⌘⇧${key}` : `Ctrl+Shift+${key}`
 }
+
+/** An Alt shortcut — "⌥2" on a Mac (Option), "Alt+2" everywhere else — for this browser. */
+export function altShortcut(key: string): string {
+  const n = nav()
+  return isMacLike(n.platform, n.userAgent) ? `⌥${key}` : `Alt+${key}`
+}
