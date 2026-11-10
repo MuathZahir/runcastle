@@ -58,6 +58,7 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 ## Design principles
 
 - **Flexible guidance over brittle machinery.** When in doubt, less mechanism. Guidance lives in skills and briefs; machinery only where an agent cannot be trusted to remember. (Standing user directive.)
+- **The feature loop is the product; the layer above it is plumbing.** A chat GUI over agent CLIs (T3 Code and the like) already gives threads, branches and diffs. What runcastle adds is the loop: a recorded plan the human says yes to, sandboxed workers, a Review worker that drives the app, the test drive, design mode. Spend effort making that loop visible, calm and trustworthy — not on reshaping the orchestrator or epic layer, which is grouping, not capability.
 - **Git abstracted behind product verbs** ("test this feature", "merge") — vibe-coder friendly as a principle, not a persona.
 - **Parallelization is a first-class goal** — the architecture never assumes one live feature or one worker.
 - **Individual developers first.** Design for one developer whose work all goes through runcastle. Teams come later, and only teams that all use runcastle; teammates working outside it are out of scope.
