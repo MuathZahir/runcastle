@@ -673,17 +673,6 @@ describe('New chat with a chat running', () => {
     expect(consumed).toHaveBeenCalled()
   })
 
-  it('opens an empty new thread from the epic list’s "+" the same way, with no notice', () => {
-    running()
-    mountWithSidebar(talk({ session: liveChat }))
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New epic' }))
-    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
-    expect(chatInFront()?.dataset.thread).toBe('th_new')
-    expect(screen.queryByText(/already open|End it and start new/)).toBeNull()
-    // named "New chat" until something is said in it, never by its kind
-    expect(chatName()).toBe('New chat')
-  })
-
   it('lists the same chats, names and states on the Epics page as in the sidebar', () => {
     threads = [
       { ...entry('sess_1', 'Audit the journal', 3_000), state: 'working' },
@@ -730,7 +719,7 @@ describe('a live project chat', () => {
     expect(shown(chatInFront()!)).toBe(true)
   })
 
-  it('lists the project’s epics in the sidebar, each opening its thread, and "+" selects a new one', () => {
+  it('lists the project’s epics in the sidebar, each opening its thread', () => {
     threads = [entry('sess_1', 'Audit the journal', 2_000), entry('sess_old', 'An older idea')]
     mountWithSidebar(talk({ session: liveChat }))
     expect(chatName()).toBe('Audit the journal')
@@ -739,10 +728,6 @@ describe('a live project chat', () => {
     fireEvent.click(within(sidebar()).getByTitle('An older idea'))
     expect(chatInFront()?.dataset.thread).toBe('sess_old')
     expect(chatName()).toBe('An older idea')
-
-    fireEvent.click(within(sidebar()).getByRole('button', { name: 'New epic' }))
-    expect(threadNew).toHaveBeenCalledWith({ projectId: 'proj_1' })
-    expect(chatInFront()?.dataset.thread).toBe('th_new')
   })
 
   it('leaves idle epics out of the sidebar, for the Epics page', () => {

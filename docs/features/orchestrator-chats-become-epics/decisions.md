@@ -24,6 +24,7 @@ Check first: 4, 6, 12, 13, 14
 **Decision:** The Orchestrator card and the feature lanes for work in motion (Needs you, Agent working, In progress, Up next) become one list of epics. Each epic is its chat's row; the features it cut sit indented under it. There are no status lanes for work in motion: the nesting is the link, and the yellow-first order (decision 8) keeps the next step on top. The design page keeps the other two shapes on its Tweaks menu: (B) today's lanes, each feature row tagged with its epic's name; (C) a "Needs you" strip on top, then epics.
 **Why:** One place per item, and what belongs to what is visible without reading a tag. A sidebar with many epics costs about the same rows as today (each feature once, plus one row per epic), and the phone gets the same list.
 **Assumed.** Alternative: (B) keep the lanes and tag each feature row with its epic.
+**Changed by the human (2026-11-10), at the design review:** the list has no "Epics" title, and each epic is a card. Its head carries the old Orchestrator card's look: the accent wash, the fading grid, the hub tile and a bold name, with what its chat is doing (or how many features it holds) under the name. Its features sit inside the card on hairlines, as the old Working box held its rows; there is no indent. "Other features" is a plain card with a grey tile. The edge is one quiet hairline in every state. The epic in front brightens its head and its tile, never its outline. While its chat works, the hub's dots breathe in turn and a slow sheen crosses the head. The human's words: "I liked how the sidebar used to look … but the design is worse"; then "clicking on an epic makes the outline bigger which looks bad", and a filled tile "doesn't look very professional".
 **For the human.**
 
 ## 5. Every orchestrator chat is an epic; one with no features is a quiet row
@@ -88,11 +89,12 @@ Check first: 4, 6, 12, 13, 14
 **For the human.**
 
 ## 14. The screens say "epic"; "Orchestrator" leaves them
-**Decision:** Everywhere the app names an orchestrator chat it says epic: the sidebar's list, "New epic" in the create menu and on the list's "+", "All N epics" and the page it opens (today's Conversations page), the command palette, the chat's header (the epic's glyph and name, with no "Orchestrator ›" before it). "Orchestrator" no longer appears on screen; it stays the agent's name in the skills and the docs. What the human sees is one chain: epics hold features, features hold workers, and each has its chat and its agent.
+**Decision:** Everywhere the app names an orchestrator chat it says epic: the sidebar's list, "New epic" in the create menu, "All N epics" and the page it opens (today's Conversations page), the command palette, the chat's header (the epic's glyph and name, with no "Orchestrator ›" before it). "Orchestrator" no longer appears on screen; it stays the agent's name in the skills and the docs. What the human sees is one chain: epics hold features, features hold workers, and each has its chat and its agent.
 **Why:** Three nouns in one chain, each holding the next, is the smallest model that covers the app. "Orchestrator", "chat", "conversation" and "thread" today name overlapping things.
 **Assumed.** Alternative: keep "Orchestrator" as the list's title and let the nesting alone carry the epic idea, with no new word.
 **Challenged:** "New epic" to ask a quick question, and a triage chat called an epic, only reads right if every chat is named in epic style (the challenge on decision 12); otherwise keep "New chat" and let the nesting carry the idea.
 **Answered by decision 12's change:** every chat now names itself in epic style, so "New epic" reads right for a question too. The orchestrator kept this decision as planned.
+**Changed by the human (2026-11-10):** the list lost its title, and with it its "+"; "New epic" lives in the create menu only.
 **For the human.**
 
 ## 15. A feature's page names its epic as the first crumb

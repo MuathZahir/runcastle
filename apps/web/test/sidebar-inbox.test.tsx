@@ -159,7 +159,7 @@ describe('the head', () => {
 })
 
 describe('the epics (orchestrator-chats-become-epics)', () => {
-  it('lists the epics on a feature page, with no card and no lanes, and opens a chat from its row', () => {
+  it('lists the epics on a feature page, with no Orchestrator card and no lanes, and opens a chat from its row', () => {
     const onOpenChat = vi.fn()
     data.threads = [epic('pay', 'Payment System', { state: 'working' })]
     data.features = [titled('Retry policy', { chatId: 'pay', heldBy: 'pay' })]

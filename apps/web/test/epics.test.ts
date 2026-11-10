@@ -189,17 +189,16 @@ describe('the list (SidebarEpics, static markup)', () => {
         currentFeature: null,
         onOpenEpic: () => {},
         onSelectFeature: () => {},
-        onNewEpic: () => {},
         onAllEpics: () => {},
       }),
     )
   const pay = chat('pay', 'Payment System', { state: 'waiting' })
   const ship = chat('ship', 'Shipping')
 
-  it('is headed "Epics" with a "New epic" plus, and ends in "All N epics"', () => {
+  it('has no heading and no "+" of its own (New epic lives in the create menu), and ends in "All N epics"', () => {
     const html = render(epicsFrom([pay, ship], [], everyone).epics, [], 7)
-    expect(html).toContain('>Epics<')
-    expect(html).toContain('aria-label="New epic"')
+    expect(html).not.toContain('>Epics<')
+    expect(html).not.toContain('aria-label="New epic"')
     expect(html).toContain('All 7 epics')
     expect(html).not.toContain('Orchestrator')
   })
