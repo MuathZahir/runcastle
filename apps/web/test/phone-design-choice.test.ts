@@ -8,7 +8,7 @@ import { phoneViewChoices } from '../src/components/phone/phone-views'
  * decision 16), and says what it holds.
  */
 
-const design = (id: string, state: DesignEntry['state']): DesignEntry => ({ id, title: id, path: `/${id}`, state, isNew: false, shownAt: 1 })
+const design = (id: string, state: DesignEntry['state']): DesignEntry => ({ id, title: id, path: `/${id}`, state, isNew: false, shownAt: 1, report: null })
 
 describe('the phone sheet\'s Design line', () => {
   it('is left out while the feature has no design', () => {

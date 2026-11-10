@@ -20,7 +20,7 @@ describe('parseDesignReport', () => {
   })
 
   it('trims an oversized report to 12 tweaks and 80 characters, never dropping it', () => {
-    const tweaks = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`k${i}`, i]))
+    const tweaks: Record<string, string | number> = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`k${i}`, i]))
     tweaks['k0'] = 'v'.repeat(200)
     const long = 'x'.repeat(200)
     const report = parseDesignReport({ type: 'runcastle:design', state: long, tweaks: { [long]: long, ...tweaks } })

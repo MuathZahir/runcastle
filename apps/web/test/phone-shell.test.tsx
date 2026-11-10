@@ -457,6 +457,7 @@ describe('a design on a phone', () => {
       state,
       isNew: state === 'waiting',
       shownAt,
+      report: null,
     })
     const seen: unknown[] = []
     const designs = [entry('newer', 'Invite', 3), entry('older', 'Cart', 2), entry('done', 'Menu', 1, 'approved')]
