@@ -440,9 +440,15 @@ function SidebarEpicSlimRow({
           {chat.title}
         </span>
         <span className={cx('shrink-0 text-xs text-text-tertiary tabular-nums transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
-          {/* In a narrow sidebar the name keeps its room: only the time stays. */}
-          {shipped && <span className="@max-[300px]/slim:hidden">{shipped} · </span>}
-          {ago}
+          {/* In a narrow sidebar (the default width) one fact stays: what it shipped, else the time. */}
+          {shipped ? (
+            <>
+              {shipped}
+              <span className="@max-[300px]/slim:hidden"> · {ago}</span>
+            </>
+          ) : (
+            ago
+          )}
         </span>
       </button>
       {actions.length > 0 && (

@@ -38,3 +38,7 @@ Settled with the human in this feature's chat, one at a time. The brief's own
 ## 9. The look chosen on the design page
 **Decision:** From the design page's Tweaks the human chose: the **tinted** slim idle row (a lightly tinted strip in the epic's colour, coloured icon, name, "N shipped · 2h"; below ~300px of sidebar only the time); the runcastle logo as a **mark at the top of the rail with the "All projects" grid button directly below it** (the logo is not itself a button); and a **large project name** in the sidebar header beside one tidy group of icon buttons. The app's sidebar width does not change.
 **Why:** The human's picks among the variations shown side by side (supersedes the "one line, no tint" starting point in 4 and the "logo is All projects" recommendation in 7).
+
+## 10. At the default sidebar width, the idle row shows what it shipped
+**Decision:** Below ~300px of sidebar (which includes the app's default 248px), the slim idle row keeps one fact: "3 shipped" when it shipped anything, otherwise the time ("2h"). From ~300px up it shows both, "3 shipped · 2h". This replaces "only the time" in 9.
+**Why:** The review found that at the default width the shipped count never showed, though the human chose the row on a page drawn at 400px. The human picked showing the count over the time; it costs a few characters of name.
