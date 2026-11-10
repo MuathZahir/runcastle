@@ -100,9 +100,16 @@ describe('the order (decision 8)', () => {
     expect(groups.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['needs', 'asks', 'quiet'])
   })
 
+  it('puts epics in motion above idle ones, even when the idle one is newer', () => {
+    const working = chat('working', 'Working', { createdAt: 1, state: 'working' })
+    const groups = orderEpicList(epicsFrom([quiet, working], [], everyone).epics, [])
+    expect(groups.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['working', 'quiet'])
+  })
+
   it('floats Other features with the yellow epics only when something in it is yellow', () => {
     const calm = orderEpicList(epicsFrom([quiet, asks], [feature('loose', null)], everyone).epics, [feature('loose', null)])
-    expect(calm.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['asks', 'quiet', 'other'])
+    // Other features is in motion, so it sits above an idle epic either way.
+    expect(calm.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['asks', 'other', 'quiet'])
     const loud = [feature('loose', null, { need: asking('Needs your answer') })]
     const lit = orderEpicList(epicsFrom([quiet, asks], loud, everyone).epics, loud)
     expect(lit.map((g) => (g.kind === 'epic' ? g.epic.chat.id : 'other'))).toEqual(['asks', 'other', 'quiet'])

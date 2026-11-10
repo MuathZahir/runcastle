@@ -57,6 +57,7 @@ import {
   Shelf,
   SidebarFeatureRow,
   SidebarBackdrop,
+  SidebarHead,
   SidebarStatusLine,
   SidebarThreadRow,
   SidebarWorkerItem,
@@ -410,13 +411,8 @@ export function Sidebar(props: SidebarProps) {
           <ComputerUnreachable failed={list.isError} readAt={list.dataUpdatedAt} />
         </>
       ) : (
-        <div className="flex h-10 shrink-0 items-center gap-0.5">
-          {/* The project rail switches; the head names where you are. */}
-          <div className="flex min-w-0 flex-1">
-            <span className="truncate px-2 text-sm font-semibold text-text" title={nav.currentProject?.name}>
-              {nav.currentProject?.name}
-            </span>
-          </div>
+        // The project rail switches; the head names where you are.
+        <SidebarHead name={nav.currentProject?.name}>
           <IconButton
             label="Search or jump to"
             kbd={shortcut('K')}
@@ -427,7 +423,7 @@ export function Sidebar(props: SidebarProps) {
           />
           <CreateMenu onNewChat={onNewChat} onDraft={onDraft} onOpenNote={onOpenNote} />
           <CollapseSidebarButton />
-        </div>
+        </SidebarHead>
       )}
 
       {drilled ? (

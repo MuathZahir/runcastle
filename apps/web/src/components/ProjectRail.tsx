@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
-import { IconPlus } from '../icons'
+import { IconPlus, LogoMark } from '../icons'
 import type { FeatureListItem, Project } from '../lib/api'
 import { mutationErrorMessage } from '../lib/mutation-errors'
 import { altShortcut } from '../lib/platform'
@@ -12,16 +12,17 @@ import { cx, Tooltip } from '../ui'
 
 /**
  * The project rail (docs/features/a-better-way-to-move-between-projects,
- * decisions 2–6; the look is `preview/project-switching/rail.tsx`, approved):
- * a narrow column at the sidebar's left, on the sidebar's own ground, with a
- * quiet tile per open project. Tiles at rest recede (dim, nudged toward the
- * window edge); the current one is the only thing that stands out: full-strength
- * letters on the one selection surface, which glides from tile to tile on a
- * switch. The only mark is amber, for a project that needs the human. Hovering
- * a tile names the project and its Alt+digit in the app's own tooltip.
- * "All projects" sits on top, level with the sidebar's head; "Open a project"
- * follows the last tile. On a phone the same tiles run across the top of the
- * list as a row, the surface gliding sideways.
+ * decisions 2–6; its look reworked by epics-that-look-alive decision 7): a
+ * narrow column at the sidebar's left with a neutral tile per open project —
+ * the card's fill and hairline, the project's letters. The project in front
+ * wears the strong fill and a firmer edge, and a short bar on the window's edge
+ * marks it, gliding from tile to tile on a switch. The only colour is amber,
+ * a dot on the corner of a project that needs the human. Hovering a tile names
+ * the project and its Alt+digit in the app's own tooltip. The runcastle mark
+ * sits on top, level with the sidebar's head, as the brand only; the "All
+ * projects" grid tile sits just below it, and "Open a project", a dotted tile,
+ * follows the last project. On a phone the same tiles run across the top of
+ * the list as a row, the marker under the tile.
  *
  * Tiles keep the order the human sets by dragging (press and drag; on a touch
  * screen, hold first), saved through `project.reorder`. Alt+1…9 enters the nth.
@@ -134,7 +135,7 @@ export function ProjectRailProvider({
 
 const ALL = '__all'
 
-/** Glide: one surface, moved by transform; no transition on the first placing. */
+/** Glide: one marker, moved by transform; no transition on the first placing. */
 const GLIDE = 'transition-transform duration-(--dur-3) ease-(--ease-out-app) motion-reduce:transition-none'
 
 const SIZE = {
@@ -146,40 +147,32 @@ const SIZE = {
 
 /**
  * The app's focus outline (2px, the focus-ring colour), drawn on the tile inside
- * a `group/btn` button so it hugs the tile's radius and moves with it; keyboard
- * only. The button's own outline is turned off by the rail's one exception to
- * the global focus rule (styles.css, `[data-rail] button`).
+ * a `group/btn` button so it hugs the tile's radius; keyboard only. The
+ * button's own outline is turned off by the rail's one exception to the global
+ * focus rule (styles.css, `[data-rail] button`).
  */
 const FOCUS_ON_TILE = 'group-focus-visible/btn:outline-2 group-focus-visible/btn:outline-offset-1 group-focus-visible/btn:outline-focus-ring'
 /** The button that holds a tile; long-press on a phone must not select or call out. */
 const TILE_BUTTON = 'group/btn cursor-pointer rounded-lg select-none [-webkit-touch-callout:none]'
-/** A tile at rest: the muted grey, dimmed again — still legible, clearly below the sidebar's own muted text. */
-const TILE_REST = 'text-[color-mix(in_oklab,var(--color-text-tertiary)_58%,transparent)]'
-/** Hovered (or carried in a drag): back up to the sidebar's muted grey. */
-const TILE_LIT = 'text-text-tertiary'
-/** Position and colour ease together, so a switch slides the old tile back as the new one comes out. */
-const TILE_EASE = 'transition-[translate,color] duration-(--dur-3) ease-(--ease-out-app) motion-reduce:transition-none'
+const TILE_EASE = 'transition-[background-color,color,box-shadow,border-color] duration-(--dur-2) ease-app motion-reduce:transition-none'
+/**
+ * A tile at rest (epics-that-look-alive decision 7): the card's faint fill and
+ * hairline, its letters in the muted grey. Neutral on every project — no
+ * colour per project on the rail.
+ */
+const TILE_REST =
+  'bg-fill-card text-text-tertiary shadow-[inset_0_0_0_1px_var(--color-border-subtle)] group-hover/btn:bg-fill-well group-hover/btn:text-text-secondary'
+/** Carried in a drag: lifted, as if hovered. */
+const TILE_LIT = 'bg-fill-well text-text-secondary shadow-[inset_0_0_0_1px_var(--color-border-subtle)]'
+/** The project in front: the strong fill, a firmer edge with the raised top light, full-strength letters. */
+const TILE_CURRENT =
+  'bg-fill-well text-text shadow-[inset_0_0_0_1px_var(--color-border-strong),inset_0_1px_0_color-mix(in_oklab,var(--color-text)_10%,transparent)]'
 
 /**
- * A tile's face: its letters, no surface of its own (the rail's one selection
- * surface glides under the current tile). At rest it recedes; hovered it comes
- * partway back; the current one sits out, at full strength. The amber dot never
- * dims with its tile, and the current project carries none.
+ * A project's tile: its letters on the neutral tile. The amber dot sits on the
+ * tile's corner, cut out of the rail's ground; the current project carries none.
  */
-function TileFace({
-  tile,
-  size,
-  current,
-  lit,
-  nudge = true,
-}: {
-  tile: RailTile
-  size: keyof typeof SIZE
-  current: boolean
-  lit: boolean
-  /** Slide sideways with the state (the rail); the phone's row only dims. */
-  nudge?: boolean
-}) {
+function RailTileFace({ tile, size, current, lit }: { tile: RailTile; size: keyof typeof SIZE; current: boolean; lit: boolean }) {
   return (
     <span
       className={cx(
@@ -187,44 +180,52 @@ function TileFace({
         TILE_EASE,
         SIZE[size],
         FOCUS_ON_TILE,
-        current
-          ? cx('text-text', nudge && 'translate-x-[3px]')
-          : lit
-            ? cx(TILE_LIT, nudge && '-translate-x-0.5')
-            : cx(
-                TILE_REST,
-                'group-hover/tile:text-text-tertiary group-focus-visible/btn:text-text-tertiary',
-                nudge && '-translate-x-1 group-hover/tile:-translate-x-0.5 group-focus-visible/btn:-translate-x-0.5',
-              ),
+        current ? TILE_CURRENT : lit ? TILE_LIT : TILE_REST,
       )}
     >
       {tile.initials}
       {!current && tile.needsYou && (
-        <span role="img" aria-label="Needs you" className="absolute top-1 right-1 size-1.5 animate-fade-in rounded-full bg-warning" />
+        <span role="img" aria-label="Needs you" className="absolute -top-0.5 -right-0.5 size-2.5 animate-fade-in rounded-full bg-warning ring-2 ring-canvas" />
       )}
     </span>
   )
 }
 
-/** "All projects" and "Open a project": a glyph that recedes like a tile, its focus ring on the face too. */
-function GlyphFace({ size, current, nudge, children }: { size: keyof typeof SIZE; current: boolean; nudge: boolean; children: ReactNode }) {
+/** "All projects": the grid glyph on a neutral tile; the current tile while on All projects. */
+function AllProjectsFace({ size, current }: { size: keyof typeof SIZE; current: boolean }) {
+  return (
+    <span className={cx('inline-flex shrink-0 items-center justify-center', TILE_EASE, SIZE[size], FOCUS_ON_TILE, current ? TILE_CURRENT : TILE_REST)}>
+      <IconGrid size={size === 'lg' ? 18 : 16} />
+    </span>
+  )
+}
+
+/** "Open a project": a dotted tile, the same dotted edge as the epic list's "New epic". */
+function RailOpenFace({ size }: { size: keyof typeof SIZE }) {
   return (
     <span
       className={cx(
-        'inline-flex shrink-0 items-center justify-center',
+        'inline-flex shrink-0 items-center justify-center border border-dashed border-border-strong text-text-tertiary',
+        'group-hover/btn:border-[color-mix(in_oklab,var(--color-text-tertiary)_60%,transparent)] group-hover/btn:bg-surface-hover group-hover/btn:text-text-secondary',
         TILE_EASE,
         SIZE[size],
         FOCUS_ON_TILE,
-        current
-          ? cx('text-text', nudge && 'translate-x-[3px]')
-          : cx(
-              TILE_REST,
-              'group-hover/btn:text-text-tertiary group-focus-visible/btn:text-text-tertiary',
-              nudge && '-translate-x-1 group-hover/btn:-translate-x-0.5 group-focus-visible/btn:-translate-x-0.5',
-            ),
       )}
     >
-      {children}
+      <IconPlus size={size === 'lg' ? 18 : 16} />
+    </span>
+  )
+}
+
+/**
+ * The runcastle mark, top of the rail: the brand, not a button (epics-that-look-alive
+ * decision 7). On the rail it takes a tile's square; on the phone's row only its own
+ * width, so the row keeps its room for projects.
+ */
+function RailLogo({ size }: { size: keyof typeof SIZE }) {
+  return (
+    <span aria-hidden className={cx('inline-flex shrink-0 items-center justify-center text-text-secondary', size === 'lg' ? 'h-10 w-6' : SIZE[size])}>
+      <LogoMark size={size === 'lg' ? 24 : 22} />
     </span>
   )
 }
@@ -240,6 +241,9 @@ export function IconGrid({ size = 16 }: { size?: number }) {
     </svg>
   )
 }
+
+/** The open project's marker on the rail: a short bar on the window's edge, level with its tile. */
+const RAIL_MARKER = 'pointer-events-none absolute top-0 left-0 h-5 w-[3px] rounded-r-full bg-text'
 
 /**
  * Where the selection surface sits: under the `[data-slot]` whose key is
@@ -437,25 +441,23 @@ export function DesktopRail() {
         dragging && 'cursor-grabbing',
       )}
     >
-      {/* The one selection surface: 36px, nudged 3px right of centre like the current tile. */}
+      {/* The open project's marker: one bar on the window's edge, gliding from tile to tile. */}
       {surface && (
-        <span
-          aria-hidden
-          style={{ transform: `translateY(${surface.pos - 18}px)` }}
-          className={cx('card pointer-events-none absolute top-0 left-1/2 -ml-[15px] size-9 rounded-lg', surface.animate && GLIDE)}
-        />
+        <span aria-hidden style={{ transform: `translateY(${surface.pos - 10}px)` }} className={cx(RAIL_MARKER, surface.animate && GLIDE)} />
       )}
-      {/* Level with the sidebar's 40px head. */}
-      <Slot id={ALL} className="h-10 items-center">
+      {/* The runcastle mark, level with the sidebar's 40px head; All projects sits just below it. */}
+      <div className="flex h-10 shrink-0 items-center justify-center">
+        <RailLogo size="md" />
+      </div>
+      <Slot id={ALL} className="mt-1.5">
         <Tooltip label="All projects" side="right">
           <button type="button" aria-label="All projects" aria-current={onHome || undefined} onClick={rail.goHome} className={TILE_BUTTON}>
-            <GlyphFace size="md" current={onHome} nudge>
-              <IconGrid />
-            </GlyphFace>
+            <AllProjectsFace size="md" current={onHome} />
           </button>
         </Tooltip>
       </Slot>
-      <div className="mt-3 flex flex-col gap-2 pb-1">
+      <span aria-hidden className="mx-auto mt-2 h-px w-5 shrink-0 bg-border" />
+      <div className="mt-2.5 flex flex-col gap-2 pb-1">
         {shown.map((t) => (
           <Slot key={t.id} id={t.id}>
             <Tooltip label={t.name} kbd={t.shortcut ? altShortcut(String(t.shortcut)) : undefined} side="right">
@@ -468,7 +470,7 @@ export function DesktopRail() {
                 onClick={() => t.id !== rail.currentId && rail.enter(t.id)}
                 className={cx(TILE_BUTTON, dragging && 'cursor-grabbing')}
               >
-                <TileFace tile={t} size="md" current={t.id === rail.currentId} lit={dragging === t.id} />
+                <RailTileFace tile={t} size="md" current={t.id === rail.currentId} lit={dragging === t.id} />
               </button>
             </Tooltip>
           </Slot>
@@ -476,9 +478,7 @@ export function DesktopRail() {
         <Slot id="__open">
           <Tooltip label="Open a project" side="right">
             <button type="button" aria-label="Open a project" onClick={rail.open} className={TILE_BUTTON}>
-              <GlyphFace size="md" current={false} nudge>
-                <IconPlus size={16} />
-              </GlyphFace>
+              <RailOpenFace size="md" />
             </button>
           </Tooltip>
         </Slot>
@@ -508,20 +508,21 @@ export function PhoneRail() {
       onClickCapture={onClickCapture}
       className="relative -mx-2 flex shrink-0 items-center gap-2 overflow-x-auto px-3 pt-1.5 pb-3 [scrollbar-width:none]"
     >
+      {/* The open project's marker: a short bar under its tile, gliding along the row. */}
       {surface && (
         <span
           aria-hidden
-          style={{ transform: `translateX(${surface.pos - 20}px)` }}
-          className={cx('card pointer-events-none absolute top-1.5 left-0 size-10 rounded-lg', surface.animate && GLIDE)}
+          style={{ transform: `translateX(${surface.pos - 8}px)` }}
+          className={cx('pointer-events-none absolute bottom-1 left-0 h-[3px] w-4 rounded-full bg-text', surface.animate && GLIDE)}
         />
       )}
+      <RailLogo size="lg" />
       <span data-slot={ALL} className="relative inline-flex shrink-0">
         <button type="button" aria-label="All projects" aria-current={onHome || undefined} onClick={rail.goHome} className={TILE_BUTTON}>
-          <GlyphFace size="lg" current={onHome} nudge={false}>
-            <IconGrid size={18} />
-          </GlyphFace>
+          <AllProjectsFace size="lg" current={onHome} />
         </button>
       </span>
+      <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
       {shown.map((t) => (
         <span key={t.id} data-slot={t.id} className="relative inline-flex shrink-0">
           <button
@@ -533,14 +534,12 @@ export function PhoneRail() {
             onClick={() => t.id !== rail.currentId && rail.enter(t.id)}
             className={TILE_BUTTON}
           >
-            <TileFace tile={t} size="lg" current={t.id === rail.currentId} lit={dragging === t.id} nudge={false} />
+            <RailTileFace tile={t} size="lg" current={t.id === rail.currentId} lit={dragging === t.id} />
           </button>
         </span>
       ))}
       <button type="button" aria-label="Open a project" onClick={rail.open} className={cx(TILE_BUTTON, 'shrink-0')}>
-        <GlyphFace size="lg" current={false} nudge={false}>
-          <IconPlus size={18} />
-        </GlyphFace>
+        <RailOpenFace size="lg" />
       </button>
     </nav>
   )

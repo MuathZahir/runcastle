@@ -5,6 +5,7 @@ import { useLiveStatus } from '../../lib/live'
 import type { ProjectNavApi } from '../../lib/use-project-nav'
 import { IconButton, Sheet, SheetRow, StatusDot } from '../../ui'
 import { PhoneRail } from '../ProjectRail'
+import { SidebarHead } from '../SidebarParts'
 import { useOpenGlossary } from '../GlossaryDialog'
 
 /**
@@ -32,10 +33,7 @@ export function PhoneListHead({
   return (
     <>
       <PhoneRail />
-      <div className="flex h-11 shrink-0 items-center gap-1 px-1">
-        <div className="flex min-w-0 flex-1">
-          <span className="truncate px-2 text-lg font-medium text-text">{nav.currentProject?.name}</span>
-        </div>
+      <SidebarHead name={nav.currentProject?.name} phone>
         <IconButton label="New" size="lg" icon={<IconPlus />} onClick={() => setCreating(true)} />
         <Sheet open={creating} onClose={() => setCreating(false)} label="New">
           <SheetRow icon={<IconOrchestrator />} label="New epic" hint="A new chat for one topic — talk an idea through, and it cuts the features" onClick={pick(onNewChat)} />
@@ -46,7 +44,7 @@ export function PhoneListHead({
             <SheetRow icon={<IconList />} label="Glossary" hint="The words runcastle uses, in one sentence each" onClick={pick(() => openGlossary())} />
           )}
         </Sheet>
-      </div>
+      </SidebarHead>
     </>
   )
 }

@@ -121,6 +121,29 @@
   --color-phase-shipped: var(--color-success);
   --color-phase-shipped-text: var(--color-success-text);
 
+  /* ---- epic colours (docs/features/epics-that-look-alive, decision 2) ----
+     Eight muted hues at the accent's depth (OKLCH lightness ~0.66 here, ~0.58
+     in light), one per epic: its card's wash, grid and icon tile. Blue is the
+     accent itself. Each has a `-text` peer, lighter here and darker in light,
+     for the icon and words drawn on its own wash. A component never names one
+     of these: it sets `--epic` / `--epic-text` from `lib/epic-look.tsx`. */
+  --color-epic-blue: #4f8ef7;
+  --color-epic-blue-text: #7aaafa;
+  --color-epic-teal: #31a5a5;
+  --color-epic-teal-text: #6ac6c6;
+  --color-epic-green: #52a76d;
+  --color-epic-green-text: #82c795;
+  --color-epic-olive: #8c9c3f;
+  --color-epic-olive-text: #aebd72;
+  --color-epic-amber: #bd8630;
+  --color-epic-amber-text: #daab69;
+  --color-epic-rust: #cf7855;
+  --color-epic-rust-text: #eb9f81;
+  --color-epic-rose: #cf7188;
+  --color-epic-rose-text: #eb99ac;
+  --color-epic-violet: #9882d4;
+  --color-epic-violet-text: #b8a8ee;
+
   --color-focus-ring: var(--color-accent);
   /* the veil behind a dialog — dark in both themes, lighter in light */
   --color-scrim: rgb(0 0 0 / 0.6);
@@ -268,6 +291,22 @@
   --color-phase-spec-text: #087570;
   --color-phase-implementation: #d4621a;
   --color-phase-implementation-text: #ac4b0a;
+  --color-epic-blue: #3a7ef0;
+  --color-epic-blue-text: #2361d4;
+  --color-epic-teal: #158b8c;
+  --color-epic-teal-text: #0a7272;
+  --color-epic-green: #2e9052;
+  --color-epic-green-text: #1a763f;
+  --color-epic-olive: #748410;
+  --color-epic-olive-text: #5e6b18;
+  --color-epic-amber: #a36e09;
+  --color-epic-amber-text: #865901;
+  --color-epic-rust: #b85c37;
+  --color-epic-rust-text: #9a4825;
+  --color-epic-rose: #b85570;
+  --color-epic-rose-text: #99415a;
+  --color-epic-violet: #8168be;
+  --color-epic-violet-text: #6953a0;
   --color-scrim: rgb(22 26 36 / 0.28);
   --elevation-popover: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16), inset 0 1px 0 color-mix(in oklab, var(--color-text) 6%, transparent);
   --elevation-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 64px -16px rgba(0, 0, 0, 0.22), inset 0 1px 0 color-mix(in oklab, var(--color-text) 6%, transparent);
