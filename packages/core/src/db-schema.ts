@@ -28,6 +28,7 @@ import type {
 } from './schemas'
 import type { ReviewGateRun } from './review-gates'
 import type { TokenBreakdown } from './usage'
+import type { EpicColor, EpicIconId } from './epic-look'
 
 /**
  * Drizzle SQLite tables mirroring the zod schemas. JSON columns use
@@ -407,6 +408,16 @@ export const sessions = sqliteTable('sessions', {
    * so the migration cannot fail.
    */
   openedBeside: text('opened_beside'),
+  /**
+   * A project chat's epic colour (epics-that-look-alive decision 2): one of
+   * `EPIC_COLORS`, the least used among the project's listed epics when the
+   * row is created; only the human changes it after. Null on every other kind.
+   */
+  epicColor: text('epic_color').$type<EpicColor>(),
+  /** A project chat's epic icon, one of `EPIC_ICON_IDS` (decision 1); null until the orchestrator or the human picks one. */
+  epicIcon: text('epic_icon').$type<EpicIconId>(),
+  /** The human picked the icon (decision 3): `name_epic` never changes it again. */
+  epicIconByHuman: integer('epic_icon_by_human', { mode: 'boolean' }).notNull().default(false),
 })
 
 /**

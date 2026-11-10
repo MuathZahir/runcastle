@@ -1,5 +1,5 @@
 import type { FeatureStatus } from '@runcastle/core'
-import { Feature, Project, Run, SessionRow } from '@runcastle/core'
+import { Feature, isEpicColor, isEpicIconId, Project, Run, SessionRow } from '@runcastle/core'
 import { and, desc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { features, projects, runs, sessions } from '../db/schema'
@@ -109,6 +109,10 @@ export function rowToSession(row: SessionSelect): SessionRow {
     createdAt: row.createdAt ?? undefined,
     endedAt: row.endedAt ?? undefined,
     openedBeside: row.openedBeside ?? undefined,
+    // A key a later build dropped reads as unset (the default look), never a failed read.
+    epicColor: isEpicColor(row.epicColor) ? row.epicColor : undefined,
+    epicIcon: isEpicIconId(row.epicIcon) ? row.epicIcon : undefined,
+    epicIconByHuman: row.epicIconByHuman || undefined,
   })
 }
 
