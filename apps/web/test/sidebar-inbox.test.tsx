@@ -9,8 +9,8 @@ import { openMenu } from './floating'
 
 /**
  * The project sidebar rendered whole, over faked tRPC (DESIGN.md §Frame, the
- * project sidebar): the Orchestrator card, what needs you unheaded, the
- * Working shelf, the folded shelves and the foot's drive cards. The grouping
+ * project sidebar): the epic list, Other features,
+ * the folded shelves and the foot's drive cards. The grouping
  * comes from the feature list the sidebar polls, which a static string cannot
  * show; the row-level words and dots are pinned in sidebar-row.test.ts.
  */
@@ -82,6 +82,8 @@ function rail(
     view?: 'feature' | 'project'
     driving?: DriveState | null
     onOpenCmdk?: () => void
+    onOpenChat?: (threadId: string) => void
+    onOpenConversations?: () => void
   } = {},
 ) {
   return render(
@@ -97,6 +99,8 @@ function rail(
         onDraft={() => {}}
         onOpenCmdk={over.onOpenCmdk}
         driving={over.driving ?? null}
+        {...(over.onOpenChat ? { onOpenChat: over.onOpenChat } : {})}
+        {...(over.onOpenConversations ? { onOpenConversations: over.onOpenConversations } : {})}
       />
     </ToastProvider>,
   )
@@ -104,10 +108,22 @@ function rail(
 
 const titled = (title: string, over: Parameters<typeof listItem>[0] = {}) => ({
   ...listItem({ id: title, ...over }),
+  // The fixture keeps only the fields it knows; the origin chat and holder ride along.
+  ...('chatId' in over ? { chatId: over.chatId } : {}),
+  ...('heldBy' in over ? { heldBy: over.heldBy } : {}),
   title,
 })
 
-const orchestrator = () => screen.getByRole('button', { name: /^Orchestrator/ })
+/** An orchestrator chat with a name, an epic. */
+const epic = (id: string, title: string, over: Partial<ThreadEntry> = {}): ThreadEntry => ({
+  ...thread('idle'),
+  id,
+  title,
+  ...over,
+})
+const epics = () => screen.getByRole('region', { name: 'Epics' })
+/** An epic's row: the door to its chat. */
+const epicRow = (title: string) => document.querySelector(`[data-epic] > button[title^="${title}"]`) as HTMLButtonElement
 /** The titles of a region's feature rows, in order. */
 const titles = (region: HTMLElement) =>
   within(region)
@@ -141,55 +157,35 @@ describe('the head', () => {
   })
 })
 
-describe('the Orchestrator card', () => {
-  it('replaces the Project row, and is current while the project view is open', () => {
-    rail({ view: 'project' })
-    expect(orchestrator().getAttribute('aria-current')).toBe('page')
-    expect(screen.queryByRole('button', { name: 'Project' })).toBeNull()
-    cleanup()
-    rail({ view: 'feature' })
-    expect(orchestrator().getAttribute('aria-current')).toBeNull()
+describe('the epics (orchestrator-chats-become-epics)', () => {
+  it('lists the epics on a feature page, with no card and no lanes, and opens a chat from its row', () => {
+    const onOpenChat = vi.fn()
+    data.threads = [epic('pay', 'Payment System', { state: 'working' })]
+    data.features = [titled('Retry policy', { chatId: 'pay', heldBy: 'pay' })]
+    rail({ view: 'feature', onOpenChat })
+    expect(within(epics()).getByText('Payment System')).toBeTruthy()
+    expect(within(screen.getByRole('group', { name: 'Payment System' })).getByText('Retry policy')).toBeTruthy()
+    for (const gone of ['Needs you', 'Working', 'Up next'])
+      expect(screen.queryByRole('region', { name: gone })).toBeNull()
+    expect(screen.queryByText(/Orchestrator/)).toBeNull()
+    fireEvent.click(epicRow('Payment System'))
+    expect(onOpenChat).toHaveBeenCalledWith('pay')
   })
 
-  // Its state is its chats' (decision 14), as the project page's list and the switcher show them.
-  it("says what the project's chats are doing, an empty new one not starting anything", () => {
-    data.threads = [thread('idle'), thread('idle')]
+  it('puts a feature with no epic under Other features', () => {
+    data.features = [titled('Loose', { need: need('test', 'Ready to test') })]
     rail()
-    expect(orchestrator().textContent).toContain('Plan, cut and ask')
-    expect(orchestrator().querySelector('[data-progress]')).toBeNull()
-    cleanup()
-    data.threads = [thread('idle'), thread('working')]
-    rail()
-    expect(orchestrator().textContent).toContain('Working')
-    expect(orchestrator().querySelector('[data-progress]')).not.toBeNull()
-    expect(orchestrator().innerHTML).not.toContain('bg-warning')
+    expect(within(screen.getByRole('group', { name: 'Other features' })).getByText('Loose')).toBeTruthy()
   })
 
-  it('waits amber while any of its chats waits on you, not only the newest', () => {
-    data.threads = [thread('working', 2), thread('waiting', 1)]
-    rail()
-    expect(orchestrator().textContent).toContain('Waiting for you')
-    expect(orchestrator().innerHTML).toContain('bg-warning')
-  })
-})
-
-describe('what needs you', () => {
-  it('lists the waiting features, then the ones in progress — unheaded', () => {
-    data.features = [
-      titled('Order history', {
-        ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
-      }),
-      titled('Coupons', { need: need('test', 'Ready to test') }),
-      titled('Checkout', { need: need('stopped', 'Stopped · you stopped it') }),
-    ]
-    rail()
-    const needs = screen.getByRole('region', { name: 'Needs you' })
-    expect(needs.textContent!.indexOf('Coupons')).toBeLessThan(needs.textContent!.indexOf('Checkout'))
-    expect(needs.textContent!.indexOf('Checkout')).toBeLessThan(needs.textContent!.indexOf('Order history'))
-    expect(within(needs).getByText('Ready to test')).toBeTruthy()
-    expect(within(needs).getByText('Stopped · you stopped it')).toBeTruthy()
-    expect(within(needs).getByText('In progress')).toBeTruthy()
-    expect(within(needs).queryByRole('heading')).toBeNull()
+  it('leaves a quiet chat out, for "All N epics"', () => {
+    const onOpenConversations = vi.fn()
+    data.threads = [epic('pay', 'Payment System', { state: 'waiting' }), epic('old', 'Old idea')]
+    rail({ onOpenConversations })
+    expect(epicRow('Payment System')).toBeTruthy()
+    expect(epicRow('Old idea')).toBeNull()
+    fireEvent.click(within(epics()).getByText('All 2 epics'))
+    expect(onOpenConversations).toHaveBeenCalledOnce()
   })
 
   it('keeps no lane headings, Project or Preparation rows, or runs elsewhere', () => {
@@ -198,44 +194,22 @@ describe('what needs you', () => {
       titled('Order history', { need: need('stopped', 'Stopped · you stopped it') }),
     ]
     rail()
-    for (const gone of ['Inbox', 'In progress', 'Agent working', 'Drafts', 'Show archived'])
+    for (const gone of ['Inbox', 'Agent working', 'Drafts', 'Show archived'])
       expect(screen.queryByText(gone)).toBeNull()
     expect(screen.queryByText(/running elsewhere/)).toBeNull()
     expect(data.useQueries).not.toHaveBeenCalled()
   })
 })
 
-describe('the Working shelf', () => {
-  it('holds the features with an agent at work, open in the bay', () => {
-    data.features = [
-      titled('Coupons', { need: need('test', 'Ready to test') }),
-      titled('Search', {
-        workersWorking: 1,
-        ticketCounts: { total: 7, pending: 4, burning: 0, done: 3, failed: 0, cancelled: 0 },
-      }),
-    ]
-    rail()
-    const working = screen.getByRole('region', { name: 'Working' })
-    expect(titles(working)).toEqual(['Search'])
-    expect(within(working).getByText('Working · 1 worker')).toBeTruthy()
-    expect(within(working).getByRole('button', { expanded: true })).toBeTruthy()
-  })
-
-  it('holds a need its orchestrator handles, in the orchestrator’s words, and leaves a permission prompt under Needs you', () => {
-    data.features = [
-      titled('Billing emails', { need: need('test', 'With the orchestrator · Ready to test · Invoices', { held: true }) }),
-      titled('Export to CSV', { need: need('permission', 'Needs permission · Bash: git push') }),
-    ]
-    rail()
-    const working = screen.getByRole('region', { name: 'Working' })
-    expect(titles(working)).toEqual(['Billing emails'])
-    expect(within(working).getByText('With the orchestrator · Ready to test · Invoices')).toBeTruthy()
-    const needs = screen.getByRole('region', { name: 'Needs you' })
-    expect(within(needs).getByText('Needs permission · Bash: git push')).toBeTruthy()
-  })
-})
-
 describe('the folded shelves', () => {
+  it('name each row’s epic quietly (decision 21)', () => {
+    localStorage.setItem('runcastle.sidebar.showArchived', '1')
+    data.threads = [epic('pay', 'Payment System')]
+    data.features = [titled('Receipts', { status: 'archived', chatId: 'pay' })]
+    rail()
+    expect(within(screen.getByRole('region', { name: 'Archived' })).getByText('Payment System')).toBeTruthy()
+  })
+
   const shipped = Array.from({ length: 7 }, (_, i) => titled(`Shipped ${i}`, { status: 'shipped' }))
 
   it('count Backlog, Shipped and Archived while folded — archived included', () => {

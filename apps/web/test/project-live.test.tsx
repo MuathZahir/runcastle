@@ -51,7 +51,7 @@ describe('a project chat', () => {
     const api = server()
     render(<ProjectChat threadId="th_old" onOpenThread={() => {}} landing={landing} />, { wrapper: api.Wrapper })
 
-    const chat = screen.getByRole('region', { name: 'Orchestrator chat' })
+    const chat = screen.getByRole('region', { name: 'Epic chat' })
     expect(await screen.findByText('Three features: capture, triage, export.')).toBeTruthy()
     expect(chat.textContent).toContain('Lands on main')
     expect(screen.getByLabelText('Message')).toBeTruthy()

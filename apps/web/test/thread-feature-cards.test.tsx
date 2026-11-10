@@ -156,10 +156,10 @@ describe("runcastle's lines in a thread", () => {
         links(),
       ),
     )
-    expect(screen.getByText('Orchestrator')).toBeTruthy()
+    expect(screen.getByText('Epic')).toBeTruthy()
     expect(screen.getByText((_, el) => el?.textContent === message && el.children.length === 0)).toBeTruthy()
     expect(screen.getByText('Yes, ship it.')).toBeTruthy()
-    expect(screen.getByText('Your answer, relayed by the orchestrator')).toBeTruthy()
+    expect(screen.getByText('Your answer, relayed by the epic')).toBeTruthy()
     expect(screen.queryByText(/not the human/)).toBeNull()
   })
 })

@@ -98,6 +98,7 @@ export function SidebarEpicRow({
   const asking = chat.state === 'waiting'
   return (
     <div
+      data-epic={chat.id}
       className={cx(
         'group/nav relative shrink-0 rounded-lg transition-colors duration-(--dur-1) ease-app',
         active ? SIDEBAR_CARD : 'hover:bg-surface-hover',

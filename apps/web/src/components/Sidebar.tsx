@@ -430,7 +430,7 @@ export function Sidebar(props: SidebarProps) {
               currentFeature={currentFeature}
               onOpenEpic={openEpic}
               onSelectFeature={selectFeature}
-              onNewEpic={onNewChat}
+              onNewEpic={projectThreads?.newThread ?? onNewChat}
               onAllEpics={allConversations ?? onSelectProject}
               featureActions={featureActions}
               workersFor={workersFor}
