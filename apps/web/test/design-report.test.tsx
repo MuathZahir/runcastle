@@ -2,7 +2,7 @@
 import { act, cleanup, render } from '@testing-library/react'
 import { useRef } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DESIGN_REPORT_DEBOUNCE_MS, useDesignReport } from '../src/lib/use-design-report'
+import { DESIGN_REPORT_DEBOUNCE_MS, flushDesignReport, useDesignReport } from '../src/lib/use-design-report'
 import { fakeTrpc } from './fake-trpc'
 
 /**
@@ -63,6 +63,19 @@ describe('useDesignReport', () => {
     post('runcastle-design-report', frameWindow)
     await wait(DESIGN_REPORT_DEBOUNCE_MS + 100)
     expect(inputs('design.report')).toEqual([])
+  })
+
+  it('sends a pending report at once when Approve asks, and waits for the server to have it', async () => {
+    const { inputs, frameWindow } = setup('design_a')
+    post({ type: 'runcastle-design-report', state: 'full', tweaks: { accent: 'indigo' } }, frameWindow)
+    expect(inputs('design.report')).toEqual([])
+    await act(() => flushDesignReport('design_a'))
+    expect(inputs('design.report')).toEqual([
+      { designId: 'design_a', report: { type: 'runcastle-design-report', state: 'full', tweaks: { accent: 'indigo' } } },
+    ])
+    await act(() => flushDesignReport('design_unshown'))
+    await wait(DESIGN_REPORT_DEBOUNCE_MS + 100)
+    expect(inputs('design.report')).toHaveLength(1)
   })
 
   it('sends a report still pending when the view goes, and nothing without a recorded design', async () => {

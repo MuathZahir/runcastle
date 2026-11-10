@@ -9,7 +9,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, { featureContext } from '../src/mcp/server'
 import designsApp from '../src/routes/designs'
-import { allApprovedLine, recordDesign, reportDesign } from '../src/services/designs'
+import { allApprovedLine, recordDesign, reportDesign, setDesignState } from '../src/services/designs'
 import { setWaiting } from '../src/services/lead-status'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
@@ -365,6 +365,22 @@ describe('design.report', () => {
         'Write those values into the code, delete its Tweaks menu, and commit it as "design: Invoice list".',
     ])
     expect((await list()).designs[0].report?.tweaks).toEqual({ accent: 'red', density: 'loose' })
+  })
+
+  it('forgets an earlier click’s values once the design is shown again', async () => {
+    leadChat()
+    const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    const b = recordDesign(ctx, feature.id, { path: '/preview/b.html', title: 'B' })
+    reportDesign(ctx, a.id, report({ accent: 'coral' }))
+    await caller().design.approve({ designId: a.id })
+    recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
+    reportDesign(ctx, a.id, report({}))
+    setDesignState(ctx, feature.id, { path: '/preview/a.html', state: 'approved' })
+    await caller().design.approve({ designId: b.id })
+
+    expect(delivered()).toHaveLength(1)
+    expect(delivered()[0]).toContain('“A” (/preview/a.html) (no Tweaks menu)')
+    expect(delivered()[0]).not.toContain('coral')
   })
 
   it('names each of several designs: reported values, an empty set, a missing field and no report', async () => {

@@ -123,6 +123,8 @@ export function recordDesign(
     picture: input.picture ?? null,
     state: 'waiting' as const,
     approvedBy: null,
+    // A re-shown design is a new round: an earlier click's values no longer stand.
+    approvedReport: null,
     shownAt: now,
     seenAt: null,
   }
