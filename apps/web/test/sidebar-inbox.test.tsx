@@ -65,13 +65,13 @@ const { Sidebar } = await import('../src/components/Sidebar')
 const { ToastProvider } = await import('../src/lib/toast')
 
 const nav = {
-  projects: [{ id: 'proj_a', name: 'shop-app', repoPath: '/repo' }],
+  projects: [{ id: 'proj_a', name: 'shop-app', repoPath: '/repo', position: 0 }],
   loading: false,
   doctorError: null,
   recheckDoctor: () => {},
   view: 'project' as const,
   currentProjectId: 'proj_a',
-  currentProject: { id: 'proj_a', name: 'shop-app', repoPath: '/repo' },
+  currentProject: { id: 'proj_a', name: 'shop-app', repoPath: '/repo', position: 0 },
   goHome: () => {},
   enterProject: () => {},
   showOpen: () => {},

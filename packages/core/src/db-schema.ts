@@ -62,6 +62,11 @@ export const projects = sqliteTable('projects', {
   // `project.close` sets it (hiding the project); re-`open` clears it. Additive
   // and nullable so the migration leaves existing (open) projects untouched.
   closedAt: integer('closed_at'),
+  // Where the project sits on the project rail, ascending (a-better-way-to-move
+  // -between-projects decision 5). The human sets it by dragging; opening or
+  // re-opening a project puts it at the end. The migration backfills today's
+  // insertion order so nothing moves on upgrade.
+  position: integer('position').notNull().default(0),
   // Prepared repo facts (project preparation). These four mirror same-named
   // GLOBAL config fields, which is the bug preparation exists to fix: "which
   // tests are already red" and "how do I verify" are properties of a REPO, so a

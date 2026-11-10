@@ -138,13 +138,13 @@ function server({
 }
 
 const nav = {
-  projects: [{ id: 'proj_1', name: 'shop-app', repoPath: '/repo' }],
+  projects: [{ id: 'proj_1', name: 'shop-app', repoPath: '/repo', position: 0 }],
   loading: false,
   doctorError: null,
   recheckDoctor: () => {},
   view: 'project' as const,
   currentProjectId: 'proj_1',
-  currentProject: { id: 'proj_1', name: 'shop-app', repoPath: '/repo' },
+  currentProject: { id: 'proj_1', name: 'shop-app', repoPath: '/repo', position: 0 },
   goHome: () => {},
   enterProject: () => {},
   showOpen: () => {},

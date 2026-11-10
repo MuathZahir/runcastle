@@ -71,6 +71,7 @@ export function rowToProject(row: ProjectSelect): Project {
     scenarioRunner: row.scenarioRunner ?? undefined,
     docsCommitPrefix: row.docsCommitPrefix ?? undefined,
     closedAt: row.closedAt ?? undefined,
+    position: row.position,
   })
 }
 

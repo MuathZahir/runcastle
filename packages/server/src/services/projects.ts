@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import type { Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { eq, isNull } from 'drizzle-orm'
+import { asc, eq, isNull, max } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { projects } from '../db/schema'
 import { InvalidInputError } from '../errors'
@@ -31,14 +31,59 @@ import {
  * (SPEC §12).
  */
 
-/** Open projects (closed ones are hidden), newest-known first is not required. */
+/** Open projects (closed ones are hidden), in the project rail's order. */
 export function listProjects(ctx: AppCtx): Project[] {
   return ctx.db
     .select()
     .from(projects)
     .where(isNull(projects.closedAt))
+    .orderBy(asc(projects.position), asc(projects.id))
     .all()
     .map(rowToProject)
+}
+
+/** The position one past every project's, so an opened project lands at the end of the rail. */
+function nextPosition(ctx: AppCtx): number {
+  const row = ctx.db.select({ top: max(projects.position) }).from(projects).get()
+  return row?.top == null ? 0 : row.top + 1
+}
+
+/**
+ * Set the project rail's order (a-better-way-to-move-between-projects decision
+ * 5): `projectIds` is every open project, once each, in the order the human
+ * dragged them into. Anything else — a missing, extra, closed, unknown or
+ * repeated id — is refused and writes nothing, so a window holding a stale list
+ * cannot drop a project off the rail. One `project.reordered` event (on the
+ * first project) moves every open window's rail on the same push.
+ */
+export function reorderProjects(ctx: AppCtx, projectIds: string[]): Project[] {
+  const open = listProjects(ctx)
+  const openIds = new Set(open.map((p) => p.id))
+  const given = new Set(projectIds)
+  const matches =
+    given.size === projectIds.length &&
+    given.size === openIds.size &&
+    projectIds.every((id) => openIds.has(id))
+  if (!matches) {
+    throw new InvalidInputError(
+      'the project order must list every open project exactly once — reload and try again',
+    )
+  }
+  ctx.db.transaction((tx) => {
+    projectIds.forEach((id, position) => {
+      tx.update(projects).set({ position }).where(eq(projects.id, id)).run()
+    })
+  })
+  const byId = new Map(open.map((p) => [p.id, p]))
+  const first = projectIds[0]
+  if (first) {
+    emitProject(ctx, first, {
+      type: 'project.reordered',
+      message: `projects reordered: ${projectIds.map((id) => byId.get(id)?.name ?? id).join(', ')}`,
+      data: { projectIds },
+    })
+  }
+  return listProjects(ctx)
 }
 
 /**
@@ -80,16 +125,19 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
 
   const existing = getProjectByRepoPath(ctx, repoPath) ?? findProjectByCanonPath(ctx, repoPath)
   if (existing) {
+    // A closed project coming back goes to the end of the rail like a new one;
+    // opening one that is already open leaves it where the human put it.
+    const position = existing.closedAt === undefined ? existing.position : nextPosition(ctx)
     ctx.db
       .update(projects)
       // Rewrite `repoPath` to the normalized form so a row stored raw by an
       // older build converges the first time it is re-opened.
-      .set({ repoPath, closedAt: null })
+      .set({ repoPath, closedAt: null, position })
       .where(eq(projects.id, existing.id))
       .run()
     // `closedAt: undefined` mirrors the column we just cleared — a re-opened
     // project must not return carrying the closed stamp it had a line ago.
-    const reopened = { ...existing, repoPath, closedAt: undefined }
+    const reopened = { ...existing, repoPath, closedAt: undefined, position }
     emitProject(ctx, existing.id, {
       type: 'project.opened',
       message: `project ${existing.name} re-opened at ${repoPath}`,
@@ -104,6 +152,7 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
     repoPath,
     devCommand: null,
     closedAt: null,
+    position: nextPosition(ctx),
   }
   const inserted = ctx.db.insert(projects).values(row).returning().get()
   const project = rowToProject(inserted)

@@ -13,6 +13,7 @@ import {
   listProjects,
   openProject,
   renameProject,
+  reorderProjects,
 } from '../../services/projects'
 import { requireProjectById } from '../../services/repo'
 import { publicProcedure, router } from '../context'
@@ -81,6 +82,15 @@ export const projectRouter = router({
   rename: publicProcedure
     .input(z.object({ projectId: z.string(), name: ProjectName }))
     .mutation(({ ctx, input }) => renameProject(ctx, input.projectId, input.name)),
+
+  /**
+   * Set the project rail's order: every open project's id, once each, in the
+   * order the human dragged them into. A list that does not match the open
+   * projects exactly is refused. Returns the open projects in the new order.
+   */
+  reorder: publicProcedure
+    .input(z.object({ projectIds: z.array(z.string()).min(1) }))
+    .mutation(({ ctx, input }) => reorderProjects(ctx, input.projectIds)),
 
   // `project.update` is retired (issue #46): devCommand (and model/sandbox) now
   // read/write through the `settings` router as per-project overrides.

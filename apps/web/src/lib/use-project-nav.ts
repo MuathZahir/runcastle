@@ -110,8 +110,11 @@ export interface ProjectNavApi {
   currentProject: Project | undefined
   /** Show the portfolio home. */
   goHome: () => void
-  /** Enter a project's IDE (switch is view-only — background runs keep going). */
-  enterProject: (projectId: string) => void
+  /**
+   * Enter a project's IDE (switch is view-only — background runs keep going),
+   * on one of its features when its slug is given.
+   */
+  enterProject: (projectId: string, featureSlug?: string) => void
   /** Show the open-a-project flow (from home, the switcher, or empty state). */
   showOpen: () => void
   /** Leave the open flow back to the home / current project. */
@@ -242,10 +245,14 @@ export function useProjectNav(): ProjectNavApi {
     writeStoredNav({ view: 'home' })
     pushPath('/')
   }, [])
-  const enterProject = useCallback((projectId: string) => {
+  // A feature's address is pushed before the project mounts, so the project
+  // shell, which reads the address once on mount, lands on that feature.
+  const enterProject = useCallback((projectId: string, featureSlug?: string) => {
     setChosen({ view: 'project', projectId })
     writeStoredNav({ view: 'project', projectId })
-    pushPath(pathFor({ kind: 'project', projectId }))
+    pushPath(
+      pathFor(featureSlug ? { kind: 'feature', projectId, featureSlug } : { kind: 'project', projectId }),
+    )
   }, [])
   const showOpen = useCallback(
     () => setChosen({ view: 'open', projectId: currentProjectId }),

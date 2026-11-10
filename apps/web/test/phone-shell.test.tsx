@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeTrpcFetch, type TrpcFakes } from '../../../.runcastle/preview/fake-api'
-import { PROJECT_ID, withShell } from '../../../.runcastle/preview/shell-fakes'
+import { PROJECT_ID, project, withShell } from '../../../.runcastle/preview/shell-fakes'
 import { App } from '../src/App'
 import { phoneDesignSrc } from '../src/components/phone/PhoneDesignView'
 import type { RouterOutputs } from '../src/lib/api'
@@ -302,6 +302,64 @@ describe('runcastle on a phone', () => {
     fireEvent.click(within(screen.getByRole('dialog', { name: 'New' })).getByRole('button', { name: /New epic/ }))
     await waitFor(() => expect(window.location.pathname).toBe(`/p/${PROJECT_ID}/chat`))
     expect(await screen.findByRole('button', { name: 'Back to the list' })).toBeTruthy()
+  })
+
+  it('runs the project rail across the top of the list: a tap switches, as Alt+digit does', async () => {
+    const other = { ...project, id: 'proj_other', name: 'clawflow', position: 1 }
+    render(<Root path={LIST} extra={{ project: { list: () => [project, other] } } as TrpcFakes} />)
+    await onList()
+    const row = screen.getByRole('navigation', { name: 'Switch project' })
+    expect(within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
+      'All projects',
+      project.name,
+      'clawflow',
+      'Open a project',
+    ])
+    expect(within(row).getByRole('button', { name: project.name }).getAttribute('aria-current')).toBe('true')
+    // The head names the project; the old dropdown switcher is gone.
+    expect(screen.queryByRole('button', { name: /switch project/ })).toBeNull()
+
+    fireEvent.click(within(row).getByRole('button', { name: 'clawflow' }))
+    await waitFor(() => expect(window.location.pathname).toBe('/p/proj_other'))
+
+    fireEvent.keyDown(window, { code: 'Digit1', key: '1', altKey: true })
+    await waitFor(() => expect(window.location.pathname).toBe(LIST))
+  })
+
+  it('saves a dragged order, and puts it back with a toast when the server refuses it', async () => {
+    const other = { ...project, id: 'proj_other', name: 'clawflow', position: 1 }
+    const saved: unknown[] = []
+    const drag = () => {
+      const row = screen.getByRole('navigation', { name: 'Switch project' })
+      // happy-dom lays nothing out, so any drag lands on the first slot.
+      fireEvent.pointerDown(within(row).getByRole('button', { name: 'clawflow' }), { button: 0, pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 20 })
+      fireEvent.pointerMove(window, { pointerId: 1, clientX: 10, clientY: 20 })
+      fireEvent.pointerUp(window, { pointerId: 1, clientX: 10, clientY: 20 })
+    }
+    const order = () =>
+      within(screen.getByRole('navigation', { name: 'Switch project' }))
+        .getAllByRole('button')
+        .map((b) => b.getAttribute('aria-label'))
+        .slice(1, 3)
+
+    render(
+      <Root
+        path={LIST}
+        extra={{ project: { list: () => [project, other], reorder: (input: unknown) => (saved.push(input), [other, project]) } } as TrpcFakes}
+      />,
+    )
+    await onList()
+    drag()
+    expect(order()).toEqual(['clawflow', project.name])
+    await waitFor(() => expect(saved).toEqual([{ projectIds: ['proj_other', PROJECT_ID] }]))
+
+    cleanup()
+    render(<Root path={LIST} extra={{ project: { list: () => [project, other] } } as TrpcFakes} />)
+    await onList()
+    drag()
+    expect(order()).toEqual(['clawflow', project.name])
+    await screen.findByText(/A preview shows states/)
+    await waitFor(() => expect(order()).toEqual([project.name, 'clawflow']))
   })
 
   it('warns on the list while the live stream is down, and clears on reconnect', async () => {

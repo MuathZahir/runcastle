@@ -47,7 +47,6 @@ import { copyText } from './workspace/copy-text'
 import { RailResizeHandle } from './RailResizeHandle'
 import type { FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
-import { ProjectSwitcher } from './ProjectSwitcher'
 import { useOpenGlossary } from './GlossaryDialog'
 import { CollapseSidebarButton } from './Frame'
 import { ComputerUnreachable, PhoneListHead } from './phone/PhoneListHead'
@@ -124,7 +123,7 @@ function byLastMoved(features: FeatureListItem[]): FeatureListItem[] {
  * The project sidebar (DESIGN.md §Frame, "The project sidebar") on the canvas,
  * composed from the pieces in `SidebarParts`:
  *
- * - head — the project switcher, Search (⌘/Ctrl K), a Create menu (New epic ·
+ * - head — the current project’s name (the project rail, left of it, switches), Search (⌘/Ctrl K), a Create menu (New epic ·
  *   Add to backlog · Jot a note) and the collapse button, over the halftone;
  * - the epics (docs/features/orchestrator-chats-become-epics): each listed
  *   orchestrator chat with the features it cut that are in motion or up next
@@ -412,8 +411,11 @@ export function Sidebar(props: SidebarProps) {
         </>
       ) : (
         <div className="flex h-10 shrink-0 items-center gap-0.5">
+          {/* The project rail switches; the head names where you are. */}
           <div className="flex min-w-0 flex-1">
-            <ProjectSwitcher nav={nav} />
+            <span className="truncate px-2 text-sm font-semibold text-text" title={nav.currentProject?.name}>
+              {nav.currentProject?.name}
+            </span>
           </div>
           <IconButton
             label="Search or jump to"
@@ -508,7 +510,7 @@ export function Sidebar(props: SidebarProps) {
 }
 
 /**
- * The Create menu beside the switcher — the three doors onto new work, split
+ * The Create menu beside the project’s name — the three doors onto new work, split
  * by whether it starts now (decisions.md #12): New chat is where work is born,
  * the backlog is where an idea is parked, and a note is a thing you noticed.
  */

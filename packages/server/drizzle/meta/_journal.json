@@ -484,6 +484,13 @@
       "when": 1794247614635,
       "tag": "0068_feature_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "6",
+      "when": 1794288211104,
+      "tag": "0069_project_position",
+      "breakpoints": true
     }
   ]
 }

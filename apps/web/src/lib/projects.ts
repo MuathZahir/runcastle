@@ -120,6 +120,14 @@ function featureNeedsYou(f: FeatureListItem): boolean {
   return needsMe(f) !== null
 }
 
+/**
+ * Whether anything in a project waits on the human — the tab title's and the
+ * sidebar's rule, per project: the project rail's amber dot.
+ */
+export function projectNeedsYou(features: readonly FeatureListItem[]): boolean {
+  return features.some(featureNeedsYou)
+}
+
 /** Coarse health lens for a portfolio card, most-urgent first. */
 export type ProjectHealth = 'attention' | 'working' | 'steady' | 'empty'
 

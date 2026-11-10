@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useProjectNav } from '../lib/use-project-nav'
-import { NotificationsProvider, useNeedsYouTitle } from '../lib/use-notifications'
+import { NotificationsProvider, useNeedsYouTitle, useProjectFeatureLists } from '../lib/use-notifications'
 import { ProjectShell } from './ProjectShell'
 import { PortfolioHome } from './PortfolioHome'
 import { OpenProject } from './OpenProject'
@@ -8,6 +8,7 @@ import { FirstRunWizard } from './first-run/FirstRunWizard'
 import { UpdateBanner } from './UpdateBanner'
 import { SetupCheckBanner } from './SetupCheckBanner'
 import { Frame, FrameProvider } from './Frame'
+import { ProjectRailProvider } from './ProjectRail'
 import { Dialog, Page, Skeleton, SkeletonBar, cx } from '../ui'
 
 /**
@@ -25,8 +26,10 @@ import { Dialog, Page, Skeleton, SkeletonBar, cx } from '../ui'
  */
 export function Shell() {
   const nav = useProjectNav()
-  // The tab counts what needs you in every project, wherever you stand.
-  useNeedsYouTitle(nav.projects ?? [])
+  // Every project's features, read once: the tab counts what needs you in
+  // every project, wherever you stand, and the project rail dots the same.
+  const featureLists = useProjectFeatureLists(nav.projects ?? [])
+  useNeedsYouTitle(featureLists)
 
   let content
   let overlay: ReactNode = null
@@ -103,10 +106,13 @@ export function Shell() {
     >
       {/* Desktop pings watch every project, so they live above any one of them. */}
       <NotificationsProvider>
-        <div className="h-full bg-canvas">
-          {content}
-          {overlay}
-        </div>
+        {/* The project rail (and its Alt+1…9) over every screen with a sidebar. */}
+        <ProjectRailProvider nav={nav} lists={featureLists}>
+          <div className="h-full bg-canvas">
+            {content}
+            {overlay}
+          </div>
+        </ProjectRailProvider>
       </NotificationsProvider>
     </FrameProvider>
   )

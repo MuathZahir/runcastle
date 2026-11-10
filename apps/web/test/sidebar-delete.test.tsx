@@ -43,13 +43,13 @@ import { ToastProvider } from '../src/lib/toast'
 import type { ProjectNavApi } from '../src/lib/use-project-nav'
 
 const nav: ProjectNavApi = {
-  projects: [{ id: 'project-1', name: 'Project', repoPath: '/repo' }],
+  projects: [{ id: 'project-1', name: 'Project', repoPath: '/repo', position: 0 }],
   loading: false,
   doctorError: null,
   recheckDoctor: vi.fn(),
   view: 'project',
   currentProjectId: 'project-1',
-  currentProject: { id: 'project-1', name: 'Project', repoPath: '/repo' },
+  currentProject: { id: 'project-1', name: 'Project', repoPath: '/repo', position: 0 },
   goHome: vi.fn(),
   enterProject: vi.fn(),
   showOpen: vi.fn(),

@@ -6,6 +6,8 @@ import { shortcut } from '../lib/platform'
 import { useIsPhone } from '../lib/use-phone'
 import { cx, IconButton, SidebarDoorContext } from '../ui'
 import { RailResizeHandle } from './RailResizeHandle'
+import { DesktopRail } from './ProjectRail'
+import { SidebarBackdrop, SidebarBackdropDrawn } from './SidebarParts'
 
 /**
  * The frame every screen sits in (DESIGN.md §Frame): `canvas` | the sidebar |
@@ -48,7 +50,7 @@ function writeClosed(closed: boolean): void {
 export interface FrameApi {
   width: number
   setWidth: (px: number) => void
-  /** The sidebar is closed: no rail, no width — the page header holds the way back. */
+  /** The sidebar is closed: no width — the page header holds the way back. */
   closed: boolean
   toggleSidebar: () => void
   closeSidebar: () => void
@@ -154,7 +156,7 @@ function ShowSidebarButton({ onClick }: { onClick: () => void }) {
 const clampDrag = (px: number) => Math.min(px, SIDEBAR_MAX_W)
 
 /**
- * canvas | sidebar | content panel. The sidebar has one other state: closed
+ * canvas | project rail | sidebar | content panel (the rail, `ProjectRail`, stays when the sidebar closes). The sidebar has one other state: closed
  * (design-mode decision 12) — zero width, nothing left of the content panel,
  * and the page header's {@link ShowSidebarButton} (through
  * {@link SidebarDoorContext}) the way back, beside Ctrl/⌘+B.
@@ -166,17 +168,24 @@ const clampDrag = (px: number) => Math.min(px, SIDEBAR_MAX_W)
  */
 export function Frame({
   sidebar,
+  rail = sidebar !== undefined,
   phoneShows = 'page',
   children,
 }: {
   sidebar?: ReactNode
+  /** Show the project rail on desktop: on by default wherever there is a sidebar; All projects asks for it without one. */
+  rail?: boolean
   /** On a phone, one thing at a time: the sidebar's content as the list, or the page. */
   phoneShows?: 'list' | 'page'
   children: ReactNode
 }) {
   const phone = useIsPhone()
   if (phone) return <PhoneFrame list={sidebar !== undefined && phoneShows === 'list' ? sidebar : null}>{children}</PhoneFrame>
-  return <DesktopFrame sidebar={sidebar}>{children}</DesktopFrame>
+  return (
+    <DesktopFrame sidebar={sidebar} rail={rail}>
+      {children}
+    </DesktopFrame>
+  )
 }
 
 /**
@@ -201,7 +210,7 @@ function PhoneFrame({ list, children }: { list: ReactNode; children: ReactNode }
   )
 }
 
-function DesktopFrame({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
+function DesktopFrame({ sidebar, rail, children }: { sidebar?: ReactNode; rail: boolean; children: ReactNode }) {
   const { width, setWidth, closed, toggleSidebar, closeSidebar, notices } = useFrame()
   const [resizing, setResizing] = useState(false)
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -229,28 +238,38 @@ function DesktopFrame({ sidebar, children }: { sidebar?: ReactNode; children: Re
       className="flex h-full min-h-0 bg-canvas text-text"
       style={{ '--sidebar-w': `${width}px` } as CSSProperties}
     >
-      {hasSidebar && (
-        <div
-          data-sidebar={closed ? 'closed' : 'open'}
-          className={cx(
-            'relative h-full shrink-0 overflow-hidden',
-            !resizing && 'transition-[width] duration-(--dur-3) ease-out-app motion-reduce:transition-none',
-          )}
-          style={{ width: closed ? 0 : width }}
-        >
-          <div
-            inert={closed}
-            aria-hidden={closed || undefined}
-            className={cx(
-              'absolute inset-y-0 left-0 flex w-(--sidebar-w) flex-col',
-              'transition-opacity duration-(--dur-2) ease-app',
-              closed ? 'pointer-events-none opacity-0' : 'opacity-100',
-            )}
-          >
-            {sidebar}
-          </div>
-          {!closed && (
-            <RailResizeHandle width={width} side="left" label="Resize the sidebar" clamp={clampDrag} onResize={onResize} />
+      {(hasSidebar || rail) && (
+        // One ground for the rail and the sidebar: one halftone behind both,
+        // and the rail stays when the sidebar closes.
+        <div className="relative isolate flex h-full min-h-0 shrink-0">
+          <SidebarBackdrop />
+          {rail && <DesktopRail />}
+          {hasSidebar && (
+            <SidebarBackdropDrawn.Provider value>
+              <div
+                data-sidebar={closed ? 'closed' : 'open'}
+                className={cx(
+                  'relative h-full shrink-0 overflow-hidden',
+                  !resizing && 'transition-[width] duration-(--dur-3) ease-out-app motion-reduce:transition-none',
+                )}
+                style={{ width: closed ? 0 : width }}
+              >
+                <div
+                  inert={closed}
+                  aria-hidden={closed || undefined}
+                  className={cx(
+                    'absolute inset-y-0 left-0 flex w-(--sidebar-w) flex-col',
+                    'transition-opacity duration-(--dur-2) ease-app',
+                    closed ? 'pointer-events-none opacity-0' : 'opacity-100',
+                  )}
+                >
+                  {sidebar}
+                </div>
+                {!closed && (
+                  <RailResizeHandle width={width} side="left" label="Resize the sidebar" clamp={clampDrag} onResize={onResize} />
+                )}
+              </div>
+            </SidebarBackdropDrawn.Provider>
           )}
         </div>
       )}

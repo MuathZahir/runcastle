@@ -53,6 +53,8 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: projects, isLoading: false }) },
       rename: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
       close: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+      // The project rail's drag.
+      reorder: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
     },
     setup: {
       doctor: {

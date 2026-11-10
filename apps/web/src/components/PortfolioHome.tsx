@@ -1,31 +1,25 @@
-import { trpc } from '../trpc'
-import { projectStats } from '../lib/projects'
-import { useLivePoll, useLiveStatus } from '../lib/live'
-import { SANDBOX_MODE } from '../lib/env'
-import { useTheme } from '../lib/theme'
+import { portfolioEntries, portfolioTotals, type PortfolioEntry } from '../lib/portfolio'
+import { useProjectFeatureLists } from '../lib/use-notifications'
 import { useIsPhone } from '../lib/use-phone'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import { Button, cx, List, NavItem, Page, PageHeader, PageTopbar } from '../ui'
+import { Button, cx, Page, PageHeader, PageTopbar } from '../ui'
 import { IconHome, IconPlus } from '../icons'
-import { ProjectCard } from './ProjectCard'
-import { CollapseSidebarButton, Frame } from './Frame'
-import { ProjectSwitcher } from './ProjectSwitcher'
-import { SidebarFootChrome } from './Sidebar'
-import { useOpenGlossary } from './GlossaryDialog'
+import { ProjectCard, QuietProject } from './ProjectCard'
+import { Frame } from './Frame'
 import { SidebarBackdrop } from './SidebarParts'
+import { PhoneRail } from './ProjectRail'
 
 /**
- * The portfolio home (issue #45): the canonical cross-project surface. One row
- * per open project — its name, its repo path, and what it is doing (features,
- * runs in flight, what needs you) — and a click through into the project.
+ * All projects, the portfolio home (route `/`), as approved in
+ * `preview/all-projects.html` (a-better-way-to-move-between-projects,
+ * decision 4): a card for each project with something waiting on the human or
+ * running, listing what waits and what runs; then one line for each quiet
+ * project. Everything stays in the rail's order — the order `project.list`
+ * returns — so a project sits in the same spot here as on the rail.
  *
- * It sits in the same frame as every project (DESIGN.md §Frame) so moving
- * between the two never re-lays the window out; its sidebar is the minimal one —
- * the switcher, the two places this level has, and the status foot.
- *
- * What is live sits on top in the Working bay's own material, as on the
- * Conversations page: waiting before running, its edge lit while something
- * runs. With nothing live the bay is not there at all.
+ * It sits in the same frame as every project (DESIGN.md §Frame), right beside
+ * the rail with no sidebar, as designed (the human dropped the slim sidebar it
+ * once had; the theme toggle and status foot live in every project's sidebar).
  *
  * "Open a project" is the page's one primary (decision 7). Home is never reached
  * with no projects open (decision 3), so it has no empty state: the shell lands
@@ -35,108 +29,87 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
   const phone = useIsPhone()
   const projects = nav.projects ?? []
 
-  // One feature.list per project — the rows' runs/needs-you are derived
-  // client-side from the same polling every other surface shares.
-  const poll = useLivePoll()
-  const featureQueries = trpc.useQueries((t) =>
-    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })),
-  )
-  const stats = projects.map((_, i) => projectStats(featureQueries[i]?.data ?? []))
-  const running = stats.reduce((n, s) => n + s.working, 0)
-  const waiting = stats.reduce((n, s) => n + s.needsYou, 0)
+  // One feature.list per project — the same queries the tab title and the
+  // rail read, so nothing here polls twice.
+  const featureLists = useProjectFeatureLists(projects)
+  const entries = portfolioEntries(projects, featureLists)
 
-  const rows = projects.map((project, i) => ({
-    project,
-    stats: stats[i]!,
-    loading: featureQueries[i]?.data === undefined,
-  }))
-  const live = rows
-    .filter((r) => r.stats.needsYou > 0 || r.stats.working > 0)
-    .sort((a, b) => b.stats.needsYou - a.stats.needsYou || b.stats.working - a.stats.working)
-  const quiet = rows.filter((r) => !live.includes(r))
-  const row = (r: (typeof rows)[number], i: number) => (
-    <ProjectCard
-      key={r.project.id}
-      index={i}
-      project={r.project}
-      stats={r.stats}
-      loading={r.loading}
-      onOpen={() => nav.enterProject(r.project.id)}
-    />
-  )
+  const content = <PortfolioContent entries={entries} nav={nav} phone={phone} />
 
-  const page = (
-    <section className={cx('flex min-h-0 min-w-0 flex-1 flex-col', phone && 'h-dvh')}>
-      <PageTopbar crumbs={[{ label: 'Projects', icon: <IconHome /> }]} />
-      <Page routeKey="portfolio" className="relative isolate">
+  // A phone has room for the list alone: no sidebar, no topbar, and no Open a
+  // project, which needs the computer's folders. The rail's phone row sits
+  // above the list, as on the project list screen.
+  if (phone) {
+    return (
+      <div className="relative isolate flex h-dvh min-h-0 flex-col bg-canvas p-2">
         <SidebarBackdrop />
-        <PageHeader
-          title="Projects"
-          meta={[
-            { strong: projects.length, text: projects.length === 1 ? 'project open' : 'projects open' },
-            running > 0 && { tone: 'live', strong: running, text: 'running' },
-            waiting > 0 && { tone: 'warning', strong: waiting, text: waiting === 1 ? 'needs you' : 'need you' },
-          ]}
-          actions={
-            !phone && (
-              <Button variant="primary" icon={<IconPlus />} onClick={nav.showOpen}>
-                Open a project
-              </Button>
-            )
-          }
-        />
-        {live.length > 0 && (
-          <List
-            divided
-            label="Live projects"
-            className={cx('card relative mt-8 rounded-lg p-1', running > 0 && 'orbit-light')}
-          >
-            {live.map(row)}
-          </List>
-        )}
-        {quiet.length > 0 && (
-          <List divided label="Open projects" className={live.length > 0 ? 'mt-4 px-1' : 'mt-8'}>
-            {quiet.map((r, i) => row(r, i + live.length))}
-          </List>
-        )}
-      </Page>
-    </section>
+        <PhoneRail />
+        <main className="-mx-2 min-h-0 flex-1 overflow-y-auto px-3 pt-4 pb-6">{content}</main>
+      </div>
+    )
+  }
+
+  return (
+    <Frame rail>
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <PageTopbar crumbs={[{ label: 'Projects', icon: <IconHome /> }]} />
+        <Page routeKey="portfolio" width="wide" className="relative isolate">
+          <SidebarBackdrop />
+          {content}
+        </Page>
+      </section>
+    </Frame>
   )
-  // A phone has room for the list alone: no sidebar, which only says where
-  // this page is, and no Open a project, which needs the computer's folders.
-  if (phone) return page
-  return <Frame sidebar={<PortfolioSidebar nav={nav} />}>{page}</Frame>
 }
 
-/** The home's sidebar: the switcher, this level's two places, the status foot. */
-function PortfolioSidebar({ nav }: { nav: ProjectNavApi }) {
-  const live = useLiveStatus()
-  const theme = useTheme()
-  const openGlossary = useOpenGlossary()
+function PortfolioContent({ entries, nav, phone }: { entries: PortfolioEntry[]; nav: ProjectNavApi; phone: boolean }) {
+  const totals = portfolioTotals(entries)
+  const cards = entries.filter((e) => e.kind === 'card')
+  const quiet = entries.filter((e) => e.kind === 'line')
+  const grid = phone ? 'grid-cols-1' : 'grid-cols-3'
   return (
-    <nav aria-label="Projects" className="relative isolate flex h-full min-h-0 flex-col p-2">
-      <SidebarBackdrop />
-      <div className="flex h-10 shrink-0 items-center gap-0.5">
-        <div className="flex min-w-0 flex-1">
-          <ProjectSwitcher nav={nav} />
-        </div>
-        <CollapseSidebarButton />
-      </div>
-      <div className="mt-2 flex flex-col gap-px">
-        <NavItem icon={<IconHome />} label="All projects" meta={nav.projects?.length} active />
-      </div>
-      <div className="flex-1" />
-      <SidebarFootChrome
-        health={live === 'live' ? 'ok' : live === 'connecting' ? 'connecting' : 'reconnecting'}
-        origin={typeof window === 'undefined' ? 'this machine' : window.location.origin}
-        sandbox={SANDBOX_MODE}
-        notify={null}
-        theme={theme.resolved}
-        onToggleTheme={theme.toggle}
-        // The help menu's Glossary only: Settings, where the phone entry
-        // leads, opens inside a project and this level has none.
-        onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
+    <>
+      <PageHeader
+        title="Projects"
+        meta={[
+          { strong: totals.projects, text: totals.projects === 1 ? 'project open' : 'projects open' },
+          totals.running > 0 && { tone: 'live', strong: totals.running, text: 'running' },
+          totals.waiting > 0 && { tone: 'warning', strong: totals.waiting, text: totals.waiting === 1 ? 'needs you' : 'need you' },
+        ]}
+        actions={
+          !phone && (
+            <Button variant="primary" icon={<IconPlus />} onClick={nav.showOpen}>
+              Open a project
+            </Button>
+          )
+        }
       />
-    </nav>
+      {cards.length > 0 ? (
+        <section aria-label="Busy projects" className={cx('mt-8 grid gap-3', grid)}>
+          {cards.map((e) => (
+            <ProjectCard
+              key={e.project.id}
+              entry={e}
+              onOpen={() => nav.enterProject(e.project.id)}
+              onOpenFeature={(slug) => nav.enterProject(e.project.id, slug)}
+            />
+          ))}
+        </section>
+      ) : (
+        <p className="m-0 mt-8 px-3 text-sm text-text-tertiary">Nothing needs you and nothing is running.</p>
+      )}
+      {quiet.length > 0 && (
+        <section aria-labelledby="portfolio-quiet">
+          <h2 id="portfolio-quiet" className="m-0 mt-8 px-3 text-xs font-medium text-text-tertiary">
+            Quiet
+          </h2>
+          <div className={cx('mt-1 grid gap-x-3', grid)}>
+            {quiet.map((e) => (
+              <QuietProject key={e.project.id} entry={e} onOpen={() => nav.enterProject(e.project.id)} />
+            ))}
+          </div>
+        </section>
+      )}
+    </>
   )
 }
