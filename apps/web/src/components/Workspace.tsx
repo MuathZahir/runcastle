@@ -1161,7 +1161,6 @@ export function Workspace({
                 onChoose={(choice) => setOwner(featureId, choice)}
               />
             ),
-            shrink: true,
           },
           {
             label: feature.title,

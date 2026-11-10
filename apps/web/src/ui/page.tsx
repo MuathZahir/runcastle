@@ -27,7 +27,7 @@ export interface Crumb {
   mono?: boolean
   /**
    * A parent that gives way too when the trail runs out of room (a feature
-   * header's owner control and title): it truncates, as the current item does,
+   * header's title): it truncates, as the current item does,
    * rather than pushing the trail past its edge. A node label truncates itself.
    */
   shrink?: boolean
@@ -64,7 +64,8 @@ export function Crumbs({ items, className, trail }: { items: Crumb[]; className?
             !last && !c.shrink && 'shrink-0',
           )
           return (
-            <li key={i} className={cx('flex min-w-0 items-center gap-1', !last && !c.shrink && 'shrink-0')}>
+            // The last item gives way well before a shrinking parent does, so a long thread name never squeezes the title.
+            <li key={i} className={cx('flex min-w-0 items-center gap-1', last ? 'shrink-[6]' : !c.shrink && 'shrink-0')}>
               {last ? (
                 <span aria-current="page" className={itemClass}>
                   {content}
