@@ -811,7 +811,9 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   // A drive review stopped mid-turn gives the human their drive back; it takes it again with review_drive.
   if (!note && end?.reason === 'cancelled') await giveDriveBack(ctx, w)
   if (!note || !sb) {
-    if (w.status === 'working') setStatus(ctx, w, 'needs-you')
+    // Read again: the awaits above let a drive's end hand this worker back, which `w` would undo.
+    const now = getWorker(ctx, w.id)
+    if (now?.status === 'working') setStatus(ctx, now, 'needs-you')
     return
   }
   await engine.fetchBranch(sb)
