@@ -1391,7 +1391,7 @@ export async function toolReviewDrive(
 ): Promise<git.ReviewDriveResult> {
   const reviewer = requireReviewer(ctx, caller, 'the review drive')
   const feature = getFeatureRow(ctx, workerFeatureId(reviewer))
-  return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
+  return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action, { id: reviewer.id, label: reviewer.label })
 }
 
 /** A refused `scenario` / `try_call`: nothing ran and nothing was sent. */
@@ -3403,7 +3403,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Wait for the human',
         description:
           'Say that nothing moves until the human acts, and why; use it for a yes, a decision, or ' +
-          'when stuck. The human’s next message or your next dispatch clears it.',
+          'when stuck. Only the human’s next message to you clears it (or your orchestrator’s, when one holds ' +
+          'the feature); starting a worker or a review does not.',
         inputSchema: {
           why: z.string().min(1).describe('A few words on what you wait for.'),
           kind: WaitingKind.optional().describe('`plan`, `design` (a recorded design), `stuck`, or `answer` (default).'),

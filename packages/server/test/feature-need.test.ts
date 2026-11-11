@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { eq } from 'drizzle-orm'
-import { features, projects } from '../src/db/schema'
+import { features, projects, workers } from '../src/db/schema'
+import { needFacts } from '../src/services/feature-need'
+import { getFeatureRow } from '../src/services/repo'
 import { createSessionRow } from '../src/launcher/sessions'
 import { emit } from '../src/services/events'
 import { declareReady, markHumanMessage, setWaiting } from '../src/services/features'
@@ -159,5 +161,30 @@ describe('feature.list and feature.get carry the need', () => {
     expect((await caller.feature.get({ id: f.id })).need).toMatchObject({
       kind: 'handback', held: true, words: 'Asking Notes triage · Should the notes feature own the inbox?',
     })
+  })
+})
+
+/** triage-batch decision 13: workers working or queued count as work in the need's facts. */
+describe('needFacts reads workers at work', () => {
+  function seedWorker(featureId: string, status: 'working' | 'queued' | 'handed-back'): void {
+    const row = createSessionRow(ctx, { featureId, kind: 'worker', worktreePath: '/wt' })
+    const now = Date.now()
+    ctx.db
+      .insert(workers)
+      .values({
+        id: row.id, featureId, projectId, label: 'Add laps', purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code',
+        startedBy: 'lead', status, engine: 'docker', featureBranch: 'feature/x', createdAt: now, updatedAt: now,
+      })
+      .run()
+  }
+
+  it('is true while a worker works or waits to start, false once it handed back', () => {
+    const f = seedFeature(ctx, projectId, { slug: 'busy' })
+    const facts = () => needFacts(ctx, getFeatureRow(ctx, f.id))
+    expect(facts().workersAtWork).toBe(false)
+    seedWorker(f.id, 'handed-back')
+    expect(facts().workersAtWork).toBe(false)
+    seedWorker(f.id, 'queued')
+    expect(facts().workersAtWork).toBe(true)
   })
 })

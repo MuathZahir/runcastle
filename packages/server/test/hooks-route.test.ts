@@ -155,6 +155,47 @@ describe('hooks route', () => {
     expect(listAfter(ctx, featureId, 0).some((e) => e.type === 'lead.human_message')).toBe(false)
   })
 
+  /** triage-batch decision 18: a prompt Claude Code makes itself is not the human typing. */
+  describe('a helper’s result reaching a chat-owned feature’s lead', () => {
+    let chatId: string
+
+    beforeEach(() => {
+      const project = ctx.db.select().from(features).where(eq(features.id, featureId)).get()!.projectId
+      const chat = createSessionRow(ctx, { projectId: project, kind: 'project', worktreePath: 'C:\\repo' })
+      chatId = chat.id
+      ctx.db
+        .update(features)
+        .set({ heldBy: chatId, chatId, waitingReason: 'which model?', waitingKind: 'answer', handbackAt: 1_000, handbackSummary: 'Ready to merge.' })
+        .where(eq(features.id, featureId))
+        .run()
+    })
+
+    const prompt = (text: string) =>
+      post(mount(), 'user-prompt', { sessionId, payload: { hook_event_name: 'UserPromptSubmit', prompt: text } })
+    const row = () => ctx.db.select().from(features).where(eq(features.id, featureId)).get()!
+    const humanMessages = () => listAfter(ctx, featureId, 0).filter((e) => e.type === 'lead.human_message')
+
+    it('leaves the owner, the waiting reason and the handback, and emits no human message', async () => {
+      await prompt(
+        '<task-notification>\n<task-id>b7x2</task-id>\n<status>completed</status>\n' +
+          '<summary>Agent "Explore the drive slot" finished</summary>\n<result>The slot lives in Sidebar.tsx.</result>\n</task-notification>',
+      )
+      await prompt('  <task-notification>\n<summary>Background command "bun test" completed (exit code 0)</summary>\n</task-notification>')
+      await prompt('<cross-session-message from="Notes triage">carry on</cross-session-message>')
+      expect(row()).toMatchObject({ heldBy: chatId, waitingReason: 'which model?', handbackAt: 1_000, handbackSummary: 'Ready to merge.' })
+      expect(row().lastHumanMessageAt).toBeNull()
+      expect(humanMessages()).toHaveLength(0)
+    })
+
+    it('still lets a really typed prompt move the feature to the human and stamp the mark', async () => {
+      await prompt('what does <task-notification> mean in the log?')
+      expect(row()).toMatchObject({ heldBy: null, waitingReason: null, handbackAt: null })
+      expect(row().lastHumanMessageAt).not.toBeNull()
+      expect(humanMessages()).toHaveLength(1)
+      expect(humanMessages()[0]?.data).toMatchObject({ typed: true })
+    })
+  })
+
   /**
    * REGRESSION (lap-2 drive): one SessionStart that timed out client-side left
    * the chat with no conversation id, so the headless wake could not resume it

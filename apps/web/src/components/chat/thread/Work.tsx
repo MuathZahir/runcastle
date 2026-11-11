@@ -187,8 +187,8 @@ function Fold({
  * One run of a turn's work: the tool calls, thinking and subagents between two
  * stretches of the agent's words. Live, each step shows as it lands — the call
  * in flight with its verb ("Running bun test"). Settled (as soon as words
- * follow it), it folds to one line with its own time, "Worked for 3m 43s", so
- * a thread reads as the conversation it was: every word in order, the work
+ * follow it), it folds to one line saying what ran and how long it took,
+ * "Ran 5 commands, read 2 files · 32s" ({@link workSummary}), so a thread reads as the conversation it was: every word in order, the work
  * folded between them. A run that is only thinking is one "Thought for …"
  * fold, not a fold inside a fold.
  *
@@ -224,7 +224,7 @@ export function WorkBlock({
             <span className="min-w-0 truncate">{stillRunning(running)}</span>
           </>
         ) : (
-          <span>Worked for {duration(seconds)}</span>
+          <WorkHead summary={workSummary(steps)} seconds={seconds} />
         )
       }
     >
@@ -232,6 +232,23 @@ export function WorkBlock({
         <Steps steps={steps} />
       </div>
     </Fold>
+  )
+}
+
+/**
+ * A settled run's line: what ran, then its time, muted (decisions 1, 7) —
+ * "Ran 5 commands, read 2 files · 32s". One line: the summary gives way first.
+ * A run with nothing to count still says how long it took.
+ */
+function WorkHead({ summary, seconds }: { summary: string; seconds: number }) {
+  if (!summary) return <span>Worked for {duration(seconds)}</span>
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="min-w-0 truncate">{summary}</span>
+      <span data-work-time className="shrink-0 tabular-nums opacity-70">
+        · {duration(seconds)}
+      </span>
+    </span>
   )
 }
 
@@ -381,20 +398,61 @@ const isRunning = (c: ToolCall): boolean => c.status === 'in_progress' || c.stat
  */
 export function groupText(calls: ToolCall[]): string {
   const kinds = [...new Set(calls.map((c) => c.kind))]
-  return kinds
-    .map((kind, i) => {
+  return sentence(
+    kinds.map((kind) => {
       const words = GROUP_WORDS[kind]
-      const of = calls.filter((c) => c.kind === kind)
-      if (!words) return ''
-      // A file read in two ranges ("a.ts (1 - 5)", "a.ts (6 - 10)") is one file.
-      const fileOf = (c: ToolCall) => c.diff?.path ?? callText(c, false).target.replace(/\s+\(\d+\s*-\s*\d+\)$/, '')
-      const n = words[2] === 'file' ? new Set(of.map(fileOf)).size : of.length
-      const verb = of.some(isRunning) ? words[1] : words[0]
-      const said = `${verb} ${n} ${n === 1 ? words[2] : words[3]}`
-      return i === 0 ? said : said.charAt(0).toLowerCase() + said.slice(1)
-    })
+      return words ? countWords(words, calls.filter((c) => c.kind === kind)) : ''
+    }),
+  )
+}
+
+/** The file a call acted on. A file read in two ranges ("a.ts (1 - 5)", "a.ts (6 - 10)") is one file. */
+const fileOf = (c: ToolCall): string => c.diff?.path ?? callText(c, false).target.replace(/\s+\(\d+\s*-\s*\d+\)$/, '')
+
+/** Calls of one kind counted in its words, "Read 3 files": files once each, anything else per call; present while one is in flight. */
+function countWords(words: [string, string, string, string], of: ToolCall[]): string {
+  const n = words[2] === 'file' ? new Set(of.map(fileOf)).size : of.length
+  return `${of.some(isRunning) ? words[1] : words[0]} ${n} ${n === 1 ? words[2] : words[3]}`
+}
+
+/** Phrases as one line: the first capitalised, the rest lower-case, joined by commas; empty ones left out. */
+function sentence(phrases: string[]): string {
+  return phrases
     .filter(Boolean)
+    .map((said, i) => (i === 0 ? said.charAt(0).toUpperCase() + said.slice(1) : said.charAt(0).toLowerCase() + said.slice(1)))
     .join(', ')
+}
+
+/**
+ * What a settled run of work did, counted (calmer-worker-chats decisions 1,
+ * 8): "Ran 5 commands, read 2 files, edited 1 file". Always in one order —
+ * commands, files read, files edited (edits, deletes and moves), searches,
+ * pages fetched, subagents, other tools — so the eye lands in the same place
+ * on every row. A file read or edited twice counts once; a subagent counts as
+ * one, its own calls left to its card; an MCP tool, a skill or any other call
+ * is "used N tools". Codex's automatic reviews are not counted. Empty when
+ * nothing in the run is a call (thinking only).
+ */
+export function workSummary(steps: WorkStep[]): string {
+  const calls = steps.flatMap((s) => (s.kind === 'tools' ? s.calls : [])).filter((c) => c.title !== REVIEW_TITLE)
+  // A web search reads as a search; any call that reads as its own sentence (MCP, skills) is one more tool.
+  const web = (c: ToolCall) => WEB_SEARCH.test(c.title)
+  const own = (c: ToolCall) => !web(c) && (MCP_TITLE.test(c.title) || SENTENCE_TITLE.test(c.title))
+  const of = (...kinds: ToolKind[]) => calls.filter((c) => !own(c) && !web(c) && kinds.includes(c.kind))
+  const settled = (cs: ToolCall[]) => cs.map((c) => ({ ...c, status: 'completed' as const }))
+  const count = (words: [string, string, string, string], cs: ToolCall[]) => (cs.length ? countWords(words, settled(cs)) : '')
+  const searches = [...of('search'), ...calls.filter(web)]
+  const subagents = steps.filter((s) => s.kind === 'subagent').length
+  const others = calls.filter((c) => own(c) || ((c.kind === 'other' || c.kind === 'think') && !web(c)))
+  return sentence([
+    count(GROUP_WORDS.execute!, of('execute')),
+    count(GROUP_WORDS.read!, of('read')),
+    count(GROUP_WORDS.edit!, of('edit', 'delete', 'move')),
+    count(GROUP_WORDS.search!, searches),
+    count(GROUP_WORDS.fetch!, of('fetch')),
+    subagents ? `ran ${subagents} ${subagents === 1 ? 'subagent' : 'subagents'}` : '',
+    others.length ? `used ${others.length} ${others.length === 1 ? 'tool' : 'tools'}` : '',
+  ])
 }
 
 const FAMILY_ICON: Record<Family, (p: { size?: number; className?: string }) => ReactNode> = {

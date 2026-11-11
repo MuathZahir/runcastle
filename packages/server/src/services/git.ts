@@ -146,6 +146,13 @@ export interface DriveInfo {
    * agent is holding. See {@link DrivePurpose}.
    */
   purpose?: DrivePurpose
+  /**
+   * The Review worker holding a `review` drive (triage-batch decisions 5, 15):
+   * its id, which opens its chat, and its label. Absent on a human drive, and
+   * on a review drive whose worker runcastle could not name.
+   */
+  workerId?: string
+  workerLabel?: string
   branch: string
   /** Registry id of the drive's embedded dev pane, if a dev command spawned. */
   devPaneId?: string
@@ -1982,6 +1989,8 @@ type DriveState = CommonDriveFields &
   | (ScenarioDriveFields & {
       kind: 'feature'
       purpose: DrivePurpose
+      /** The Review worker driving a `review` drive (see {@link DriveInfo.workerId}). */
+      worker?: DriveWorker
       projectId: string
       featureId: string
       branch: string
@@ -2189,6 +2198,9 @@ async function cutOffDriveOf(ctx: AppCtx, project: Project): Promise<DriveState 
         ...common,
         kind: 'feature',
         purpose: data.purpose === 'review' ? 'review' : 'human',
+        ...(data.purpose === 'review' && text(data.workerId) && text(data.workerLabel)
+          ? { worker: { id: text(data.workerId)!, label: text(data.workerLabel)! } }
+          : {}),
         featureId: feature.id,
         branch,
         previousBranch:
@@ -2243,7 +2255,11 @@ export function activeDriveInfo(projectId: string): DriveInfo | null {
     // reports all of that through its own `DryRunResult` instead). A project
     // drive belongs to no feature but reports its setup the same way.
     ...(state.kind === 'feature'
-      ? { featureId: state.featureId, purpose: state.purpose }
+      ? {
+          featureId: state.featureId,
+          purpose: state.purpose,
+          ...(state.worker ? { workerId: state.worker.id, workerLabel: state.worker.label } : {}),
+        }
       : state.kind === 'project'
         ? {
             projectDrive: true as const,
@@ -2283,13 +2299,18 @@ function liveHolderLabel(state: DriveState): string {
       return 'a preparation dry-run'
     case 'feature':
       return state.purpose === 'review'
-        ? `the review agent's drive of ${state.branch}`
+        ? `the Review worker's drive of ${state.branch}`
         : `a test drive of ${state.branch}`
   }
 }
 
 /** A refusal that names the drive holding the slot. */
 function slotHeldReason(state: DriveState): string {
+  // The Review worker's live drive is not the human's to stop from a refusal
+  // (triage-batch decision 16): it is named, and the drive waits for the review.
+  if (state.kind === 'feature' && state.purpose === 'review' && !state.cutOff) {
+    return `The Review worker is trying ${state.branch} — it holds the drive slot until the review hands back`
+  }
   const label = holderLabel(state)
   return `${label[0].toUpperCase()}${label.slice(1)} is running — stop it first`
 }
@@ -2563,6 +2584,7 @@ export async function testDrive(
   const driving: Extract<DriveState, { kind: 'feature' }> = {
     kind: 'feature',
     purpose,
+    ...(purpose === 'review' && opts.worker ? { worker: opts.worker } : {}),
     projectId: project.id,
     featureId: feature.id,
     branch,
@@ -2580,7 +2602,13 @@ export async function testDrive(
       purpose === 'review'
         ? `review agent driving ${branch} (was on ${previousBranch})`
         : `test driving ${branch} (was on ${previousBranch})`,
-    data: { branch, previousBranch, purpose },
+    data: {
+      branch,
+      previousBranch,
+      purpose,
+      // Kept so a drive a restart cut off still names its worker.
+      ...(driving.worker ? { workerId: driving.worker.id, workerLabel: driving.worker.label } : {}),
+    },
   })
 
   // Bring the project's environment up before the dev server, so the dev
@@ -2675,8 +2703,10 @@ export async function reviewDrive(
   project: Project,
   feature: Feature,
   action: 'start' | 'status' | 'stop',
+  /** On `start`: the Review worker taking the slot, which the drive then names. */
+  worker?: DriveWorker,
 ): Promise<ReviewDriveResult> {
-  if (action === 'start') return startReviewDrive(ctx, project, feature)
+  if (action === 'start') return startReviewDrive(ctx, project, feature, worker)
 
   // Only this feature's own review drive is the agent's to look at or end. The
   // human's drive holding the slot is somebody else's — and the human's Stop in
@@ -2724,10 +2754,11 @@ async function startReviewDrive(
   ctx: AppCtx,
   project: Project,
   feature: Feature,
+  worker: DriveWorker | undefined,
 ): Promise<ReviewDriveResult> {
   let start: TestDriveResult
   try {
-    start = await testDrive(ctx, project, feature, 'start', 'review')
+    start = await testDrive(ctx, project, feature, 'start', 'review', worker ? { worker } : {})
   } catch (e) {
     if (reviewDriveFor(project.id, feature.id)) await testDrive(ctx, project, feature, 'stop')
     throw e
@@ -3188,6 +3219,14 @@ export interface DriveStartOptions {
   scenario?: string
   /** On `stop`: this is `retry_drive`'s stop-and-start, which does not end the drive's workers. */
   retry?: boolean
+  /** On a review drive's `start`: the Review worker taking the slot (triage-batch decision 5). */
+  worker?: DriveWorker
+}
+
+/** The worker driving an agent's drive: its id, to open its chat, and its label, to name it. */
+export interface DriveWorker {
+  id: string
+  label: string
 }
 
 const DENY_NO_SCENARIO_DRIVE = 'No test drive or project drive is running for this project'

@@ -4,7 +4,8 @@
  * handed back, one landed, one dropped, one failed — beside one old side chat
  * from before workers. The lead's chat holds the handbacks and the failure as
  * runcastle's lines, so its cards draw (interactive-workers decisions 3, 21, 23,
- * 24).
+ * 24), and the turns that started the workers, so its "Started N workers" cards
+ * draw with each worker's live status (calmer-worker-chats decision 6).
  *
  * Run by the project's scenario runner (`bun {file}`) inside a test drive of
  * runcastle, with the drive identity, the `.runcastle/drive.env` overlay and a
@@ -37,6 +38,13 @@ import { appendThreadEvent } from '../../../packages/server/src/threads/log.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from '../../drive-dir.ts'
 
 const PROJECT = process.env.SCENARIO_PROJECT || 'runcastle-demo'
+/**
+ * Set by lead-replied-workers-at-work.ts: only the workers at work (working,
+ * queued), so the lead's last word is a plain reply while nobody waits on the
+ * human — the state that read "Needs your answer" before calmer-worker-chats
+ * decision 13.
+ */
+const AT_WORK_ONLY = process.env.SCENARIO_WORKERS_AT_WORK === '1'
 const MODEL = 'claude-opus-5-5'
 const MINUTE = 60_000
 
@@ -53,7 +61,7 @@ interface SeededWorker {
   outcome?: { kind: 'landed' | 'sent-back' | 'dropped'; note?: string }
 }
 
-const WORKERS: SeededWorker[] = [
+const ALL_WORKERS: SeededWorker[] = [
   { label: 'Header', purpose: 'The sidebar header: back, title and "+"', kind: 'with-you', status: 'needs-you', ago: 40 },
   { label: 'Thread list', purpose: 'Rows grouped by status, done folded', kind: 'with-you', status: 'needs-you', ago: 38 },
   { label: 'Worker list data', purpose: 'Group and order workers by status', kind: 'on-its-own', status: 'working', ago: 36 },
@@ -66,7 +74,14 @@ const WORKERS: SeededWorker[] = [
     status: 'handed-back',
     ago: 90,
     handback: {
-      summary: 'The card shows the summary, the commit count and the files, folded. **You asked** for the link to the worker on the right.',
+      // Several paragraphs, so the card shows its first and folds the rest behind "Show more" (calmer-worker-chats decision 2).
+      summary: [
+        'The card shows the summary, the commit count and the files, folded. **You asked** for the link to the worker on the right.',
+        '## What I built',
+        '- The card itself, in `WorkerParts.tsx`, with its header, summary and files.\n- The link to the worker, on the right of the header.',
+        '## What I tested',
+        '- A handback with no files, one file and many.\n- The link opens the worker’s chat.',
+      ].join('\n\n'),
       commits: ['a1b2c3d Handback card layout', 'd4e5f6a Link to the worker'],
       files: ['apps/web/src/components/workers/WorkerParts.tsx', 'apps/web/test/worker-cards.test.tsx'],
     },
@@ -96,6 +111,8 @@ const WORKERS: SeededWorker[] = [
   { label: 'Search box', purpose: 'Filter the worker list', kind: 'on-its-own', status: 'failed', ago: 60, failure: 'its container stopped unexpectedly' },
 ]
 
+const WORKERS = AT_WORK_ONLY ? ALL_WORKERS.filter((w) => w.status === 'working' || w.status === 'queued') : ALL_WORKERS
+
 /**
  * Only ever the drive's own tree. Every path helper reads `RUNCASTLE_DATA_DIR`
  * lazily, so this check runs before the first one is called; unset, they would
@@ -116,6 +133,24 @@ function exchange(threadId: string, n: number, human: string, agent: string): vo
   appendThreadEvent(threadId, { type: 'turn_started' })
   appendThreadEvent(threadId, { type: 'agent_text', messageId: `m_${n}`, text: agent })
   appendThreadEvent(threadId, { type: 'turn_ended', reason: 'end_turn' })
+}
+
+/**
+ * A lead's turn that starts workers: its `start_worker` calls, its words, then a
+ * `worker_started` event per worker, as the worker service appends them — the
+ * chat folds them into one "Started N workers" card (calmer-worker-chats decision 6).
+ */
+function leadStarts(leadId: string, n: number, human: string, agent: string, started: { id: string; w: SeededWorker }[]): void {
+  appendThreadEvent(leadId, { type: 'prompt', id: `p_${n}`, text: human, source: 'human' })
+  appendThreadEvent(leadId, { type: 'turn_started' })
+  for (const { id } of started) {
+    appendThreadEvent(leadId, { type: 'tool', call: { id: `start_${id}`, kind: 'other', title: 'mcp__runcastle__start_worker', status: 'completed' } })
+  }
+  appendThreadEvent(leadId, { type: 'agent_text', messageId: `m_${n}`, text: agent })
+  for (const { id, w } of started) {
+    appendThreadEvent(leadId, { type: 'worker_started', workerId: id, label: w.label, purpose: w.purpose, kind: w.kind })
+  }
+  appendThreadEvent(leadId, { type: 'turn_ended', reason: 'end_turn' })
 }
 
 /** Runcastle's line to the lead, as the worker service delivers it. */
@@ -181,8 +216,8 @@ async function main(): Promise<void> {
     const run = process.env.RUNCASTLE_SCENARIO_RUN || randomBytes(3).toString('hex')
     const feature = await createFeature(ctx, {
       projectId: project.id,
-      title: `Workers feature ${run}`,
-      oneLiner: 'Seeded by the Feature with workers scenario.',
+      title: AT_WORK_ONLY ? `Workers at work ${run}` : `Workers feature ${run}`,
+      oneLiner: AT_WORK_ONLY ? 'Seeded by the Lead replied, workers at work scenario.' : 'Seeded by the Feature with workers scenario.',
     })
     const worktree = worktreeDir(project.id, feature.slug)
     const now = Date.now()
@@ -190,16 +225,19 @@ async function main(): Promise<void> {
     // The lead's chat: the plan the human said yes to, which started the workers.
     const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, model: { id: MODEL, runtime: 'claude-code' } })
     markSessionEnded(ctx, lead.id)
-    exchange(
+    const seeded = WORKERS.map((w) => ({ id: seedWorker(ctx, feature, lead.id, w, now), w }))
+    // The plan's turn started all but the newest; a later turn, after the handbacks, started that one.
+    const later = seeded.filter(({ w }) => w.status === 'queued')
+    leadStarts(
       lead.id,
       1,
       'The plan looks right. Go.',
       'Started the workers: the header and the thread list with you, the data changes on their own. I will land each handback as it comes.',
+      seeded.filter((s) => !later.includes(s)),
     )
 
     let line = 0
-    for (const w of WORKERS) {
-      const id = seedWorker(ctx, feature, lead.id, w, now)
+    for (const { id, w } of seeded) {
       if (w.handback) {
         toLead(lead.id, ++line, `Worker "${w.label}" handed back.`, {
           handback: { workerId: id, label: w.label, kind: w.kind, ...w.handback, threadId: id },
@@ -211,7 +249,12 @@ async function main(): Promise<void> {
         })
       }
     }
+    leadStarts(lead.id, 2, 'What about the empty page?', 'Started one more worker for the empty states; it waits for a slot.', later)
 
+    if (AT_WORK_ONLY) {
+      console.log(`ENTRY_URL=/p/${encodeURIComponent(project.id)}/f/${encodeURIComponent(feature.slug)}`)
+      return
+    }
     // A side chat from before workers: listed in Done, read-only (decision 23).
     const side = createSessionRow(ctx, { featureId: feature.id, kind: 'side', worktreePath: worktree, openedBeside: lead.id })
     setSessionTitle(ctx, side.id, 'Why is the PDF font blurry?')

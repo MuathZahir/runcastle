@@ -37,9 +37,9 @@ describe('a fold with a subagent still running', () => {
     expect(line(fold({ title: '', count: 3 }))).toBe('3 subagents running')
   })
 
-  it('reads "Worked for …", with no spinner, once nothing in it runs', () => {
+  it('reads what ran and its time, with no spinner, once nothing in it runs', () => {
     const html = fold()
-    expect(line(html)).toBe('Worked for 50s')
+    expect(line(html)).toMatch(/^Read 1 file, ran 1 subagent\s*· 50s$/)
     expect(html).not.toContain('data-progress')
   })
 })

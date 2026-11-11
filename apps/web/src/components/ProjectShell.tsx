@@ -115,10 +115,23 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const driving =
     startedDrive ??
     (slot?.featureId
-      ? { featureId: slot.featureId, branch: slot.branch, ...(slot.cutOff ? { cutOff: true } : {}) }
+      ? {
+          featureId: slot.featureId,
+          branch: slot.branch,
+          ...(slot.cutOff ? { cutOff: true } : {}),
+          // Whose drive it is (triage-batch decision 5): the review's is labelled as the agent's.
+          ...(slot.purpose ? { purpose: slot.purpose } : {}),
+          ...(slot.workerId ? { workerId: slot.workerId } : {}),
+          ...(slot.workerLabel ? { workerLabel: slot.workerLabel } : {}),
+        }
       : null)
 
   const features = list.data
+
+  // A worker's chat on its feature's page (triage-batch decision 15): the
+  // feature opens on its chat and the page brings that worker to the front.
+  const [workerRequest, setWorkerRequest] = useState<{ featureId: string; workerId: string } | null>(null)
+  const consumeWorkerRequest = useCallback(() => setWorkerRequest(null), [])
 
   /**
    * Open a feature on `view`, or — when nothing names one (the rail, the
@@ -142,6 +155,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       openFeature(featureId, view ?? (phone ? 'chat' : undefined))
     },
     [openFeature, phone],
+  )
+  const openWorkerChat = useCallback(
+    (featureId: string, workerId: string) => {
+      setWorkerRequest({ featureId, workerId })
+      openFeature(featureId, 'chat')
+    },
+    [openFeature],
   )
   // A chat's feature rows read the sidebar's list and open a feature as its row does.
   const featureLinks = useMemo<FeatureLinks>(
@@ -351,6 +371,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             ws.selectProject()
           }}
           onBackToList={backToList}
+          workerRequest={workerRequest}
+          onConsumeWorkerRequest={consumeWorkerRequest}
+          onOpenWorkerChat={openWorkerChat}
         />
       </ErrorBoundary>
     ) : null
@@ -388,6 +411,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             projectDriveBranch={projectDrive?.branch ?? null}
             onOpenProjectDrive={openDrive}
             onOpenFeatureDrive={(featureId) => openFeature(featureId, 'drive')}
+            onOpenWorkerChat={openWorkerChat}
             driving={driving}
             onDriveChange={setDriving}
           />

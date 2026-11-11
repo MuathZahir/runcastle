@@ -52,6 +52,7 @@ import { ComputerUnreachable, PhoneListHead } from './phone/PhoneListHead'
 import { PhoneNotificationsRow } from './phone/PhoneNotificationsRow'
 import {
   DriveCard,
+  FeatureDriveSlot,
   featureStateWords,
   Shelf,
   SidebarFeatureRow,
@@ -107,6 +108,8 @@ export interface SidebarProps {
   onOpenProjectDrive?: () => void
   /** The feature drive's card: back to that drive's page. */
   onOpenFeatureDrive?: (featureId: string) => void
+  /** An agent's drive card: that worker's chat on its feature's page (triage-batch decision 15). */
+  onOpenWorkerChat?: (featureId: string, workerId: string) => void
   /** The feature test drive this shell started, or null. */
   driving?: DriveState | null
   onDriveChange?: (d: DriveState | null) => void
@@ -720,6 +723,7 @@ function SidebarFoot({
   projectDriveBranch = null,
   onOpenProjectDrive,
   onOpenFeatureDrive,
+  onOpenWorkerChat,
   driving = null,
   onDriveChange,
 }: SidebarProps) {
@@ -755,15 +759,13 @@ function SidebarFoot({
         />
       )}
       {driving && (
-        <DriveCard
-          label={driving.cutOff ? 'Test drive (cut off by a restart)' : 'Test drive'}
-          detail={drivenTitle ?? <span className="font-mono">{driving.branch}</span>}
-          title={
-            driving.cutOff
-              ? `A restart cut off the drive of ${driving.branch} — stop it to return the checkout`
-              : `Driving ${driving.branch} — back to the drive`
+        <FeatureDriveSlot
+          driving={driving}
+          {...(drivenTitle ? { featureTitle: drivenTitle } : {})}
+          onOpenDrive={(featureId) => (onOpenFeatureDrive ?? onSelect)(featureId)}
+          onOpenWorker={(featureId, workerId) =>
+            onOpenWorkerChat ? onOpenWorkerChat(featureId, workerId) : onSelect(featureId)
           }
-          onOpen={() => (onOpenFeatureDrive ?? onSelect)(driving.featureId)}
           onStop={() => stopDrive.mutate({ featureId: driving.featureId, action: 'stop' })}
           stopping={stopDrive.isPending}
         />

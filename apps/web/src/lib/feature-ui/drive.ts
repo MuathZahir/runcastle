@@ -39,6 +39,85 @@ export function holderSentence(holderLabel: string): string {
   return `${holderLabel.charAt(0).toUpperCase()}${holderLabel.slice(1)}`
 }
 
+// --- whose drive it is (triage-batch decisions 5, 15, 16) --------------------
+
+/** Who a feature drive belongs to, as `feature.driveInfo` reports it. */
+export interface DriveOwner {
+  purpose?: 'human' | 'review'
+  workerId?: string
+  workerLabel?: string
+}
+
+/** The worker driving an agent's drive. */
+export interface AgentDriver {
+  /** Its chat, to open; absent when the server could not name the worker. */
+  workerId?: string
+  /** What to call it: "Review worker". */
+  name: string
+}
+
+/**
+ * The worker's name in a sentence: a Review worker's label ("Review", "Review:
+ * verify") reads "Review worker", with the verify pass in brackets.
+ */
+export function driverName(label: string | undefined): string {
+  if (!label || label === 'Review') return 'Review worker'
+  const verify = /^Review:\s*(.+)$/.exec(label)
+  return verify ? `Review worker (${verify[1]})` : label
+}
+
+/** The agent driving, or null when the drive is the human's own (or none). */
+export function agentDriver(drive: DriveOwner | null | undefined): AgentDriver | null {
+  if (drive?.purpose !== 'review') return null
+  return { ...(drive.workerId ? { workerId: drive.workerId } : {}), name: driverName(drive.workerLabel) }
+}
+
+/** The drive slot's line for an agent's drive: "Review worker is trying this feature". */
+export function agentDriveLine(driver: AgentDriver): string {
+  return `${driver.name} is trying this feature`
+}
+
+/**
+ * Whether `featureId` is on the human's own drive — the "is driving" flag the
+ * header's Stop drive and the chat's "the agent can't land its own edits" line
+ * read. An agent's drive of the feature is not: the feature reads as a worker
+ * at work.
+ */
+export function humanDriving(drive: ({ featureId: string } & DriveOwner) | null | undefined, featureId: string): boolean {
+  return !!drive && drive.featureId === featureId && !agentDriver(drive)
+}
+
+/**
+ * Why the human's own Test drive of `featureId` is refused while the Review
+ * worker holds the slot (triage-batch decision 16; ADR-0014's one slot), or
+ * undefined when no agent drives. Its chat opens from the note over the chat.
+ */
+export function agentDriveRefusal(
+  drive: ({ featureId?: string; branch?: string; cutOff?: boolean } & DriveOwner) | null | undefined,
+  featureId: string,
+): string | undefined {
+  const driver = agentDriver(drive)
+  if (!driver || drive?.cutOff) return undefined
+  const line = drive?.featureId === featureId ? agentDriveLine(driver) : `${driver.name} is trying ${drive?.branch ?? 'another feature'}`
+  return `${line} — your test drive waits until the review hands back`
+}
+
+/**
+ * What Stop on an agent's drive asks first. It ends the review's drive and
+ * gives the human the slot; the Review worker itself is not stopped. Its drive
+ * tools then refuse, and its assignment tells it to start the drive once more,
+ * or else to review by reading the branch.
+ */
+export function stopAgentDriveConfirm(driver: AgentDriver): { title: string; description: string; confirm: string } {
+  return {
+    title: 'Stop the review’s drive?',
+    description:
+      `This ends the ${driver.name}’s drive and frees the drive slot for you. The review itself keeps running: ` +
+      'without the app it may start the drive again, or finish by reading the code instead.',
+    confirm: 'Stop its drive',
+  }
+}
+
 /** A drive whose setup hook failed, as the review panel surfaces it. */
 export interface DriveFailure {
   /** The setup command the project ran, verbatim. */

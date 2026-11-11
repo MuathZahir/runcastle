@@ -15,6 +15,7 @@ import { listAfter } from '../src/services/events'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { setAgentHostForTests } from '../src/threads/host'
+import { readThreadEvents } from '../src/threads/log'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import { getWorker, workerPrompted, workerTurnEnded } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
@@ -184,6 +185,31 @@ describe('sending back and dropping', () => {
     expect(engine.removed).toEqual([container])
     expect(git(repo, 'branch', '--list', branch!)).toBe('')
     expect(workerEvents().at(-1)).toEqual({ type: 'worker.dropped', status: 'dropped' })
+  })
+})
+
+describe("the lead's workers card", () => {
+  const startedIn = (threadId: string) => readThreadEvents(threadId).filter((e) => e.type === 'worker_started')
+
+  it("appends a worker_started event to the lead's chat when the lead starts a worker, and announces the start", async () => {
+    const id = await startHeader()
+    expect(startedIn(lead)).toEqual([
+      expect.objectContaining({ type: 'worker_started', workerId: id, label: 'Header', purpose: 'The page header', kind: 'with-you' }),
+    ])
+    expect(workerEvents()).toContainEqual({ type: 'worker.started', status: 'working' })
+  })
+
+  it('falls back to the first line of the goal when the purpose is empty', async () => {
+    await toolStartWorker(ctx, leadSession(), { label: 'Tab', purpose: '  ', kind: 'on-its-own', goal: 'Show the tweaks\n\nRead first: x', doneWhen: 'd' })
+    expect(startedIn(lead)[0]).toMatchObject({ purpose: 'Show the tweaks' })
+  })
+
+  it('adds no row when a worker is sent back, nor for a worker the human starts', async () => {
+    const id = await startHeader()
+    await handBack(id)
+    await toolSendBackWorker(ctx, leadSession(), { workerId: id, note: 'again' })
+    await createCallerFactory(appRouter)(ctx).worker.startUnassigned({ featureId: feature.id })
+    expect(startedIn(lead).map((e) => e.type === 'worker_started' && e.workerId)).toEqual([id])
   })
 })
 

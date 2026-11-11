@@ -151,6 +151,36 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
     expect(kinds.filter((k) => k === 'chat')).toHaveLength(1)
     expect(kinds.filter((k) => k === 'side')).toHaveLength(1)
     expect(kinds.filter((k) => k === 'worker')).toHaveLength(rows.length)
+    // The lead's chat folds its worker starts into one card per turn (calmer-worker-chats decision 6).
+    const lead = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().find((s) => s.kind === 'chat')!
+    const leadLog = readFileSync(join(dataDir, 'sessions', lead.id, 'thread.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as ThreadEvent)
+    const cards = foldThread(leadLog).items.flatMap((x) => (x.kind === 'workers_card' ? [x.rows.length] : []))
+    expect(cards).toEqual([rows.length - 1, 1])
+  })
+
+  // `.runcastle/scenarios/workers/lead-replied-workers-at-work.ts` (calmer-worker-chats decision 13): nobody waits on the human.
+  it('seeds a lead that replied while its workers are only at work, and prints its page', async () => {
+    const out = runScenario(
+      { RUNCASTLE_DATA_DIR: dataDir, RUNCASTLE_SCENARIO_RUN: 'abc123' },
+      join('.runcastle', 'scenarios', 'workers', 'lead-replied-workers-at-work.ts'),
+    )
+    expect(out.stderr).not.toMatch(/\[feature-with-workers\]/)
+    expect(out.status).toBe(0)
+    expect(out.stdout.split(/\r?\n/).filter((l) => l.startsWith('ENTRY_URL='))).toEqual([
+      `ENTRY_URL=/p/${projectId}/f/workers-at-work-abc123`,
+    ])
+
+    const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
+    const feature = ctx.db.select().from(features).where(eq(features.slug, 'workers-at-work-abc123')).get()
+    const rows = ctx.db.select().from(workers).where(eq(workers.featureId, feature!.id)).all()
+    expect(rows.map((w) => w.status).sort()).toEqual(['queued', 'working', 'working'])
+    const kinds = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().map((s) => s.kind)
+    expect(kinds.filter((k) => k === 'side')).toHaveLength(0)
+    // The lead's last turn is a plain reply with no handback after it: the quiet "replied" state.
+    const lead = ctx.db.select().from(sessions).where(eq(sessions.featureId, feature!.id)).all().find((s) => s.kind === 'chat')!
+    const leadLog = readFileSync(join(dataDir, 'sessions', lead.id, 'thread.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as ThreadEvent)
+    expect(leadLog.at(-1)).toMatchObject({ type: 'turn_ended', reason: 'end_turn' })
+    expect(leadLog.some((e) => e.type === 'prompt' && e.source === 'runcastle')).toBe(false)
   })
 
   // `.runcastle/scenarios/chat/words-between-work.ts` (every-word-the-agent-writes-stays-in-view): a project chat to read.

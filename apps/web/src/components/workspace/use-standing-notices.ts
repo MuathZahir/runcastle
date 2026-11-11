@@ -29,6 +29,7 @@ export function useStandingNotices({
   drive,
   driveUp,
   resolveConflict,
+  openWorkerChat,
 }: {
   full: FeatureFull | undefined
   events: EventRow[]
@@ -38,6 +39,8 @@ export function useStandingNotices({
   /** A drive of this feature is up. */
   driveUp: boolean
   resolveConflict: ReturnType<typeof useResolveConflict>
+  /** Open a worker's chat on its feature's page: the Review worker's, while it holds the drive slot. */
+  openWorkerChat?: (featureId: string, workerId: string) => void
 }): StandingNotice[] {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -91,6 +94,7 @@ export function useStandingNotices({
         else if (stop?.kind === 'dryRun') stopDryRun.mutate({ projectId: stop.projectId })
       },
       stopping: stopFeature.isPending || stopProject.isPending || stopDryRun.isPending,
+      ...(openWorkerChat ? { openWorker: openWorkerChat } : {}),
     },
   )
 }

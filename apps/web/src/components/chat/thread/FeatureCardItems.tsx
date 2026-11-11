@@ -6,6 +6,7 @@ import type { FeatureListItem } from '../../../lib/api'
 import { relTimeAgo } from '../../../lib/format'
 import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote } from './FeatureCards'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
+import { WorkersStartedCard } from '../../workers/WorkersStartedCard'
 
 /**
  * What the feature rows in a chat read and open
@@ -107,6 +108,27 @@ function WorkerFailedItem({ failed }: { failed: Extract<PromptDisplay, { workerF
 export function FeaturesCardItem({ rows }: { rows: Extract<ThreadItem, { kind: 'features_card' }>['rows'] }) {
   const { find, open, linked } = useLiveFeature()
   return <FeaturesCard rows={rows.map((row) => ({ ...row, feature: find(row.featureId) }))} onOpen={open} linked={linked} />
+}
+
+/**
+ * The workers a lead's turn started (calmer-worker-chats decisions 6, 12), each
+ * row's status read live from the feature's workers and opening its chat the
+ * way a handback's "Open its chat" does. Outside the feature's chat column (no
+ * worker list) the rows show no status and do not open.
+ */
+export function WorkersCardItem({ rows }: { rows: Extract<ThreadItem, { kind: 'workers_card' }>['rows'] }) {
+  const links = useContext(WorkerLinksContext)
+  return (
+    <WorkersStartedCard
+      rows={rows.flatMap(({ kind, ...row }) => {
+        // A lead never starts an unassigned worker (that is the human's "+").
+        if (kind === 'unassigned') return []
+        const status = links?.workers.find((w) => w.id === row.workerId)?.status
+        return [{ ...row, kind, ...(status ? { status } : {}) }]
+      })}
+      {...(links ? { onOpenWorker: links.openWorker } : {})}
+    />
+  )
 }
 
 /**

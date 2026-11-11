@@ -461,6 +461,19 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     /** The branch a merge landed in. */
     into: z.string().optional(),
   }),
+  /**
+   * The lead started a worker (`start_worker`, `start_review`): a row of the
+   * turn's workers card (calmer-worker-chats decisions 6, 12). A snapshot of
+   * the worker as it started; its status is read live where the card renders.
+   */
+  z.object({
+    type: z.literal('worker_started'),
+    workerId: z.string(),
+    label: z.string(),
+    /** Its one line: the purpose its lead wrote, or the first line of its goal. */
+    purpose: z.string(),
+    kind: WorkerKind,
+  }),
   /** A failure the thread itself hit, outside any turn (the adapter would not start, auth expired). */
   z.object({ type: z.literal('error'), message: z.string() }),
   /** Something the thread says quietly about itself ("Started a new conversation — the earlier one could not be found"). */
@@ -554,6 +567,11 @@ export type ThreadItem =
       id: string
       rows: { featureId: string; title: string; actions: FeatureAction[]; quote?: string; into?: string }[]
     }
+  /**
+   * The workers a lead's turn started: one card per turn, a row per worker in
+   * the order they started, at the end of the turn's part (after its words).
+   */
+  | { kind: 'workers_card'; id: string; rows: WorkerStartedRow[] }
   /** An answered approval or question, folded to a line. */
   | { kind: 'answered'; id: string; what: string; answer: string; denied?: boolean }
   /** A turn stopped by the human (Stop or Esc). */
@@ -570,6 +588,14 @@ export type ThreadItem =
   | { kind: 'error'; id: string; message: string }
   /** A quiet line the thread says about itself. */
   | { kind: 'notice'; id: string; text: string; setting?: { page: string; field: string; phrase: string } }
+
+/** A worker a lead's turn started, as it was when it started. */
+export interface WorkerStartedRow {
+  workerId: string
+  label: string
+  purpose: string
+  kind: WorkerKind
+}
 
 /** Where a thread is, which is all the human is told about its process. */
 export type ThreadState = 'working' | 'waiting' | 'idle'
@@ -886,6 +912,8 @@ interface Turn {
   model?: string
   /** Opened by a `turn_started`; one opened by output alone is no turn anything is known to be running. */
   started: boolean
+  /** The workers this part of the turn started: one card, laid out after everything else in the part. */
+  workers?: Extract<ThreadItem, { kind: 'workers_card' }>
 }
 
 const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pending' }
@@ -1026,6 +1054,10 @@ function markRunning(items: ThreadItem[], listed: readonly BackgroundTask[], sta
  *   grows moves down past the work done since it was posted, never past words.
  *   A prompt or a new turn starts a new group. A prompt's `display` rides on its
  *   `user` item.
+ * - A turn's `worker_started` events are one `workers_card`, a row per worker in
+ *   start order, words between the starts or not. It closes the turn's part,
+ *   after its words, and is never inside a run of work; a steered prompt starts
+ *   a new card after it.
  * - A turn's changed files are one `changes` item, after everything else in it.
  * - A model divider appears only when the model changes after one was set; a
  *   compaction shows once however many times it is reported before the next
@@ -1161,6 +1193,8 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     }
     flushWords()
     flushRun(live ? undefined : (endedAt ?? t.startedAt))
+    // The workers card closes the part: the lead's words about its workers sit above it, and no run of work holds it.
+    if (t.workers) out.push(t.workers)
     items.splice(t.regionStart, items.length - t.regionStart, ...out)
   }
 
@@ -1265,6 +1299,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     turn.startedAt = e.at
     turn.segments = []
     turn.regionStart = -1
+    turn.workers = undefined
   }
 
   /** A call first seen: under its subagent, else in the turn's run of tool calls. */
@@ -1550,6 +1585,19 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           } else card.rows.push(featureRow(e))
           render(true)
         } else add({ kind: 'features_card', id: `features_card:${e.i}`, rows: [featureRow(e)] }, e.at)
+        break
+      }
+      case 'worker_started': {
+        // Every start of one turn is one card, words between them or not; a worker started twice is one row.
+        const row: WorkerStartedRow = { workerId: e.workerId, label: e.label, purpose: e.purpose, kind: e.kind }
+        const open = turn as Turn | null
+        const last = items.at(-1)
+        const card = open ? open.workers : last?.kind === 'workers_card' ? last : undefined
+        if (card) {
+          if (!card.rows.some((r) => r.workerId === e.workerId)) card.rows.push(row)
+        } else if (open) open.workers = { kind: 'workers_card', id: `workers_card:${e.i}`, rows: [row] }
+        else items.push({ kind: 'workers_card', id: `workers_card:${e.i}`, rows: [row] })
+        if (open) render(true)
         break
       }
       case 'title':

@@ -45,6 +45,8 @@ import type { AgentTransport, StallBounds, TurnEnding } from '../threads/host'
 import type { StopReason } from '../threads/types'
 import { claudeTranscriptPath } from '../threads/side-channels'
 import { agentHost, readThreadEvents } from '../threads/types'
+import { appendThreadEvent } from '../threads/log'
+import { seedFromTranscript } from '../threads/read'
 import { isOverwritable } from '../services/findings'
 import { adoptProjectImage, releaseProjectImage } from '../services/project-image'
 import { readTranscriptUsage } from '../services/usage'
@@ -380,6 +382,25 @@ function shortId(id: string): string {
 }
 
 /**
+ * Record in the lead's chat that it started this worker (calmer-worker-chats
+ * decisions 6, 12): a row of its turn's workers card, a snapshot of the worker's
+ * label, purpose and kind; the card reads its status live. Only a lead's start
+ * makes one: the human's "+" and the drive page's workers are not the lead's.
+ * Sending a worker back starts nothing, so it adds no row.
+ */
+function recordLeadStart(ctx: AppCtx, w: WorkerRow, leadThreadId: string | undefined): void {
+  if (w.startedBy !== 'lead' || !leadThreadId) return
+  seedFromTranscript(ctx, leadThreadId)
+  appendThreadEvent(leadThreadId, {
+    type: 'worker_started',
+    workerId: w.id,
+    label: w.label,
+    purpose: w.purpose.trim() || (w.goal ?? '').trim().split('\n', 1)[0]!.trim(),
+    kind: w.kind,
+  })
+}
+
+/**
  * Start a worker on `feature`: its thread, its record, its sandbox, then its
  * kickoff. Resolves once the sandbox is up and the kickoff is on its way. A
  * sandbox that fails to come up leaves the worker `failed` with what failed.
@@ -448,10 +469,13 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
   } catch (err) {
     const failure = err instanceof Error ? err.message : String(err)
     const failed = updateWorker(ctx, session.id, { status: 'failed', failure: failure.slice(0, 2000) })
+    // Its row in the lead's chat lands with the event that lists it, so the card never names a worker the list lacks.
+    recordLeadStart(ctx, failed, mainChat?.id)
     emitWorker(ctx, failed, 'worker.failed', `worker "${input.label}" could not start its sandbox`, { failure })
     throw new GateError(`worker "${input.label}" could not start its sandbox: ${failure}`)
   }
   const started = updateWorker(ctx, session.id, { container: sb.container, branch: sb.branch, previewPort: sb.port })
+  recordLeadStart(ctx, started, mainChat?.id)
   emitWorker(ctx, started, 'worker.started', `worker "${input.label}" started in its sandbox`, {
     sessionId: session.id,
     kind: input.kind,
@@ -606,6 +630,7 @@ export async function startReviewWorker(ctx: AppCtx, feature: Feature, input: St
     .run()
   keepReviewAssignment(session.id, await renderReviewAssignment(ctx, feature, project, { mode, passId: session.id }, verify))
   const w = requireWorker(ctx, session.id)
+  recordLeadStart(ctx, w, mainChat?.id)
   emitWorker(ctx, w, 'worker.started', `worker "${label}" started on the host, for the review drive`, {
     sessionId: session.id,
     kind: 'review',

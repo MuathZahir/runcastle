@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Triage batch — calmer worker chats and honest statuses · preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.ba > div{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 14px;background:var(--color-surface-raised)}
+.ba .lab{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px}
+.row{display:flex;align-items:center;gap:8px;min-height:24px;color:var(--color-text-secondary)}
+.row.muted{color:var(--color-text-tertiary)}
+.row .t{color:var(--color-text-disabled)}
+.row b{font-weight:500;color:var(--color-text)}
+.txt{color:var(--color-text);margin:4px 0 8px}
+.bad{color:var(--color-warning)}
+.slot{display:flex;align-items:center;gap:10px;border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:10px 12px;background:var(--color-surface)}
+.slot .play{width:28px;height:28px;border-radius:999px;background:var(--color-surface-selected);display:grid;place-items:center;color:var(--color-text-secondary);font-size:11px;flex:none}
+.slot b{font-weight:500;display:block}
+.slot span{color:var(--color-text-tertiary);font-size:12px}
+.who{display:grid;grid-template-columns:90px 140px 1fr;gap:8px 12px;margin-top:12px;align-items:baseline}
+.who .k{color:var(--color-text-tertiary);font-size:12px}
+.who b{font-weight:500}
+.who p{color:var(--color-text-secondary)}
+@media (max-width:760px){.ba{grid-template-columns:1fr}.who{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Triage batch — calmer worker chats and honest statuses</h1>
+  <p class="lede">Worker chats stop drowning in giant cards and empty "Worked for" rows, the lead's chat shows the workers it starts, and statuses and drives say who is really doing what. Planned without you: the amber marks are my own guesses.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/triage-batch-calmer-worker-chats-and-honest-statuses/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+  <p class="hint">Seven fixes. The chat pieces are designed live (two design pages, waiting for your Approve); the status and drive fixes are drawn here.</p>
+
+  <div class="sub">
+    <h3>1 · Work rows say what ran <a class="pin" data-d="1">1</a> <a class="pin" data-d="7">7</a> <a class="pin" data-d="8">8</a></h3>
+    <div class="ba">
+      <div><div class="lab">Today</div>
+        <div class="row muted">Worked for 17s ›</div><p class="txt">Reading the code is done; starting the core schema.</p>
+        <div class="row muted">Worked for 32s ›</div><p class="txt">Core schema and migration are generated.</p></div>
+      <div><div class="lab">After</div>
+        <div class="row muted">Ran 2 commands, read 6 files <span class="t">· 17s</span> ›</div><p class="txt">Reading the code is done; starting the core schema.</p>
+        <div class="row muted">Ran 3 commands, edited 2 files <span class="t">· 32s</span> ›</div><p class="txt">Core schema and migration are generated.</p></div>
+    </div>
+    <p class="hint" style="margin-top:6px">The same in every chat, the orchestrator's and the phone's too <a class="pin" data-d="9">9</a>. Whether the time stays is a Tweak on the design page.</p>
+  </div>
+
+  <div class="sub">
+    <h3>2 · 3 · 6 · The chat pieces, designed</h3>
+    <p class="hint">Real components on sample data; open each from its card in the chat or the Design tab.</p>
+<!-- screen:worker-chat -->
+<div class="designed">
+  <h3>Worker chat</h3>
+  <p>The pinned assignment card starts folded to the worker's name and purpose line <a class="pin" data-d="3">3</a> <a class="pin" data-d="10">10</a>; open, its goal scrolls inside a capped box. Work rows carry their summaries <a class="pin" data-d="1">1</a>. The chat itself is sample data.</p>
+  <p>States: folded · assignment-open. Tweak: Time on rows (shown / hidden).</p>
+  <p class="mono">apps/web/src/components/workers/WorkerParts.tsx (AssignmentCard) · apps/web/src/components/chat/thread/Work.tsx (WorkBlock, workSummary) · design page /preview/worker-chat-calm.html</p>
+</div>
+<!-- /screen:worker-chat -->
+    <div style="height:10px"></div>
+<!-- screen:lead-chat-workers -->
+<div class="designed">
+  <h3>Lead chat — worker cards</h3>
+  <p>A "workers started" card per lead turn: a row per worker with its purpose and live status; a click opens its chat <a class="pin" data-d="6">6</a> <a class="pin" data-d="12">12</a>. The handback card shows its first paragraph; Show more opens the rest in a capped, scrolling box <a class="pin" data-d="2">2</a>. The chat itself is sample data.</p>
+  <p>States: started · handed-back · report-open. Tweak: Report box (short / tall).</p>
+  <p class="mono">apps/web/src/components/workers/WorkersStartedCard.tsx (new) · apps/web/src/components/workers/WorkerParts.tsx (HandbackCard, FeatureHandbackCard, CappedReport) · design page /preview/lead-chat-workers.html</p>
+</div>
+<!-- /screen:lead-chat-workers -->
+  </div>
+
+  <div class="sub">
+    <h3>4 · "Needs your answer" only when someone waits on you <a class="pin" data-d="4">4</a> <a class="pin" data-d="13">13</a></h3>
+    <p class="hint">The sidebar treated a lead that ended on "I've started the work" as waiting on you, because workers at work did not count as work. The header already counted them.</p>
+    <div class="ba">
+      <div><div class="lab">Today · the lead started a worker</div>
+        <div class="row"><span class="dot" style="background:var(--color-warning)"></span><b>Agents see the tweaks you picked</b></div>
+        <div class="row muted">Yours · <span class="bad">Needs your answer</span></div>
+        <div class="row muted" style="margin-top:6px">Header at the same moment: Working · 1 worker at work</div></div>
+      <div><div class="lab">After</div>
+        <div class="row"><span class="dot live"></span><b>Agents see the tweaks you picked</b></div>
+        <div class="row muted">Yours · Working · 1 worker at work</div>
+        <div class="row muted" style="margin-top:6px">A real wait still wins: the lead's own wait, a question box, a permission prompt <a class="pin" data-d="14">14</a></div></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>5 · The agent's drive is labelled as the agent's <a class="pin" data-d="5">5</a> <a class="pin" data-d="15">15</a> <a class="pin" data-d="16">16</a></h3>
+<!-- screen:drive-slot -->
+    <div class="ba">
+      <div><div class="lab">Your own drive (unchanged)</div>
+        <div class="slot"><div class="play">▶</div><div><b>Test drive</b><span>Epics that look alive</span></div></div>
+        <p class="hint" style="margin-top:8px">The chat banner says the agent can't land its own edits; the header offers Stop drive.</p></div>
+      <div><div class="lab">The Review worker's drive</div>
+        <div class="slot"><div class="play">◉</div><div><b>Review worker is trying this feature</b><span>Epics that look alive</span></div></div>
+        <p class="hint" style="margin-top:8px">A click opens the Review worker's chat; Stop asks first. No banner; the header reads as a worker at work. Your own Test drive says the Review worker holds the slot.</p></div>
+    </div>
+<!-- /screen:drive-slot -->
+  </div>
+
+  <div class="sub">
+    <h3>7 · A helper's result is not you typing <a class="pin" data-d="18">18</a></h3>
+    <div class="ba">
+      <div><div class="lab">Today · a lead's helper finishes</div>
+        <div class="row muted">Owner: Notes Triage → <span class="bad">Yours</span></div>
+        <div class="row muted">Waiting marks <span class="bad">cleared</span>, as if you had replied</div></div>
+      <div><div class="lab">After</div>
+        <div class="row muted">Owner: Notes Triage, unchanged</div>
+        <div class="row muted">Waiting marks stay until you really type</div></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Who builds what</h3>
+    <p class="hint">Your yes starts these. The designs need their own Approve first; only approved ones are committed before the workers start.</p>
+    <div class="who">
+      <span class="k">on its own</span><b>Chat pieces</b><p>Wires the approved designs to real data: the worker-started thread event and its one-card-per-turn fold, live statuses, opening a worker's chat, tests for the summary and the cap.</p>
+      <span class="k">on its own</span><b>Honest statuses</b><p>The need fix and its tests, the wait tool's corrected words, "who started the drive" from server to slot, banner and header, Stop's confirm, the refusal's reason, and machine-made prompts no longer counting as you typing.</p>
+      <span class="k">me</span><b>Lead</b><p>Docs, landing both workers, the project's checks, small fixes.</p>
+      <span class="k">review</span><b>Review worker</b><p>Drives the app at the end: a lead chat starting a worker, a review drive, the sidebar while workers work.</p>
+    </div>
+  </div>
+
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Catching a lead's plain-words question while its workers run (the challenge to decision 13), if you want it</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>How workers hand back: no new summary field</li>
+      <li><i class="dot"></i>Merging text stretches or hiding the agent's words</li>
+      <li><i class="dot"></i>The one-drive-slot rule: no queue, no take-over</li>
+      <li><i class="dot"></i>The Review Package's layout</li>
+      <li><i class="dot"></i>A drive slot on the phone</li>
+      <li><i class="dot"></i>The retired draft "open a worker while it works"</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <ul style="margin:0;padding-left:18px;color:var(--color-text-secondary);display:grid;gap:6px">
+        <li><b>Work summary</b>: a pure function over a stretch's steps, in the web, reusing the call-group words ("Read 3 files"); one work-row component serves every chat.</li>
+        <li><b>Workers card</b>: the workers service appends a worker-started event (id, label, purpose, kind) to the lead's thread on start_worker and start_review; the core thread fold gathers one turn's events into one card, outside any work row; rows read live status from the feature's worker list, as feature cards read live features.</li>
+        <li><b>Status fix</b>: a new "workers at work" fact in the feature need; the quiet "lead replied" branch does not stand while it is true. Sidebar, header and alerts all read that need.</li>
+        <li><b>Typed prompts</b>: the lead's prompt hook skips prompts Claude Code makes itself (they open with <code>&lt;task-notification&gt;</code>), as it already skips the compaction command; the Codex runtime is checked for the same.</li>
+        <li><b>Drive</b>: the server's drive state already records purpose (human or review); it gains the worker id when the Review worker takes the slot; the drive info and the web's drive state carry both; the feature view's "is driving" becomes "the human is driving".</li>
+        <li><b>Seams</b>: the thread fold, the summary function, the feature need, the workers service, the drive info, the drive slot and notices, the handback and assignment cards.</li>
+      </ul>
+
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["\"Worked for\" rows say what ran", "The rows carried no information; a count of what ran says something without hiding any words."],
+    ["Handback card: first paragraph, capped when opened", "A full report was a screen and a half in the lead's chat."],
+    ["Assignment card starts folded", "Open and pinned, it covered the conversation."],
+    ["\"Needs your answer\" only when the lead is really waiting", "The status said you were needed when nobody waited on you."],
+    ["The agent's test drive is labelled as the agent's", "Hiding it would block your own drive with no visible reason; the one drive slot is unchanged."],
+    ["A \"workers started\" card in the lead's chat", "A started worker left nothing clickable in the lead's chat."],
+    ["The work row keeps its duration, after the summary", "The time still says how long you waited, and costs a few characters once the summary leads.", "assumed"],
+    ["The summary counts what you would care about, in a fixed order", "A fixed order lets the eye land in the same place on every row; a subagent counts as one.", "assumed"],
+    ["The calmer rows and cards apply in every chat", "One shared component per piece; an uncapped copy in the orchestrator's chat would keep the problem there.", "assumed"],
+    ["Folded cards and worker rows show the purpose line, not the goal's first line", "Goals open with \"Read first: docs/…\", which says nothing about the work.", "assumed"],
+    ["The runcastle assignment line stays as it is", "It is already one sentence with its own Show more, and it is the worker's real first prompt.", "assumed"],
+    ["The workers card covers the Review worker and every live status", "A status of only working / waiting / handed back would lie once a worker lands or fails.", "assumed"],
+    ["The real cause: workers did not count as work", "The sidebar's need called a lead idle while its workers ran; the header already counted them.", "assumed"],
+    ["A lead's own wait stays until you reply; the tool's words are corrected", "Clearing it on a worker start could make a real question vanish.", "assumed"],
+    ["The agent's drive in the slot: named, opens its chat, Stop asks first", "You must be able to take the slot back without dropping the whole review.", "assumed"],
+    ["Your own Test drive while the agent drives stays refused, and says why", "Queuing or taking over would change the one-drive-slot rule.", "assumed"],
+    ["The Review Package keeps its own layout", "It is the page you accept the feature from, built to be read in full.", "assumed"],
+    ["Prompts Claude Code makes on its own never count as you typing", "A helper's result moved this very feature to you and cleared its waits seven times."]
+  ]
+  // <!-- FILL:C -->
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [9, "Change only worker and lead chats; leave the orchestrator's handback card uncapped.", "The brief named worker and lead chats only.", "scope"],
+    [10, "The first line of the goal, as the brief says.", "It changes words you chose.", "your words"],
+    [13, "Also treat a lead's reply ending in \"?\" as a real question while workers run.", "The challenger warned a plain-words question could hide until a handback.", "challenged"],
+    [14, "Clear the lead's wait when it starts a worker, as the tool's words promised.", "It decides when a question stops showing.", "behaviour"],
+    [15, "No Stop on the agent's drive; end it only by dropping the Review worker.", "It decides how you take the drive slot back.", "behaviour"]
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
