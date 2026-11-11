@@ -5,6 +5,7 @@ import {
   resolveExecutable,
   resolveTool,
   spawnTargetFor,
+  unwrapLauncherScript,
   wellKnownBinDirs,
 } from '../src/util/resolve-executable'
 
@@ -344,5 +345,92 @@ describe('cliNeedsMissingNode', () => {
 
   it('is fine with a Node script when Node is there', () => {
     expect(cliNeedsMissingNode('/usr/local/bin/codex', { nodeInstalled: () => true, head: () => SHEBANG })).toBe(false)
+  })
+})
+
+describe('unwrapLauncherScript', () => {
+  const NPM = 'C:\\Users\\me\\AppData\\Roaming\\npm'
+  const PKG = `${NPM}\\node_modules\\@anthropic-ai\\claude-code`
+  const unwrap = (path: string, text: string | null, existing: string[] = []) =>
+    unwrapLauncherScript(path, { platform: 'win32', head: () => text, exists: (p) => existing.includes(p) })
+
+  // npm's cmd-shim output for a package whose bin is a native program.
+  const NATIVE_CMD = [
+    '@ECHO off',
+    'GOTO start',
+    ':find_dp0',
+    'SET dp0=%~dp0',
+    'EXIT /b',
+    ':start',
+    'SETLOCAL',
+    'CALL :find_dp0',
+    '"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*',
+  ].join('\r\n')
+
+  // npm's cmd-shim output for a package whose bin is a JS file (claude-code before the native exe).
+  const JS_CMD = [
+    '@ECHO off',
+    'GOTO start',
+    ':find_dp0',
+    'SET dp0=%~dp0',
+    'EXIT /b',
+    ':start',
+    'SETLOCAL',
+    'CALL :find_dp0',
+    '',
+    'IF EXIST "%dp0%\\node.exe" (',
+    '  SET "_prog=%dp0%\\node.exe"',
+    ') ELSE (',
+    '  SET "_prog=node"',
+    '  SET PATHEXT=%PATHEXT:;.JS;=;%',
+    ')',
+    '',
+    'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*',
+  ].join('\r\n')
+
+  const JS_PS1 = [
+    '#!/usr/bin/env pwsh',
+    '$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent',
+    '$exe=""',
+    'if (Test-Path "$basedir/node$exe") {',
+    '  & "$basedir/node$exe"  "$basedir/node_modules/@anthropic-ai/claude-code/cli.js" $args',
+    '} else {',
+    '  & "node$exe"  "$basedir/node_modules/@anthropic-ai/claude-code/cli.js" $args',
+    '}',
+  ].join('\n')
+
+  it('turns an npm .cmd launcher into the native program it starts', () => {
+    const exe = `${PKG}\\bin\\claude.exe`
+    expect(unwrap(`${NPM}\\claude.cmd`, NATIVE_CMD, [exe])).toBe(exe)
+  })
+
+  it('turns a JS launcher into its script, never the node it prefers', () => {
+    const js = `${PKG}\\cli.js`
+    expect(unwrap(`${NPM}\\claude.cmd`, JS_CMD, [js, `${NPM}\\node.exe`])).toBe(js)
+    expect(unwrap(`${NPM}\\claude.ps1`, JS_PS1, [js])).toBe(js)
+  })
+
+  it("reads an extensionless sh launcher and pnpm's %~dp0 form", () => {
+    const exe = `${PKG}\\bin\\claude.exe`
+    const sh = '#!/bin/sh\nbasedir=$(dirname "$0")\nexec "$basedir/node_modules/@anthropic-ai/claude-code/bin/claude.exe"   "$@"\n'
+    expect(unwrap(`${NPM}\\claude`, sh, [exe])).toBe(exe)
+    const pnpmDir = 'C:\\Users\\me\\AppData\\Local\\pnpm'
+    const pnpmCmd = '@SETLOCAL\r\n"%~dp0\\global\\5\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe" %*\r\n'
+    const target = `${pnpmDir}\\global\\5\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe`
+    expect(unwrap(`${pnpmDir}\\claude.cmd`, pnpmCmd, [target])).toBe(target)
+  })
+
+  it('leaves real programs, unreadable launchers and missing targets alone', () => {
+    expect(unwrap('C:\\Users\\me\\.local\\bin\\claude.exe', NATIVE_CMD)).toBe('C:\\Users\\me\\.local\\bin\\claude.exe')
+    expect(unwrap('claude', NATIVE_CMD)).toBe('claude')
+    expect(unwrap(`${NPM}\\claude.cmd`, null)).toBe(`${NPM}\\claude.cmd`)
+    expect(unwrap(`${NPM}\\claude.cmd`, '@echo off\r\nclaude-real %*\r\n')).toBe(`${NPM}\\claude.cmd`)
+    expect(unwrap(`${NPM}\\claude.cmd`, NATIVE_CMD, [])).toBe(`${NPM}\\claude.cmd`)
+  })
+
+  it('does nothing off Windows, where a launcher is directly runnable', () => {
+    expect(
+      unwrapLauncherScript('/usr/local/bin/claude', { platform: 'linux', head: () => NATIVE_CMD, exists: () => true }),
+    ).toBe('/usr/local/bin/claude')
   })
 })

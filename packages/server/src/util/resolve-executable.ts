@@ -157,6 +157,41 @@ export function resolveSpawnTarget(name: string, args: string[]): SpawnTarget {
   return spawnTargetFor(resolveTool(name), args)
 }
 
+/**
+ * A path a plain, shell-less spawn can run: the program an npm-style launcher
+ * script on Windows points at, or `resolved` itself when it is not one.
+ *
+ * Some spawners take a path and run it as is: the Agent SDK behind every Claude
+ * conversation (`pathToClaudeCodeExecutable`, which claude-agent-acp fills from
+ * `CLAUDE_CODE_EXECUTABLE`). On Windows, Node and current Bun refuse to start a
+ * `.cmd`/`.bat` without a shell (EINVAL, since the CVE-2024-27980 fix), and a
+ * `.ps1` or extensionless sh launcher is not a program at all. {@link spawnTargetFor}
+ * cannot help there, because those spawners take a path, not a command line.
+ *
+ * So this reads the launcher and returns what it starts: npm's cmd-shim, pnpm's
+ * and bun's all name their target relative to their own dir (`%dp0%`, `%~dp0`,
+ * `$basedir`). A native `claude.exe` target runs directly; a `.js` target the SDK
+ * runs with node or bun itself. Either way it is still the human's own install.
+ * A launcher this cannot read, or whose target is missing, comes back unchanged.
+ */
+export function unwrapLauncherScript(
+  resolved: string,
+  opts: { platform?: NodeJS.Platform; head?: (path: string) => string | null; exists?: (path: string) => boolean } = {},
+): string {
+  if ((opts.platform ?? process.platform) !== 'win32') return resolved
+  if (isBareName(resolved) || /\.(exe|com)$/i.test(resolved)) return resolved
+  const text = (opts.head ?? fileHead)(resolved)
+  if (text === null) return resolved
+  const targets = [...text.matchAll(/(?:%dp0%|%~dp0|\$basedir)[\\/]([^"\r\n]+)"/g)]
+    .map((m) => m[1] as string)
+    // The node interpreter a JS launcher prefers (`node.exe`, `node$exe`) is not the target.
+    .filter((rel) => !/(^|[\\/])node(\.exe|\$exe)?$/i.test(rel))
+  const rel = targets.at(-1)
+  if (!rel) return resolved
+  const target = win32.join(win32.dirname(resolved), rel)
+  return (opts.exists ?? existsSync)(target) ? target : resolved
+}
+
 /** The start of a file, as text. Null when it cannot be read. */
 function fileHead(path: string): string | null {
   try {

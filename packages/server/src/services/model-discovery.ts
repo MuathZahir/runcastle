@@ -13,7 +13,7 @@ import {
 import { dataDir } from '@runcastle/core/paths'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
-import { claudeRuntime } from '../launcher/runtimes/claude'
+import { claudeSdkExecutable } from '../launcher/runtimes/claude'
 import { codexHomeDir } from './codex-auth'
 import { emitProject } from './events'
 
@@ -41,7 +41,7 @@ const defaultClaudeIO: ClaudeDiscoveryIO = {
       prompt,
       options: { pathToClaudeCodeExecutable },
     }),
-  resolveBinary: () => claudeRuntime.resolveBinary(),
+  resolveBinary: claudeSdkExecutable,
   timeoutMs: CLAUDE_DISCOVERY_TIMEOUT_MS,
 }
 

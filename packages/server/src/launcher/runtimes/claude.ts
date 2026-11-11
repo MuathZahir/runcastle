@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import type { SessionKind } from '@runcastle/core'
 import { createSystemExec } from '../../doctor/system-exec'
-import { cliNeedsMissingNode, resolveTool } from '../../util/resolve-executable'
+import { cliNeedsMissingNode, resolveTool, unwrapLauncherScript } from '../../util/resolve-executable'
 import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
@@ -189,6 +189,15 @@ async function listClaudeAgents(): Promise<unknown> {
  * claude-agent-acp's bin entry, resolved from this package's dependencies. Run
  * by `process.execPath`: the adapter declares node ≥ 22, and Bun runs it as is.
  */
+/**
+ * The human's `claude`, as a path the Agent SDK can start: the SDK spawns it with
+ * no shell, so an npm `claude.cmd` on Windows is swapped for the program it runs.
+ * Everything that hands the SDK a path goes through here.
+ */
+export function claudeSdkExecutable(): string {
+  return unwrapLauncherScript(resolveTool(CLAUDE_BIN))
+}
+
 function claudeAcpEntry(): string {
   return createRequire(import.meta.url).resolve('@agentclientprotocol/claude-agent-acp/dist/index.js')
 }
@@ -294,7 +303,7 @@ export const claudeRuntime: AgentRuntimeAdapter = {
       command: process.execPath,
       args: [claudeAcpEntry()],
       env: {
-        CLAUDE_CODE_EXECUTABLE: this.resolveBinary(),
+        CLAUDE_CODE_EXECUTABLE: claudeSdkExecutable(),
         RUNCASTLE_SESSION_ID: input.session.id,
         RUNCASTLE_SERVER_URL: input.serverUrl,
         // As in writeArtifacts: no agent view, so nothing moves the conversation
