@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isOlderVersion } from '../doctor/adapter-requirements'
 import { applyInstalledAssetEnv } from '../launcher/asset-paths'
+import { MIN_BUN_VERSION } from '../setup/plan'
 import { runcastleVersion } from '../version'
 
 /**
@@ -58,6 +60,17 @@ export function parseCommand(argv: string[]): ParsedCommand {
   if (first === 'serve') return { command: 'serve', args: rest }
   // Unknown token: show help rather than silently booting on a typo.
   return { command: 'help', args: argv }
+}
+
+/**
+ * The line that stops `serve` on a Bun older than runcastle's floor, or null when
+ * `version` is new enough. The installers check the floor, but `bun add -g
+ * runcastle` only warns about `engines`, and an older Bun boots the server fine,
+ * then crashes the first time it opens a terminal (Bun.spawn's `terminal` option).
+ */
+export function bunTooOldLine(version: string): string | null {
+  if (!isOlderVersion(version, MIN_BUN_VERSION)) return null
+  return `runcastle needs Bun ${MIN_BUN_VERSION} or newer, and this is Bun ${version}. Run \`bun upgrade\`, then start runcastle again.`
 }
 
 const USAGE = `runcastle — Idea in, merged branch out. On your machine, in your repo.
@@ -126,6 +139,11 @@ async function main(argv: string[]): Promise<number> {
       return runBuildImage(args)
     }
     case 'serve': {
+      const tooOld = bunTooOldLine(Bun.version)
+      if (tooOld) {
+        console.error(tooOld)
+        return 1
+      }
       const { startServer } = await import('../index')
       await startServer()
       return 0

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { parseCommand } from '../src/bin/runcastle'
+import { bunTooOldLine, parseCommand } from '../src/bin/runcastle'
+import { MIN_BUN_VERSION } from '../src/setup/plan'
 
 /**
  * Issue #51 — the published `runcastle` bin dispatches subcommands. Bare
@@ -40,5 +41,20 @@ describe('parseCommand', () => {
 
   it('treats an unknown subcommand as help (never a silent boot)', () => {
     expect(parseCommand(['bogus']).command).toBe('help')
+  })
+})
+
+describe('bunTooOldLine', () => {
+  it('stops serve on a Bun older than the floor, naming both versions and the fix', () => {
+    const line = bunTooOldLine('1.3.4')
+    expect(line).toContain('1.3.4')
+    expect(line).toContain(MIN_BUN_VERSION)
+    expect(line).toContain('bun upgrade')
+  })
+
+  it('lets the floor and anything newer through', () => {
+    expect(bunTooOldLine(MIN_BUN_VERSION)).toBeNull()
+    expect(bunTooOldLine('1.4.0')).toBeNull()
+    expect(bunTooOldLine('1.3.15-canary.1+abc')).toBeNull()
   })
 })

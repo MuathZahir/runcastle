@@ -92,7 +92,8 @@ interface BunSubprocess {
   readonly pid: number
   readonly exited: Promise<number>
   readonly signalCode: NodeJS.Signals | null
-  readonly terminal: BunTerminal
+  /** Undefined on a Bun older than the 1.3.14 floor, which ignores the `terminal` option. */
+  readonly terminal: BunTerminal | undefined
   kill(signal?: string): void
 }
 interface BunSpawnOptions {
@@ -110,6 +111,7 @@ interface BunSpawnOptions {
   argv0?: string
 }
 interface BunRuntime {
+  readonly version?: string
   spawn(cmd: string[], opts: BunSpawnOptions): BunSubprocess
 }
 
@@ -226,6 +228,14 @@ function createBunPtySession(bun: BunRuntime, cmd: string, args: string[], opts:
   }
 
   const { terminal } = proc
+  // A Bun older than the 1.3.14 floor ignores the `terminal` option and starts a
+  // plain process with no terminal; refuse it rather than crash on its exit.
+  if (!terminal) {
+    proc.kill()
+    return failedPtySession(
+      `This Bun (${bun.version ?? 'unknown version'}) cannot open a terminal. runcastle needs Bun 1.3.14 or newer: run \`bun upgrade\`, then restart runcastle.`,
+    )
+  }
 
   // On the spawn's own tick: every descendant the program starts from here on is
   // born inside the job, and dies with it even once its parent has exited. Null
