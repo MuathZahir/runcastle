@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>The epic hears when its features merge preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin-top:14px}
+.step{flex:1 1 150px;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step b{display:block;font-weight:500}
+.step span{color:var(--color-text-secondary);font-size:12px;line-height:17px}
+.step.hold{border-style:dashed;color:var(--color-text-tertiary)}
+.arrow{align-self:center;color:var(--color-text-tertiary)}
+.chat{margin-top:14px;padding:12px 14px;display:grid;gap:8px}
+.chat .who{font-size:11px;color:var(--color-text-tertiary)}
+.news{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--radius-md);background:var(--color-fill-card);font-size:12px}
+.news .t{font-weight:500}.news .w{color:var(--color-text-secondary)}
+.reply{color:var(--color-text-secondary);font-size:12px;line-height:18px}
+.reply.off{color:var(--color-text-disabled);font-style:italic}
+.panel[hidden]{display:none}
+.builds{margin-top:22px;display:grid;gap:6px}
+.builds div{display:flex;gap:10px;align-items:baseline}
+.builds .k{font-size:11px;color:var(--color-text-tertiary);min-width:76px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>The epic hears when its features merge</h1>
+  <p class="lede">When a feature merges, the orchestrator chat it came from (its epic) hears about it. It wakes only while its other features are being built, checks the pieces fit, and warns the siblings the merge touches.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-epic-hears-when-its-features-merge/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+  <p class="hint">One merge, three cases. Pick one.</p>
+  <div class="seg" role="group" aria-label="Case" style="margin-top:8px">
+    <button aria-pressed="true" data-case="wake">Siblings in progress</button>
+    <button aria-pressed="false" data-case="hold">Nothing left in progress</button>
+    <button aria-pressed="false" data-case="self">The epic merged it itself</button>
+  </div>
+
+  <div class="panel" data-panel="wake">
+    <div class="flow">
+      <div class="step"><b>billing-export merges</b><span>You press Merge, or any chat does <a class="pin" data-d="1">1</a></span></div>
+      <div class="arrow">&rarr;</div>
+      <div class="step"><b>Its epic is told</b><span>The chat it came from, not its owner <a class="pin" data-d="14">14</a></span></div>
+      <div class="arrow">&rarr;</div>
+      <div class="step"><b>2 siblings in progress</b><span>So the epic wakes <a class="pin" data-d="2">2</a> <a class="pin" data-d="5">5</a></span></div>
+      <div class="arrow">&rarr;</div>
+      <div class="step"><b>It reads the merge</b><span>Against each sibling; no tests <a class="pin" data-d="13">13</a></span></div>
+      <div class="arrow">&rarr;</div>
+      <div class="step"><b>Notes the touched one</b><span>"bring main in" to its lead <a class="pin" data-d="10">10</a></span></div>
+    </div>
+<!-- screen:epic-chat-merge -->
+    <div class="screen chat">
+      <div class="who">Epic chat · Billing</div>
+      <div class="news"><i class="dot ok"></i><span class="t">Billing export</span><span class="w">Merged by you</span><a class="pin" data-d="7">7</a></div>
+      <div class="reply off">Clean: the epic messaged invoice-pdf, which shares the export module, and said nothing here <a class="pin" data-d="3">3</a></div>
+      <div class="who" style="margin-top:6px">If it found a misfit instead</div>
+      <div class="reply">"Billing export renamed the totals field that invoice-pdf reads. Fix it inside invoice-pdf, or as a small new feature?" + a phone ping <a class="pin" data-d="11">11</a></div>
+    </div>
+<!-- /screen:epic-chat-merge -->
+  </div>
+
+  <div class="panel" data-panel="hold" hidden>
+    <div class="flow">
+      <div class="step"><b>The last feature merges</b><span>Nothing else of the epic is being built</span></div>
+      <div class="arrow">&rarr;</div>
+      <div class="step hold"><b>Logged, no turn</b><span>The row shows; the epic reads it next time it wakes, and does nothing with it <a class="pin" data-d="6">6</a></span></div>
+    </div>
+    <div class="screen chat">
+      <div class="who">Epic chat · Billing</div>
+      <div class="news"><i class="dot ok"></i><span class="t">Invoice PDF</span><span class="w">Merged by you</span></div>
+      <div class="reply off">No reply: the epic did not wake</div>
+    </div>
+  </div>
+
+  <div class="panel" data-panel="self" hidden>
+    <div class="flow">
+      <div class="step"><b>The epic calls merge_feature</b><span>On a feature it runs for you</span></div>
+      <div class="arrow">&rarr;</div>
+      <div class="step"><b>The answer lists siblings</b><span>It checks fit in the same turn <a class="pin" data-d="9">9</a></span></div>
+      <div class="arrow">&rarr;</div>
+      <div class="step hold"><b>Line logged, no second turn</b><span>The row still shows</span></div>
+    </div>
+  </div>
+
+  <p class="hint" style="margin-top:14px">An epic idle for days still wakes <a class="pin" data-d="8">8</a>. Three merges in a row can mean three turns <a class="pin" data-d="15">15</a>. Only the epic's own features are checked <a class="pin" data-d="12">12</a>. Every other news line stays as it is <a class="pin" data-d="4">4</a>.</p>
+
+  <div class="builds">
+    <h3>Who builds what</h3>
+    <div><span class="k">On its own</span><span><b>Merge news</b>: the merge line to the epic, the wake-or-log test, the "Merged" row and <span class="mono">merge_feature</span>'s sibling list, with tests.</span></div>
+    <div><span class="k">Me</span><span>The orchestrator's guidance for the merge line, and the note on the old "merges tell it nothing" record.</span></div>
+    <div><span class="k">Review</span><span>A Review worker at the end reads the diff and runs the checks.</span></div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>A project-wide check of every merge against every epic (not parked; say if you want it)</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Any other news line: rounds, reviews, waits, drives, takes</li>
+      <li><i class="dot"></i>Who owns a feature and where you answer</li>
+      <li><i class="dot"></i>Running tests, drives or reviews on a merge</li>
+      <li><i class="dot"></i>A new look for the news row</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <div class="flow">
+        <div class="step"><b>merge flow</b><span class="mono">mergeFeatureFlow</span><span>: shipped event, then up-next starts</span></div>
+        <div class="arrow">&rarr;</div>
+        <div class="step"><b>orchestrator notifier</b><span>new route by <span class="mono">chat_id</span> for merges only; wake test over sibling status</span></div>
+        <div class="arrow">&rarr;</div>
+        <div class="step"><b>agent host</b><span>prompt, or <span class="mono">hold: true</span> (logged, no turn, rides ahead of the next prompt)</span></div>
+      </div>
+      <p class="hint" style="margin-top:10px">The project skill's "Messages from runcastle" gains the merge line. The record of "the human's merges tell the orchestrator nothing" gets a note naming merges as the exception; the charter's line is the project session's to write.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['A merge always tells the epic the feature came from', 'Whoever owns it and whoever merged it; the orchestrator cannot check fit without hearing that pieces landed.'],
+    ['It wakes that epic only while the epic has other unfinished features', 'With nothing left to fit against, no turn is spent.'],
+    ['On the wake the epic checks fit and warns siblings; it speaks to you only on a problem', 'Integration is the orchestrator\'s job; a clean merge needs no words to you.'],
+    ['Merges are the one exception to "your merges tell the orchestrator nothing"', 'One turn per merge is accepted; every other news line stays as it is.'],
+    ['"Unfinished" means a sibling that is started once the merge is done', 'Backlog drafts have no code to clash with; up-next drafts this merge starts do count.', 'assumed'],
+    ['With no unfinished sibling, the merge is logged in the epic\'s chat without a turn', 'The epic\'s record stays whole at no cost; the line says there is nothing to do.', 'assumed'],
+    ['The merge shows in the epic\'s chat as a "Merged" news row', 'You see why the epic took a turn, in the row runcastle\'s news already uses.', 'assumed'],
+    ['A long-idle or large epic chat is woken like any other', 'Compaction already bounds the cost of a turn after a long gap.', 'assumed'],
+    ['When the epic merges a feature itself, it checks in the same turn', 'merge_feature\'s answer lists the siblings; a second turn would be noise.', 'assumed'],
+    ['The epic tells only the siblings the merge touches', 'Each note wakes a lead; touched siblings are told to bring main in now.', 'assumed'],
+    ['A problem is reported with an offer and a phone ping, not fixed unasked', 'What to do about a problem on main is your call; a report you never read checks nothing.', 'assumed'],
+    ['Only the epic\'s own features are checked', 'The brief scopes it to the epic\'s cut; a project-wide check is a larger feature.', 'assumed'],
+    ['The fit check reads the code; it runs no tests', 'The merged feature passed its checks; siblings run theirs when they bring main in.', 'assumed'],
+    ['The line goes to the epic\'s current chat, or to nobody', 'The epic field already follows a replacement chat; a gone chat has nobody to tell.', 'assumed'],
+    ['Merges in quick succession each get their turn', 'Accepted cost per merge; the later turn sees the earlier merge on main.', 'assumed']
+  ]
+  // <!-- FILL:C -->
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [5, 'Every draft of the epic counts too, so a merge also re-checks briefs nobody has started', 'The brief left this open; it decides how often the epic wakes'],
+    [8, 'Log without a turn when the epic chat has been idle past some limit', 'The challenger disagreed: compacting a huge idle chat may cost more than the check is worth', 'challenged'],
+    [10, 'Tell every in-progress sibling, or log heads-ups without waking their leads', 'Your words were "tell any sibling in progress"; this narrows it to the ones touched', 'challenged'],
+    [11, 'Report in the epic chat only, with no phone ping', 'Adds a notification you did not ask for, so a found problem is not missed'],
+    [13, 'Run the project\'s tests on main after each merge', 'You want things to integrate well; a read is cheaper but catches less']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+  $$('[data-case]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-case]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+      $$('[data-panel]').forEach(function (p) { p.hidden = p.dataset.panel !== b.dataset.case })
+    })
+  })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
