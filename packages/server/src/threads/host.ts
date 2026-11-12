@@ -331,7 +331,7 @@ const LOST_CONVERSATION = 'Started a new conversation — the earlier one could 
 
 /** What the lead hears ahead of its next prompt after the human stopped its self-planning run. */
 const PLANNING_STOPPED =
-  '[runcastle] The human stopped your self-planning run before it finished: planning was stopped by the human, so the plan may be incomplete.'
+  '[runcastle] The human stopped your automatic planning run before it finished: planning was stopped by the human, so the plan may be incomplete.'
 
 /** What the thread says after the human stopped its self-planning run, and how it goes on. */
 const PLANNING_STOPPED_NOTICE = 'Planning stopped. Send a message to pick it up with the lead.'

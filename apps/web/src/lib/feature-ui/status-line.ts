@@ -207,7 +207,7 @@ function needStatus(need: FeatureNeed): FeatureStatus {
  * - A need the human holds while workers work — it reads as on the sidebar row
  *   (triage-batch decision 13), their Stop waiting in "⋯" (`stop`).
  * - Working · N workers at work — the feature's workers are working or queued.
- * - Planning by itself — a self-planning run is live.
+ * - Planning automatically — an automatic planning run is live.
  * - The need (you-always-know-what-s-waiting decisions 1, 17, 18) — the
  *   server's `need`, in the sidebar row's own words: "Plan to approve", "Needs
  *   permission · Bash: git push", "Ready to test · <scenario>", "With the
@@ -258,7 +258,7 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
       : { kind: 'working', label: 'Working' }
   if (workers > 0 && !beatsWorkers(input)) return working()
 
-  if (workers === 0 && input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
+  if (workers === 0 && input.selfPlanning) return { kind: 'working', label: 'Planning automatically' }
 
   if (need && (!agentWorking || SHOWN_WHILE_WORKING.has(need.kind))) {
     const status = needStatus(need)

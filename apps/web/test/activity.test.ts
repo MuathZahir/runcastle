@@ -258,7 +258,7 @@ describe('a self-planning run ending', () => {
 
   it('says the plan was made without the human, and that it is finished', () => {
     expect(activityLine(ended(true))).toEqual({
-      summary: 'Planned without you — the plan is finished',
+      summary: 'Planned automatically — the plan is finished',
       detail: null,
     })
     expect(eventLevel(ended(true))).toBe('ok')
@@ -266,13 +266,23 @@ describe('a self-planning run ending', () => {
 
   it('reads a run that stopped short as something to notice', () => {
     expect(activityLine(ended(false)).summary).toBe(
-      'Planning without you stopped before the plan was complete',
+      'Automatic planning stopped before the plan was complete',
     )
     expect(eventLevel(ended(false))).toBe('error')
   })
 
-  it('is labelled as a self-planning run, not by its slug', () => {
-    expect(eventLabel('session.self_plan_ended')).toBe('self-planning run')
+  it('says a run that stopped to ask what, where or who did not finish, without calling it an error', () => {
+    const asked = ev({
+      type: 'session.self_plan_ended',
+      message: 'planning stopped to ask the human first',
+      data: { sessionId: 's1', complete: false, asked: true },
+    })
+    expect(activityLine(asked).summary).toBe('Automatic planning stopped to ask you something first')
+    expect(eventLevel(asked)).toBe('info')
+  })
+
+  it('is labelled as an automatic planning run, not by its slug', () => {
+    expect(eventLabel('session.self_plan_ended')).toBe('automatic planning run')
     expect(eventLabel('session.pty_exited')).toBe('session · pty exited')
   })
 })

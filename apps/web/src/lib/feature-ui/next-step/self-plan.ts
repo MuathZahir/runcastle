@@ -13,9 +13,9 @@ export function resolveSelfPlan(input: ResolverInput): NextStep | null {
   const { live } = input
   if (!live || !isSelfPlanRun(live)) return null
   return {
-    kick: 'PLANNING ITSELF',
-    title: 'Planning itself',
-    desc: 'Planning by itself — open the chat to watch; the plan appears below as it is written.',
+    kick: 'PLANNING AUTOMATICALLY',
+    title: 'Planning automatically',
+    desc: 'Planning automatically — open the chat to watch; the plan appears below as it is written.',
     primary: { label: 'Stop', kind: 'stopSelfPlan' },
     secondary: [],
     busy: true,

@@ -62,8 +62,9 @@ describe('the project skill, orchestrating', () => {
   // what every turn needs and points at a reference per job.
   it('keeps only what every turn needs, with a reference per job that exists', () => {
     const text = skill()
-    // Raised from 25_000 for the epic icon ids name_epic picks from (epics-that-look-alive decision 1).
-    expect(text.length).toBeLessThanOrEqual(25_400)
+    // Raised from 25_000 for the epic icon ids name_epic picks from (epics-that-look-alive decision 1),
+    // then from 25_400 for the never-guess statement every agent carries word for word (agents-never-guess decision 12).
+    expect(text.length).toBeLessThanOrEqual(26_700)
     expect(text).not.toContain('## Your tools')
     expect(text).toContain('**Load your runcastle tools once**')
     const pointers = [...text.matchAll(/\.\/references\/([a-z-]+\.md)/g)].map((m) => m[1])
@@ -103,7 +104,7 @@ describe('the project skill, orchestrating', () => {
     const questions = intake.slice(intake.indexOf('## Two questions per cut'), intake.indexOf('## The planning choice'))
     expect(questions).toContain('**Before you create anything for a cut, ask the human two plain questions')
     expect(questions).toContain('Plan it with me')
-    expect(questions).toContain('plan it yourself and show me')
+    expect(questions).toContain('"Plan automatically"')
     expect(questions).toContain('I finish it')
     expect(questions).toContain('you build it and show me before merging')
     expect(questions).toContain('you build and merge it')
@@ -144,12 +145,14 @@ describe('the project skill, orchestrating', () => {
     expect(mode).not.toContain('- **Grilled here**')
     expect(mode).toContain('A small, nearly concrete one you may grill here first')
     expect(mode).toContain('- **Plan it with me**')
-    expect(mode).toContain('- **Plan it yourself and show me**')
+    expect(mode).toContain('- **Plan automatically**')
+    expect(mode).toContain('**Offer Plan automatically only for a feature whose what, where and who are settled.**')
+    expect(mode).not.toMatch(/plan it yourself/i)
     expect(mode).toContain('**Recommend the grill** when the feature decides how something new works or looks')
     expect(mode).toContain('small visible tweaks to something that already exists')
     expect(mode).toContain('**When unsure, recommend the grill**')
     expect(mode).toMatch(/^- Plan it with me: /m)
-    expect(mode).toMatch(/^- Plan it yourself: /m)
+    expect(mode).toMatch(/^- Plan automatically: /m)
     expect(mode).toContain('**Never call `plan_feature` on it, and never give its plan the yes yourself.**')
     expect(mode).toContain('which you relay (`send_to_feature` with `relaysHuman: true`)')
     expect(mode).toContain('**Hand the human its chat.**')
@@ -157,14 +160,14 @@ describe('the project skill, orchestrating', () => {
     expect(mode).toContain('There is no fallback')
     expect(mode).toContain('**At the human\'s plan yes, if its finish is show or merge, its lead hands it to you and it becomes yours.**')
     const text = section()
-    expect(text).toContain('**A "plan it with me" feature never plans itself, and its plan\'s yes is the human\'s**')
+    expect(text).toContain('**A "plan it with me" feature never plans automatically, and its plan\'s yes is the human\'s**')
     expect(text).toContain('relay their own yes with `relaysHuman: true`')
     expect(text).toContain('never a grill feature\'s plan')
     expect(text).toContain('a "plan it with me" one waits for the human\'s chat')
     // the-status-tells-the-truth 7, 8: a self-planned plan's yes arrives as a handback,
     // and the feature reads "With <chat>" until the orchestrator acts.
     const flatText = read('project', 'SKILL.md').replace(/\s+/g, ' ')
-    expect(flatText).toContain('a feature that plans itself asks for it with a handback')
+    expect(flatText).toContain('a feature planned automatically asks for it with a handback')
     expect(flatText).toContain('it reads "With <your chat\'s name>" in the human\'s Working lane')
     expect(text).not.toContain('With the orchestrator')
     expect(text).toContain('owners and finish choices from `get_project_context` and `get_feature_context`, the briefs for intent')

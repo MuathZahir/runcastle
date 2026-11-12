@@ -120,7 +120,7 @@ describe('a self-planning run', () => {
     expect(launching?.data?.purpose).toBe('self-plan')
 
     const said = kickoffOf(sessionId)
-    expect(promptsOf(sessionId)[0]).toMatchObject({ source: 'runcastle', display: { summary: 'Started this chat to plan the feature by itself' } })
+    expect(promptsOf(sessionId)[0]).toMatchObject({ source: 'runcastle', display: { summary: 'Started automatic planning for this feature' } })
     expect(said).toContain('Proceed with your task: no human is present')
     expect(said).toContain('/runcastle:feature')
     expect(said).toContain('references/planning-alone.md')
@@ -230,7 +230,7 @@ describe('a self-planning run', () => {
 
     it('says the plan is complete when the run ended by asking the human for the yes', async () => {
       const f = await feature('done')
-      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?') })
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?', 'plan') })
       const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
 
       await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
@@ -239,6 +239,19 @@ describe('a self-planning run', () => {
       expect(ended?.data).toEqual({ sessionId, complete: true })
       // The run is over: the thread is the lead's ordinary chat from here on.
       expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
+    })
+
+    it('says planning stopped to ask when the run ended on a question, and keeps that question', async () => {
+      const f = await feature('asked')
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'what, where or who is open', 'answer') })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
+      const [ended] = selfPlanEnded(f.id)
+      expect(ended?.message).toBe('planning stopped to ask the human first')
+      expect(ended?.data).toEqual({ sessionId, complete: false, asked: true })
+      expect(getFeatureRow(ctx, f.id).waitingReason).toBe('what, where or who is open')
+      expect(getFeatureRow(ctx, f.id).waitingKind).toBe('answer')
     })
 
     it('says planning stopped short otherwise', async () => {
@@ -274,7 +287,7 @@ describe('a self-planning run', () => {
       await logUntil(sessionId, (e) => e.some((x) => x.type === 'turn_started'))
       const caller = createCallerFactory(appRouter)(ctx)
       const name = async () => (await caller.thread.list({ featureId: f.id })).find((t) => t.id === sessionId)?.title
-      expect(await name()).toBe('Planning by itself')
+      expect(await name()).toBe('Planning automatically')
 
       await host?.stop(sessionId, 'archived')
 
@@ -288,7 +301,7 @@ describe('a self-planning run', () => {
 
     it('names a finished run after the feature too', async () => {
       const f = await feature('finished')
-      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?') })
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?', 'plan') })
       const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
       await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
 

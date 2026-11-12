@@ -50,7 +50,7 @@ built.
   - `screen`: the example screen block; copy and rename it per screen, or delete it.
   - `D`: one entry per decision, in order: `['Title', 'Why, in a sentence']`, or
     `['Title', 'Why', 'assumed']` for a decision made without the human.
-  - `C`: Check first, a self-planned feature only, at most five:
+  - `C`: Check first, an automatically planned feature only, at most five:
     `[decisionNumber, 'Alternative', 'Why unsure', 'tag'?]`; leave `[]` for a grilled feature.
   - `later` / `not-this`: one `<li><i class="dot"></i>…</li>` per item left out.
   - `hood`: the technical shape, inside the collapsed **Under the hood**.
@@ -71,7 +71,7 @@ built.
    title, with the reason available on demand (the starter's `D` list builds
    this). Where a decision is visible in the show, pin its number on that spot:
    `<a class="pin" data-d="3">3</a>`.
-   **A self-planned feature** (`./planning-alone.md`) opens this part with a
+   **An automatically planned feature** (`./planning-alone.md`) opens this part with a
    **Check first** group of at most five decisions, the ones the planner picked.
    Each entry shows the decision's number and title, its alternative, and why it
    is uncertain (the starter's `C` list builds this). The remaining decisions
@@ -162,7 +162,7 @@ minute for a small feature, a few minutes for a large one.**
 
 - Every decision in `decisions.md` appears in **What was decided**, by its number
   and its title, in order — none missing, none renumbered.
-- For a self-planned feature, the **Check first** group holds at most five
+- For an automatically planned feature, the **Check first** group holds at most five
   decisions, each with its alternative and why it is uncertain, and every
   decision carrying an `**Assumed.**` line in `decisions.md` shows as assumed.
   For a grilled feature, `C` is empty and no decision is marked.

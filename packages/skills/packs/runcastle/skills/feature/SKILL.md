@@ -17,6 +17,10 @@ Load your runcastle tools once at the start, with the one ToolSearch line the se
 
 ## Understand before you build
 
+**Never guess what, where or who.** Before you create, plan or design anything, you must be able to say three things from the human's own words: what they get, where it lives (wherever they or their users meet it: a page, a command, a notification, how an agent behaves) and who sees it. One is settled when the human said it, or when what they said allows only one reasonable reading; who sees it is also settled when the project has one kind of user. A brief settles them only in the human's words, never in another agent's reading. If any is open, ask before you go on, with your recommendation; when in doubt, ask. When the human says one is your call, say your pick back in one line. This holds whenever something new appears, mid-build too. Below these three (wording, layout details, edge cases) you may decide and be corrected.
+
+For you, that means: your grill opens with whichever of the three the brief leaves open, and you offer no design and write no spec before they are settled. When the human adds something mid-build ("also show it on the home page"), or you find you need a screen nobody planned, ask where before you build it. A worker that hands back with one of them open gets its answer from the human, through you.
+
 Grill before you settle anything the brief did not: one question at a time, each with your recommended answer and why. Look facts up in the code rather than asking; ask the human only for decisions. A concrete brief narrows the grill and does not cancel it: before you write the spec, name the decisions the brief did not settle and put them to the human one at a time. Skip the grill only when none remain, and say so in chat. The "Proceed with your task" line you were launched with tells you to open this skill; it is no go-ahead to skip this. (A run with no human present has nobody to ask, and `./references/planning-alone.md` governs it.) Record each settled decision in `docs/features/<slug>/decisions.md` the moment it settles. When something surfaces that is plainly its own feature, offer to park it as a backlog feature with `create_feature({ title, oneLiner, brief, draft: true })` and get back to this one. How: `./references/grilling.md`.
 
 Write `spec.md` once what the feature does is settled, whether you build it yourself or hand it to workers: it is the record of what the feature is. How: `./references/spec.md`.
@@ -42,7 +46,7 @@ What you do yourself need not happen in your own window: everything you read sta
 
 Read a file you will change with the Read tool and change it with Edit: no patch scripts in /tmp, no long heredocs. A script is for one change across many files.
 
-When the feature changes how a screen looks, offer to show it live before you talk layout in words (`./references/design.md`); long iteration on it belongs to a "with you" worker.
+When the feature changes how a screen looks, offer to show it live before you talk layout in words, once what, where and who are settled (`./references/design.md`); long iteration on it belongs to a "with you" worker.
 
 ## The human's yes
 
