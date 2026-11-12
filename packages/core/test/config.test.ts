@@ -18,6 +18,7 @@ import {
   resolveModel,
   resolveModelEntry,
   resolveSandboxImage,
+  stepDefaultModel,
 } from '../src/config'
 import { loadConfig } from '../src/config-load'
 
@@ -65,7 +66,7 @@ describe('RuncastleConfig — model shape', () => {
     }
   })
 
-  it('accepts a review model, so the burn’s reviewer is settable on its own', () => {
+  it('accepts a review model, so the Review worker’s model is settable on its own', () => {
     const cfg = RuncastleConfig.parse({ stepModels: { review: 'claude-opus-5' } })
     expect(cfg.stepModels).toEqual({ review: 'claude-opus-5' })
   })
@@ -107,20 +108,22 @@ describe('model vocabulary — runtime-aware entries', () => {
     expect(byId.get('gpt-5.6-luna')).toBe('codex')
   })
 
-  it('exports a flagship/smoke default pair per runtime', () => {
+  it('exports flagship, smoke and review defaults per runtime', () => {
     expect(RUNTIME_DEFAULT_MODELS['claude-code']).toEqual({
       flagship: 'claude-opus-5',
       smoke: 'claude-haiku-4-5',
+      review: 'claude-sonnet-5',
     })
     expect(RUNTIME_DEFAULT_MODELS.codex).toEqual({
       flagship: 'gpt-5.6-sol',
       smoke: 'gpt-5.6-luna',
+      review: 'gpt-5.6-terra',
     })
   })
 
-  it('every default-pair model is a curated entry of its own runtime', () => {
+  it('every default model is a curated entry of its own runtime', () => {
     for (const [runtime, pair] of Object.entries(RUNTIME_DEFAULT_MODELS)) {
-      for (const id of [pair.flagship, pair.smoke]) {
+      for (const id of [pair.flagship, pair.smoke, pair.review]) {
         expect(CURATED_MODELS.find((m) => m.id === id)?.runtime).toBe(runtime)
       }
     }
@@ -392,13 +395,42 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
     expect(resolveModel('chat', config, null, undefined)).toBe('global-default')
   })
 
-  it('resolves review independently of implement, and inherits when unset', () => {
-    // Unset: the reviewer follows the default, so a machine that never touches
-    // the setting behaves exactly as it did before the step existed.
-    expect(resolveModel('review', config)).toBe('global-default')
+  it('resolves review independently of implement, falling to the runtime review default when unset', () => {
+    // Unset: the Review worker runs on the review default of the global model's
+    // runtime, not on the global model itself. `config.stepModels` here is a
+    // partial object with no `review` key — the shape a real config file has.
+    expect(resolveModel('review', config)).toBe('claude-sonnet-5')
     const reviewed = { ...config, stepModels: { ...config.stepModels, review: 'step-review' } }
     expect(resolveModel('review', reviewed)).toBe('step-review')
     expect(resolveModel('implement', reviewed)).toBe('step-implement')
+  })
+
+  it('picks the review default by the runtime the global model runs on', () => {
+    expect(resolveModel('review', { model: 'gpt-5.6-sol', stepModels: {}, discovered: [] })).toBe(
+      'gpt-5.6-terra',
+    )
+    expect(
+      resolveModelEntry('review', {
+        model: 'my-codex-proxy',
+        stepModels: { smoke: 'x' },
+        models: [{ id: 'my-codex-proxy', runtime: 'codex' }],
+        discovered: [],
+      }),
+    ).toEqual({ id: 'gpt-5.6-terra', runtime: 'codex' })
+    expect(stepDefaultModel('review', { model: 'claude-opus-5', discovered: [] })).toBe('claude-sonnet-5')
+    expect(stepDefaultModel('chat', { model: 'claude-opus-5', discovered: [] })).toBe('claude-opus-5')
+  })
+
+  it('a project model and a run override still beat the review default', () => {
+    expect(resolveModel('review', config, { model: 'project-model' })).toBe('project-model')
+    expect(resolveModel('review', config, null, 'run-model')).toBe('run-model')
+  })
+
+  it('a parsed config whose stepModels lacks review still gets the review default', () => {
+    const cfg = RuncastleConfig.parse({ model: 'gpt-5.6-sol', stepModels: { smoke: 'gpt-5.6-luna' } })
+    expect(cfg.stepModels.review).toBeUndefined()
+    expect(resolveModel('review', cfg)).toBe('gpt-5.6-terra')
+    expect(resolveModel('chat', cfg)).toBe('gpt-5.6-sol')
   })
 })
 
