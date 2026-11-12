@@ -18,9 +18,9 @@ Read the feature's spec and decisions with `{{READ_FEATURE}}` before you start: 
 
 ## The project's checks
 
-Run these yourself, once each, in full, on `{{FEATURE_BRANCH}}` as it stands in your checkout. Capture each run's output to a file and read the file; never re-run a command to re-read its output.
+Run these yourself, once each, in full{{PRIOR_CHECKS_UNLESS}}, on `{{FEATURE_BRANCH}}` as it stands in your checkout. Capture each run's output to a file and read the file; never re-run a command to re-read its output.
 
-{{CHECKS}}
+{{CHECKS}}{{PRIOR_CHECKS}}
 
 A check that fails outside the known failures is a **defect** worth the lead's attention above every other: name the command, quote the failure, and make the command the repro step. A check that cannot run at all (a missing tool or runtime) is an **observation**, and your hand-back says it did not run. Never describe a check as passed that you did not see pass.
 

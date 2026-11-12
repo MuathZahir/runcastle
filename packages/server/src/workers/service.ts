@@ -64,6 +64,7 @@ import { workerMcpServer } from './sandbox'
 import { type WorkerSetup, claudeSetup, setupFingerprint } from './setup-copy'
 import { workerTools } from './tools'
 import {
+  type ChecksPassed,
   chooseReviewMode,
   driveWaitOf,
   forgetDriveWait,
@@ -561,7 +562,10 @@ export interface StartReviewInput {
   mode?: ReviewWorkerMode
   /** A verify review's findings and fix commits; omitted for a first review. */
   verify?: ReviewVerify
+  /** Omitted, the `review` step's model (the Settings "Review" row). */
   model?: string
+  /** The lead's green checks on a clean tree, for the review to cite instead of re-running; stored nowhere. */
+  checksPassed?: ChecksPassed
   startedBy: WorkerStartedBy
 }
 
@@ -586,7 +590,7 @@ export async function startReviewWorker(ctx: AppCtx, feature: Feature, input: St
   const label = reviewLabel(verify)
   const purpose = verify ? `Verifies ${verify.findingIds.length} fixed finding(s)` : `${mode === 'drive' ? 'Drives' : 'Reads'} the feature for review`
   if (mode === 'gates') {
-    const assignment = await renderReviewAssignment(ctx, feature, project, { mode, passId: '' }, verify)
+    const assignment = await renderReviewAssignment(ctx, feature, project, { mode, passId: '' }, verify, input.checksPassed)
     const started = await startWorker(ctx, feature, {
       label,
       purpose,
@@ -633,7 +637,7 @@ export async function startReviewWorker(ctx: AppCtx, feature: Feature, input: St
       updatedAt: now,
     })
     .run()
-  keepReviewAssignment(session.id, await renderReviewAssignment(ctx, feature, project, { mode, passId: session.id }, verify))
+  keepReviewAssignment(session.id, await renderReviewAssignment(ctx, feature, project, { mode, passId: session.id }, verify, input.checksPassed))
   const w = requireWorker(ctx, session.id)
   recordLeadStart(ctx, w, mainChat?.id)
   emitWorker(ctx, w, 'worker.started', `worker "${label}" started on the host, for the review drive`, {

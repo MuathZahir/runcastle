@@ -762,7 +762,12 @@ export async function toolStartWorker(
 export async function toolStartReview(
   ctx: AppCtx,
   session: SessionRow,
-  input: { mode?: 'drive' | 'gates'; verify?: { findingIds: string[]; commits: string[] }; model?: string },
+  input: {
+    mode?: 'drive' | 'gates'
+    verify?: { findingIds: string[]; commits: string[] }
+    model?: string
+    checksPassed?: { commit: string; commands: string[] }
+  },
 ): Promise<StartedReview> {
   const feature = getFeatureRow(ctx, requireLeadFeatureId(session))
   requireNotStopped(feature)
@@ -3321,7 +3326,20 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             })
             .optional()
             .describe('A verify review: given only these findings and fix commits.'),
-          model: z.string().optional().describe('An id from get_feature_context’s annotatedModels; omit for the feature chat’s model.'),
+          model: z
+            .string()
+            .optional()
+            .describe('An id from get_feature_context’s annotatedModels; omit it for the Review model set in Settings.'),
+          checksPassed: z
+            .object({
+              commit: z.string().min(1).describe('The commit your full checks passed on.'),
+              commands: z.array(z.string().min(1)).min(1).describe('The commands you ran.'),
+            })
+            .optional()
+            .describe(
+              'The commit your full checks passed on, on a clean tree, green apart from the known failures, and the commands you ran. ' +
+                'The review runs only the typecheck while its checkout still matches that commit. Never pass a red run.',
+            ),
         },
       },
       async (args, extra) => {
