@@ -2926,7 +2926,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Create a feature',
         description:
           'Create a feature from a title, one-liner and brief, started or parked (`draft: true`). ' +
-          'Opens no terminal; feature sessions may only park drafts.',
+          'Opens no terminal; feature sessions may only park drafts. Your chat owns it exactly when `finish` is `show` or `merge`.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
           oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
@@ -2942,17 +2942,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .enum(['with-me', 'self'])
             .optional()
             .describe(
-              'With `finish`, the human’s one answer: "Plan it with me" = `with-me` + `you` (theirs, planned with them in its chat); ' +
-                '"Plan automatically" = `self` + `you` (theirs, plans alone and shows the plan in its chat); ' +
-                '"Run it for me" = `self` + `show` or `merge` (this chat owns it).',
+              '`with-me` ("Plan it with me"): grilled in its chat. `self`: plans alone ("Plan automatically", "Run it for me").',
             ),
           finish: z
             .enum(['you', 'show', 'merge'])
             .optional()
             .describe(
-              '`you` for "Plan it with me" and "Plan automatically" (the human’s feature). For "Run it for me", ' +
-                'this chat owns it: `show` (build, show them, they say merge) or `merge` (build and merge). ' +
-                '`with-me` with `show`/`merge` is refused.',
+              '`you`: the human’s. "Run it for me" (this chat owns it): `show` (show them first) or `merge`. Never with `with-me`.',
             ),
         },
       },
@@ -3476,7 +3472,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Bring the orchestrator chat that owns this feature what it answers itself: the plan’s yes under automatic ' +
           'planning, ready, merge conflicts. What only the human decides goes to wait_for_you, which makes the feature theirs. ' +
-          'When the human owns it, ask its chat about what reaches beyond the feature. ' +
+          'When the human owns it, ask its chat what reaches beyond the feature. ' +
           'Wakes it once with your summary and a line of the feature’s state. Refused when the feature has no chat.',
         inputSchema: {
           summary: z
