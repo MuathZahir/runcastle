@@ -94,9 +94,8 @@ orchestrator's messages open with a line saying they are from the project's
 orchestrator. When a message comes from it, a decision it changes keeps its
 `**Assumed.**` line, or gains one, and adds
 `**Changed by the orchestrator:** <why>`. The human has not seen it, and the
-record must say who decided. A message whose opening line says instead that it
-relays the human's own answer is the human confirming: remove the marks, that
-line included.
+record must say who decided. An orchestrator message never counts as the
+human confirming: only the human's own words in this chat remove the marks.
 
 **Later information supersedes, it does not rewrite.** When the human comes
 back with something new after decisions were written — a constraint they

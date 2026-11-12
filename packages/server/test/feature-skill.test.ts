@@ -126,10 +126,16 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
   it('talks to its owner, in one rule (every-feature-has-one-owner 18, 20, 14)', () => {
     const text = flat(skill())
     expect(text).toContain('## Talk to your owner')
-    expect(text).toContain('Bring everything to your owner, and to nobody else:')
-    expect(text).toContain('a chat with `hand_back({ summary })`, and `wait_for_you` is refused')
+    expect(text).toContain('Bring everything to your owner, and to nobody else.')
+    expect(text).not.toContain('`wait_for_you` is refused')
     expect(text).toContain('goes first to the chat it came from with `hand_back({ summary })`')
-    expect(text).toContain('`hand_back({ summary, planAgreed: true })`')
+    expect(text).not.toMatch(/planAgreed|Yours to plan/)
+    // one-place-to-answer 9: what the epic answers goes by hand_back; what only the human
+    // decides goes to wait_for_you, which makes the feature theirs.
+    expect(text).toContain('**Under an epic**, what the epic can answer goes to it with `hand_back({ summary })`: the plan\'s yes under automatic planning, "ready", a merge conflict.')
+    expect(text).toContain('**Anything only the human can decide goes to `wait_for_you`, under an epic too**: what they get, where it lives or who sees it, a design to approve, a stuck worker, a For-the-human decision.')
+    expect(text).toContain('It makes the feature the human\'s at once: the header then reads "Yours", runcastle tells the epic, and you carry on with the human in this chat. It never goes back by itself.')
+    expect(text).toContain('**When the human types to you while an epic owns it**, it is theirs too')
     expect(text).toContain('and a sub-agent for as long as it runs')
     expect(text).not.toContain('With the orchestrator')
     expect(text).not.toContain('working agreement')
@@ -214,9 +220,12 @@ describe('the feature skill, planning with no human present', () => {
     expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start the work?", kind: "plan" })`')
   })
 
-  it('hands a chat-owned plan to its chat for its yes (every-feature-has-one-owner 3)', () => {
+  it('hands an epic-owned plan to its epic for its yes, and the human\'s decisions to the human (one-place-to-answer 9)', () => {
     const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
-    expect(close).toContain('**When a chat owns the feature** (talk to your owner, SKILL.md), its yes is that chat\'s to give: call `hand_back({ summary })` in place of `wait_for_you`')
+    expect(close).toContain('**When an epic owns the feature** (talk to your owner, SKILL.md), the plan\'s yes is that epic\'s to give: call `hand_back({ summary })` in place of `wait_for_you`')
+    expect(close).toContain('**But when the plan holds a For the human decision or a design waiting for approval**, those are the human\'s, not the epic\'s: ask them in this chat and call `wait_for_you` as above, which makes the feature theirs.')
+    const three = flat(text().slice(text().indexOf('**The three come first.**')))
+    expect(three).toContain('Do so when an epic owns the feature too: the questions are the human\'s, and the wait makes the feature theirs')
   })
 
   it('plans the workers it would offer and starts none', () => {
