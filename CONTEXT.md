@@ -35,7 +35,7 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 
 8. **Retired: gates.** Nothing blocks a feature behind a gate. Review runs by default as a worker, and the human's own yes is what moves work forward.
 
-9. **The human makes every decision.** The human settles what a feature should be — in a grill in its chat, in a grill held by the orchestrator for a small one, or by confirming the decisions a self-planned feature marks as theirs — and says yes to its plan. After that the lead hands the work to workers, a Review worker checks it, and the human test-drives and merges. Autonomy covers the building, never the human's decisions. The orchestrator runs a cut on a working agreement the human chooses: autonomous, checkpoints they name, or a check-in after each feature.
+9. **The human makes every decision.** The human settles what a feature should be — in a grill in its chat, in a grill held by the orchestrator for a small one, or by confirming the decisions a self-planned feature marks as theirs — and says yes to its plan. After that the lead hands the work to workers, a Review worker checks it, and the human test-drives and merges. Autonomy covers the building, never the human's decisions. An orchestrator chat runs a feature only when the human told it to, and never carries their decisions to it (ADR-0021).
 
 10. **Retired: built-in workflows.** The ticket-burner, review and research-sweep workflows and their registry are gone; delegated work is workers (ADR-0019, ADR-0020).
 
@@ -53,7 +53,7 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 
 17. **Agents talk by tool call, never by mechanical pings** (ADR-0019 §6). A child tells its parent by calling a tool when it judges the parent needs to know. Events with no agent behind them — a restart, a usage limit, a container dying, a merge conflict — go only to the agent that owns the work.
 
-18. **Orchestrator threads hold features** (ADR-0016). One holder per feature; news about it goes only to that thread, a non-holder is refused, and taking a feature is explicit. Holding binds threads, never the human.
+18. **Every feature has one owner, and one place where the human answers** (ADR-0016, ADR-0021). A feature is the human's unless they told an orchestrator chat (an epic) "run it for me". The human answers their own features in the feature's chat and an epic's features in the epic, and the other agent asks them nothing about it. An epic-run feature that needs a decision only the human can make becomes theirs, and goes back only when they give it back. News about a feature goes only to its owner, a chat that does not own it is refused, and taking a feature is explicit.
 
 ## Design principles
 

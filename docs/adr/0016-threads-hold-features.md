@@ -2,6 +2,7 @@
 
 - **Status:** accepted (2026-10-31)
 - **Deciders:** Muath + project session
+- **Amended by:** ADR-0021 (creating a feature no longer holds it; a held feature that needs the human becomes theirs)
 - **Amends:** decisions 2 and 3 of `docs/features/one-orchestrator-no-mode/decisions.md`
   (no ownership list; the orchestrator follows what any orchestrator acted on)
   and narrows its decision 15 (the app shows no list of what is followed)
