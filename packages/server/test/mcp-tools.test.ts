@@ -386,6 +386,18 @@ describe('mcp tool registration by audience', () => {
     expect(JSON.stringify(bad.content)).toMatch(/checksPassed/)
   })
 
+  it('start_review refuses a checksPassed commit that is not a SHA, so a review never compares HEAD with itself', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'start-review-sha-test', version: '1' })
+    await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
+    for (const commit of ['HEAD', 'feature/faster-cheaper-reviews', 'main~1', 'abc']) {
+      const res = await client.callTool({ name: 'start_review', arguments: { checksPassed: { commit, commands: ['bun run test'] } } })
+      expect(res.isError).toBe(true)
+      expect(JSON.stringify(res.content)).toMatch(/commit SHA/)
+    }
+    await client.close()
+  })
+
   // Mapped ideation is retired (ADR-0012): its three tools are not registered at
   // all, so no audience — not even the unidentified one — is offered them.
   it('offers no audience the retired map tools', () => {

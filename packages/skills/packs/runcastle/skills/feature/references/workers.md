@@ -125,7 +125,8 @@ hands back.
 
 - **Hand it your green checks.** Commit everything, then run the project's full
   checks. Once they are green apart from the known failures, pass
-  `checksPassed: { commit, commands }`: the commit they ran on and the commands.
+  `checksPassed: { commit, commands }`: the SHA they ran on (`git rev-parse
+  HEAD`, never a branch name) and the commands.
   If its checkout is still on that commit, or differs only inside
   `docs/features/<slug>/`, the review runs only the typecheck and cites your
   pass; otherwise it runs everything. Never pass a red run. Leave it out and
