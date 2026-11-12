@@ -99,15 +99,18 @@ describe('the project skill, orchestrating', () => {
     expect(top).toContain('An icon the human picked is kept')
   })
 
-  it('asks the two questions at intake, and reads the finish from the feature while orchestrating', () => {
+  // one-place-to-answer 14: one question per feature, three answers; only "run it for me" is the epic's.
+  it('asks one three-answer question per feature at intake, and reads the finish from the feature while orchestrating', () => {
     const intake = read('project', 'references', 'intake.md')
-    const questions = intake.slice(intake.indexOf('## Two questions per cut'), intake.indexOf('## The planning choice'))
-    expect(questions).toContain('**Before you create anything for a cut, ask the human two plain questions')
-    expect(questions).toContain('Plan it with me')
-    expect(questions).toContain('"Plan automatically"')
-    expect(questions).toContain('I finish it')
-    expect(questions).toContain('you build it and show me before merging')
-    expect(questions).toContain('you build and merge it')
+    const at0 = intake.indexOf('## One question per feature')
+    expect(at0).toBeGreaterThanOrEqual(0)
+    const questions = intake.slice(at0, intake.indexOf('\n## ', at0 + 1))
+    expect(intake).not.toMatch(/two (plain )?questions/i)
+    expect(questions).toContain('**Before you create anything for a cut, ask the human one plain question per feature')
+    expect(questions).toContain("- **Plan it with me**: the human's. They grill it with its lead, in the feature's own chat (`planning: 'with-me'`, `finish: 'you'`).")
+    expect(questions).toContain("- **Plan automatically**: the human's. It plans without them and shows them the plan in its chat, for their yes (`planning: 'self'`, `finish: 'you'`).")
+    expect(questions).toContain('- **Run it for me**: yours. It plans automatically, and you then ask "show you first, or merge?" (`planning: \'self\'`, `finish: \'show\' | \'merge\'`).')
+    expect(questions).toContain("A grilled feature is the human's: `create_feature` refuses one handed to you")
     expect(questions).toContain("`planning: 'with-me' | 'self'`")
     expect(questions).toContain("`finish: 'you' | 'show' | 'merge'`")
     expect(questions).toContain('They are not written into briefs.')
@@ -116,7 +119,8 @@ describe('the project skill, orchestrating', () => {
     const at = text.indexOf('### How far you take each feature')
     expect(at).toBeGreaterThanOrEqual(0)
     expect(at).toBeLessThan(text.indexOf('### Grill, create, plan, start'))
-    expect(text).toContain('Read it there (`get_feature_context`, `get_project_context`), never from the brief.')
+    expect(text).toContain('read it there (`get_feature_context`, `get_project_context`), never from the brief.')
+    expect(text).toContain('**A feature is the human\'s unless they told you "run it for me"**')
     expect(text).toContain('**`show`** ("you build it and show me before merging")')
     expect(text).toContain('**`merge`** ("you build and merge it")')
     expect(text).toContain('designs are approved only by the human, never by you')
@@ -124,8 +128,53 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('**When you ask the human about a feature you own, show its card in the same turn and put your question in words with a question mark**')
     expect(text).toContain('`show_plan({ slug })`')
     expect(text).toContain('Never show a raw `preview.html`.')
-    expect(text).toContain('**Drive when a "show me before merging" feature is ready**')
     expect(text).toContain('**You never start a worker or a review**')
+  })
+
+  // one-place-to-answer 5, 12: one end report, a drive started for "show me first", a plain yes merges here.
+  it('ends a batch it runs with one report, a first drive and "merge these?"', () => {
+    const text = section().replace(/\s+/g, ' ')
+    expect(text).toContain('**End the batch with one report**')
+    expect(text).toContain('**start the first drive** and say what to try')
+    expect(text).toContain('Then ask "merge these?". A plain yes means you merge them.')
+    expect(text).toContain("Anything else the human types in that feature's chat, which makes it theirs; never pass it on.")
+    expect(text).toContain('A For-the-human decision never comes to you: its lead asks the human in its chat.')
+  })
+
+  // one-place-to-answer 3, 15: never restate a feature's question; name each item's one place.
+  it('points the human to a feature\'s chat, and names each waiting item\'s one place', () => {
+    const text = section().replace(/\s+/g, ' ')
+    expect(text).toContain("About a feature of the human's, never ask them anything, never restate its question, and never pass their words on: point them to its chat")
+    expect(text).toContain('**"What\'s waiting for me?"** List each item with its one place, and never restate or answer a feature\'s question')
+    expect(text).toContain('a feature of the human\'s, "answer in its chat"; something this epic holds, "answer here"; something another epic holds, "in <that epic>"')
+  })
+
+  // one-place-to-answer 8, 9, 13: a feature that needed the human is theirs; one line, never taken back.
+  it('says one line when a feature it runs becomes the human\'s, and never takes it back', () => {
+    const text = section().replace(/\s+/g, ' ')
+    expect(text).toContain("**When a feature you run needs the human, it becomes theirs**")
+    expect(text).toContain('Say exactly "<Feature> needs you, so it\'s yours now. Open its chat to answer." once')
+    expect(text).toContain('carry on with the rest of the batch. Never take it back')
+    expect(text).toContain('with its owner button or "run it for me" here')
+  })
+
+  // one-place-to-answer 16: it may start the planning run of a "Plan automatically" feature it cut, once.
+  it('may start a "Plan automatically" feature it cut for the human, once, and nothing else on it', () => {
+    const text = section().replace(/\s+/g, ' ')
+    expect(text).toContain('**A "Plan automatically" feature you cut for the human you may start once**, when the cut\'s order says it is its turn: `start_feature`, then `plan_feature`. It stays theirs')
+    expect(text).toContain('Nothing else on their features.')
+  })
+
+  // one-place-to-answer 11: the relay is gone from the whole pack.
+  it('names no relaysHuman, planAgreed or "Yours to plan" anywhere in the pack', () => {
+    const root = join(resolvePluginDir(), 'skills')
+    const files = (readdirSync(root, { recursive: true }) as string[]).filter((f) => f.endsWith('.md'))
+    expect(files.length).toBeGreaterThan(5)
+    for (const f of files) {
+      const text = readFileSync(join(root, f), 'utf8')
+      expect(text, f).not.toMatch(/relaysHuman|planAgreed|Yours to plan/)
+      expect(text, f).not.toMatch(/relays? the human's own answer/)
+    }
   })
 
   it('has no working agreements, checkpoints or check-ins left', () => {
@@ -139,9 +188,9 @@ describe('the project skill, orchestrating', () => {
 
   it('recommends a planning choice per feature at the cut, and leaves a plan-with-me feature to the human', () => {
     const intake = read('project', 'references', 'intake.md')
-    expect(intake).toContain('- **Give every feature a planning choice.**')
-    const mode = intake.slice(intake.indexOf('## The planning choice'))
-    expect(mode).toContain('**Every feature in a cut proposal shows how it is planned, with a one-line reason**')
+    expect(intake).toContain('- **Give every feature its cut answer.**')
+    const mode = intake.slice(intake.indexOf('## One question per feature'))
+    expect(mode).toContain('with your recommendation and a one-line reason**')
     expect(mode).not.toContain('- **Grilled here**')
     expect(mode).toContain('A small, nearly concrete one you may grill here first')
     expect(mode).toContain('- **Plan it with me**')
@@ -151,23 +200,23 @@ describe('the project skill, orchestrating', () => {
     expect(mode).toContain('**Recommend the grill** when the feature decides how something new works or looks')
     expect(mode).toContain('small visible tweaks to something that already exists')
     expect(mode).toContain('**When unsure, recommend the grill**')
+    expect(mode).toContain('**Recommend Run it for me only when the human says they want it done while they are away**, for work with nothing left to decide.')
     expect(mode).toMatch(/^- Plan it with me: /m)
     expect(mode).toMatch(/^- Plan automatically: /m)
     expect(mode).toContain('**Never call `plan_feature` on it, and never give its plan the yes yourself.**')
-    expect(mode).toContain('which you relay (`send_to_feature` with `relaysHuman: true`)')
+    expect(mode).toContain("It is the human's: they grill it in its chat and give the yes there. When they tell you about it here, point them to its chat.")
     expect(mode).toContain('**Hand the human its chat.**')
     expect(mode).toContain('`notify_human` once')
     expect(mode).toContain('There is no fallback')
-    expect(mode).toContain('**At the human\'s plan yes, if its finish is show or merge, its lead hands it to you and it becomes yours.**')
+    expect(mode).not.toContain('its lead hands it to you')
     const text = section()
     expect(text).toContain('**A "plan it with me" feature never plans automatically, and its plan\'s yes is the human\'s**')
-    expect(text).toContain('relay their own yes with `relaysHuman: true`')
-    expect(text).toContain('never a grill feature\'s plan')
-    expect(text).toContain('a "plan it with me" one waits for the human\'s chat')
+    expect(text).not.toContain('never a grill feature\'s plan')
+    expect(text).toContain("one of the human's waits for them")
     // the-status-tells-the-truth 7, 8: a self-planned plan's yes arrives as a handback,
     // and the feature reads "With <chat>" until the orchestrator acts.
     const flatText = read('project', 'SKILL.md').replace(/\s+/g, ' ')
-    expect(flatText).toContain('a feature planned automatically asks for it with a handback')
+    expect(flatText).toContain('a feature you run, planned automatically, asks for it with a handback')
     expect(flatText).toContain('it reads "With <your chat\'s name>" in the human\'s Working lane')
     expect(text).not.toContain('With the orchestrator')
     expect(text).toContain('owners and finish choices from `get_project_context` and `get_feature_context`, the briefs for intent')
@@ -235,7 +284,7 @@ describe('the project skill, orchestrating', () => {
   it("talks to a feature's agent both ways, and leaves a busy feature alone", () => {
     const text = section()
     expect(text).toContain("it is from the project's orchestrator")
-    expect(text).toContain("**When you pass on the human's own answer, set `relaysHuman: true`**")
+    expect(text).toContain('It never counts as the human: never pass their words on.')
     expect(text).toContain('**`read_feature_chat({ slug })`**')
     expect(text).toContain("**A feature is busy while the human is using its chat**")
     expect(text).toContain('within about the last 30 minutes (`humanTypedAt` in `get_feature_context`)')
@@ -264,7 +313,7 @@ describe('the project skill, orchestrating', () => {
     expect(text).not.toContain('a wrong guess would cost a round')
     expect(text).toContain('**One question at a time**')
     expect(text).toContain('**Keep everything else moving while you wait**')
-    expect(text).toContain("saying it is the human's answer")
+    expect(text).not.toContain("saying it is the human's answer")
   })
 
   it('owns only what the human gave it, and takes a feature only on their words', () => {
@@ -390,20 +439,20 @@ describe('the project skill, with no Go, no quick changes and no missing tools',
 describe('the feature skill and the orchestrator', () => {
   const text = (): string => read('feature', 'references', 'grilling.md')
 
-  it("recognises an orchestrator message by its opening line, and a relayed human answer", () => {
-    const relay = read('feature', 'SKILL.md')
-    expect(relay).toContain("a message that opens with a line saying it is from the project's orchestrator")
-    expect(relay).toContain("relays the human's own answer, treat it as the human confirming")
+  it('recognises an orchestrator message by its opening line, and never counts it as the human', () => {
+    const note = read('feature', 'SKILL.md')
+    expect(note).toContain("a message that opens with a line saying it is from the project's orchestrator")
+    expect(note).toContain('It never counts as the human: it confirms no decision of theirs. It never approves a design')
   })
 
-  it('marks a change made on the orchestrator\'s message, and clears it for a relayed human answer', () => {
+  it('marks a change made on the orchestrator\'s message, and clears marks only on the human\'s own words', () => {
     const at = text().indexOf("**A change on the orchestrator's message is not the human's.**")
     expect(at).toBeGreaterThanOrEqual(0)
     const docs = text().slice(at, text().indexOf('\n\n', at))
     expect(docs).toContain("open with a line saying they are from the project's\norchestrator")
     expect(docs).toContain('`**Changed by the orchestrator:** <why>`')
     expect(docs).toContain('keeps its\n`**Assumed.**` line, or gains one')
-    expect(docs).toContain("relays the human's own answer is the human confirming")
+    expect(docs).toContain("An orchestrator message never counts as the\nhuman confirming: only the human's own words in this chat remove the marks.")
   })
 })
 
