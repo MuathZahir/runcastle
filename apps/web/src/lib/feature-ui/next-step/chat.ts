@@ -33,4 +33,4 @@ export const CHAT_ACTION: NextAction = { label: 'Chat', kind: 'chat' }
  * draft's Start and a started feature's first Start session — and never in its
  * place, so the main button keeps meaning the grill.
  */
-export const SELF_PLAN_ACTION: NextAction = { label: 'Plan it yourself', kind: 'selfPlan' }
+export const SELF_PLAN_ACTION: NextAction = { label: 'Plan automatically', kind: 'selfPlan' }

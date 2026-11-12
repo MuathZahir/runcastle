@@ -9,7 +9,7 @@ export type StartAgentPress = 'start' | 'selfPlan'
  * A never-run feature's empty main chat (a-new-feature-waits-for-start
  * decisions 1, 3, 6, 8): opening the feature starts nothing, so the chat waits
  * here. **Start** is its one primary — the agent reads its brief, explores and
- * speaks first; **Plan it yourself** is a quiet button beside it, a run that
+ * speaks first; **Plan automatically** is a quiet button beside it, a run that
  * plans the feature alone. While one is in flight it shows busy and both are
  * off; a refused start says why on a line under them and Start stays pressable.
  * The caller removes this once either one has launched.
@@ -48,10 +48,10 @@ export function StartAgent({
               icon={<IconSparkle />}
               loading={starting === 'selfPlan'}
               disabled={busy}
-              title="A run that plans the feature without you"
+              title="Plans the feature without you, then shows you the plan"
               onClick={onPlanItYourself}
             >
-              Plan it yourself
+              Plan automatically
             </Button>
           </div>
           {refusal && !busy && (

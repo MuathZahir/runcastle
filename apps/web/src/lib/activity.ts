@@ -139,7 +139,7 @@ function selfPlanComplete(event: Pick<EventRow, 'type' | 'data'>): boolean | nul
  * better under where the slug would say nothing to the human.
  */
 const EVENT_LABELS: Record<string, string> = {
-  'session.self_plan_ended': 'self-planning run',
+  'session.self_plan_ended': 'automatic planning run',
 }
 
 export function eventLabel(type: string): string {
@@ -159,8 +159,8 @@ function fromPayload(event: Pick<EventRow, 'type' | 'data'>): string | null {
   const planned = selfPlanComplete(event)
   if (planned !== null)
     return planned
-      ? 'Planned without you — the plan is finished'
-      : 'Planning without you stopped before the plan was complete'
+      ? 'Planned automatically — the plan is finished'
+      : 'Automatic planning stopped before the plan was complete'
   if (event.type !== 'feature.created') return null
   const d = fields(event.data)
   const branch = text(d?.branch)

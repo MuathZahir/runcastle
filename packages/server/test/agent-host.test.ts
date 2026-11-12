@@ -1343,7 +1343,7 @@ describe('a thread always shows what is happening', () => {
     await host.prompt(id, { text: 'What now?' }, { source: 'human' })
     await logUntil(id, turnsEnded(2))
     const said = prompts().at(-1)!.prompt[0].text!
-    expect(said).toMatch(/^\[runcastle\] The human stopped your self-planning run/)
+    expect(said).toMatch(/^\[runcastle\] The human stopped your automatic planning run/)
     expect(said).toMatch(/planning was stopped by the human/)
     expect(said.endsWith('\n\nWhat now?')).toBe(true)
   })

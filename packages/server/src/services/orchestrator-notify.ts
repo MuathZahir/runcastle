@@ -76,7 +76,7 @@ function describe(event: EventRow, slug: string): string | null {
       return byOrchestrator(event) ? `the drive you started failed: ${clip(event.message)}. ${context}` : null
     case 'feature.started':
       if (typeof data.autoStartedBy !== 'string') return null
-      return `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its brief says grill with you: then hand the human its chat.`
+      return `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless the planning mode in its brief is with you: then hand the human its chat.`
     case AUTOSTART_SKIPPED:
     case AUTOSTART_FAILED:
       return `${clip(event.message, MESSAGE_MAX)}. ${context}`

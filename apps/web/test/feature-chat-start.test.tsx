@@ -84,7 +84,7 @@ function Chat({
 
 const settle = (): Promise<void> => act(() => new Promise<void>((r) => setTimeout(r, 10)))
 const startButton = () => screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
-const planButton = () => screen.getByRole('button', { name: 'Plan it yourself' }) as HTMLButtonElement
+const planButton = () => screen.getByRole('button', { name: 'Plan automatically' }) as HTMLButtonElement
 const box = () => screen.getByLabelText('Message') as HTMLTextAreaElement
 
 function setTabVisible(visible: boolean): void {
@@ -101,7 +101,7 @@ afterEach(() => {
 })
 
 describe('a never-run feature’s chat', () => {
-  it('waits on Start and Plan it yourself, its composer locked, and launches nothing by itself', async () => {
+  it('waits on Start and Plan automatically, its composer locked, and launches nothing by itself', async () => {
     const api = server()
     const start = vi.fn<Start>(async () => 'th_started')
     const planAlone = vi.fn<PlanAlone>(async () => undefined)
@@ -189,7 +189,7 @@ describe('a never-run feature’s chat', () => {
     await waitFor(() => expect(start).toHaveBeenCalledTimes(2))
   })
 
-  it('Plan it yourself launches once on the pick and shows busy; its refusal shows the same way', async () => {
+  it('Plan automatically launches once on the pick and shows busy; its refusal shows the same way', async () => {
     let refuse: (e: Error) => void = () => undefined
     const api = server()
     const start = vi.fn<Start>(async () => 'th_started')

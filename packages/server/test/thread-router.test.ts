@@ -295,14 +295,14 @@ describe('thread router', () => {
 
     const names = async () => Object.fromEntries((await caller.thread.list({ featureId })).map((t) => [t.id, t.title]))
     expect(await names()).toEqual({
-      [selfPlan]: 'Planning by itself',
+      [selfPlan]: 'Planning automatically',
       [scenario]: 'Scenario: writing scenarios',
       [fix]: 'Fix: the test drive',
       // A feature's main chat only runcastle has spoken in is named after the feature.
       [started]: 'Demo feature',
     })
 
-    // The planning run is over (finished or stopped): the purpose goes, and with it "Planning by itself".
+    // The planning run is over (finished or stopped): the purpose goes, and with it "Planning automatically".
     setThreadPurpose(ctx, selfPlan, null)
     expect((await names())[selfPlan]).toBe('Demo feature')
     // Once the human writes, the first message names it.

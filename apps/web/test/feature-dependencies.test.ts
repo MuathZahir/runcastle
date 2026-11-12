@@ -372,7 +372,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
       const ns = nextStep(unstarted(deps), {})
       expect(ns.title).toBe('Start this feature')
       expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
-      expect(ns.secondary).toEqual([{ label: 'Plan it yourself', kind: 'selfPlan' }])
+      expect(ns.secondary).toEqual([{ label: 'Plan automatically', kind: 'selfPlan' }])
       expect(ns.note).toBeUndefined()
     }
   })

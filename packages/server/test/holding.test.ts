@@ -236,7 +236,7 @@ describe('threads hold features', () => {
         expect(row.heldBy).toBe(owned ? a.id : undefined)
         expect(row.chatId).toBe(a.id)
         expect(row.finish).toBe(finish)
-        expect(row.brief).toContain(planning === 'self' ? 'Planning mode: plans itself' : 'Planning mode: grill with you')
+        expect(row.brief).toContain(planning === 'self' ? 'Planning mode: automatic' : 'Planning mode: with you')
         const created = listAfter(ctx, made.id, 0).find((e) => e.type === 'feature.created')
         expect(created?.data).toMatchObject({ createdBy: a.id })
         const changes = listAfter(ctx, made.id, 0).filter((e) => e.type === OWNER_CHANGED)

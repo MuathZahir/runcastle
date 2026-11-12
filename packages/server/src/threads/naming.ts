@@ -59,7 +59,7 @@ export function threadAbout(ctx: AppCtx, featureId: string | null | undefined): 
  */
 function errandName(row: SessionRow, events: readonly ThreadEvent[], about: ThreadAbout): string | null {
   // The run clears the purpose as it ends (`lifecycle.ts`), finished or stopped.
-  if (row.purpose === 'self-plan') return 'Planning by itself'
+  if (row.purpose === 'self-plan') return 'Planning automatically'
   if (row.kind === 'chat' && about.featureTitle) return about.featureTitle
   if (row.kind === 'scenario') return row.purpose === 'scenario-setup' ? 'Scenario: setting scenarios up' : 'Scenario: writing scenarios'
   if (row.kind === 'drive-fix') return 'Fix: the test drive'

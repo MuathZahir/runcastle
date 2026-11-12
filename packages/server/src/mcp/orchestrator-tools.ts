@@ -223,7 +223,7 @@ export const toolStartFeature = orchestratorTool(
   },
 )
 
-/** Have a feature plan itself: its unattended self-planning run, as Plan it yourself launches it. */
+/** Plan a feature automatically: its unattended automatic planning run, as Plan automatically launches it. */
 export const toolPlanFeature = orchestratorTool(
   async (
     ctx: AppCtx,
@@ -455,9 +455,9 @@ export function registerOrchestratorTools(
   acting(
     'plan_feature',
     {
-      title: 'Have a feature plan itself',
+      title: 'Plan a feature automatically',
       description:
-        'Launch a feature’s self-planning run, as Plan it yourself does: its chat, unattended. ' +
+        'Launch a feature’s automatic planning run, as Plan automatically does: its chat, unattended. ' +
         'Refused on a draft or a shipped feature. You are told in this chat when it ends.',
       inputSchema: { slug: SlugInput },
     },
@@ -467,8 +467,8 @@ export function registerOrchestratorTools(
   acting(
     'stop_feature_run',
     {
-      title: 'Stop a feature’s self-planning run',
-      description: 'End the self-planning run going on a feature, as its Stop button does.',
+      title: 'Stop a feature’s automatic planning run',
+      description: 'End the automatic planning run going on a feature, as its Stop button does.',
       inputSchema: { slug: SlugInput },
     },
     toolStopFeatureRun,
