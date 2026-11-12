@@ -62,8 +62,9 @@ epic does not wake.
   header comment and the decision-23 record are amended to name merges as the one
   exception.
 - **Decision record.** `agents-are-woken-only-when-it-matters` decision 23 gets a
-  superseding note pointing here; charter decision 17's exception is the project
-  session's to write into `CONTEXT.md`.
+  superseding note pointing here; the exception to charter decisions 17 and 18 (news
+  goes only to the agent that owns the work) is the project session's to write into
+  `CONTEXT.md`.
 
 ## Seams
 
@@ -100,5 +101,5 @@ epic does not wake.
 - The live feature-shipped event fires before up-next drafts start, so the merge flow
   announces the merge to the epic itself, after those starts; the live event sends no
   line.
-- Charter decision 17's named exception belongs in `CONTEXT.md`, which only the project
-  session writes; it should be told at merge.
+- The named exception to charter decisions 17 and 18 belongs in `CONTEXT.md`, which only
+  the project session writes; it should be told at merge.

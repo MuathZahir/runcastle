@@ -5,7 +5,7 @@ import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
 import { mayStartInBackground } from './database-copy'
 import type { EpicSibling } from './epic-siblings'
-import { epicSiblingsInProgress, mergeWakesEpic } from './epic-siblings'
+import { epicSiblingsInProgress, mergeWakesEpic, ownerWords } from './epic-siblings'
 import { emit, getEventRow } from './events'
 import { chatNameOf } from './holding'
 import { getFeatureRow } from './repo'
@@ -231,7 +231,7 @@ function mergeNewsFor(ctx: AppCtx, event: EventRow, feature: Feature): MergeNews
   const name = mergedBy ? chatNameOf(ctx, mergedBy) : null
   return {
     epicId,
-    by: !mergedBy ? 'the human' : mergedBy === epicId ? 'this chat' : `the chat "${name}"`,
+    by: ownerWords(ctx, mergedBy, epicId),
     byName: name ?? 'you',
     base: typeof data.base === 'string' ? data.base : (feature.baseBranch ?? 'its base'),
     sha: typeof data.sha === 'string' ? data.sha : null,
@@ -310,7 +310,7 @@ export function notifyOrchestrator(ctx: AppCtx, eventId: number, afterMerge = fa
       if (event.featureId) {
         emit(ctx, event.featureId, {
           type: ORCHESTRATOR_NEWS_NOT_SENT,
-          message: 'news not sent: this drive has not started the thread that holds this feature',
+          message: `news not sent: this drive has not started the thread ${event.type === 'feature.shipped' ? 'this feature came from' : 'that holds this feature'}`,
           data: { threadId, eventId: event.id, line },
         })
       }

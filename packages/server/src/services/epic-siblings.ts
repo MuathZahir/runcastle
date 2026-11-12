@@ -51,8 +51,8 @@ export interface EpicSibling {
   owner: string
 }
 
-/** Who owns a sibling, said to the epic `epicId`. */
-function ownerWords(ctx: AppCtx, heldBy: string | null, epicId: string): string {
+/** Who owns a sibling, or who merged, said to the epic `epicId`. */
+export function ownerWords(ctx: AppCtx, heldBy: string | null, epicId: string): string {
   if (!heldBy) return 'the human'
   if (heldBy === epicId) return 'this chat'
   return `the chat "${chatNameOf(ctx, heldBy)}"`
