@@ -819,6 +819,8 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   forgetBackgroundWait(row.id)
   let w = getWorker(ctx, row.id)
   if (!w) return
+  // The host marks a thread awaiting input before it says a turn ended, and the next turn clears it.
+  const awaitingAtEnd = getSessionRow(ctx, row.id)?.awaitingInput === true
   // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
   const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
   const failed = error !== undefined && w.status === 'working' ? { error, verdict: classifyAgentError(error, w.runtime) } : undefined
@@ -841,6 +843,8 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
     // Read again: the awaits above let a drive's end hand this worker back, which `w` would undo.
     const now = getWorker(ctx, w.id)
     if (now?.status !== 'working') return
+    // A newer turn began while this one's handback was read (a queued message, a send-back): it reports at its own end.
+    if (awaitingAtEnd && getSessionRow(ctx, w.id)?.awaitingInput === false) return
     // Its background work still runs: the turn the agent starts when it finishes reports instead.
     if (end?.reason === 'end_turn' && end.background) return waitOutBackground(ctx, w.id)
     setStatus(ctx, now, 'needs-you')

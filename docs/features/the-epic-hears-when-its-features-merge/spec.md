@@ -99,6 +99,8 @@ epic does not wake.
   turn ends on background work stays working until that work's own turn or the
   background window passes (decision 16). Found by this feature's review; tests in the
   agent-host and worker-life test files.
+- A turn's end no longer marks a worker "needs you" once a newer turn has begun (a
+  send-back or a queued message that started while the sandbox was read for a handback).
 
 ## Open questions
 

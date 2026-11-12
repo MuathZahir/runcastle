@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BACKGROUND_WINDOW_MS, FEATURE_NEEDS_YOU, type Feature, foldThread } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, getSessionRow, markAwaitingInput, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markAgentWorking, markAwaitingInput, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { toolDeclareReady, toolDropWorker, toolLandWorker, toolMessageWorker, toolStartWorker } from '../src/mcp/server'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -320,6 +320,19 @@ describe('a worker whose turn ends with background work still running', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('a turn that starts while the last one’s end is still being read', () => {
+  it('leaves the worker working: the newer turn reports at its own end', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const id = await startWorker('Review')
+    markAwaitingInput(ctx, id)
+    const ending = workerTurnEnded(ctx, { id }, { reason: 'end_turn' })
+    // A send-back or a queued message starts the next turn before the handback read finishes.
+    markAgentWorking(ctx, id)
+    await ending
+    expect(status(id)).toBe('working')
   })
 })
 
