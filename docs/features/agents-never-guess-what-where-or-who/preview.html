@@ -300,32 +300,26 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ["A lead no longer offers a design in its first reply", "It offers one once the three are settled."],
     ["A lone planning run stops on an unsettled three", "It asks you in its chat and draws no screen on a guess."],
     ["\"Plan it yourself\" is renamed", "Everywhere you read it, in the app and in what agents say."],
-    ["The new name is \"Plan automatically\"", "Your own suggestion, as a verb for a button; \"Plan it with me\" stays.", 'assumed'],
-    ["Every related label uses the same name", "Planning automatically, automatic planning run, Planning mode: automatic.", 'assumed'],
-    ["What \"settled\" means", "You said it, or it has only one reasonable reading; two readings means ask.", 'assumed'],
-    ["\"Who sees it\" is asked only when there is more than one audience", "In a one-audience app it has one answer.", 'assumed'],
-    ["\"You decide\" settles it, out loud", "Only your own words count; the agent says its pick back in one line.", 'assumed'],
-    ["One statement of the rule, word for word, in every agent's instructions", "One voice, kept identical by a test.", 'assumed'],
-    ["How a lone run stops", "It reads the code, writes nothing, and asks each open one with real options.", 'assumed'],
-    ["After the answer, it finishes the plan by itself", "You chose automatic planning; the three were all it could not decide.", 'assumed'],
-    ["Workers follow the rule too", "An assigned worker asks its lead; one you started asks you.", 'assumed'],
-    ["The orchestrator's question floor becomes the three-things test", "A fully concrete request needs no forced question.", 'assumed'],
-    ["A stopped run owned by an orchestrator chat asks through it, as today", "Where you answer is the sibling feature's.", 'assumed'],
-    ["Only the human's own words settle the three", "The orchestrator's own reading does not count.", 'assumed'],
-    ["\"Where it lives\" is where the human or their users meet it", "Not only screens: commands, notifications, agent behaviour.", 'assumed'],
-    ["The rule applies again when new scope appears", "A mid-build addition gets the same test.", 'assumed'],
-    ["Features already in flight are left alone", "Their next planning step meets the rule anyway.", 'assumed']
+    ["The new name is \"Plan automatically\"", "Your own suggestion, as a verb for a button; \"Plan it with me\" stays."],
+    ["Every related label uses the same name", "Planning automatically, automatic planning run, Planning mode: automatic."],
+    ["What \"settled\" means", "You said it, or it has only one reasonable reading; two readings means ask."],
+    ["\"Who sees it\" is asked only when there is more than one audience", "In a one-audience app it has one answer."],
+    ["\"You decide\" settles it, out loud", "Only your own words count; the agent says its pick back in one line."],
+    ["One statement of the rule, word for word, in every agent's instructions", "One voice, kept identical by a test."],
+    ["How a lone run stops", "It reads the code, writes nothing, and asks each open one with real options."],
+    ["After the answer, it finishes the plan by itself", "You chose automatic planning; the three were all it could not decide."],
+    ["Workers follow the rule too", "An assigned worker asks its lead; one you started asks you."],
+    ["The orchestrator's question floor becomes the three-things test", "A fully concrete request needs no forced question."],
+    ["A stopped run owned by an orchestrator chat asks through it, as today", "Where you answer is the sibling feature's."],
+    ["Only the human's own words settle the three", "The orchestrator's own reading does not count."],
+    ["\"Where it lives\" is where the human or their users meet it", "Not only screens: commands, notifications, agent behaviour."],
+    ["The rule applies again when new scope appears", "A mid-build addition gets the same test."],
+    ["Features already in flight are left alone", "Their next planning step meets the rule anyway."]
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [7, "\"Plan for me\" / \"Plan with me\"", "Your suggestion was \"something like automatic planning\"; the challenger preferred a matched pair that keeps you the owner.", "challenged"],
-    [9, "Only an explicit statement counts", "Decides how often agents stop to ask you; stricter means questions on obvious bug fixes."],
-    [11, "Always ask the three, even after \"you decide\"", "A guess about how far you want to delegate these three."],
-    [14, "A live grill on the rest once you are back", "A guess about what you expect after answering a stopped run."],
-    [18, "Anything the brief states counts, whoever wrote it", "Means a lone run may stop on a brief whose \"where\" only the orchestrator wrote."]
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

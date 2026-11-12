@@ -52,4 +52,4 @@ All existing except the first.
 
 ## Open questions
 
-- The human confirms the name (decision 7) and the matching labels (decision 8); the build uses them as written until then.
+None: the human confirmed the name (decision 7) and the matching labels (decision 8) with their yes to the plan.
