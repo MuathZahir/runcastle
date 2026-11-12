@@ -170,7 +170,6 @@ describe('the feature header: epic and owner', () => {
       createElement(OwnerControl, {
         owner: r.owner,
         ...(r.chatName ? { chatName: r.chatName } : {}),
-        planning: r.planning,
         feature: f.title,
         inEpic,
         onChoose: () => {},
