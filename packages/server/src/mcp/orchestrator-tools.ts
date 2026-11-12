@@ -32,6 +32,7 @@ import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
 import { type ChatFinish, chatNameOf, holderName, requireHold, takeFeature } from '../services/holding'
 import { clearHandback } from '../services/lead-status'
+import { type EpicSibling, epicSiblingsInProgress } from '../services/epic-siblings'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
   getFeatureRow,
@@ -342,13 +343,23 @@ export const toolDrive = orchestratorTool(
  * Merge through runcastle, as Merge does: the outcome doc, the shipped state
  * and the worktree clean-up all happen. A conflict comes back with its files so
  * the orchestrator can resolve it in the worktree and merge again (decision 8).
+ *
+ * A clean merge answers with the feature's epic's other features in progress
+ * (`the-epic-hears-when-its-features-merge` decision 9), the list its merge line
+ * carries: an epic that merges its own feature checks fit in this turn, and the
+ * line it hears of this merge is held, not woken.
  */
 export const toolMergeFeature = orchestratorTool(
-  async (ctx: AppCtx, session: SessionRow, input: { slug: string }): Promise<MergeFlowResult> => {
+  async (
+    ctx: AppCtx,
+    session: SessionRow,
+    input: { slug: string },
+  ): Promise<MergeFlowResult & { inProgress?: EpicSibling[] }> => {
     const feature = requireHeldFeature(ctx, session, input.slug)
-    const merged = await mergeFeatureFlow(ctx, feature.id)
-    if (merged.ok && !merged.conflict) recordFeatureAction(ctx, session, feature.id, 'merged', { into: merged.base })
-    return merged
+    const merged = await mergeFeatureFlow(ctx, feature.id, { by: session.id })
+    if (!merged.ok || merged.conflict) return merged
+    recordFeatureAction(ctx, session, feature.id, 'merged', { into: merged.base })
+    return { ...merged, inProgress: epicSiblingsInProgress(ctx, getFeatureRow(ctx, feature.id)) }
   },
 )
 
@@ -553,7 +564,8 @@ export function registerOrchestratorTools(
       title: 'Merge a feature',
       description:
         'Merge a feature into its base, as Merge does. On a conflict it returns `conflict` and the ' +
-        '`files` to resolve in the worktree.',
+        '`files` to resolve in the worktree. A clean merge returns `inProgress`: the other ' +
+        'features of its epic still in progress (slug, title, owner), to check the merge fits with.',
       inputSchema: { slug: SlugInput },
     },
     toolMergeFeature,
