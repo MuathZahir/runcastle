@@ -143,4 +143,15 @@ describe('driveProcessEnv', () => {
     const merged = driveProcessEnv({}, { HOME: '/home/me' })
     expect(merged.HOME).toBe('/home/me')
   })
+
+  // A runcastle server that is itself under a drive inherits its own feature's
+  // folder; a project drive it starts must not pass that on.
+  it('drops an inherited scenario or scenario-data variable the drive did not set', () => {
+    const base = { RUNCASTLE_SCENARIO: 'outer.ts', RUNCASTLE_SCENARIO_DATA: '/outer', HOME: '/home/me' }
+    const bare = driveProcessEnv({ RUNCASTLE_SLUG: 'main' }, base)
+    expect(bare.RUNCASTLE_SCENARIO).toBeUndefined()
+    expect(bare.RUNCASTLE_SCENARIO_DATA).toBeUndefined()
+    expect(bare.HOME).toBe('/home/me')
+    expect(driveProcessEnv({ RUNCASTLE_SCENARIO_DATA: '/inner' }, base).RUNCASTLE_SCENARIO_DATA).toBe('/inner')
+  })
 })

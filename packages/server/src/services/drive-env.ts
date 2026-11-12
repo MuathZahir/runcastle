@@ -116,6 +116,13 @@ function unquote(value: string): string {
 }
 
 /**
+ * The identity variables a drive sets only sometimes. An inherited copy is
+ * dropped, so their absence means what it says: a runcastle server that is
+ * itself under a drive must not pass its own feature's folder to a project drive.
+ */
+const OPTIONAL_IDENTITY_KEYS = ['RUNCASTLE_SCENARIO', 'RUNCASTLE_SCENARIO_DATA'] as const
+
+/**
  * The environment a drive's child processes run with: everything inherited,
  * with the drive's overrides on top. Ours win — the whole point is to replace a
  * `DATABASE_URL` the shell already exports.
@@ -124,7 +131,9 @@ export function driveProcessEnv(
   overrides: Record<string, string>,
   base: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  return { ...base, ...overrides }
+  const inherited = { ...base }
+  for (const key of OPTIONAL_IDENTITY_KEYS) delete inherited[key]
+  return { ...inherited, ...overrides }
 }
 
 /** One-line summary of what a drive overlaid, for the timeline. Names only. */
