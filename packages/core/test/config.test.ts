@@ -427,7 +427,7 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
   })
 
   it('a parsed config whose stepModels lacks review still gets the review default', () => {
-    const cfg = RuncastleConfig.parse({ model: 'gpt-5.6-sol', stepModels: { smoke: 'gpt-5.6-luna' } })
+    const cfg = { ...RuncastleConfig.parse({ model: 'gpt-5.6-sol', stepModels: { smoke: 'gpt-5.6-luna' } }), discovered: [] }
     expect(cfg.stepModels.review).toBeUndefined()
     expect(resolveModel('review', cfg)).toBe('gpt-5.6-terra')
     expect(resolveModel('chat', cfg)).toBe('gpt-5.6-sol')

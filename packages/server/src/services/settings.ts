@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type {
+  ModelConfig,
   ModelStep,
   RuncastleConfig,
   SettingField,
@@ -21,7 +22,7 @@ import { configPath } from '@runcastle/core/paths'
 import * as z from 'zod'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { discoverySnapshot } from './model-discovery'
+import { discoverySnapshot, rosterConfig } from './model-discovery'
 import { projects } from '../db/schema'
 import { InvalidInputError } from '../errors'
 import { emitProject } from './events'
@@ -355,7 +356,7 @@ function rawStepModels(fileRaw: Record<string, unknown>): Record<string, unknown
  * model for `review` (picked by the runtime of the global model in `config`),
  * null for the rest.
  */
-function stepModelFields(fileRaw: Record<string, unknown>, config: RuncastleConfig): SettingField[] {
+function stepModelFields(fileRaw: Record<string, unknown>, config: ModelConfig): SettingField[] {
   const set = rawStepModels(fileRaw)
   return MODEL_STEPS.map((step) => {
     const base = { key: `stepModels.${step}`, restartRequired: false, scope: 'global' as const }
@@ -465,7 +466,7 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
   // same in both scopes — append them to whichever view was requested.
   return {
     projectId,
-    fields: [...fields, ...stepModelFields(fileRaw, ctx.config)],
+    fields: [...fields, ...stepModelFields(fileRaw, rosterConfig(ctx))],
     discovery: discoverySnapshot(ctx),
   }
 }
