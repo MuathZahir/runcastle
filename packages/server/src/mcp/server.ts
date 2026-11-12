@@ -56,7 +56,14 @@ import {
   maskedCall,
   workerFeatureId,
 } from '@runcastle/core'
-import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir, reviewShotPath } from '@runcastle/core/paths'
+import {
+  attachmentRelPath,
+  featureDocsRel,
+  projectNotePath,
+  reviewDir,
+  reviewShotPath,
+  scenarioDataDir,
+} from '@runcastle/core/paths'
 import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
@@ -441,6 +448,12 @@ export interface FeatureScenarios {
   scenarios: ScenarioEntry[]
   /** The `_` shared-code paths at the feature branch, to reuse rather than rewrite. */
   fixtures: string[]
+  /**
+   * This feature's scenario-data folder, absolute: where a copy of real data a
+   * scenario builds state from goes. A drive of the feature hands it to scenarios
+   * as `RUNCASTLE_SCENARIO_DATA`. Computed only; the drive start creates it.
+   */
+  dataDir: string
 }
 
 /** {@link FeatureScenarios}, read from git at the feature branch and its base. */
@@ -458,6 +471,7 @@ export async function featureScenarios(ctx: AppCtx, featureId: string): Promise<
     runnerConfigured,
     scenarios,
     fixtures: branchPaths.filter((path) => path.split('/').some((segment) => segment.startsWith('_'))),
+    dataDir: scenarioDataDir(feature.id),
   }
 }
 

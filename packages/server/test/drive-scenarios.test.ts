@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Feature, PreparedKey, Project, SessionRow } from '@runcastle/core'
 import { SAW_MAX_SHOTS } from '@runcastle/core'
-import { reviewShotPath } from '@runcastle/core/paths'
+import { reviewShotPath, scenarioDataDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -27,6 +27,7 @@ import {
   recordDriveUrl,
   reviewDrive,
   runScenarioOnDrive,
+  scenarioDriveEnv,
   testDrive,
 } from '../src/services/git'
 import { getProjectById } from '../src/services/repo'
@@ -108,6 +109,12 @@ async function initRepo(dir: string): Promise<SimpleGit> {
       "console.log('seeding buyer_' + e.RUNCASTLE_SCENARIO_RUN)",
       'console.log(`ENTRY_URL=/cart?slug=${e.RUNCASTLE_SLUG}&db=${e.DB_NAME}`)',
     ].join('\n'),
+  )
+  // Lands on the scenario-data folder it was handed, or `none`.
+  put(
+    dir,
+    '.runcastle/scenarios/data.ts',
+    "console.log('ENTRY_URL=/data?dir=' + encodeURIComponent(process.env.RUNCASTLE_SCENARIO_DATA ?? 'none'))",
   )
   put(dir, '.runcastle/scenarios/broken.ts', "console.log('no such table: buyers'); process.exit(2)")
   put(dir, '.runcastle/scenarios/slow.ts', "await Bun.sleep(1500); console.log('ENTRY_URL=/slow')")
@@ -287,6 +294,34 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
     expect(types().filter((t) => t === 'scenario.landed')).toHaveLength(2)
   }, 30_000)
 
+  // each-feature-s-own-scenarios: a feature's drive hands its scenarios (and
+  // the scenario chat) the feature's scenario-data folder, made at start.
+  it('hands a scenario and the scenario chat the feature’s scenario-data folder, made at start', async () => {
+    await driveUp()
+    expect(existsSync(scenarioDataDir(feature.id))).toBe(true)
+    expect(await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/data.ts')).toMatchObject({
+      ok: true,
+      entryUrl: expect.stringContaining(`/data?dir=${encodeURIComponent(scenarioDataDir(feature.id))}`),
+    })
+    expect(scenarioDriveEnv(ctx, project.id)?.identity).toMatchObject({
+      RUNCASTLE_SCENARIO_DATA: scenarioDataDir(feature.id),
+    })
+  }, 30_000)
+
+  it.runIf(PTY)('hands a project drive’s scenario no scenario-data folder', async () => {
+    const port = await freePort()
+    const server = createServer((_req, res) => res.end('app'))
+    servers.push(server)
+    await new Promise<void>((r) => server.listen(port, '127.0.0.1', () => r()))
+    await configure('devCommand', `echo http://127.0.0.1:${port}/; sleep 30`)
+
+    expect((await projectDrive(ctx, project, 'start', { scenario: '.runcastle/scenarios/data.ts' })).ok).toBe(true)
+    await waitFor(() => scenario()?.status === 'landed')
+    expect(scenario()?.entryUrl).toBe(`http://127.0.0.1:${port}/data?dir=none`)
+    expect(scenarioDriveEnv(ctx, project.id)?.identity).not.toHaveProperty('RUNCASTLE_SCENARIO_DATA')
+    await projectDrive(ctx, project, 'stop')
+  }, 30_000)
+
   it('carries the docked scenario session on the drive info until the drive stops', async () => {
     await testDrive(ctx, project, feature, 'start')
     attachScenarioSession(project.id, 'sess_1')
@@ -436,6 +471,7 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
         ['.runcastle/scenarios/review/own.ts', true],
         ['.runcastle/scenarios/broken.ts', false],
         ['.runcastle/scenarios/checkout/land.ts', false],
+        ['.runcastle/scenarios/data.ts', false],
         ['.runcastle/scenarios/slow.ts', false],
       ])
       // A project drive reads HEAD, where the feature's scenario does not exist.
@@ -514,6 +550,14 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
       await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
       return url
     }
+
+    it('hands the scenario the feature’s scenario-data folder', async () => {
+      await reviewUp()
+      expect(await replay('scenario', '.runcastle/scenarios/data.ts')).toMatchObject({
+        ok: true,
+        entryUrl: expect.stringContaining(`/data?dir=${encodeURIComponent(scenarioDataDir(feature.id))}`),
+      })
+    }, 30_000)
 
     it("refuses both actions unless the live drive is this review's own drive", async () => {
       const file = '.runcastle/scenarios/checkout/land.ts'

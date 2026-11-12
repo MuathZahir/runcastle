@@ -5,6 +5,10 @@ import {
   identifierSafe,
   parseEnvFile,
 } from '../src/services/drive-env'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { scenarioDataDir } from '@runcastle/core/paths'
+import { useDataDir } from './helpers/data-dir'
 
 /**
  * The drive's environment contract: the server passes identity in as
@@ -65,6 +69,23 @@ describe('driveIdentityEnv', () => {
     expect(driveIdentityEnv(identity, '.runcastle/scenarios/a/b.ts')).toMatchObject({
       RUNCASTLE_SCENARIO: '.runcastle/scenarios/a/b.ts',
     })
+  })
+
+  // A feature's own drive hands out its scenario-data folder; a project drive
+  // or the preparation dry run has no feature, so no variable.
+  it('adds RUNCASTLE_SCENARIO_DATA only when the identity names a feature', () => {
+    const restore = useDataDir(join(tmpdir(), 'rc-drive-env-home'))
+    try {
+      expect(driveIdentityEnv(identity)).not.toHaveProperty('RUNCASTLE_SCENARIO_DATA')
+      expect(driveIdentityEnv({ ...identity, featureId: 'feat_abc' })).toMatchObject({
+        RUNCASTLE_SCENARIO_DATA: join(tmpdir(), 'rc-drive-env-home', '.runcastle', 'scenario-data', 'feat_abc'),
+      })
+      expect(scenarioDataDir('feat_abc')).toBe(
+        join(tmpdir(), 'rc-drive-env-home', '.runcastle', 'scenario-data', 'feat_abc'),
+      )
+    } finally {
+      restore()
+    }
   })
 })
 
