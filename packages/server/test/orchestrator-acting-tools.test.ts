@@ -31,7 +31,7 @@ import {
   projectFeatureReader,
   toolReadFeatureDoc,
 } from '../src/mcp/server'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { featureDocPath } from '../src/services/feature-docs'
 import { deliverToLead } from '../src/services/lead-delivery'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
@@ -245,6 +245,59 @@ describe('the orchestrator’s acting tools', () => {
     expect(
       await refusal(() => toolPlanFeature(ctx, session, { slug: 'built' }, { spawn: false })),
     ).toMatch(/is shipped/)
+  })
+
+  /**
+   * one-place-to-answer decision 16: the epic may start, and start the planning
+   * run of, a "Plan automatically" feature of the human's that it cut, once.
+   * The feature stays the human's; every other acting tool stays refused.
+   */
+  describe('the human’s "Plan automatically" feature this epic cut', () => {
+    const AUTO = 'Why it exists.\n\nPlanning mode: automatic\n'
+
+    it('may be started and its planning run started once; it stays the human’s', async () => {
+      const session = orchestrator()
+      const f = seedFeature(ctx, projectId, { slug: 'auto', status: 'draft', baseBranch: null, chatId: session.id, brief: AUTO })
+      cleanup.push(worktreeDir(projectId, 'auto'))
+
+      expect(await toolStartFeature(ctx, session, { slug: 'auto', baseBranch: 'main' })).toMatchObject({ status: 'active' })
+      const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'auto' }, { spawn: false })
+      cleanup.push(sessionDir(sessionId))
+      expect(getSessionRow(ctx, sessionId)).toMatchObject({ featureId: f.id, purpose: 'self-plan' })
+
+      expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, chatId: session.id, finish: 'you' })
+      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'feature.owner_changed')).toBe(false)
+
+      // A second planning run, and every other acting tool, are refused.
+      expect(await refusal(() => toolPlanFeature(ctx, session, { slug: 'auto' }, { spawn: false }))).toMatch(/the human owns `auto`/)
+      expect(await refusal(() => toolStopFeatureRun(ctx, session, { slug: 'auto' }))).toMatch(/the human owns `auto`/)
+      expect(await refusal(() => toolAddToBrief(ctx, session, { slug: 'auto', text: 'x' }))).toMatch(/the human owns `auto`/)
+      expect(await refusal(() => toolMergeFeature(ctx, session, { slug: 'auto' }))).toMatch(/the human owns `auto`/)
+    })
+
+    it('is refused for another epic’s feature', async () => {
+      const other = orchestrator()
+      const session = orchestrator()
+      seedFeature(ctx, projectId, { slug: 'theirs', status: 'draft', baseBranch: null, chatId: other.id, brief: AUTO })
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'theirs', baseBranch: 'main' }))).toMatch(/the human owns `theirs`/)
+      expect(await refusal(() => toolPlanFeature(ctx, session, { slug: 'theirs' }, { spawn: false }))).toMatch(/the human owns `theirs`/)
+    })
+
+    it('is refused for a "Plan it with me" feature', async () => {
+      const session = orchestrator()
+      const f = seedFeature(ctx, projectId, { slug: 'grill', status: 'draft', baseBranch: null, chatId: session.id, brief: 'Why.\n\nPlanning mode: with you\n' })
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'grill', baseBranch: 'main' }))).toMatch(/the human owns `grill`/)
+      expect(await refusal(() => toolPlanFeature(ctx, session, { slug: 'grill' }, { spawn: false }))).toMatch(/the human owns `grill`/)
+      expect(getFeatureRow(ctx, f.id).status).toBe('draft')
+    })
+
+    it('is refused once it has had a planning run, however it was started', async () => {
+      const session = orchestrator()
+      const f = seedFeature(ctx, projectId, { slug: 'planned', status: 'draft', baseBranch: null, chatId: session.id, brief: AUTO })
+      emit(ctx, f.id, { type: 'session.launching', message: 'launching an automatic planning run', data: { sessionId: 's', kind: 'chat', purpose: 'self-plan' } })
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'planned', baseBranch: 'main' }))).toMatch(/the human owns `planned`/)
+      expect(await refusal(() => toolPlanFeature(ctx, session, { slug: 'planned' }, { spawn: false }))).toMatch(/the human owns `planned`/)
+    })
   })
 
   it('a lead message while it plans itself goes into the plan’s thread, and stop_feature_run ends only the plan', async () => {

@@ -23,7 +23,6 @@ import { chatReadPosition, recordChatRead } from './sent-memory'
  */
 
 const FROM_ORCHESTRATOR_LINE = "From the project's orchestrator, not the human:"
-const RELAYED_HUMAN_LINE = "The human's own answer, relayed by the project's orchestrator:"
 
 /** What `send_to_feature` did with the message. */
 export type SendToFeatureResult = { deliveredToLead: true }
@@ -36,18 +35,17 @@ export type SendToFeatureResult = { deliveredToLead: true }
 export async function toolSendToFeature(
   ctx: AppCtx,
   session: SessionRow,
-  input: { slug: string; message: string; relaysHuman?: boolean },
+  input: { slug: string; message: string },
 ): Promise<SendToFeatureResult> {
   // Allowed on a human-owned feature too: a marked note, or an answer to its lead (decisions 6, 9).
+  // It never carries the human's words (one-place-to-answer decision 11).
   const feature = requireMayMessage(ctx, session, requireProjectFeature(ctx, session, input.slug))
-  const from = input.relaysHuman ? RELAYED_HUMAN_LINE : FROM_ORCHESTRATOR_LINE
-  const relayed = input.relaysHuman === true
   await deliverToLead(ctx, feature, {
-    text: `${from}\n\n${input.message}`,
+    text: `${FROM_ORCHESTRATOR_LINE}\n\n${input.message}`,
     source: 'human',
-    orchestrator: { text: input.message, relayed },
+    orchestrator: { text: input.message },
   })
-  recordFeatureAction(ctx, session, feature.id, relayed ? 'relayed' : 'messaged', { quote: firstLine(input.message) })
+  recordFeatureAction(ctx, session, feature.id, 'messaged', { quote: firstLine(input.message) })
   return { deliveredToLead: true }
 }
 
@@ -162,15 +160,10 @@ export function registerOrchestratorRunTools(
       {
         title: 'Send a feature a message',
         description:
-          "Send a message to a feature's agent, marked as from the orchestrator. Set relaysHuman " +
-          "only for the human's own answer passed on as they gave it.",
+          "Send a message to a feature's agent, marked as from the orchestrator, never as the human's words.",
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z.string().min(1).describe('What to change and why, or what you found.'),
-          relaysHuman: z
-            .boolean()
-            .optional()
-            .describe("True when the message is the human's own answer, relayed."),
         },
       },
       orchestratorTool(async (args, extra) => {

@@ -21,7 +21,8 @@ import { getFeatureRow } from './repo'
  *
  * Holding binds project threads: a chat acts only on what it owns. The human's
  * buttons and the feature's own agent never read it, except that a lead under a
- * chat owner talks to that chat (no `wait_for_you`, no phone notification).
+ * chat owner talks to that chat (no phone notification), and its `wait_for_you`
+ * makes the feature the human's ({@link releaseNeedsYou}).
  */
 
 /** The marker of a project's sweep: a project with this event is never swept again. */
@@ -31,7 +32,15 @@ export const HOLDERS_SWEPT = 'holders.swept'
 export const OWNER_CHANGED = 'feature.owner_changed'
 
 /** What changed the owner, on the event and on the timeline. */
-export type OwnerCause = 'control' | 'typed' | 'take' | 'create' | 'plan-agreed' | 'replacement' | 'moved'
+export type OwnerCause =
+  | 'control'
+  | 'typed'
+  | 'take'
+  | 'create'
+  | 'needs-you'
+  | 'replacement'
+  | 'moved'
+  | 'finish-moved'
 
 /** The data of a {@link OWNER_CHANGED} event: the owner after it (null: the human), its chat, finish, and the owner before. */
 export interface OwnerChange {
@@ -57,9 +66,10 @@ const CAUSE_WORDS: Record<OwnerCause, string> = {
   typed: 'you typed in its chat',
   take: 'you asked the chat to run it',
   create: 'the chat cut it to plan automatically',
-  'plan-agreed': 'its plan has the yes',
+  'needs-you': 'it needed you',
   replacement: 'the chat replaced one too long to reopen',
   moved: 'the move to one owner per feature',
+  'finish-moved': 'a feature of yours stays yours to finish',
 }
 
 /** How far before an event a thread's tool call can be the call that caused it. */
@@ -146,7 +156,11 @@ export function giveToChat(
  * hears on its next turn ({@link releasedFrom}) and its tools refuse the
  * feature from then on.
  */
-export function releaseToHuman(ctx: AppCtx, featureId: string, cause: Extract<OwnerCause, 'control' | 'typed'>): boolean {
+export function releaseToHuman(
+  ctx: AppCtx,
+  featureId: string,
+  cause: Extract<OwnerCause, 'control' | 'typed' | 'needs-you'>,
+): boolean {
   const feature = getFeatureRow(ctx, featureId)
   return writeOwner(ctx, feature, { owner: null, chatId: feature.chatId, finish: 'you' }, cause)
 }
@@ -161,8 +175,24 @@ export function releaseOnTyped(ctx: AppCtx, featureId: string): void {
   if (feature.heldBy && feature.status !== 'shipped') releaseToHuman(ctx, featureId, 'typed')
 }
 
-/** When the human last took `featureId` from `threadId`, if its newest owner change is that; else null. */
-export function lostToHumanAt(ctx: AppCtx, featureId: string, threadId: string): number | null {
+/**
+ * A lead under a chat owner waits on the human (one-place-to-answer decision 9):
+ * the feature becomes the human's, finish `you`, its chat kept, its outstanding
+ * handback ended. Returns the chat that owned it, or null when nothing changed
+ * (the human already owns it, or it has shipped).
+ */
+export function releaseNeedsYou(ctx: AppCtx, featureId: string): string | null {
+  const feature = getFeatureRow(ctx, featureId)
+  if (!feature.heldBy || feature.status === 'shipped') return null
+  releaseToHuman(ctx, featureId, 'needs-you')
+  return feature.heldBy
+}
+
+/**
+ * When `featureId` last left `threadId` for the human, and why, if its newest
+ * owner change is that; else null.
+ */
+function lostToHuman(ctx: AppCtx, featureId: string, threadId: string): { at: number; cause: OwnerCause | undefined } | null {
   const last = ctx.db
     .select({ ts: events.ts, data: events.data })
     .from(events)
@@ -171,7 +201,17 @@ export function lostToHumanAt(ctx: AppCtx, featureId: string, threadId: string):
     .limit(1)
     .get()
   const change = last?.data as Partial<OwnerChange> | undefined
-  return last && change?.owner === null && change.from === threadId ? last.ts : null
+  return last && change?.owner === null && change.from === threadId ? { at: last.ts, cause: change.cause } : null
+}
+
+/**
+ * When the human last took `featureId` from `threadId`, if its newest owner
+ * change is that; else null. A release because it needed them is not a take:
+ * the chat was woken for that one at once ({@link releaseNeedsYou}).
+ */
+export function lostToHumanAt(ctx: AppCtx, featureId: string, threadId: string): number | null {
+  const lost = lostToHuman(ctx, featureId, threadId)
+  return lost && lost.cause !== 'needs-you' ? lost.at : null
 }
 
 /**
@@ -194,10 +234,13 @@ export function requireHold(ctx: AppCtx, session: SessionRow, feature: Feature):
 
 /** The refusal on a human-owned feature: whose it is, since when if this chat lost it, and how it comes back. */
 function humanOwnsLine(ctx: AppCtx, session: SessionRow, feature: Feature): string {
-  const lost = lostToHumanAt(ctx, feature.id, session.id)
-  const owns = lost
-    ? `the human took \`${feature.slug}\` on ${new Date(lost).toISOString().slice(0, 16).replace('T', ' ')}, so it is theirs`
-    : `the human owns \`${feature.slug}\``
+  const lost = lostToHuman(ctx, feature.id, session.id)
+  const on = lost ? new Date(lost.at).toISOString().slice(0, 16).replace('T', ' ') : ''
+  const owns = !lost
+    ? `the human owns \`${feature.slug}\``
+    : lost.cause === 'needs-you'
+      ? `\`${feature.slug}\` needed the human on ${on}, so it is theirs`
+      : `the human took \`${feature.slug}\` on ${on}, so it is theirs`
   return (
     `${owns} and nothing was done. You may still send_to_feature and read it. ` +
     `They hand it to a chat by telling it "run ${feature.slug} for me" (take_feature), or with its owner control.`
@@ -242,17 +285,6 @@ export function setOwner(ctx: AppCtx, featureId: string, choice: FeatureFinish):
     giveToChat(ctx, featureId, feature.chatId, choice, 'control')
   }
   return getFeatureRow(ctx, featureId)
-}
-
-/**
- * The lead's plan yes on a human-owned feature whose finish is a chat's
- * (decision 14): it passes to its chat before the handback is delivered.
- * True when it passed.
- */
-export function passAtPlanYes(ctx: AppCtx, feature: Feature): boolean {
-  if (feature.heldBy || !feature.chatId || feature.finish === 'you' || feature.status === 'shipped') return false
-  giveToChat(ctx, feature.id, feature.chatId, feature.finish, 'plan-agreed')
-  return true
 }
 
 /** The slugs a thread holds, among features not yet shipped. */
@@ -430,6 +462,62 @@ export function moveOwners(ctx: AppCtx): void {
   } catch (err) {
     console.error('moving features to one owner failed', err)
   }
+}
+
+// --- One place to answer: the human's features finish with them (decision 10) ---
+
+/** The marker of a project's finish move: a project with this event is never moved again. */
+export const FINISHES_MOVED = 'owners.finishes_moved'
+
+/**
+ * Once per project (one-place-to-answer decision 10): a feature the human owns
+ * whose finish is a chat's (it would have passed to its chat at the plan's yes)
+ * gets finish `you` and stays the human's. Features a chat owns keep their owner
+ * and finish; shipped ones are left alone. Records what it moved on the marker.
+ * Call after {@link moveOwners}. Never throws: with no marker written the next
+ * boot tries again, and a feature already moved is left out.
+ */
+export function moveHumanFinishes(ctx: AppCtx): void {
+  try {
+    for (const { id } of ctx.db.select({ id: projects.id }).from(projects).all()) {
+      const done = ctx.db
+        .select({ id: events.id })
+        .from(events)
+        .where(and(eq(events.projectId, id), eq(events.type, FINISHES_MOVED)))
+        .limit(1)
+        .all()
+      if (done.length === 0) moveProjectFinishes(ctx, id)
+    }
+  } catch (err) {
+    console.error('moving the human’s features to finish "you" failed', err)
+  }
+}
+
+function moveProjectFinishes(ctx: AppCtx, projectId: string): void {
+  const rows = ctx.db
+    .select({ id: features.id })
+    .from(features)
+    .where(
+      and(
+        eq(features.projectId, projectId),
+        isNull(features.heldBy),
+        ne(features.finish, 'you'),
+        ne(features.status, 'shipped'),
+      ),
+    )
+    .all()
+  const moved: { featureId: string; slug: string; from: FeatureFinish }[] = []
+  for (const row of rows) {
+    const feature = getFeatureRow(ctx, row.id)
+    if (writeOwner(ctx, feature, { owner: null, chatId: feature.chatId, finish: 'you' }, 'finish-moved')) {
+      moved.push({ featureId: feature.id, slug: feature.slug, from: feature.finish })
+    }
+  }
+  emitProject(ctx, projectId, {
+    type: FINISHES_MOVED,
+    message: `gave ${moved.length} feature(s) of the human's the finish "you finish it"`,
+    data: { moved },
+  })
 }
 
 // --- The first-boot holder sweep (threads-hold-features decision 7) ----------

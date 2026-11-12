@@ -33,7 +33,7 @@ export interface LeadMessage {
    * The orchestrator's own words, without the line that marks them for the
    * agent: what the feature's chat shows the human in place of the marked text.
    */
-  orchestrator?: { text: string; relayed: boolean }
+  orchestrator?: { text: string }
   /** What the human reads in place of the text when this message goes out alone (a worker's handback card). */
   display?: PromptDisplay
   /**
@@ -54,7 +54,7 @@ export interface LeadMessage {
 /** A message waiting for the lead: the tagged text it goes out as, and what the human reads of it. */
 interface HeldLine {
   text: string
-  orchestrator?: { text: string; relayed: boolean }
+  orchestrator?: { text: string }
   reason: WakeReason
   display?: PromptDisplay
 }

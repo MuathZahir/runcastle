@@ -12,9 +12,9 @@ import {
 import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import * as z from 'zod'
-import { features } from '../db/schema'
+import { events, features } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
 import {
@@ -90,6 +90,55 @@ export function requireProjectFeature(ctx: AppCtx, session: SessionRow, slug: st
 /** {@link requireProjectFeature}, for a tool that changes it: this thread must hold it. */
 export function requireHeldFeature(ctx: AppCtx, session: SessionRow, slug: string): Feature {
   return requireHold(ctx, session, requireProjectFeature(ctx, session, slug))
+}
+
+/** The brief line a "Plan automatically" cut carries (create_feature's planning line). */
+const AUTOMATIC_PLANNING = /^Planning mode:\s*automatic\s*$/im
+
+/**
+ * {@link requireHeldFeature} for `start_feature` and `plan_feature`, with one
+ * allowance (one-place-to-answer decision 16): a feature of the human's that
+ * this chat cut as "Plan automatically" and that has never had an automatic
+ * planning run may be started, and its planning run started, by this chat.
+ * The owner stays the human. Everything else is refused as before.
+ */
+export function requireStartableFeature(ctx: AppCtx, session: SessionRow, slug: string): Feature {
+  const feature = requireProjectFeature(ctx, session, slug)
+  if (
+    !feature.heldBy &&
+    feature.chatId === session.id &&
+    feature.status !== 'shipped' &&
+    AUTOMATIC_PLANNING.test(briefText(ctx, feature)) &&
+    !hadPlanningRun(ctx, feature.id)
+  ) {
+    return feature
+  }
+  return requireHold(ctx, session, feature)
+}
+
+/** The feature's brief: the parked one on a draft, else its `brief.md` (or the parked one when that is missing). */
+function briefText(ctx: AppCtx, feature: Feature): string {
+  if (feature.status === 'draft') return feature.brief ?? ''
+  const path = featureDocPath(projectForFeature(ctx, feature), feature, 'brief.md')
+  return existsSync(path) ? readFileSync(path, 'utf8') : (feature.brief ?? '')
+}
+
+/** Whether the feature ever launched an automatic planning run (its `session.launching` says `purpose: 'self-plan'`). */
+function hadPlanningRun(ctx: AppCtx, featureId: string): boolean {
+  return (
+    ctx.db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.featureId, featureId),
+          eq(events.type, 'session.launching'),
+          sql`json_extract(${events.data}, '$.purpose') = 'self-plan'`,
+        ),
+      )
+      .limit(1)
+      .all().length > 0
+  )
 }
 
 /**
@@ -210,7 +259,7 @@ export const toolStartFeature = orchestratorTool(
     session: SessionRow,
     input: { slug: string; baseBranch?: string },
   ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
-    const feature = requireHeldFeature(ctx, session, input.slug)
+    const feature = requireStartableFeature(ctx, session, input.slug)
     const landing = await landProjectBranchNow(ctx, projectForFeature(ctx, feature), session.id)
     if (!landing.ok) {
       throw new GateError(
@@ -231,7 +280,7 @@ export const toolPlanFeature = orchestratorTool(
     input: { slug: string },
     launch: LaunchSessionOptions = {},
   ): Promise<{ slug: string; sessionId: string }> => {
-    const feature = requireHeldFeature(ctx, session, input.slug)
+    const feature = requireStartableFeature(ctx, session, input.slug)
     const { sessionId } = await launchSession(
       ctx,
       { featureId: feature.id, kind: 'chat', purpose: 'self-plan' },
@@ -439,7 +488,8 @@ export function registerOrchestratorTools(
       description:
         'Start a draft, as Start does: cut its branch and scaffold its brief. Refused while it ' +
         'waits on an unmerged dependency, or once started. Launches nothing — call plan_feature ' +
-        'or send_to_feature when it is ready to work.',
+        'or send_to_feature when it is ready to work. Also allowed on a human\'s "Plan automatically" feature you cut, ' +
+        'before its planning run.',
       inputSchema: {
         slug: SlugInput,
         baseBranch: z
@@ -458,7 +508,8 @@ export function registerOrchestratorTools(
       title: 'Plan a feature automatically',
       description:
         'Launch a feature’s automatic planning run, as Plan automatically does: its chat, unattended. ' +
-        'Refused on a draft or a shipped feature. You are told in this chat when it ends.',
+        'Refused on a draft or a shipped feature. You are told in this chat when it ends. On a human\'s ' +
+        '"Plan automatically" feature you cut, allowed once; it stays theirs.',
       inputSchema: { slug: SlugInput },
     },
     toolPlanFeature,
