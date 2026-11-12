@@ -219,7 +219,7 @@ export function epicNameOf(f: Pick<FeatureListItem, 'chatId'>, chats: readonly T
 /**
  * How a feature header's trail opens (decision 15, as the orchestrator changed
  * it): `owner`, no epic, so the owner control stands alone; `one`, the epic's
- * chat owns it (or takes it after the plan), so the epic and the owner are one
+ * chat owns it, so the epic and the owner are one
  * crumb ("◆ Payment System · you merge ▾"); `two`, the human or a different
  * chat owns it, so both show ("◆ Payment System › Yours ▾").
  */

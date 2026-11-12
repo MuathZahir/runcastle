@@ -20,8 +20,6 @@ export type OwnerChoice = 'you' | 'show' | 'merge'
 export interface OwnerLabels {
   /** The button, human-owned. */
   you: string
-  /** The button while the human grills a feature the chat takes after the plan (decision 14). */
-  planning: (chat: string) => string
   /** The button's words after the chat's name. */
   show: string
   merge: string
@@ -36,21 +34,17 @@ export interface OwnerLabels {
   noChat: (feature: string) => string
 }
 
-/** The button's words while the human plans a feature its epic's chat takes after the plan, drawn after the epic's name. */
-const IN_EPIC_PLANNING = 'yours to plan first'
-
-/** The words the control ships with (decision 12). */
+/** The words the control ships with (decision 12; one-place-to-answer decision 13). */
 export const OWNER_LABELS: OwnerLabels = {
   you: 'Yours',
-  planning: (chat) => `Yours to plan · then ${chat}`,
   show: 'you merge',
   merge: 'merges it',
   chooseYou: "I'll finish it",
   chooseShow: (chat) => `${chat} builds it and shows me before merging`,
   chooseMerge: (chat) => `${chat} builds and merges it`,
   hintYou: 'You talk to its agent, test it and merge it.',
-  hintShow: 'It plans or builds, gets it reviewed, and asks you to test before merging.',
-  hintMerge: 'It merges once the review is clean and the checks pass.',
+  hintShow: 'It plans or builds, gets it reviewed, and asks you to test before merging. If it needs you, it becomes yours.',
+  hintMerge: 'It merges once the review is clean and the checks pass. If it needs you, it becomes yours.',
   noChat: (feature) => `Yours. To hand it to an epic, tell its chat: run “${feature}” for me.`,
 }
 
@@ -63,10 +57,8 @@ export const OWNER_LABELS: OwnerLabels = {
  * "I'll finish it" takes the feature; picking a chat's choice hands it back.
  * There is no other hand-back button and no other how-far setting.
  *
- * `owner` is the choice in force. While the human grills a feature whose
- * choice is a chat's (`planning`), the button reads "Yours to plan · then
- * <chat>" and the menu still marks the chat's choice, which takes effect at
- * the plan's yes (decision 14). With no `chatName` the feature has no chat to
+ * `owner` is the choice in force; a feature of the human's always reads
+ * "Yours" (one-place-to-answer decision 8). With no `chatName` the feature has no chat to
  * hand it to: the control reads "Yours", does not open, and its hover says how
  * to give it to a chat (decision 21). Props only: the caller owns the data and
  * the mutation.
@@ -74,7 +66,6 @@ export const OWNER_LABELS: OwnerLabels = {
 export function OwnerControl({
   owner,
   chatName,
-  planning = false,
   feature,
   labels: overrides,
   inEpic = false,
@@ -83,8 +74,6 @@ export function OwnerControl({
   owner: FeatureOwner
   /** The feature's remembered chat, which its chat choices name; absent for a feature made outside a chat. */
   chatName?: string
-  /** Grilled with the human and not yet planned; the chat takes it after the plan. */
-  planning?: boolean
   /** The feature's title, for the no-chat hover ("run … for me"). */
   feature?: string
   /** Another set of words, for a design to compare (decision 12). */
@@ -92,7 +81,7 @@ export function OwnerControl({
   /**
    * Drawn right after its own epic's name, in one crumb (orchestrator-chats-become-epics
    * decision 15): a chat owner's name and glyph go, leaving the finish words
-   * ("you merge", "merges it", "yours to plan first").
+   * ("you merge", "merges it").
    */
   inEpic?: boolean
   onChoose: (choice: OwnerChoice) => void
@@ -103,18 +92,10 @@ export function OwnerControl({
 
   const finishWords = owner.kind === 'chat' ? (owner.finish === 'show' ? w.show : w.merge) : ''
   const nameless = inEpic && owner.kind === 'chat'
-  const lead = nameless
-    ? planning
-      ? IN_EPIC_PLANNING
-      : finishWords
-    : owner.kind === 'you'
-      ? w.you
-      : planning
-        ? w.planning(owner.name)
-        : owner.name
-  const tail = !nameless && owner.kind === 'chat' && !planning ? ` · ${finishWords}` : ''
+  const lead = nameless ? finishWords : owner.kind === 'you' ? w.you : owner.name
+  const tail = !nameless && owner.kind === 'chat' ? ` · ${finishWords}` : ''
   const words = lead + tail
-  const icon = nameless ? null : owner.kind === 'chat' && !planning ? <IconOrchestrator size={14} /> : <IconUser size={14} />
+  const icon = nameless ? null : owner.kind === 'chat' ? <IconOrchestrator size={14} /> : <IconUser size={14} />
   // The crumb that holds the control clips its overflow, so the focus ring is drawn inside the control's edge.
   // It keeps its width while the title and thread give way; its own cap is what truncates the chat's name.
   const look =

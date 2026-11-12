@@ -18,8 +18,6 @@ export interface OwnerReading {
   chatName?: string
   /** Its chat, when it has one. */
   chatId?: string
-  /** Grilled with the human, its chat taking it at the plan yes: "Yours to plan · then <Chat>" (decision 14). */
-  planning: boolean
   /** The thread that owns it now, when a chat does: the strip above the lead's composer, and its "Open <Chat>". */
   holderId?: string
   /** The owning chat is asking the human about this feature right now (decision 23): the strip says so. */
@@ -37,12 +35,10 @@ export interface OwnerThread {
 export const UNNAMED_CHAT = 'Unnamed epic'
 
 /**
- * Read the owner off a feature (decisions 1, 11, 12, 14, 21): a chat owns it
- * while it is held; a human-owned feature whose finish is still a chat's is one
- * the human grills and its chat takes at the plan yes (the server sets finish
- * to `you` whenever the human takes a feature, so nothing else reads that way).
- * A feature with no chat is the human's and names none. The chat's name is the
- * thread list's, as the sidebar shows it.
+ * Read the owner off a feature (decisions 1, 11, 12, 21): a chat owns it while
+ * it is held; a feature with no holder is the human's, whatever its finish
+ * (one-place-to-answer decision 8), and names its chat when it has one. The
+ * chat's name is the thread list's, as the sidebar shows it.
  */
 export function ownerReading(feature: OwnedFeature & { id?: string }, threads: readonly OwnerThread[]): OwnerReading {
   const nameOf = (id: string) => threads.find((t) => t.id === id)?.title || UNNAMED_CHAT
@@ -56,16 +52,10 @@ export function ownerReading(feature: OwnedFeature & { id?: string }, threads: r
       owner: { kind: 'chat', name, finish: feature.finish === 'merge' ? 'merge' : 'show' },
       chatName: name,
       ...(chatId ? { chatId } : {}),
-      planning: false,
       holderId,
       asking,
     }
   }
-  if (!chatId) return { owner: { kind: 'you' }, planning: false, asking: false }
-  const chatName = nameOf(chatId)
-  const finish = feature.finish ?? 'you'
-  if (live && finish !== 'you') {
-    return { owner: { kind: 'chat', name: chatName, finish }, chatName, chatId, planning: true, asking: false }
-  }
-  return { owner: { kind: 'you' }, chatName, chatId, planning: false, asking: false }
+  if (!chatId) return { owner: { kind: 'you' }, asking: false }
+  return { owner: { kind: 'you' }, chatName: nameOf(chatId), chatId, asking: false }
 }

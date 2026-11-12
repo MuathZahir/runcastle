@@ -29,7 +29,6 @@ function reads(f: OwnedFeature, title = 'Export notes as PDF'): string {
       createElement(OwnerControl, {
         owner: r.owner,
         ...(r.chatName ? { chatName: r.chatName } : {}),
-        planning: r.planning,
         feature: title,
         onChoose: () => {},
       }),
@@ -47,7 +46,6 @@ function control(f: OwnedFeature): string {
       createElement(OwnerControl, {
         owner: r.owner,
         ...(r.chatName ? { chatName: r.chatName } : {}),
-        planning: r.planning,
         feature: 'Export notes as PDF',
         onChoose: () => {},
       }),
@@ -76,10 +74,15 @@ describe('the owner reading', () => {
     expect(html).toMatch(/class="shrink-0 whitespace-pre"> · merges it</)
   })
 
-  it('reads "Yours to plan · then <Chat>" while the human grills a feature its chat takes at the plan yes', () => {
-    const f = feature({ chatId: 'chat-1', finish: 'show' })
-    expect(ownerReading(f, threads)).toMatchObject({ planning: true, owner: { kind: 'chat', finish: 'show' } })
-    expect(reads(f)).toBe('Yours to plan · then Notes triage')
+  it('reads "Yours" for a feature with no holder, whatever its finish (one-place-to-answer decision 8)', () => {
+    for (const finish of ['show', 'merge'] as const) {
+      const f = feature({ chatId: 'chat-1', finish })
+      const r = ownerReading(f, threads)
+      expect(r.owner).toEqual({ kind: 'you' })
+      expect(r).not.toHaveProperty('planning')
+      expect(r.chatName).toBe('Notes triage')
+      expect(reads(f)).toBe('Yours')
+    }
   })
 
   it('reads "Yours" with no chat, and the control is not a menu button', () => {

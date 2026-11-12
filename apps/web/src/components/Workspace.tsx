@@ -1217,7 +1217,6 @@ export function Workspace({
             <OwnerControl
               owner={owner.owner}
               {...(owner.chatName ? { chatName: owner.chatName } : {})}
-              planning={owner.planning}
               feature={feature.title}
               inEpic={inEpic}
               onChoose={(choice) => setOwner(featureId, choice)}

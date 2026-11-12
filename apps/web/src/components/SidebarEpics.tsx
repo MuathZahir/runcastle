@@ -95,7 +95,7 @@ export function epicOwnerCrumbs(
   feature: { chatId?: string | null | undefined },
   threads: readonly ThreadEntry[],
   onOpen: ((chatId: string) => void) | undefined,
-  owner: Pick<OwnerReading, 'owner' | 'holderId' | 'chatId'> & { planning?: boolean },
+  owner: Pick<OwnerReading, 'owner' | 'holderId' | 'chatId'>,
   control: (inEpic: boolean) => ReactNode,
 ): Crumb[] {
   const epic = onOpen ? featureEpic(feature, threads) : null
@@ -112,7 +112,7 @@ export function epicOwnerCrumbs(
     {
       // The epic's name gives way down to a few letters; the finish words after it never do.
       shrink: true,
-      ...(epic.title.length > 6 ? { floor: owner.planning ? 'min-w-56' : 'min-w-44' } : {}),
+      ...(epic.title.length > 6 ? { floor: 'min-w-44' } : {}),
       icon: <EpicGlyph small color={epic.color} icon={epic.icon} />,
       label: (
         <span className="inline-flex min-w-0 items-center">

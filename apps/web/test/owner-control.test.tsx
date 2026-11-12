@@ -15,7 +15,7 @@ import { openMenu } from './floating'
 
 const CHAT = 'Notes triage'
 
-function renderControl(owner: FeatureOwner, opts: { chatName?: string; planning?: boolean } = {}) {
+function renderControl(owner: FeatureOwner, opts: { chatName?: string } = {}) {
   const onChoose = vi.fn()
   render(
     <TooltipProvider>
@@ -56,10 +56,18 @@ describe('OwnerControl', () => {
     expect(onChoose).toHaveBeenCalledWith('show')
   })
 
-  it('marks the chat choice that takes effect at the plan yes while the human grills it', () => {
-    renderControl({ kind: 'chat', name: CHAT, finish: 'show' }, { chatName: CHAT, planning: true })
-    openMenu(screen.getByRole('button', { name: /Yours to plan · then Notes triage/ }))
-    expect(checked()[0]).toContain('shows me before merging')
+  it('has no "Yours to plan" state, and both epic choices say a feature that needs you becomes yours', () => {
+    renderControl({ kind: 'you' }, { chatName: CHAT })
+    expect(screen.queryByText(/Yours to plan/)).toBeNull()
+    openMenu(screen.getByRole('button', { name: 'Yours' }))
+    const hint = (name: RegExp) => screen.getByRole('menuitemradio', { name }).textContent ?? ''
+    expect(hint(/shows me before merging/)).toContain(
+      'It plans or builds, gets it reviewed, and asks you to test before merging. If it needs you, it becomes yours.',
+    )
+    expect(hint(/builds and merges it/)).toContain(
+      'It merges once the review is clean and the checks pass. If it needs you, it becomes yours.',
+    )
+    expect(hint(/I'll finish it/)).not.toContain('If it needs you')
   })
 
   it('does not open with no chat, and says how to hand it to one on hover', async () => {

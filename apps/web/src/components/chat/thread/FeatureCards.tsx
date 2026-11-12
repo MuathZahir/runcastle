@@ -63,8 +63,6 @@ export function actionWords(action: FeatureAction, row: Pick<FeatureActionRow, '
       return 'Planning stopped'
     case 'messaged':
       return 'Sent a message'
-    case 'relayed':
-      return 'Passed on your answer'
     case 'brief':
       return 'Brief updated'
     case 'taken':
@@ -86,7 +84,6 @@ const ACTION_ICON: Record<FeatureAction, ReactNode> = {
   planning: <IconDoc size={14} />,
   planningStopped: <IconStop size={14} />,
   messaged: <IconSend size={14} />,
-  relayed: <IconSend size={14} />,
   brief: <IconDoc size={14} />,
   taken: <IconBranchFrom size={14} />,
   merged: <IconGitMerge size={14} />,
@@ -107,7 +104,7 @@ export function featuresCardHeading(rows: readonly FeatureActionRow[]): { text: 
   if (all('created', 'parked')) return { text: `${n} features created`, icon: ACTION_ICON.created }
   if (all('planning')) return { text: `${n} features planning`, icon: ACTION_ICON.planning }
   if (all('started')) return { text: `${n} features started`, icon: ACTION_ICON.started }
-  if (all('messaged', 'relayed')) return { text: `Messages sent to ${n} features`, icon: ACTION_ICON.messaged }
+  if (all('messaged')) return { text: `Messages sent to ${n} features`, icon: ACTION_ICON.messaged }
   if (all('merged')) return { text: `${n} features merged`, icon: ACTION_ICON.merged }
   if (all('brief')) return { text: `${n} briefs updated`, icon: ACTION_ICON.brief }
   // Rows that had different things done: each row says its own, a count would say nothing.
@@ -417,21 +414,10 @@ export function RuncastleNote({ summary, agentText }: { summary: string; agentTe
 /**
  * A message the project's orchestrator sent a feature's agent, in that feature's
  * chat (decision 8). Its own words sit on the left under its name, not in your
- * bubble on the right. A relayed answer is yours: it keeps your side, with a
- * line saying the orchestrator passed it on.
+ * bubble on the right. It never carries the human's words (one-place-to-answer
+ * decision 11).
  */
-export function OrchestratorMessage({ text, relayed = false }: { text: string; relayed?: boolean }) {
-  if (relayed) {
-    return (
-      <div className="flex flex-col items-end gap-1.5 animate-rise-in">
-        <div className={cx(WELL, 'max-w-[85%] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>{text}</div>
-        <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
-          <IconOrchestrator size={12} className="text-icon" />
-          Your answer, relayed by the epic
-        </span>
-      </div>
-    )
-  }
+export function OrchestratorMessage({ text }: { text: string }) {
   return (
     <div className="flex flex-col items-start gap-1.5 animate-rise-in">
       <span className="flex items-center gap-2 text-sm">
