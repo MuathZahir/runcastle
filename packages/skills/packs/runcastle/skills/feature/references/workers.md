@@ -119,9 +119,19 @@ again.
 ## The review
 
 The review at the end is a worker labelled **Review**. Start it when the work
-is done, every build worker landed or dropped: `start_review({})`. It writes no
-code and lands nothing. It runs the project's checks itself, reports each
-finding as it goes, and hands back.
+is done, every build worker landed or dropped: `start_review({ checksPassed })`.
+It writes no code and lands nothing. It reports each finding as it goes, and
+hands back.
+
+- **Hand it your green checks.** Commit everything, then run the project's full
+  checks. Once they are green apart from the known failures, pass
+  `checksPassed: { commit, commands }`: the commit they ran on and the commands.
+  If its checkout is still on that commit, or differs only inside
+  `docs/features/<slug>/`, the review runs only the typecheck and cites your
+  pass; otherwise it runs everything. Never pass a red run. Leave it out and
+  the review runs every check itself.
+- **Leave its model to Settings.** Omit `model` unless the human asked for one:
+  the Review row in their Settings decides, and it defaults to Sonnet.
 
 - **Its mode is set at start.** Left unset, it drives the app when this
   machine can: on the human's machine, in their checkout, while it holds
@@ -135,6 +145,7 @@ finding as it goes, and hands back.
 - **Then verify.** Once you fixed some, start a fresh one:
   `start_review({ verify: { findingIds, commits } })`, with only those findings
   and the commits that fixed them. It checks each fix holds and nothing else.
+  Run your checks after the fixes and pass `checksPassed` here too.
 - `send_back_worker` asks a review for more; `drop_worker` closes it. Never
   `land_worker` it.
 
