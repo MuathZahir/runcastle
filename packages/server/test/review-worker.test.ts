@@ -14,7 +14,9 @@ import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents } from '../src/threads/log'
 import type { AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
-import { type DriveTaken, hostReviewEnv, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
+import { type DriveTaken, hostReviewEnv, reviewAssignment, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
+import { projects } from '../src/db/schema'
+import { eq } from 'drizzle-orm'
 import { captureReviewShot } from '../src/services/review-capture'
 import {
   dropDriveWaitsForTests,
@@ -357,6 +359,71 @@ describe('a verify review', () => {
     expect(assignment).not.toContain('The header overflows')
 
     await expect(toolStartReview(ctx, leadSession(), { verify: { findingIds: ['finding_nope'], commits: [] } })).rejects.toThrow(/no finding finding_nope/)
+  })
+})
+
+/**
+ * The Review worker's model (faster-cheaper-reviews decisions 1, 5, 6): with no
+ * model named it runs on the `review` step (the Settings "Review" row), whose
+ * unset default is the runtime's review model, never the chat's.
+ */
+describe("a review's model", () => {
+  const modelOf = (id: string) => getWorker(ctx, id)?.model
+
+  it('is the per-runtime review default when the review step is unset, for gates, drive and verify reviews', async () => {
+    // A stepModels object without a review key: the shape a real config file has.
+    expect(ctx.config.stepModels.review).toBeUndefined()
+    realHost(reviewer(() => {}))
+    const gates = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
+    expect(modelOf(gates.workerId)).toBe('claude-sonnet-5')
+    const fixed = reportFinding(ctx, { featureId: feature.id, reviewWorker: getWorker(ctx, gates.workerId)!, input: defect('Broken') }).finding
+    const verify = await toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: [fixed.id], commits: [] } })
+    expect(modelOf(verify.workerId)).toBe('claude-sonnet-5')
+    drive.answers = [{ ok: false, retriable: true, reason: 'busy' }]
+    const driven = await toolStartReview(ctx, leadSession(), {})
+    expect(driven.mode).toBe('drive')
+    expect(modelOf(driven.workerId)).toBe('claude-sonnet-5')
+  })
+
+  it('is the Review setting when set, and a project model beats it', async () => {
+    ctx.config.stepModels = { ...ctx.config.stepModels, review: 'claude-haiku-4-5' }
+    realHost(reviewer(() => {}))
+    const set = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
+    expect(modelOf(set.workerId)).toBe('claude-haiku-4-5')
+    ctx.db.update(projects).set({ model: 'claude-opus-5[1m]' }).where(eq(projects.id, feature.projectId)).run()
+    const project = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
+    expect(modelOf(project.workerId)).toBe('claude-opus-5[1m]')
+  })
+
+  it('is the model the lead names when it is annotated, and refused when it is not', async () => {
+    ctx.config.stepModels = { ...ctx.config.stepModels, review: 'claude-haiku-4-5' }
+    ctx.config.models = [{ id: 'claude-opus-5', runtime: 'claude-code', note: 'opus — screens' }]
+    realHost(reviewer(() => {}))
+    const named = await toolStartReview(ctx, leadSession(), { mode: 'gates', model: 'claude-opus-5' })
+    expect(modelOf(named.workerId)).toBe('claude-opus-5')
+    await expect(toolStartReview(ctx, leadSession(), { mode: 'gates', model: 'claude-sonnet-5' })).rejects.toThrow(/not annotated/)
+  })
+})
+
+describe("the lead's passed checks", () => {
+  const checksPassed = { commit: 'abc1234def', commands: ['bun run typecheck', 'bun run test'] }
+
+  it("reach a gates review's assignment, and a verify review's", async () => {
+    realHost(reviewer(() => {}))
+    const first = await toolStartReview(ctx, leadSession(), { mode: 'gates', checksPassed })
+    const assignment = promptsOf(first.workerId)[0]?.text ?? ''
+    expect(assignment).toContain("git diff --quiet abc1234def HEAD -- . ':!docs/features/work/'")
+    expect(assignment).toContain('bun run test')
+    const fixed = reportFinding(ctx, { featureId: feature.id, reviewWorker: getWorker(ctx, first.workerId)!, input: defect('Broken') }).finding
+    const verify = await toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: [fixed.id], commits: [] }, checksPassed })
+    expect(promptsOf(verify.workerId)[0]?.text ?? '').toContain("the lead's pass on `abc1234def`")
+  })
+
+  it("reach a drive review's kept assignment", async () => {
+    drive.answers = [{ ok: false, retriable: true, reason: 'busy' }]
+    realHost(reviewer(() => {}))
+    const { workerId } = await toolStartReview(ctx, leadSession(), { checksPassed })
+    expect(reviewAssignment(workerId)).toContain('commit `abc1234def`')
   })
 })
 

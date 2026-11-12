@@ -149,7 +149,7 @@ const STEPS: StepRow[] = [
   { step: 'chat', label: 'Chat', description: 'The feature chat', group: 'sessions', value: null, effectiveModel: OPUS, effectiveRuntime: 'claude-code' },
   { step: 'project', label: 'Orchestrator chat', description: 'The project-level chat', group: 'sessions', value: null, effectiveModel: OPUS, effectiveRuntime: 'claude-code' },
   { step: 'implement', label: 'Implement', description: 'Works a ticket in the sandbox', group: 'unattended', value: 'gpt-6-sol', effectiveModel: 'gpt-6-sol', effectiveRuntime: 'codex' },
-  { step: 'review', label: 'Review', description: 'Reads the finished branch', group: 'unattended', value: 'claude-sonnet-5-5', effectiveModel: 'claude-sonnet-5-5', effectiveRuntime: 'claude-code' },
+  { step: 'review', label: 'Review', description: 'The Review worker’s model', group: 'unattended', value: 'claude-sonnet-5-5', effectiveModel: 'claude-sonnet-5-5', effectiveRuntime: 'claude-code' },
 ] as StepRow[]
 const GROUPS: ModelOptionGroup[] = [
   { runtime: 'claude-code', label: 'Claude Code', entries: [{ id: OPUS, runtime: 'claude-code' }, { id: 'claude-sonnet-5-5', runtime: 'claude-code' }] },

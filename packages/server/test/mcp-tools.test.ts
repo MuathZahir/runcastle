@@ -368,6 +368,24 @@ describe('mcp tool registration by audience', () => {
     }
   })
 
+  it('start_review takes the lead’s passed checks, and its model defaults to the Review setting', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'start-review-schema-test', version: '1' })
+    await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
+    const tool = (await client.listTools()).tools.find((t) => t.name === 'start_review')
+    // A bad pass is refused before the tool runs: an empty commit, no commands.
+    const bad = await client.callTool({ name: 'start_review', arguments: { checksPassed: { commit: '', commands: [] } } })
+    await client.close()
+    const props = (tool?.inputSchema.properties ?? {}) as Record<string, { description?: string; properties?: Record<string, unknown>; required?: string[] }>
+    expect(tool?.inputSchema.required ?? []).not.toContain('checksPassed')
+    expect(Object.keys(props.checksPassed?.properties ?? {})).toEqual(['commit', 'commands'])
+    expect(props.checksPassed?.required).toEqual(['commit', 'commands'])
+    expect(props.checksPassed?.description).toMatch(/clean tree, green apart from known failures/)
+    expect(props.model?.description).toMatch(/omit it for the Review model set in Settings/)
+    expect(bad.isError).toBe(true)
+    expect(JSON.stringify(bad.content)).toMatch(/checksPassed/)
+  })
+
   // Mapped ideation is retired (ADR-0012): its three tools are not registered at
   // all, so no audience — not even the unidentified one — is offered them.
   it('offers no audience the retired map tools', () => {
