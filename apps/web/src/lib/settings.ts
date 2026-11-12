@@ -1142,7 +1142,9 @@ export interface StepRow {
   group: StepGroup
   /** The model set for this step, or null when it follows the default. */
   value: string | null
-  /** What it will actually run — `value`, else the default model. */
+  /** What it runs when unset: the default model, or for Review the review model of the default model's runtime. */
+  defaultModel: string
+  /** What it will actually run — `value`, else `defaultModel`. */
   effectiveModel: string
   /** The runtime `effectiveModel` launches, never inferred from the id. */
   effectiveRuntime: AgentRuntime
@@ -1163,10 +1165,12 @@ export function stepRows(view: SettingsView): StepRow[] {
     const value = ownStepModel(view, meta.step)
     // Unset, a step runs on its default: the default model, or for Review the
     // review model of the default model's runtime.
-    const effectiveModel = value ?? stepDefaultModel(meta.step, { ...config, model: fallback })
+    const defaultModel = stepDefaultModel(meta.step, { ...config, model: fallback })
+    const effectiveModel = value ?? defaultModel
     return {
       ...meta,
       value,
+      defaultModel,
       effectiveModel,
       effectiveRuntime: modelEntryFor(effectiveModel, config).runtime,
     }
