@@ -8,8 +8,13 @@ import type { AppCtx } from '../src/db/types'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { emit, emitProject, runAsActor } from '../src/services/events'
 import {
+  announceMerge,
+  type MergeNews,
   ORCHESTRATOR_GATHER_MS,
+  orchestratorHoldsFor,
   orchestratorLineFor,
+  orchestratorNewsFor,
+  orchestratorTargetFor,
   startOrchestratorNotifier,
   type NotifyState,
 } from '../src/services/orchestrator-notify'
@@ -113,6 +118,86 @@ describe('orchestratorLineFor — what no longer reaches it (decisions 19, 20, 2
 
   it('says nothing for any project event', () => {
     expect(orchestratorLineFor(event('project.renamed', undefined, { featureId: undefined }), {})).toBeNull()
+  })
+})
+
+describe('a merge, said to the feature’s epic (the-epic-hears-when-its-features-merge)', () => {
+  const merge = (overrides: Partial<MergeNews> = {}): NotifyState => ({
+    feature: {
+      slug: 'export-csv',
+      title: 'Export CSV',
+      holderId: null,
+      merge: {
+        epicId: 'epic',
+        by: 'the human',
+        byName: 'you',
+        base: 'main',
+        sha: '0123456789abcdef0123456789abcdef01234567',
+        outcome: 'docs/features/export-csv/outcome.md',
+        siblings: [
+          { slug: 'import-csv', title: 'Import CSV', owner: 'the human' },
+          { slug: 'phone-cut', title: 'Phone cut', owner: 'this chat' },
+        ],
+        wakes: true,
+        ...overrides,
+      },
+    },
+  })
+  const shipped = event('feature.shipped', { base: 'main' })
+
+  it('lists the siblings in progress and where to read the change when it wakes', () => {
+    expect(orchestratorLineFor(shipped, merge())).toBe(
+      [
+        '[runcastle] export-csv merged into main by the human.',
+        'In progress in this epic:',
+        '- import-csv: Import CSV (owned by the human)',
+        '- phone-cut: Phone cut (owned by this chat)',
+        'Read the change: the merge commit 0123456789ab and docs/features/export-csv/outcome.md.',
+      ].join('\n'),
+    )
+  })
+
+  it('says who merged it: the human, this chat, or another chat', () => {
+    expect(orchestratorLineFor(shipped, merge({ by: 'this chat' }))).toMatch(/^\[runcastle\] export-csv merged into main by this chat\.\n/)
+    expect(orchestratorLineFor(shipped, merge({ by: 'the chat "Phone cut"' }))).toMatch(/ by the chat "Phone cut"\.\n/)
+  })
+
+  it('says there is nothing to check when nothing of the epic is in progress', () => {
+    expect(orchestratorLineFor(shipped, merge({ siblings: [], wakes: false }))).toBe(
+      '[runcastle] export-csv merged into main by the human. Nothing of this epic is in progress, so there is nothing to check.',
+    )
+  })
+
+  it('points at the feature’s context when neither the merge commit nor an outcome doc is known', () => {
+    expect(orchestratorLineFor(shipped, merge({ sha: null, outcome: null }))).toMatch(
+      /\nRead the change with get_feature_context\(\{ slug: "export-csv" \}\)\.$/,
+    )
+  })
+
+  it('shows the human a done row saying who merged it, woken or held', () => {
+    for (const wakes of [true, false]) {
+      expect(orchestratorNewsFor(shipped, merge({ wakes }))).toEqual({ featureId: 'feat', title: 'Export CSV', tone: 'done', words: 'Merged by you' })
+    }
+    expect(orchestratorNewsFor(shipped, merge({ by: 'this chat', byName: 'Phone cut' }))).toMatchObject({ words: 'Merged by Phone cut' })
+  })
+
+  it('goes to the epic, not the holder', () => {
+    const state = merge()
+    state.feature!.holderId = 'holder'
+    expect(orchestratorTargetFor(shipped, state)).toBe('epic')
+    expect(orchestratorTargetFor(event('feature.started', { autoStartedBy: 'core' }), state)).toBe('holder')
+  })
+
+  it('is held exactly when the merge does not wake the epic', () => {
+    expect(orchestratorHoldsFor(shipped, merge({ wakes: true }))).toBe(false)
+    expect(orchestratorHoldsFor(shipped, merge({ wakes: false }))).toBe(true)
+    expect(orchestratorHoldsFor(event('feature.started', { autoStartedBy: 'core' }), held)).toBe(false)
+  })
+
+  it('says nothing of a merge with no epic to tell', () => {
+    expect(orchestratorLineFor(shipped, held)).toBeNull()
+    expect(orchestratorNewsFor(shipped, held)).toBeNull()
+    expect(orchestratorTargetFor(shipped, held)).toBeNull()
   })
 })
 
@@ -234,6 +319,40 @@ describe('the notifier', () => {
     expect(await promptLines(id, 1)).toEqual([
       [`[runcastle] done couldn't start up-next dependents: boom. Read it with get_feature_context({ slug: "done" }).`],
     ])
+  })
+
+  it('holds a batch whose every line is held, and wakes one with any waking line', async () => {
+    const epic = projectSession()
+    markSessionEnded(ctx, epic)
+    const merged = heldFeature(epic, 'merged', { chatId: epic, heldBy: null, status: 'shipped' })
+    const shipped = emit(ctx, merged.id, { type: 'feature.shipped', message: 'merged to main', data: { base: 'main' } })
+
+    announceMerge(ctx, shipped.id)
+    await promptLines(epic, 1)
+    expect(promptsOf(epic)[0]).toMatchObject({
+      held: true,
+      display: { news: [{ featureId: merged.id, events: [{ tone: 'done', words: 'Merged by you' }] }] },
+    })
+    await settle()
+    expect(host.isRunning(epic)).toBe(false)
+
+    // Not of this epic, so the merge line stays held; its own line wakes.
+    const other = heldFeature(epic, 'other', { chatId: null })
+    announceMerge(ctx, shipped.id)
+    emit(ctx, other.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'merged' } })
+    const lines = await promptLines(epic, 2)
+    expect(lines[1]).toHaveLength(2)
+    expect(lines[1]?.[0]).toMatch(/nothing to check\.$/)
+    expect(promptsOf(epic)[1]?.held).toBeUndefined()
+    await vi.waitFor(() => expect(host.isRunning(epic)).toBe(true))
+  })
+
+  it('says nothing of a merge as its live event arrives: only the merge flow announces it', async () => {
+    const epic = projectSession()
+    const merged = heldFeature(epic, 'merged', { chatId: epic, heldBy: null, status: 'shipped' })
+    emit(ctx, merged.id, { type: 'feature.shipped', message: 'merged to main', data: { base: 'main' } })
+    await settle()
+    expect(promptsOf(epic)).toEqual([])
   })
 
   it('never lets a failure reach the service that emitted', () => {

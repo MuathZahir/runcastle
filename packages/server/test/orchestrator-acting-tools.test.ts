@@ -367,6 +367,56 @@ describe('the orchestrator’s acting tools', () => {
     expect(await g.raw(['show', 'main:docs/features/landing/outcome.md'])).toContain('# Outcome')
   })
 
+  it('merge_feature answers with its epic’s other features in progress, and says who merged on the event', async () => {
+    const session = orchestrator()
+    const other = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
+    const f = await started('fits', { chatId: session.id })
+    seedFeature(ctx, projectId, { slug: 'mine', title: 'Mine', chatId: session.id, heldBy: session.id })
+    seedFeature(ctx, projectId, { slug: 'humans', title: 'Humans', chatId: session.id, heldBy: null })
+    seedFeature(ctx, projectId, { slug: 'given', title: 'Given', chatId: session.id, heldBy: other.id })
+    seedFeature(ctx, projectId, { slug: 'later', chatId: session.id, status: 'draft' })
+    seedFeature(ctx, projectId, { slug: 'done', chatId: session.id, status: 'shipped' })
+    seedFeature(ctx, projectId, { slug: 'dropped', chatId: session.id, status: 'archived' })
+    seedFeature(ctx, projectId, { slug: 'elsewhere', chatId: other.id })
+    await g.checkout('feature/fits')
+    writeFileSync(join(repoPath, 'fits.txt'), 'work\n')
+    await g.add(['fits.txt'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+
+    const res = await toolMergeFeature(ctx, session, { slug: 'fits' })
+
+    expect(res).toMatchObject({ ok: true, base: 'main' })
+    const inProgress = (res as { inProgress?: unknown[] }).inProgress
+    expect(inProgress).toHaveLength(3)
+    expect(inProgress).toEqual(
+      expect.arrayContaining([
+        { slug: 'mine', title: 'Mine', owner: 'this chat' },
+        { slug: 'humans', title: 'Humans', owner: 'the human' },
+        { slug: 'given', title: 'Given', owner: expect.stringMatching(/^the chat "/) },
+      ]),
+    )
+    const shipped = listAfter(ctx, f.id).find((e) => e.type === 'feature.shipped')
+    expect(shipped?.data).toMatchObject({
+      mergedBy: session.id,
+      base: 'main',
+      sha: expect.stringMatching(/^[0-9a-f]{40}$/),
+      outcome: 'docs/features/fits/outcome.md',
+    })
+  })
+
+  it('merge_feature answers an empty list for a feature with no epic', async () => {
+    const session = orchestrator()
+    await started('loner')
+    await g.checkout('feature/loner')
+    writeFileSync(join(repoPath, 'loner.txt'), 'work\n')
+    await g.add(['loner.txt'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+
+    expect(await toolMergeFeature(ctx, session, { slug: 'loner' })).toMatchObject({ ok: true, inProgress: [] })
+  })
+
   it('merge_feature returns a conflict’s files and records merge.conflict', async () => {
     const session = orchestrator()
     const f = await started('clash', {})
