@@ -5,7 +5,7 @@ in the brief; the rest are the planner's, marked **Assumed.** A separate
 challenger agent read the brief and these decisions once; its objections are on
 the decisions they concern.
 
-Check first: 4, 5, 6, 8, 9
+Check first: 4, 5, 6, 8
 
 ## 1. Reviews default to Sonnet, and the Review setting works
 **Decision:** A Review worker runs on the `review` model step (the "Review" row
@@ -106,10 +106,12 @@ human's checkout while it holds the drive slot.
 **Why:** The lead's skill already requires green checks after each landing and
 before each code commit, so moving nothing adds no wait. Dropping the review's
 copy saves its 1.5–2 minute idle tail and frees the drive slot sooner.
-**Assumed.** Alternative: the review runs the suite while it drives, as today, and
-`declare_ready` cites the review's pass.
+**Decided by the orchestrator:** a how-it's-built call. Lead first also catches a
+broken suite before a review is spent, and is the order described to the human.
+The alternative below was considered and dropped.
 **For the human.** Reviews get shorter by the suite's run time; the lead's own
 run before the review is the one that counts.
-**Challenged:** The human's "yes" covered skipping, not which side runs; if the
+**Challenged (dropped):** the review runs the suite while it drives, as today,
+and `declare_ready` cites the review's pass. The human's "yes" covered skipping, not which side runs; if the
 lead has to wait for its suite before starting the review, time to ready could
 grow from about 4.5 to about 5.5 minutes, while the reverse keeps the overlap.

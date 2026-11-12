@@ -275,7 +275,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The lead leaves the review’s model to Settings', 'Your model notes send screen work to Opus, so a lead naming a model would override the Review row on most UI features.', 'assumed'],
     ['The lead hands over the passing commit as a field on start_review', 'The review must know before its checks start; a message after start could race the suite.', 'assumed'],
     ['The pass holds across this feature’s own doc commits, on a clean tree', 'Runcastle commits the feature’s docs folder often; a fixed path filter keeps the skip useful without judgement.', 'assumed'],
-    ['The lead’s pass is the run it already makes after its last change', 'The lead already runs the checks after each landing, so citing it adds no wait and frees the drive slot sooner.', 'assumed']
+    ['The lead’s pass is the run it already makes after its last change', 'The lead already runs the checks after each landing, so citing it adds no wait, catches a broken suite before a review is spent, and frees the drive slot sooner. Decided by the orchestrator.']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
@@ -284,8 +284,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     [4, 'A one-time migration clears a Review value equal to the chat model', 'You set Opus 1M on the Review row yourself; it did nothing until now', 'your setting'],
     [5, 'Sonnet for everyone; Codex users set it by hand', 'Picks a Codex model nobody named'],
     [6, 'The lead keeps choosing a review’s model from your notes', 'The challenger: your notes say screen work goes to Opus, and Settings shouldn’t silently win', 'challenged'],
-    [8, 'Only the exact commit counts', 'A docs-only commit to this feature’s folder no longer reruns the suite'],
-    [9, 'The review runs the suite while it drives, and declare_ready cites the review’s pass', 'The challenger: if the lead must wait for its suite first, time to ready could grow', 'challenged']
+    [8, 'Only the exact commit counts', 'A docs-only commit to this feature’s folder no longer reruns the suite']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {
