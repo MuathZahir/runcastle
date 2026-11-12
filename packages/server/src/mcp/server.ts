@@ -2937,7 +2937,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           planning: z
             .enum(['with-me', 'self'])
             .optional()
-            .describe('The human’s choice: `with-me` (they plan it in its chat) or `self` (automatic planning: it plans without them, then shows them the plan).'),
+            .describe('The human’s choice: `with-me` (they plan it in its chat) or `self` (Plan automatically: plans alone, then shows them).'),
           finish: z
             .enum(['you', 'show', 'merge'])
             .optional()
