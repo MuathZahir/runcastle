@@ -1097,7 +1097,7 @@ describe('stepRows', () => {
     // Unset Review runs on the review model of the default model's runtime.
     expect(row('review')).toMatchObject({
       value: null,
-      effectiveModel: 'claude-sonnet-5',
+      effectiveModel: 'claude-sonnet-5-5',
       effectiveRuntime: 'claude-code',
       description: 'The Review worker’s model',
     })

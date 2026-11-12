@@ -375,14 +375,14 @@ describe("a review's model", () => {
     expect(ctx.config.stepModels.review).toBeUndefined()
     realHost(reviewer(() => {}))
     const gates = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
-    expect(modelOf(gates.workerId)).toBe('claude-sonnet-5')
+    expect(modelOf(gates.workerId)).toBe('claude-sonnet-5-5')
     const fixed = reportFinding(ctx, { featureId: feature.id, reviewWorker: getWorker(ctx, gates.workerId)!, input: defect('Broken') }).finding
     const verify = await toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: [fixed.id], commits: [] } })
-    expect(modelOf(verify.workerId)).toBe('claude-sonnet-5')
+    expect(modelOf(verify.workerId)).toBe('claude-sonnet-5-5')
     drive.answers = [{ ok: false, retriable: true, reason: 'busy' }]
     const driven = await toolStartReview(ctx, leadSession(), {})
     expect(driven.mode).toBe('drive')
-    expect(modelOf(driven.workerId)).toBe('claude-sonnet-5')
+    expect(modelOf(driven.workerId)).toBe('claude-sonnet-5-5')
   })
 
   it('is the Review setting when set, and a project model beats it', async () => {

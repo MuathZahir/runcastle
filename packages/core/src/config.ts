@@ -77,7 +77,7 @@ export interface ModelDefaultPair {
  * they are ordinary settings values, not magic that keeps re-deciding.
  */
 export const RUNTIME_DEFAULT_MODELS: Record<AgentRuntime, ModelDefaultPair> = {
-  'claude-code': { flagship: 'claude-opus-5', smoke: 'claude-haiku-4-5', review: 'claude-sonnet-5' },
+  'claude-code': { flagship: 'claude-opus-5', smoke: 'claude-haiku-4-5', review: 'claude-sonnet-5-5' },
   codex: { flagship: 'gpt-5.6-sol', smoke: 'gpt-5.6-luna', review: 'gpt-5.6-terra' },
 }
 
@@ -102,6 +102,7 @@ export const CURATED_MODELS: readonly ModelEntry[] = [
   { id: 'claude-opus-5', runtime: 'claude-code' },
   { id: 'claude-opus-5[1m]', runtime: 'claude-code' },
   { id: 'claude-sonnet-5', runtime: 'claude-code' },
+  { id: 'claude-sonnet-5-5', runtime: 'claude-code' },
   { id: 'claude-sonnet-5[1m]', runtime: 'claude-code' },
   { id: 'claude-fable-5', runtime: 'claude-code' },
   { id: 'claude-fable-5[1m]', runtime: 'claude-code' },

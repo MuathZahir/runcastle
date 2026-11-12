@@ -76,7 +76,7 @@ describe('per-step models (#48)', () => {
     // A file with a stepModels object but no review key still shows the default.
     writeFileSync(configFile, JSON.stringify({ stepModels: { smoke: 'claude-haiku-4-5' } }))
     const unset = field(getSettings(ctx, undefined, io()), 'stepModels.review')
-    expect(unset).toMatchObject({ value: 'claude-sonnet-5', source: 'default' })
+    expect(unset).toMatchObject({ value: 'claude-sonnet-5-5', source: 'default' })
 
     ctx.config.model = 'gpt-5.6-sol'
     expect(field(getSettings(ctx, undefined, io()), 'stepModels.review')).toMatchObject({ value: 'gpt-5.6-terra', source: 'default' })

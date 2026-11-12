@@ -112,7 +112,7 @@ describe('model vocabulary — runtime-aware entries', () => {
     expect(RUNTIME_DEFAULT_MODELS['claude-code']).toEqual({
       flagship: 'claude-opus-5',
       smoke: 'claude-haiku-4-5',
-      review: 'claude-sonnet-5',
+      review: 'claude-sonnet-5-5',
     })
     expect(RUNTIME_DEFAULT_MODELS.codex).toEqual({
       flagship: 'gpt-5.6-sol',
@@ -399,7 +399,7 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
     // Unset: the Review worker runs on the review default of the global model's
     // runtime, not on the global model itself. `config.stepModels` here is a
     // partial object with no `review` key — the shape a real config file has.
-    expect(resolveModel('review', config)).toBe('claude-sonnet-5')
+    expect(resolveModel('review', config)).toBe('claude-sonnet-5-5')
     const reviewed = { ...config, stepModels: { ...config.stepModels, review: 'step-review' } }
     expect(resolveModel('review', reviewed)).toBe('step-review')
     expect(resolveModel('implement', reviewed)).toBe('step-implement')
@@ -417,7 +417,7 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
         discovered: [],
       }),
     ).toEqual({ id: 'gpt-5.6-terra', runtime: 'codex' })
-    expect(stepDefaultModel('review', { model: 'claude-opus-5', discovered: [] })).toBe('claude-sonnet-5')
+    expect(stepDefaultModel('review', { model: 'claude-opus-5', discovered: [] })).toBe('claude-sonnet-5-5')
     expect(stepDefaultModel('chat', { model: 'claude-opus-5', discovered: [] })).toBe('claude-opus-5')
   })
 
