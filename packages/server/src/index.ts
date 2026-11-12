@@ -41,7 +41,7 @@ import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
-import { resumeDriveReviewWaits, stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
+import { resumeDriveReviewWaits, settleWorkersLeftWaiting, stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
 import { freezeStaleRuns } from './services/runs'
@@ -158,6 +158,8 @@ export async function startServer(): Promise<void> {
   if (reconciled.length > 0) {
     console.log(`reconciled ${reconciled.length} stale session(s) from a previous server run`)
   }
+  // Workers left waiting out background work: it died with the last server, so they need the human now.
+  settleWorkersLeftWaiting(ctx, new Set(cutOffChats.map((row) => row.id)))
 
   // Same recovery for run rows: a crashed server leaves them `running`, which
   // would wedge the branch-claiming launcher guard forever.

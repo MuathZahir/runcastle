@@ -1297,6 +1297,27 @@ describe('a thread always shows what is happening', () => {
     expect(ends[1].end.reason).toBe('end_turn')
   })
 
+  it('tells the lifecycle when the work left running includes subagents', async () => {
+    const ends: TurnEnding[] = []
+    setup(
+      {
+        turn: (t) =>
+          t.sdkMessage({
+            type: 'system',
+            subtype: 'background_tasks_changed',
+            tasks: [{ task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Map the router' }],
+            uuid: '00000000-0000-0000-0000-000000000000',
+            session_id: 'acp-session-1',
+          }),
+      },
+      { lifecycle: { turnEnded: (_row, _source, end) => void ends.push(end) } },
+    )
+    const id = thread()
+    await host.prompt(id, { text: 'Look around' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await vi.waitFor(() => expect(ends).toEqual([{ reason: 'end_turn', background: true, subagents: true }]))
+  })
+
   it('a runcastle prompt sent during a self-started turn waits for its end', async () => {
     let later!: FakeTurn
     setup({ turn: async (t) => void (later ??= t) })

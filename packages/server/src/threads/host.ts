@@ -207,6 +207,8 @@ export interface TurnEnding {
   error?: string
   /** Background commands or subagents still run as it ends: the agent may start a turn by itself when they finish. */
   background?: boolean
+  /** Subagents among them, which the host lets run with no time limit (unlike commands' window). */
+  subagents?: boolean
 }
 
 /** How long a watched turn may show no progress ({@link AgentHostDeps.stallBounds}). */
@@ -570,9 +572,10 @@ interface Thread {
   stopAfterCompaction?: boolean
 }
 
-/** `background: true` when the thread still runs background commands or subagents. */
-function backgroundOf(t: Thread): Pick<TurnEnding, 'background'> {
-  return t.tasks.length > 0 || t.agents.length > 0 ? { background: true } : {}
+/** `background: true` when the thread still runs background commands or subagents; `subagents: true` when some are subagents. */
+function backgroundOf(t: Thread): Pick<TurnEnding, 'background' | 'subagents'> {
+  if (t.agents.length > 0) return { background: true, subagents: true }
+  return t.tasks.length > 0 ? { background: true } : {}
 }
 
 /** Read through a function so a check after an `await` is not narrowed away. */

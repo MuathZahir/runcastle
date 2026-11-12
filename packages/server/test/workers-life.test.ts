@@ -18,6 +18,7 @@ import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/thre
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import {
   getWorker,
+  settleWorkersLeftWaiting,
   startUnassignedWorker,
   stopLeftoverWorkerSandboxes,
   withWorkers,
@@ -288,6 +289,20 @@ describe('a worker whose turn ends with background work still running', () => {
     expect(status(id)).toBe('handed-back')
   })
 
+  it('starts no window while subagents run, which the host counts with no time limit', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const id = await startWorker('Review')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await workerTurnEnded(ctx, { id }, { ...BACKGROUND, subagents: true })
+      markAwaitingInput(ctx, id)
+      vi.advanceTimersByTime(BACKGROUND_WINDOW_MS * 3)
+      expect(status(id)).toBe('working')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('comes to need the human once the background window passes with the agent still idle', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker('Review')
@@ -466,6 +481,26 @@ describe('a server restart', () => {
     const id = await startWorker()
     expect(await stopLeftoverWorkerSandboxes(ctx)).toEqual({ stopped: 0, removed: 0 })
     expect(engine.held.get(getWorker(ctx, id)!.container!)).toBe(true)
+  })
+
+  it('makes a worker left waiting out its background work need the human, waking none the restart cut off', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const waiting = await startWorker('Header')
+    const cutOff = await startWorker('Footer')
+    const done = await startWorker('Sidebar')
+    await workerTurnEnded(ctx, { id: waiting }, { reason: 'end_turn', background: true })
+    engine.handbacks.set(done, { summary: 'Done', at: Date.now() })
+    await workerTurnEnded(ctx, { id: done })
+    expect(settleWorkersLeftWaiting(ctx, new Set([cutOff]))).toBe(1)
+    expect([status(waiting), status(cutOff), status(done)]).toEqual(['needs-you', 'working', 'handed-back'])
+  })
+
+  it('leaves a worker whose agent still runs (a hot reload kept it)', async () => {
+    const host = fakeHost()
+    setAgentHostForTests({ ...host.host, isRunning: () => true } as AgentHost)
+    const id = await startWorker()
+    expect(settleWorkersLeftWaiting(ctx, new Set())).toBe(0)
+    expect(status(id)).toBe('working')
   })
 })
 

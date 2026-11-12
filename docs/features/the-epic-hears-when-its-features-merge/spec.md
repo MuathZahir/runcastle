@@ -101,6 +101,8 @@ epic does not wake.
   agent-host and worker-life test files.
 - A turn's end no longer marks a worker "needs you" once a newer turn has begun (a
   send-back or a queued message that started while the sandbox was read for a handback).
+- At boot, a worker left working with no turn running needs the human (its background
+  work died with the server); subagents start no 10-minute window.
 
 ## Open questions
 

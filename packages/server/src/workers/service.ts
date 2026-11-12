@@ -846,7 +846,8 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
     // A newer turn began while this one's handback was read (a queued message, a send-back): it reports at its own end.
     if (awaitingAtEnd && getSessionRow(ctx, w.id)?.awaitingInput === false) return
     // Its background work still runs: the turn the agent starts when it finishes reports instead.
-    if (end?.reason === 'end_turn' && end.background) return waitOutBackground(ctx, w.id)
+    // Commands get the window the feature's own status gives them; subagents, like the host's count of them, none.
+    if (end?.reason === 'end_turn' && end.background) return end.subagents ? undefined : waitOutBackground(ctx, w.id)
     setStatus(ctx, now, 'needs-you')
     return
   }
@@ -1419,6 +1420,25 @@ export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[]
   return listWorkers(ctx, featureId).filter(
     (w) => HOLDS_READY.has(w.status) && !isDriveWorkerKind(w.kind) && !(w.kind === 'review' && w.status === 'handed-back'),
   )
+}
+
+/**
+ * Server boot: a worker left working with no turn running was waiting out its
+ * background work, which died with the last server, and so did the window that
+ * would have said it needs the human. It needs them now. Workers whose turn the
+ * restart cut off (`cutOff`) are woken to carry on instead; a drive worker is
+ * handed back by the drive's own boot step; an agent still running (a `bun --hot`
+ * reload) is left alone.
+ */
+export function settleWorkersLeftWaiting(ctx: AppCtx, cutOff: ReadonlySet<string>): number {
+  const host = agentHost(ctx)
+  let settled = 0
+  for (const w of ctx.db.select().from(workers).all()) {
+    if (w.status !== 'working' || isDriveWorkerKind(w.kind) || cutOff.has(w.id) || host.isRunning(w.id)) continue
+    setStatus(ctx, w, 'needs-you')
+    settled++
+  }
+  return settled
 }
 
 /**
