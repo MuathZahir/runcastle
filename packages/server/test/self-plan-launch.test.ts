@@ -230,7 +230,7 @@ describe('a self-planning run', () => {
 
     it('says the plan is complete when the run ended by asking the human for the yes', async () => {
       const f = await feature('done')
-      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?') })
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?', 'plan') })
       const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
 
       await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
@@ -239,6 +239,19 @@ describe('a self-planning run', () => {
       expect(ended?.data).toEqual({ sessionId, complete: true })
       // The run is over: the thread is the lead's ordinary chat from here on.
       expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
+    })
+
+    it('says planning stopped to ask when the run ended on a question, and keeps that question', async () => {
+      const f = await feature('asked')
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'what, where or who is open', 'answer') })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
+      const [ended] = selfPlanEnded(f.id)
+      expect(ended?.message).toBe('planning stopped to ask the human first')
+      expect(ended?.data).toEqual({ sessionId, complete: false, asked: true })
+      expect(getFeatureRow(ctx, f.id).waitingReason).toBe('what, where or who is open')
+      expect(getFeatureRow(ctx, f.id).waitingKind).toBe('answer')
     })
 
     it('says planning stopped short otherwise', async () => {
@@ -288,7 +301,7 @@ describe('a self-planning run', () => {
 
     it('names a finished run after the feature too', async () => {
       const f = await feature('finished')
-      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?') })
+      fakeHost({ turn: async () => setWaiting(ctx, f.id, 'Start round 1?', 'plan') })
       const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
       await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
 

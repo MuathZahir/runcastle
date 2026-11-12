@@ -88,19 +88,28 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
 /**
  * A self-planning run is over: say whether the plan is complete, and make the
  * thread the lead's ordinary chat again, so asks reach the human. A run that
- * stopped short leaves the feature waiting on the human ({@link PLANNING_STOPPED}),
- * whose next message picks it up with the lead. No-op for a thread with any
- * other purpose.
+ * stopped to ask the human something (what, where or who was open:
+ * agents-never-guess decision 13) keeps its question; one that stopped short
+ * with no question leaves the feature waiting on the human
+ * ({@link PLANNING_STOPPED}), whose next message picks it up with the lead.
+ * No-op for a thread with any other purpose.
  */
 function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
   if (row.purpose !== 'self-plan' || !row.featureId) return
-  // The plan is complete when the run ended its turn asking the human for the yes (`wait_for_you`).
-  const complete = getFeatureRow(ctx, row.featureId).waitingReason !== null
-  if (!complete) setWaiting(ctx, row.featureId, PLANNING_STOPPED, 'stuck')
+  const { waitingReason, waitingKind } = getFeatureRow(ctx, row.featureId)
+  // The run asked the human a question (`wait_for_you`, kind `answer`) instead of finishing the plan.
+  const asked = waitingReason !== null && waitingKind === 'answer'
+  // The plan is complete when the run ended its turn asking the human for the yes.
+  const complete = waitingReason !== null && !asked
+  if (waitingReason === null) setWaiting(ctx, row.featureId, PLANNING_STOPPED, 'stuck')
   emitForSession(ctx, row, {
     type: 'session.self_plan_ended',
-    message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
-    data: { sessionId: row.id, complete },
+    message: complete
+      ? 'planning finished'
+      : asked
+        ? 'planning stopped to ask the human first'
+        : 'planning stopped before the plan was complete',
+    data: { sessionId: row.id, complete, ...(asked ? { asked } : {}) },
   })
   setThreadPurpose(ctx, row.id, null)
 }

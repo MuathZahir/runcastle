@@ -271,6 +271,16 @@ describe('a self-planning run ending', () => {
     expect(eventLevel(ended(false))).toBe('error')
   })
 
+  it('says a run that stopped to ask what, where or who did not finish, without calling it an error', () => {
+    const asked = ev({
+      type: 'session.self_plan_ended',
+      message: 'planning stopped to ask the human first',
+      data: { sessionId: 's1', complete: false, asked: true },
+    })
+    expect(activityLine(asked).summary).toBe('Automatic planning stopped to ask you something first')
+    expect(eventLevel(asked)).toBe('info')
+  })
+
   it('is labelled as an automatic planning run, not by its slug', () => {
     expect(eventLabel('session.self_plan_ended')).toBe('automatic planning run')
     expect(eventLabel('session.pty_exited')).toBe('session · pty exited')
