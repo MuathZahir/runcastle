@@ -238,6 +238,19 @@ describe('the scenario briefing', () => {
     expect(text).not.toContain('Setup mode')
   })
 
+  it('says a feature drive\'s scenario leaves with the feature, and a project drive\'s stays as seed code', () => {
+    const onFeature = renderScenarioPrompt(brief({ feature: { title: 'Checkout' } as Feature }))
+    expect(onFeature).toContain('## It leaves with the feature')
+    expect(onFeature).toContain('belongs to Checkout')
+    expect(onFeature).toContain('`RUNCASTLE_SCENARIO_DATA`')
+    expect(onFeature).toContain('Never commit a copy')
+    expect(onFeature).not.toContain('## It stays in the project')
+
+    const onProject = renderScenarioPrompt(brief())
+    expect(onProject).toContain('## It stays in the project')
+    expect(onProject).not.toContain('RUNCASTLE_SCENARIO_DATA')
+  })
+
   it('teaches TOKEN and the sibling .http call', () => {
     const text = renderScenarioPrompt(brief())
     for (const expected of [

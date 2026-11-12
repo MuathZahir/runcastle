@@ -61,7 +61,8 @@ When the work is done, start the **Review worker** before you say ready, however
 Before you say ready, land or drop every worker (a Review worker that handed back needs neither); `declare_ready` refuses while one works or holds work not landed. Then always run the project's own checks (its typecheck and its tests) and fix what they find. Then call `declare_ready({ scenario })` — a short title for the drive the Test drive button starts — and in the same chat message tell the human:
 
 - **what to test**: what changed, where to look, what would count as broken;
-- **how you checked it**: for example "typecheck and tests green; the review found nothing".
+- **how you checked it**: for example "typecheck and tests green; the review found nothing";
+- **the feature's scenarios**, which to pick for what, and that they leave with the feature unless the human keeps one (`./references/workers.md`, "Ship a scenario").
 
 Pass on any warning `declare_ready` returns.
 
@@ -70,6 +71,8 @@ When you took screenshots of the work yourself, show them in your chat with `sho
 ## After a drive
 
 The human tells you what is wrong, in chat or as one message of notes with screenshots attached as files you can read. Reply first with what you will do about each point, then do it, yourself or with a worker. Stand on a reported bug before you fix it: reproduce it, or trace it to a file and line; if you can do neither, make reproducing it the first step of the fix, or of the worker's done-when. "All good" is a valid message too.
+
+When the human says the work is good, ask once which of the feature's scenarios to keep, then delete the rest (`./references/workers.md`, "Ship a scenario").
 
 ## Commit your own work
 

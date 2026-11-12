@@ -78,9 +78,19 @@ this have to build state by hand to see it — an account, a cart with an expire
 coupon?
 
 - If yes, the work that builds that state ships `.runcastle/scenarios/<group>/<name>.<ext>`, which seeds the state (reusing `_fixtures`) and prints `ENTRY_URL=<where>`: a line in that worker's done-when, or yours to write. Name the fixtures it should reuse. When the change is an API call, it also ships a sibling `.http` file at the same path with the request, and the scenario prints `TOKEN=` when the call is authenticated.
+- **Name it after where you land** (`checkout/expired-coupon-at-payment.ts`): the file name is all the human sees of it.
 - Use that scenario as the `scenario` you declare ready with; the Review worker replays it rather than improvising the setup.
 - Copy changes and settings toggles get none. A scenario earns its place only where reaching the state is the chore.
-- A worker writes and typechecks the scenario but cannot run it — a sandbox has no drive.
+- A worker writes and typechecks the scenario but cannot run it — a sandbox has no drive. So a worker's scenario is seed code.
+
+**Write one yourself whenever you reach a slow state**: the bug you are fixing, a screen behind many steps. Every later drive of this feature then starts there (the review's, the human's, your own) instead of walking back through the app. Build the state however suits: seed code, a call to the app's API, or a copy of data from a drive's database. A copy goes in the folder at `scenarios.dataDir`, outside git, never in the repo: it can hold passwords and keys, and git keeps it forever. The scenario reads it from `RUNCASTLE_SCENARIO_DATA`. Copy only from this feature's own drives, trimmed to what the state needs; never from a staging or production database unless the human hands you one for this.
+
+**A feature's scenarios leave with it.** They are the scenario files its branch added (`git diff --name-only --diff-filter=A <base>... -- .runcastle/scenarios`), whoever wrote them, the ＋ New scenario chat included. The `own` mark is wider: it also covers a permanent scenario the branch only changed, which stays.
+
+- Delete one as soon as a fix makes it pointless, so the set stays small.
+- Your ready message lists them, says which to pick for what when there are several, and says they leave with the feature unless the human keeps one.
+- When the human says the work is good, ask once which to keep, then delete the rest in your next commit. A kept one must be seed code: rewrite a data copy as seed code before you keep it, since only code survives later changes and a project drive has no data folder.
+- When an orchestrator chat that owns the feature asks you to clear them before it merges, do the same with the human's keeps.
 
 **When `setUp` is false**, card nothing about scenarios. Tell the human once
 that ＋ New scenario in a test drive sets scenarios up for this project.
