@@ -3336,10 +3336,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
               commands: z.array(z.string().min(1)).min(1).describe('The commands you ran.'),
             })
             .optional()
-            .describe(
-              'The commit your full checks passed on, on a clean tree, green apart from the known failures, and the commands you ran. ' +
-                'The review runs only the typecheck while its checkout still matches that commit. Never pass a red run.',
-            ),
+            .describe('The commit your full checks passed on, on a clean tree, green apart from known failures, and the commands run.'),
         },
       },
       async (args, extra) => {

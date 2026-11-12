@@ -380,7 +380,7 @@ describe('mcp tool registration by audience', () => {
     expect(tool?.inputSchema.required ?? []).not.toContain('checksPassed')
     expect(Object.keys(props.checksPassed?.properties ?? {})).toEqual(['commit', 'commands'])
     expect(props.checksPassed?.required).toEqual(['commit', 'commands'])
-    expect(props.checksPassed?.description).toMatch(/clean tree, green apart from the known failures/)
+    expect(props.checksPassed?.description).toMatch(/clean tree, green apart from known failures/)
     expect(props.model?.description).toMatch(/omit it for the Review model set in Settings/)
     expect(bad.isError).toBe(true)
     expect(JSON.stringify(bad.content)).toMatch(/checksPassed/)
