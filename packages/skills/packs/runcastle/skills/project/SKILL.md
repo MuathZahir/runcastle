@@ -174,7 +174,7 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 - **A drive you started failed**: read why in `get_feature_context`.
 - **A draft of yours that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, as its finish choice covers; one of the human's waits for them. One that could not start says why.
 - **An agent runcastle could not wake** reads your message at its next wake. Tell the human when the feature cannot move without them.
-- **A feature you cut merged** (anyone's merge). With others of your cut in progress it lists them: read the merge against each, with no tests, drives or reviews. `send_to_feature` only those it touches: what changed; bring main in. A clean fit ends silently. On a real misfit, tell the human here, offer a fix (a new feature, or the sibling it fits in) and `notify_human` once; create nothing and ask nothing in features you don't own. Your own `merge_feature` answer lists them instead. With none in progress it does not wake you and needs nothing.
+- **A feature you cut merged** (anyone's merge). With others of your cut in progress it lists them: read the merge against each, with no tests, drives or reviews. `send_to_feature` only those it touches: what changed; if it touches their files, bring main in. A clean fit ends silently. On a real misfit, tell the human here, offer a fix (a new feature, or the sibling it fits in) and `notify_human` once; create nothing and ask nothing in features you don't own. Your own `merge_feature` answer lists them instead. With none in progress it does not wake you and needs nothing.
 
 A run that has gone on too long, stop it with `stop_feature_run`.
 
