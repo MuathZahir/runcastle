@@ -44,10 +44,13 @@ epic does not wake.
   - the test-drive guard that never starts a chat the drive did not start still applies.
 - **When it is held.** No sibling active (decision 6), or the epic itself called
   `merge_feature` for this merge (decision 9; the merge event carries the acting chat).
-- **The line.** `[runcastle] <slug> merged into <base> by <you | this chat | <other chat>>.`
-  then either the in-progress siblings (slug, title, owner: the human or which chat) with
-  where to read the change (the merge commit and the feature's outcome doc), or, when
-  held, "Nothing of this epic is in progress, so there is nothing to check."
+- **The line.** `[runcastle] <slug> merged into <base> by <the human | this chat | the chat "<name>">.`
+  ("the human", not "you": the orchestrator's lines already use "you" for the
+  orchestrator itself), then either the in-progress siblings (slug, title, owner: the
+  human or which chat) with where to read the change (the merge commit and the feature's
+  outcome doc), or, when held, "Nothing of this epic is in progress, so there is nothing
+  to check." A line held because the epic merged it itself still lists the siblings.
+  The human's news row reads "Merged by you" or "Merged by <chat name>".
 - **`merge_feature`'s answer** lists the same in-progress siblings, so an epic that
   merges its own feature checks fit in that turn.
 - **The skill.** The project skill's "Messages from runcastle" gains the merge line and
@@ -91,8 +94,11 @@ epic does not wake.
 
 ## Open questions
 
-- Whether a held prompt's news row renders in the chat exactly as a woken one does: the
-  survey found the same display path, not yet seen working. The worker confirms it in a
-  test, and fixes the chat view if it does not.
+- Settled in the build: a held prompt keeps its news row in the chat log and the
+  thread's fold, as a woken one does (tests in the merge-news test file); no chat-view
+  change was needed.
+- The live feature-shipped event fires before up-next drafts start, so the merge flow
+  announces the merge to the epic itself, after those starts; the live event sends no
+  line.
 - Charter decision 17's named exception belongs in `CONTEXT.md`, which only the project
   session writes; it should be told at merge.
