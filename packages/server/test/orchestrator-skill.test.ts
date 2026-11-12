@@ -64,8 +64,8 @@ describe('the project skill, orchestrating', () => {
     const text = skill()
     // Raised from 25_000 for the epic icon ids name_epic picks from (epics-that-look-alive decision 1),
     // then from 25_400 for the never-guess statement every agent carries word for word (agents-never-guess decision 12),
-    // then from 26_700 for the merge line every epic acts on (the-epic-hears-when-its-features-merge decision 3).
-    expect(text.length).toBeLessThanOrEqual(27_200)
+    // then from 26_700 for the merge line every epic acts on (the-epic-hears-when-its-features-merge decisions 3, 11).
+    expect(text.length).toBeLessThanOrEqual(27_300)
     expect(text).not.toContain('## Your tools')
     expect(text).toContain('**Load your runcastle tools once**')
     const pointers = [...text.matchAll(/\.\/references\/([a-z-]+\.md)/g)].map((m) => m[1])
@@ -352,7 +352,7 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('with no tests, drives or reviews')
     expect(text).toContain('`send_to_feature` only those it touches')
     expect(text).toContain('A clean fit ends silently.')
-    expect(text).toContain('`notify_human` once')
+    expect(text).toContain('`notify_human` once; create nothing and ask nothing in features you don\'t own')
     expect(text).toContain('Your own `merge_feature` answer lists them instead.')
     expect(text).toContain('it does not wake you and needs nothing')
   })

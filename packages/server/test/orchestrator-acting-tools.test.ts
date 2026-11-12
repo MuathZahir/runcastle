@@ -405,16 +405,27 @@ describe('the orchestrator’s acting tools', () => {
     })
   })
 
-  it('merge_feature answers an empty list for a feature with no epic', async () => {
+  it('merge_feature lists no siblings for a feature this chat did not cut, its own or none', async () => {
     const session = orchestrator()
+    const epic = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     await started('loner')
-    await g.checkout('feature/loner')
-    writeFileSync(join(repoPath, 'loner.txt'), 'work\n')
-    await g.add(['loner.txt'])
-    await g.commit('feat: work')
-    await g.checkout('main')
+    await started('taken', { chatId: epic.id })
+    seedFeature(ctx, projectId, { slug: 'sibling', title: 'Sibling', chatId: epic.id, heldBy: epic.id })
+    for (const slug of ['loner', 'taken']) {
+      await g.checkout(`feature/${slug}`)
+      writeFileSync(join(repoPath, `${slug}.txt`), 'work\n')
+      await g.add([`${slug}.txt`])
+      await g.commit('feat: work')
+      await g.checkout('main')
+    }
 
-    expect(await toolMergeFeature(ctx, session, { slug: 'loner' })).toMatchObject({ ok: true, inProgress: [] })
+    const loner = await toolMergeFeature(ctx, session, { slug: 'loner' })
+    const taken = await toolMergeFeature(ctx, session, { slug: 'taken' })
+
+    expect(loner).toMatchObject({ ok: true })
+    expect(loner).not.toHaveProperty('inProgress')
+    expect(taken).toMatchObject({ ok: true })
+    expect(taken).not.toHaveProperty('inProgress')
   })
 
   it('merge_feature returns a conflict’s files and records merge.conflict', async () => {

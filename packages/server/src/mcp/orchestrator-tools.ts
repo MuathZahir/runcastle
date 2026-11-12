@@ -359,6 +359,8 @@ export const toolMergeFeature = orchestratorTool(
     const merged = await mergeFeatureFlow(ctx, feature.id, { by: session.id })
     if (!merged.ok || merged.conflict) return merged
     recordFeatureAction(ctx, session, feature.id, 'merged', { into: merged.base })
+    // Only the epic checks fit: a chat that took the feature from another epic gets no list, and that epic is woken instead.
+    if (feature.chatId !== session.id) return merged
     return { ...merged, inProgress: epicSiblingsInProgress(ctx, getFeatureRow(ctx, feature.id)) }
   },
 )
@@ -564,8 +566,8 @@ export function registerOrchestratorTools(
       title: 'Merge a feature',
       description:
         'Merge a feature into its base, as Merge does. On a conflict it returns `conflict` and the ' +
-        '`files` to resolve in the worktree. A clean merge returns `inProgress`: the other ' +
-        'features of its epic still in progress (slug, title, owner), to check the merge fits with.',
+        '`files` to resolve in the worktree. A clean merge of a feature you cut returns `inProgress`: ' +
+        'the other features you cut still in progress (slug, title, owner), to check the merge fits with.',
       inputSchema: { slug: SlugInput },
     },
     toolMergeFeature,
