@@ -25,7 +25,7 @@ import { AFTER_FIRST, BRANCH, FIRST_WORDS, FRESH, REFUSAL, TITLE, firstWork } fr
  * A new feature waits for Start (docs/features/a-new-feature-waits-for-start,
  * decisions 3, 6, 7, 8): a never-run feature's main chat, opened. Nothing has
  * started; the empty chat offers Start (the agent reads its brief, explores and
- * speaks first) and a quiet Plan it yourself beside it, and the composer waits
+ * speaks first) and a quiet Plan automatically beside it, and the composer waits
  * locked under them.
  *
  * States: ?state=waiting | starting | refused | started. Pressing Start goes
@@ -98,7 +98,7 @@ function ChatColumn({ view, setView }: { view: View; setView: (v: View) => void 
       later(5 * 550 + 300, () => setView({ ...viewOf('started'), items: [firstWork(5, false, 4), FIRST_WORDS] }))
     })
   }
-  /** Plan it yourself, felt: it shows busy; what the run does next is not this page's. */
+  /** Plan automatically, felt: it shows busy; what the run does next is not this page's. */
   const planAlone = () => setView({ ...viewOf('waiting'), key: 'starting', pressed: 'selfPlan' })
 
   const meter = <ContextMeter context={view.context} limits={LIMITS} plan="Claude Max" onCompact={() => {}} />

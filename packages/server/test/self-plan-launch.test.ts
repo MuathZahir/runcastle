@@ -120,7 +120,7 @@ describe('a self-planning run', () => {
     expect(launching?.data?.purpose).toBe('self-plan')
 
     const said = kickoffOf(sessionId)
-    expect(promptsOf(sessionId)[0]).toMatchObject({ source: 'runcastle', display: { summary: 'Started this chat to plan the feature by itself' } })
+    expect(promptsOf(sessionId)[0]).toMatchObject({ source: 'runcastle', display: { summary: 'Started automatic planning for this feature' } })
     expect(said).toContain('Proceed with your task: no human is present')
     expect(said).toContain('/runcastle:feature')
     expect(said).toContain('references/planning-alone.md')
@@ -274,7 +274,7 @@ describe('a self-planning run', () => {
       await logUntil(sessionId, (e) => e.some((x) => x.type === 'turn_started'))
       const caller = createCallerFactory(appRouter)(ctx)
       const name = async () => (await caller.thread.list({ featureId: f.id })).find((t) => t.id === sessionId)?.title
-      expect(await name()).toBe('Planning by itself')
+      expect(await name()).toBe('Planning automatically')
 
       await host?.stop(sessionId, 'archived')
 

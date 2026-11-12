@@ -129,8 +129,8 @@ describe("runcastle's lines in a thread", () => {
   })
 
   it('draws a kickoff with a summary as one Runcastle line', () => {
-    render(thread([runcastle('[runcastle] Proceed with your task: invoke /runcastle:feature', { summary: 'Started this chat to plan the feature by itself' })], links()))
-    expect(screen.getByText(/Started this chat to plan the feature by itself/)).toBeTruthy()
+    render(thread([runcastle('[runcastle] Proceed with your task: invoke /runcastle:feature', { summary: 'Started automatic planning for this feature' })], links()))
+    expect(screen.getByText(/Started automatic planning for this feature/)).toBeTruthy()
     expect(screen.queryByText(/Proceed with your task/)).toBeNull()
   })
 

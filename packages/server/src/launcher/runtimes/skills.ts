@@ -121,7 +121,8 @@ export function selfPlanKickoffFor(runtime: AgentRuntime, resumed = false): stri
     'Proceed with your task: no human is present and nobody will reply to you. Invoke ' +
     `${resumed ? `${skill} (unless its text is already in this conversation)` : skill} and follow its \`${PLANNING_ALONE}\` to plan this feature ` +
     'by yourself in this one run: plan it, design its screens where it adds or reshapes them, ' +
-    "do not build it, and end by asking for the human's yes."
+    "do not build it, and end by asking for the human's yes; " +
+    'if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead.'
   )
 }
 

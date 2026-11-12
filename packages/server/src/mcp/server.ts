@@ -1753,8 +1753,8 @@ export async function toolCreateFeature(
 export type PlanningChoice = 'with-me' | 'self'
 
 const PLANNING_LINE: Record<PlanningChoice, string> = {
-  'with-me': 'Planning mode: grill with you',
-  self: 'Planning mode: plans itself',
+  'with-me': 'Planning mode: with you',
+  self: 'Planning mode: automatic',
 }
 
 /**
@@ -2937,7 +2937,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           planning: z
             .enum(['with-me', 'self'])
             .optional()
-            .describe('The human’s choice: `with-me` (they plan it in its chat) or `self` (it plans itself and shows them).'),
+            .describe('The human’s choice: `with-me` (they plan it in its chat) or `self` (automatic planning: it plans without them, then shows them the plan).'),
           finish: z
             .enum(['you', 'show', 'merge'])
             .optional()

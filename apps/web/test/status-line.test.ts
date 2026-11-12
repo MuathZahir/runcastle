@@ -91,11 +91,11 @@ describe('featureStatus', () => {
     ).toEqual({ kind: 'waiting', label: 'Handed back', why: 'Ready to merge', primary: 'chat' })
   })
 
-  it('reads Planning by itself, not the need, while a self-planning run is live — but keeps Stop', () => {
+  it('reads Planning automatically, not the need, while a self-planning run is live — but keeps Stop', () => {
     const plan = need('plan', 'Plan to approve')
     expect(featureStatus(input({ need: plan, selfPlanning: true }))).toEqual({
       kind: 'working',
-      label: 'Planning by itself',
+      label: 'Planning automatically',
       primary: 'stopSelfPlan',
     })
   })
@@ -116,15 +116,15 @@ describe('featureStatus', () => {
     ).toMatchObject({ label: 'Ready to test', primary: 'testDriveStop' })
   })
 
-  it('reads Planning by itself while a self-planning run is live, with its Stop', () => {
+  it('reads Planning automatically while a self-planning run is live, with its Stop', () => {
     expect(featureStatus(input({ selfPlanning: true }))).toEqual({
       kind: 'working',
-      label: 'Planning by itself',
+      label: 'Planning automatically',
       primary: 'stopSelfPlan',
     })
   })
 
-  it('workers at work, a drive and Merged outrank planning by itself', () => {
+  it('workers at work, a drive and Merged outrank planning automatically', () => {
     expect(featureStatus(input({ selfPlanning: true, workersWorking: 2 }))).toEqual({
       kind: 'working',
       label: 'Working',
@@ -132,7 +132,7 @@ describe('featureStatus', () => {
       primary: 'stop',
     })
     expect(featureStatus(input({ selfPlanning: true, driving: true }))).toMatchObject({
-      label: 'Planning by itself',
+      label: 'Planning automatically',
       primary: 'testDriveStop',
     })
     expect(featureStatus(input({ feature: { status: 'shipped' }, selfPlanning: true }))).toEqual({
@@ -324,7 +324,7 @@ describe('the header’s share of the row', () => {
     expect(featureStatus(input({ need: ask, workersWorking: 2 })).stop).toBe('stop')
   })
 
-  it('lets a permission prompt outrank planning by itself, its Stop kept in the menu', () => {
+  it('lets a permission prompt outrank planning automatically, its Stop kept in the menu', () => {
     const permission = need('permission', 'Needs permission · Bash: ls', { why: 'Bash: ls', threadId: 't' })
     const stopSelfPlan = { label: 'Stop', kind: 'stopSelfPlan' } as const
     expect(header({ need: permission, selfPlanning: true }, ns({ primary: stopSelfPlan }))).toEqual({
@@ -360,8 +360,8 @@ describe('the header’s share of the row', () => {
   })
 
   it('puts every other action the resolver offered in "⋯"', () => {
-    const out = header({}, ns({ primary: { label: 'Plan it yourself', kind: 'selfPlan' } }))
-    expect(out.overflow).toEqual([{ label: 'Plan it yourself', kind: 'selfPlan' }])
+    const out = header({}, ns({ primary: { label: 'Plan automatically', kind: 'selfPlan' } }))
+    expect(out.overflow).toEqual([{ label: 'Plan automatically', kind: 'selfPlan' }])
   })
 
   it('has no button and nothing in "⋯" once merged', () => {

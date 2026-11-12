@@ -247,7 +247,7 @@ export function kickoffFor(ctx: AppCtx, row: SessionRow, opts: { held?: boolean 
 export function openingSummary(row: SessionRow, selfPlan = false): string | undefined {
   switch (row.kind) {
     case 'chat':
-      return selfPlan ? 'Started this chat to plan the feature by itself' : 'Started this chat'
+      return selfPlan ? 'Started automatic planning for this feature' : 'Started this chat'
     case 'project':
       return 'Started this epic'
     default:
@@ -372,7 +372,7 @@ async function openMainChat(
   const plan = planKickoff({ kind: 'chat', kickoffLine: input.kickoffLine })
   emit(ctx, feature.id, {
     type: 'session.launching',
-    message: selfPlan ? 'launching a self-planning run' : resumed ? 'opening the chat thread' : 'launching chat session',
+    message: selfPlan ? 'launching an automatic planning run' : resumed ? 'opening the chat thread' : 'launching chat session',
     // The errand the thread is on after this launch — a plain open mid-errand
     // keeps it — which the token count files what follows under (honest-token-counts).
     data: { sessionId: thread.id, kind: 'chat', worktreePath, ...modelStamp(thread), ...(thread.purpose ? { purpose: thread.purpose } : {}) },
@@ -399,7 +399,7 @@ async function openMainChat(
     ctx,
     thread,
     line,
-    selfPlan ? 'opening the self-planning run with its briefing' : 'opening chat with its briefing',
+    selfPlan ? 'opening the automatic planning run with its briefing' : 'opening chat with its briefing',
     opts,
     openingSummary(thread, selfPlan),
     input.pick,

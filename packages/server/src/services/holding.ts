@@ -56,7 +56,7 @@ const CAUSE_WORDS: Record<OwnerCause, string> = {
   control: 'you chose it',
   typed: 'you typed in its chat',
   take: 'you asked the chat to run it',
-  create: 'the chat cut it to plan itself',
+  create: 'the chat cut it to plan automatically',
   'plan-agreed': 'its plan has the yes',
   replacement: 'the chat replaced one too long to reopen',
   moved: 'the move to one owner per feature',

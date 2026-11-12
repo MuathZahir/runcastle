@@ -8,7 +8,7 @@ import { HeaderAction } from '../src/components/workspace/HeaderAction'
 
 /**
  * The header while the feature plans itself: the status line says so and the
- * header carries the run's Stop, so a click on Plan it yourself visibly did
+ * header carries the run's Stop, so a click on Plan automatically visibly did
  * something. Tier 2: Stop's click reaching the dispatcher is an event, which a
  * rendered string cannot show.
  */
@@ -16,9 +16,9 @@ afterEach(cleanup)
 
 /** What the resolver offers while a self-planning run is live (`next-step/headless.ts`). */
 const selfPlanBar: NextStep = {
-  kick: 'PLANNING ITSELF',
-  title: 'Planning itself',
-  desc: 'Planning by itself — open the chat to watch; the plan appears below as it is written.',
+  kick: 'PLANNING AUTOMATICALLY',
+  title: 'Planning automatically',
+  desc: 'Planning automatically — open the chat to watch; the plan appears below as it is written.',
   primary: { label: 'Stop', kind: 'stopSelfPlan' },
   secondary: [],
   busy: true,
@@ -49,10 +49,10 @@ function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
 }
 
 describe('the header while the feature plans itself', () => {
-  it('says Planning by itself and offers the run’s Stop', () => {
+  it('says Planning automatically and offers the run’s Stop', () => {
     const { onAction } = headerRow(true)
 
-    expect(screen.getByRole('status').textContent).toContain('Planning by itself')
+    expect(screen.getByRole('status').textContent).toContain('Planning automatically')
 
     fireEvent.click(screen.getByRole('button', { name: /^Stop$/ }))
     expect(onAction).toHaveBeenCalledWith('stopSelfPlan')
@@ -62,7 +62,7 @@ describe('the header while the feature plans itself', () => {
     const { row } = headerRow(false)
 
     expect(screen.getByRole('status').textContent).toContain('Talking with you')
-    expect(screen.queryByText('Planning by itself')).toBeNull()
+    expect(screen.queryByText('Planning automatically')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
     expect(row.action).toBeUndefined()
     expect(row.merge?.label).toBe('Merge & ship')

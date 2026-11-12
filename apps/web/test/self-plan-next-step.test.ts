@@ -33,14 +33,14 @@ const started = (sessions: Session[] = []): FeatureFull => {
   return { ...base, feature: { ...base.feature, lap: 1 }, sessions } as unknown as FeatureFull
 }
 
-describe('Plan it yourself beside Start', () => {
-  it('keeps Start as a draft’s primary and puts Plan it yourself beside it', () => {
+describe('Plan automatically beside Start', () => {
+  it('keeps Start as a draft’s primary and puts Plan automatically beside it', () => {
     const ns = nextStep(full({ status: 'draft' }), {})
 
     expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
-    expect(ns.secondary).toEqual([{ label: 'Plan it yourself', kind: 'selfPlan' }])
+    expect(ns.secondary).toEqual([{ label: 'Plan automatically', kind: 'selfPlan' }])
     expect(ns.desc).toContain('Start')
-    expect(ns.desc).toContain('Plan it yourself')
+    expect(ns.desc).toContain('Plan automatically')
   })
 
   it('disables both with the same reason while the draft has no base branch', () => {
@@ -78,11 +78,11 @@ describe('a started feature’s step', () => {
 })
 
 describe('a self-planning run on the bar', () => {
-  it('says the feature is planning itself, spins, and offers Stop with no chat', () => {
+  it('says the feature is planning automatically, spins, and offers Stop with no chat', () => {
     const ns = nextStep(started([selfPlan({ status: 'live' })]), {})
 
-    expect(ns.kick).toBe('PLANNING ITSELF')
-    expect(ns.title).toBe('Planning itself')
+    expect(ns.kick).toBe('PLANNING AUTOMATICALLY')
+    expect(ns.title).toBe('Planning automatically')
     expect(ns.desc).toContain('open the chat to watch')
     expect(ns.busy).toBe(true)
     expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopSelfPlan' })
@@ -93,7 +93,7 @@ describe('a self-planning run on the bar', () => {
     for (const purpose of ['lead-wake', 'relay', 'start-lap'] as const) {
       const ns = nextStep(started([session({ id: 'sess_other', status: 'live', purpose })]), {})
 
-      expect(ns.title).not.toBe('Planning itself')
+      expect(ns.title).not.toBe('Planning automatically')
       expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('stopSelfPlan')
     }
   })
