@@ -44,13 +44,15 @@ what your reviews use until you change it.
 
 ## 5. The default follows the runtime: Sonnet on Claude Code, the mid model on Codex
 **Decision:** When the Review row is unset, a review runs on Sonnet
-(`claude-sonnet-5`, the curated Sonnet) if the global model runs on Claude Code,
+(`claude-sonnet-5-5`, the newest Sonnet, added to the curated list) if the global model runs on Claude Code,
 and on `gpt-5.6-terra` (Codex's middle model) if it runs on Codex. Settings shows
 that default on the Review row, marked as the default.
 **Why:** A Claude-only default is a dead value for a Codex-only user, the same
 reason the smoke default is already chosen per runtime. Sonnet is the bare id,
 not 1M, like every other default.
 **Assumed.** Alternative: Sonnet for everyone, Codex users set it by hand.
+**Changed by the orchestrator:** the default was `claude-sonnet-5`; it named the
+newest Sonnet, `claude-sonnet-5-5`, the current one in this machine's discovered list.
 **For the human.** A new install's reviews run on Sonnet without anyone touching
 Settings.
 

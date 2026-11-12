@@ -22,8 +22,8 @@ model resolves through the `review` model step, not the `chat` step. The chain
 stays the existing one (a per-project model override, then the step's own
 setting, then the default) with one change: an unset `review` step falls to a
 per-runtime review default instead of the global model. The default sits beside
-the existing per-runtime flagship and smoke defaults: Sonnet (`claude-sonnet-5`,
-bare, not 1M) for Claude Code, `gpt-5.6-terra` for Codex, picked by the runtime
+the existing per-runtime flagship and smoke defaults: Sonnet (`claude-sonnet-5-5`,
+the newest, added to the curated model list; bare, not 1M) for Claude Code, `gpt-5.6-terra` for Codex, picked by the runtime
 the global model runs on. It must apply even when the config file holds a
 `stepModels` object without a `review` key (a zod default only fills an absent
 object). The settings service reports that default on the Review row as its
@@ -98,7 +98,9 @@ setting.
 - Per-feature scenarios and the lead's own drive-and-fix loop ("Each feature's own
   scenarios", "Agents test like owners"). All three features edit the feature
   lead's skill; expect small text conflicts at merge.
-- Updating the curated model list to newer model generations.
+- Updating the curated model list to newer model generations, beyond the one
+  `claude-sonnet-5-5` entry the review default needs. Flagship and smoke defaults
+  stay as they are.
 - Any server-side record of check runs, or a gate on them.
 
 ## Open questions
