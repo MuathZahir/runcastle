@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
+import { scenarioDataDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -238,12 +239,47 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     const start = await testDrive(ctx, project, feature, 'start')
     expect(start.ok).toBe(true)
     expect(activeTestDriveFeatureId(project.id)).toBe(feature.id)
+    // The drive start made the feature's scenario-data folder.
+    expect(existsSync(scenarioDataDir(feature.id))).toBe(true)
 
     const res = await caller.feature.merge({ featureId: feature.id })
 
     expect(res.ok).toBe(true)
     expect(activeTestDriveFeatureId(project.id)).toBeUndefined()
   }, 15_000)
+
+  // each-feature-s-own-scenarios: the feature's scenario data leaves with it on
+  // a landed merge, and stays while a conflict keeps it alive.
+  it('a clean merge removes the feature’s scenario-data folder', async () => {
+    await createFeatureBranch(project, 'data-ship', 'main')
+    await g.checkout('feature/data-ship')
+    writeFileSync(join(project.repoPath, 'data-ship.txt'), 'work\n')
+    await g.add(['data-ship.txt'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+    const feature = seedFeature(ctx, project.id, { slug: 'data-ship' })
+    const dataDir = scenarioDataDir(feature.id)
+    mkdirSync(dataDir, { recursive: true })
+    writeFileSync(join(dataDir, 'copy.sql'), 'select 1;\n')
+
+    const res = await caller.feature.merge({ featureId: feature.id })
+
+    expect(res.ok).toBe(true)
+    expect(existsSync(dataDir)).toBe(false)
+  })
+
+  it('a conflicted merge keeps the feature’s scenario-data folder', async () => {
+    await makeConflict(project, g, 'data-clash')
+    const feature = seedFeature(ctx, project.id, { slug: 'data-clash' })
+    const dataDir = scenarioDataDir(feature.id)
+    mkdirSync(dataDir, { recursive: true })
+    writeFileSync(join(dataDir, 'copy.sql'), 'select 1;\n')
+
+    const res = await caller.feature.merge({ featureId: feature.id })
+
+    expect(res.ok).toBe(false)
+    expect(existsSync(join(dataDir, 'copy.sql'))).toBe(true)
+  })
 
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {
     await createFeatureBranch(project, 'target', 'main')

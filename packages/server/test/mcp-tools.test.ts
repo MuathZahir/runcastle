@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { scenarioDataDir } from '@runcastle/core/paths'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { eq } from 'drizzle-orm'
@@ -491,7 +492,10 @@ describe('get_feature_context scenarios', () => {
         { file: '.runcastle/scenarios/checkout/land.ts', group: 'Checkout', name: 'Land', own: false, hasCall: false },
       ],
       fixtures: ['.runcastle/scenarios/_fixtures/buyer.ts'],
+      // The feature's scenario-data folder, absolute — named, never created here.
+      dataDir: scenarioDataDir(feature.id),
     })
+    expect(existsSync(scenarios.dataDir)).toBe(false)
     // It rides the header, ahead of the docs.
     const context = featureContext(ctx, { featureId: feature.id }, scenarios)
     expect(context.scenarios).toEqual(scenarios)
@@ -509,6 +513,7 @@ describe('get_feature_context scenarios', () => {
       runnerConfigured: true,
       scenarios: [],
       fixtures: [],
+      dataDir: scenarioDataDir(early.id),
     })
   })
 

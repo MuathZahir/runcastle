@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { scenarioDataDir } from '@runcastle/core/paths'
 
 /**
  * The drive's environment contract: identity in, `.runcastle/drive.env` out.
@@ -24,6 +25,12 @@ export interface DriveIdentity {
   slug: string
   /** The git branch under the wheel (`feature/add-billing`). */
   branch: string
+  /**
+   * The feature being driven. Set only on a feature's own drive, so its
+   * scenario-data folder is handed out; a project drive or the preparation dry
+   * run has no feature, and so no folder.
+   */
+  featureId?: string
 }
 
 /**
@@ -67,6 +74,8 @@ export function driveIdentityEnv(
     // Present exactly when the drive was started for a scenario, so setup can
     // shape the environment before boot (the scenario itself runs after it).
     ...(scenario ? { RUNCASTLE_SCENARIO: scenario } : {}),
+    // The feature's scenario-data folder. Path only: the drive start creates it.
+    ...(identity.featureId ? { RUNCASTLE_SCENARIO_DATA: scenarioDataDir(identity.featureId) } : {}),
   }
 }
 

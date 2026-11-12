@@ -135,6 +135,16 @@ export function designPicturesDir(featureId: string): string {
   return join(dataDir(), 'designs', featureId)
 }
 
+/**
+ * A feature's scenario data — copies of real data its scenarios build state
+ * from: `~/.runcastle/scenario-data/<featureId>/`. Outside the repo so nothing
+ * in it is ever committed; a drive of the feature hands it to every child
+ * process as `RUNCASTLE_SCENARIO_DATA`. Gone with the feature on merge or delete.
+ */
+export function scenarioDataDir(featureId: string): string {
+  return join(dataDir(), 'scenario-data', featureId)
+}
+
 /** Launch artifacts for a Claude Code session: `~/.runcastle/sessions/<id>/`. */
 export function sessionDir(id: string): string {
   return join(dataDir(), 'sessions', id)
