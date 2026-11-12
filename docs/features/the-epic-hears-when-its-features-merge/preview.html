@@ -283,28 +283,22 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['It wakes that epic only while the epic has other unfinished features', 'With nothing left to fit against, no turn is spent.'],
     ['On the wake the epic checks fit and warns siblings; it speaks to you only on a problem', 'Integration is the orchestrator\'s job; a clean merge needs no words to you.'],
     ['Merges are the one exception to "your merges tell the orchestrator nothing"', 'One turn per merge is accepted; every other news line stays as it is.'],
-    ['"Unfinished" means a sibling that is started once the merge is done', 'Backlog drafts have no code to clash with; up-next drafts this merge starts do count.', 'assumed'],
-    ['With no unfinished sibling, the merge is logged in the epic\'s chat without a turn', 'The epic\'s record stays whole at no cost; the line says there is nothing to do.', 'assumed'],
-    ['The merge shows in the epic\'s chat as a "Merged" news row', 'You see why the epic took a turn, in the row runcastle\'s news already uses.', 'assumed'],
-    ['A long-idle or large epic chat is woken like any other', 'Compaction already bounds the cost of a turn after a long gap.', 'assumed'],
-    ['When the epic merges a feature itself, it checks in the same turn', 'merge_feature\'s answer lists the siblings; a second turn would be noise.', 'assumed'],
-    ['The epic tells only the siblings the merge touches', 'Each note wakes a lead; touched siblings are told to bring main in now.', 'assumed'],
-    ['A problem is reported with an offer and a phone ping, not fixed unasked', 'What to do about a problem on main is your call; a report you never read checks nothing.', 'assumed'],
-    ['Only the epic\'s own features are checked', 'The brief scopes it to the epic\'s cut; a project-wide check is a larger feature.', 'assumed'],
-    ['The fit check reads the code; it runs no tests', 'The merged feature passed its checks; siblings run theirs when they bring main in.', 'assumed'],
-    ['The line goes to the epic\'s current chat, or to nobody', 'The epic field already follows a replacement chat; a gone chat has nobody to tell.', 'assumed'],
-    ['Merges in quick succession each get their turn', 'Accepted cost per merge; the later turn sees the earlier merge on main.', 'assumed']
+    ['"Unfinished" means a sibling that is started once the merge is done', 'Backlog drafts have no code to clash with; up-next drafts this merge starts do count.'],
+    ['With no unfinished sibling, the merge is logged in the epic\'s chat without a turn', 'The epic\'s record stays whole at no cost; the line says there is nothing to do.'],
+    ['The merge shows in the epic\'s chat as a "Merged" news row', 'You see why the epic took a turn, in the row runcastle\'s news already uses.'],
+    ['A long-idle or large epic chat is woken like any other', 'Compaction already bounds the cost of a turn after a long gap.'],
+    ['When the epic merges a feature itself, it checks in the same turn', 'merge_feature\'s answer lists the siblings; a second turn would be noise.'],
+    ['The epic tells only the siblings the merge touches', 'Each note wakes a lead; touched siblings are told to bring main in now.'],
+    ['A problem is reported with an offer and a phone ping, not fixed unasked', 'What to do about a problem on main is your call; a report you never read checks nothing.'],
+    ['Only the epic\'s own features are checked', 'The brief scopes it to the epic\'s cut; a project-wide check is a larger feature.'],
+    ['The fit check reads the code; it runs no tests', 'The merged feature passed its checks; siblings run theirs when they bring main in.'],
+    ['The line goes to the epic\'s current chat, or to nobody', 'The epic field already follows a replacement chat; a gone chat has nobody to tell.'],
+    ['Merges in quick succession each get their turn', 'Accepted cost per merge; the later turn sees the earlier merge on main.']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [5, 'Every draft of the epic counts too, so a merge also re-checks briefs nobody has started', 'The brief left this open; it decides how often the epic wakes'],
-    [8, 'Log without a turn when the epic chat has been idle past some limit', 'The challenger disagreed: compacting a huge idle chat may cost more than the check is worth', 'challenged'],
-    [10, 'Tell every in-progress sibling, or log heads-ups without waking their leads', 'Your words were "tell any sibling in progress"; this narrows it to the ones touched', 'challenged'],
-    [11, 'Report in the epic chat only, with no phone ping', 'Adds a notification you did not ask for, so a found problem is not missed'],
-    [13, 'Run the project\'s tests on main after each merge', 'You want things to integrate well; a read is cheaper but catches less']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
