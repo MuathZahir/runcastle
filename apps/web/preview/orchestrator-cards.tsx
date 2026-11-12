@@ -116,7 +116,7 @@ function FeatureChat({ onOpen }: { onOpen: (id: string) => void }) {
         { turn: true, node: <RuncastleNote summary={D.KICKOFF_SUMMARY} agentText={D.KICKOFF_AGENT_TEXT} /> },
         { node: <WorkBlock steps={[{ kind: 'tools', id: 'k', calls: [{ id: 'k1', kind: 'read', title: 'docs/features/composer-remembers-the-model/brief.md', status: 'completed' }] }]} seconds={23 * 60 + 40} /> },
         { node: <Words text={D.PLAN_WORDS} /> },
-        { turn: true, node: <OrchestratorMessage text={D.RELAYED} relayed /> },
+        { turn: true, node: <OrchestratorMessage text={D.RELAYED} /> },
         { node: <WorkBlock steps={D.PARK_WORK} seconds={48} /> },
         { node: <FeaturesCard rows={D.PARK_ROWS} onOpen={onOpen} /> },
         { node: <Words text={D.PARK_ANSWER} /> },

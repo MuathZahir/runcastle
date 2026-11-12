@@ -141,16 +141,13 @@ describe("runcastle's lines in a thread", () => {
     expect(screen.queryByRole('button', { name: 'What the agent read' })).toBeNull()
   })
 
-  it("draws the orchestrator's message in full under its name, and a relayed answer as yours", () => {
+  it("draws the orchestrator's message in full under its name, never as the human's", () => {
     const message = 'Please pick up ticket 3 next.\nThe human wants the export first.'
     render(
       thread(
         [
           runcastle('[runcastle] From the project\'s orchestrator, not the human: …', {
-            orchestrator: [
-              { text: message, relayed: false },
-              { text: 'Yes, ship it.', relayed: true },
-            ],
+            orchestrator: [{ text: message }],
           }),
         ],
         links(),
@@ -158,8 +155,7 @@ describe("runcastle's lines in a thread", () => {
     )
     expect(screen.getByText('Epic')).toBeTruthy()
     expect(screen.getByText((_, el) => el?.textContent === message && el.children.length === 0)).toBeTruthy()
-    expect(screen.getByText('Yes, ship it.')).toBeTruthy()
-    expect(screen.getByText('Your answer, relayed by the epic')).toBeTruthy()
+    expect(screen.queryByText(/relayed/)).toBeNull()
     expect(screen.queryByText(/not the human/)).toBeNull()
   })
 })

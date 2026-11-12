@@ -119,7 +119,7 @@ report() // on load; call it again whenever the switcher changes state
    what the human approved and drop the rest, so workers start from what they saw.
 4. **Only the human approves**: the **Approve** button in the Design tab, or the
    human naming the design in their own words. Opening is not approving, and an
-   orchestrator relay never approves unless it carries the human's own words.
+   orchestrator message never approves.
 5. **Record what you hear**: `set_design_state({ path, state: 'approved' })` for
    an approval in words, `'dropped'` for a rejection (there is no Drop button).
 6. **Button approvals are quiet** until the last waiting design is approved:
@@ -154,8 +154,9 @@ they come back:
   **only** the designs whose `state` is `approved`, saying which; name every other
   waiting design (and which are not even `opened`) and ask before you start work.
   Mark a rejected screen dropped and leave it out of the workers you start.
-- **The orchestrator relays a yes to start the work** while designs wait: do not start;
-  say the designs wait for the human.
+- **The orchestrator says yes to start the work** while designs wait: do not
+  start. The designs wait for the human's own yes in this chat: call
+  `wait_for_you` for them, which makes the feature the human's.
 
 "Design to approve" shows by itself, so you need no `wait_for_you` for it.
 `kind: "design"` is only for designs recorded with `show_design`: anything else you show for a yes

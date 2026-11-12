@@ -33,7 +33,7 @@ import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { onDriveEnded, recoverCutOffDrives } from './services/git'
 import { handBackDriveWorkers, handBackOrphanedDriveWorkers } from './workers/drive'
 import { startModelDiscovery } from './services/model-discovery'
-import { moveOwners, sweepHolders } from './services/holding'
+import { moveHumanFinishes, moveOwners, sweepHolders } from './services/holding'
 import { startNeedPush } from './services/need-push'
 import { startNeedWatch } from './services/need-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
@@ -256,6 +256,8 @@ export async function startServer(): Promise<void> {
   sweepHolders(ctx)
   // …then move them to one owner each, once (every-feature-has-one-owner decision 24).
   moveOwners(ctx)
+  // …then the human's features finish with them, once (one-place-to-answer decision 10).
+  moveHumanFinishes(ctx)
 
   // Tell a feature's holder when something ends on it
   // (`whole-cuts-plan-themselves` decision 11).

@@ -20,6 +20,7 @@ import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { readThreadEvents } from '../src/threads/log'
 import type { AgentHost } from '../src/threads/types'
 import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import { promptsOf } from './support/thread-launch'
@@ -116,13 +117,15 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
     }
   })
 
-  it('send_to_feature with relaysHuman marks the message as the human’s relayed answer', async () => {
+  it('send_to_feature never carries the human’s words: a stray relaysHuman still sends the orchestrator’s note (one-place-to-answer decision 11)', async () => {
     const f = await feature('relayed')
-    await toolSendToFeature(ctx, orchestrator(), { slug: f.slug, message: 'Yes, go ahead.', relaysHuman: true })
+    const me = orchestrator()
+    await toolSendToFeature(ctx, me, { slug: f.slug, message: 'Yes, go ahead.', relaysHuman: true } as { slug: string; message: string })
     const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
-    expect((queued?.data as { text: string }).text).toBe(
-      "The human's own answer, relayed by the project's orchestrator:\n\nYes, go ahead.",
-    )
+    expect((queued?.data as { text: string }).text).toBe("From the project's orchestrator, not the human:\n\nYes, go ahead.")
+    expect((queued?.data as { text: string }).text).not.toContain('relayed')
+    const acted = readThreadEvents(me.id).filter((e) => e.type === 'feature_acted')
+    expect(acted.map((e) => (e.type === 'feature_acted' ? e.action : null))).toEqual(['messaged'])
   })
 
   it('send_to_feature is not a typed human message, a typed prompt is', async () => {

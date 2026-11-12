@@ -15,6 +15,7 @@ import {
   shelfFeatureWords,
   type Epic,
 } from '../src/lib/feature-ui/epics'
+import { ownerReading } from '../src/lib/feature-owner'
 import { listItem, need } from './fixtures'
 
 /**
@@ -299,11 +300,15 @@ describe('the list (SidebarEpics, static markup)', () => {
 })
 
 describe('the header joins the epic and its owner (decision 15, changed by the orchestrator)', () => {
-  const chat = (id: string, holder = true) => ({ owner: { kind: 'chat' as const }, chatId: id, ...(holder ? { holderId: id } : {}) })
+  const chat = (id: string) => ({ owner: { kind: 'chat' as const }, chatId: id, holderId: id })
 
-  it('is one crumb when the epic chat owns it, held or still being planned', () => {
+  it('is one crumb when the epic chat owns it', () => {
     expect(epicOwnerJoin('a', chat('a'))).toBe('one')
-    expect(epicOwnerJoin('a', chat('a', false))).toBe('one')
+  })
+
+  it('is two for a feature of the human\'s whose finish is still the epic\'s: no "yours to plan" crumb (one-place-to-answer decision 8)', () => {
+    const reading = ownerReading({ status: 'active', chatId: 'a', finish: 'show' }, [{ id: 'a', title: 'Payments' }])
+    expect(epicOwnerJoin('a', reading)).toBe('two')
   })
 
   it('is two when the human or another chat owns it', () => {

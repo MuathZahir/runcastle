@@ -170,7 +170,6 @@ describe('the feature header: epic and owner', () => {
       createElement(OwnerControl, {
         owner: r.owner,
         ...(r.chatName ? { chatName: r.chatName } : {}),
-        planning: r.planning,
         feature: f.title,
         inEpic,
         onChoose: () => {},
@@ -193,10 +192,11 @@ describe('the feature header: epic and owner', () => {
     expect(merge).toBe('Payment System · merges it')
   })
 
-  it('keeps it one crumb while the human plans a feature the epic takes after the plan', () => {
+  it('keeps both for a feature of the human’s whose finish is still the epic’s: it reads "Yours" (one-place-to-answer decision 8)', () => {
     const { crumbs, text } = header(cut('f', 'a', { heldBy: undefined, finish: 'show' }))
-    expect(crumbs).toHaveLength(1)
-    expect(text).toBe('Payment System · yours to plan first')
+    expect(crumbs).toHaveLength(2)
+    expect(text).not.toContain('yours to plan first')
+    expect(text).toContain('Yours')
   })
 
   it('keeps both when the human took it', () => {

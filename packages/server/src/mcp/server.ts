@@ -99,8 +99,8 @@ import {
 } from '../services/designs'
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
-import { type ChatFinish, chatNameOf, giveToChat, holderName, holderOf, releasedFrom, requireHold } from '../services/holding'
-import { handBackToOrchestrator } from '../services/lead-handback'
+import { type ChatFinish, chatNameOf, giveToChat, holderName, holderOf, releasedFrom, releaseNeedsYou, requireHold } from '../services/holding'
+import { handBackToOrchestrator, sayHandOver, wakeEpicNeedsYou } from '../services/lead-handback'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   closeAsAddressed,
@@ -839,36 +839,33 @@ export function toolDeclareReady(
 /**
  * A lead hands back to its owner chat, or on a human-owned feature to its chat
  * (agents-are-woken-only-when-it-matters decisions 20–22; every-feature-has-one-owner
- * decisions 14, 20). `planAgreed` at the human's plan yes passes a feature its
- * chat finishes to that chat first.
+ * decisions 14, 20). It never moves the owner (one-place-to-answer decision 8).
  */
 export async function toolHandBack(
   ctx: AppCtx,
   session: SessionRow,
-  input: { summary: string; planAgreed?: boolean },
-): Promise<{ deliveredTo: string; state: string; passed?: true }> {
-  return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary, {
-    planAgreed: input.planAgreed === true,
-  })
+  input: { summary: string },
+): Promise<{ deliveredTo: string; state: string }> {
+  return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary)
 }
 
 /**
- * The lead waits on the human. Refused under a chat owner (every-feature-has-one-owner
- * decision 18): that lead talks to its chat with `hand_back`.
+ * The lead waits on the human. Under a chat owner (one-place-to-answer decision
+ * 9) the feature becomes the human's first: its chat says so, and the chat that
+ * owned it is woken once to tell the human where to answer.
  */
-export function toolWaitForYou(
+export async function toolWaitForYou(
   ctx: AppCtx,
   session: SessionRow,
   input: { why: string; kind?: WaitingKind },
-): { ok: true; waitingReason: string | null; waitingKind: WaitingKind | null } {
+): Promise<{ ok: true; waitingReason: string | null; waitingKind: WaitingKind | null; nowYours?: true }> {
   const featureId = requireLeadFeatureId(session)
-  const feature = getFeatureRow(ctx, featureId)
-  if (feature.heldBy && feature.status !== 'shipped') {
-    throw new GateError(`"${chatNameOf(ctx, feature.heldBy)}" owns this feature: bring it to them with hand_back.`)
-  }
+  const released = releaseNeedsYou(ctx, featureId)
+  if (released) sayHandOver(ctx, session.id, released)
   setWaiting(ctx, featureId, input.why, input.kind)
+  if (released) await wakeEpicNeedsYou(ctx, getFeatureRow(ctx, featureId), released)
   const { waitingReason, waitingKind } = getFeatureRow(ctx, featureId)
-  return { ok: true, waitingReason, waitingKind }
+  return { ok: true, waitingReason, waitingKind, ...(released ? { nowYours: true as const } : {}) }
 }
 
 /** The feature a DESIGN tool acts on: design mode belongs to the feature's own chat. */
@@ -1758,21 +1755,28 @@ const PLANNING_LINE: Record<PlanningChoice, string> = {
 }
 
 /**
- * The two cut-time choices (`every-feature-has-one-owner` decisions 4, 7, 13),
- * read in this one place so they can later fold into one three-step question.
- * Planning is not stored on the feature: it travels as today, in the brief
- * (a "Planning mode:" line, added when the brief has none) and in the
- * self-planning launch the chat starts later. The chat owns the feature from
- * the start only when it plans itself and the chat takes it on; a grilled
- * feature starts as the human's, with its finish recorded for the plan's yes.
- * Omitted, a feature is planned with the human and finished by them.
+ * The cut-time answer (one-place-to-answer decision 14): "Plan it with me"
+ * (`with-me`, `you`), "Plan automatically" (`self`, `you`) or "Run it for me"
+ * (`self`, `show`|`merge`). The chat owns the feature exactly when its finish
+ * is the chat's; a grilled feature handed to the chat is refused (it is the
+ * human's, given afterwards with its owner button or "run it for me").
+ * Planning is not stored on the feature: it travels in the brief (a "Planning
+ * mode:" line, added when the brief has none) and in the self-planning launch
+ * the chat starts later. Omitted, a feature is the human's, planned with them.
  */
 function cutChoice(input: CreateFeatureInput): { finish: FeatureFinish; chatOwns: ChatFinish | null; brief?: string } {
-  const planning = input.planning ?? 'with-me'
   const finish = input.finish ?? 'you'
-  const chatOwns = planning === 'self' && finish !== 'you' ? finish : null
+  if (input.planning === 'with-me' && finish !== 'you') {
+    throw new GateError(
+      'a feature planned with the human ("Plan it with me") is theirs, so this chat cannot own it from the cut: ' +
+        'create it with finish "you". They give it to this chat afterwards with its owner button, or by telling you "run it for me".',
+    )
+  }
+  const chatOwns = finish !== 'you' ? finish : null
+  // "Run it for me" plans automatically, whether or not the call said so.
+  const planning = input.planning ?? (chatOwns ? 'self' : undefined)
   const brief =
-    input.planning === undefined || /^Planning mode:/im.test(input.brief ?? '')
+    planning === undefined || /^Planning mode:/im.test(input.brief ?? '')
       ? input.brief
       : [input.brief?.trimEnd(), PLANNING_LINE[planning]].filter(Boolean).join('\n\n') + '\n'
   return { finish, chatOwns, ...(brief !== undefined ? { brief } : {}) }
@@ -2922,7 +2926,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Create a feature',
         description:
           'Create a feature from a title, one-liner and brief, started or parked (`draft: true`). ' +
-          'Opens no terminal; feature sessions may only park drafts.',
+          'Opens no terminal; feature sessions may only park drafts. Your chat owns it exactly when `finish` is `show` or `merge`.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
           oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
@@ -2937,11 +2941,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           planning: z
             .enum(['with-me', 'self'])
             .optional()
-            .describe('The human’s choice: `with-me` (they plan it in its chat) or `self` (Plan automatically: plans alone, then shows them).'),
+            .describe(
+              '`with-me` ("Plan it with me"): grilled in its chat. `self`: plans alone ("Plan automatically", "Run it for me").',
+            ),
           finish: z
             .enum(['you', 'show', 'merge'])
             .optional()
-            .describe('The human’s choice: `you` finish it, `show` (build, show them, they merge) or `merge` (build and merge).'),
+            .describe(
+              '`you`: the human’s. "Run it for me" (this chat owns it): `show` (show them first) or `merge`. Never with `with-me`.',
+            ),
         },
       },
       async (args, extra) => {
@@ -3403,8 +3411,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Wait for the human',
         description:
           'Say that nothing moves until the human acts, and why; use it for a yes, a decision, or ' +
-          'when stuck. Only the human’s next message to you clears it (or your orchestrator’s, when one holds ' +
-          'the feature); starting a worker or a review does not.',
+          'when stuck. When an orchestrator chat owns the feature, use it only for what the human alone decides: ' +
+          'the feature becomes theirs and they answer in your chat. Only the human’s next message to you (or an ' +
+          'orchestrator’s) clears it; ' +
+          'starting a worker or a review does not.',
         inputSchema: {
           why: z.string().min(1).describe('A few words on what you wait for.'),
           kind: WaitingKind.optional().describe('`plan`, `design` (a recorded design), `stuck`, or `answer` (default).'),
@@ -3413,7 +3423,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(toolWaitForYou(rs.ctx, rs.session, args))
+        return ok(await toolWaitForYou(rs.ctx, rs.session, args))
       },
     )
   }
@@ -3460,18 +3470,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Hand back to the orchestrator',
         description:
-          'Bring something to the orchestrator chat that owns this feature (everything: plan yes, designs, ready, ' +
-          'conflicts, questions), or, when the human owns it, ask its chat about what reaches beyond the feature. ' +
+          'Bring the orchestrator chat that owns this feature what it answers itself: the plan’s yes under automatic ' +
+          'planning, ready, merge conflicts. What only the human decides goes to wait_for_you, which makes the feature theirs. ' +
+          'When the human owns it, ask its chat what reaches beyond the feature. ' +
           'Wakes it once with your summary and a line of the feature’s state. Refused when the feature has no chat.',
         inputSchema: {
           summary: z
             .string()
             .min(1)
             .describe("Done, left, what you need, and what the human told you: the orchestrator never reads your chat."),
-          planAgreed: z
-            .boolean()
-            .optional()
-            .describe('True at the human’s plan yes on a feature its chat finishes: the feature passes to that chat.'),
         },
       },
       async (args, extra) => {

@@ -2,14 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { WorkerStatus } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
-import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive, setSessionTitle } from '../src/launcher/sessions'
 import { recordFeatureAction, toolTakeFeature } from '../src/mcp/orchestrator-tools'
-import { toolHandBack } from '../src/mcp/server'
+import { takenByHumanNews, toolHandBack, toolWaitForYou } from '../src/mcp/server'
+import { readThreadEvents } from '../src/threads/log'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
 import { OWNER_CHANGED } from '../src/services/holding'
 import { handbackStateLine, LEAD_HANDED_BACK } from '../src/services/lead-handback'
-import { HANDBACK_CLEARED, markHumanMessage } from '../src/services/lead-status'
+import { HANDBACK_CLEARED, markHumanMessage, setHandback } from '../src/services/lead-status'
 import { getFeatureRow } from '../src/services/repo'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import type { AgentHost } from '../src/threads/types'
@@ -99,7 +100,7 @@ describe('hand_back from a lead', () => {
 
     const result = await toolHandBack(ctx, leadOf(f.id), { summary: 'Does this touch the sidebar feature?' })
 
-    expect(result.passed).toBeUndefined()
+    expect(result).not.toHaveProperty('passed')
     const [prompt] = promptsOf(chat)
     expect(prompt.text).toContain('The human owns this feature')
     expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, chatId: chat, finish: 'show' })
@@ -107,30 +108,86 @@ describe('hand_back from a lead', () => {
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === OWNER_CHANGED)).toBe(false)
   })
 
-  it('at the plan yes on a feature its chat finishes, passes the feature to the chat first, then delivers', async () => {
+  it('never moves the owner, a plan yes included: there is no pass at the plan yes (one-place-to-answer decision 8)', async () => {
     const chat = orchestrator()
-    const f = seedFeature(ctx, projectId, { slug: 'grilled', chatId: chat, finish: 'merge' })
+    const f = seedFeature(ctx, projectId, { slug: 'grilled', chatId: chat, finish: 'you' })
 
-    const result = await toolHandBack(ctx, leadOf(f.id), { summary: 'Plan agreed.', planAgreed: true })
+    const result = await toolHandBack(ctx, leadOf(f.id), { summary: 'Plan agreed.', planAgreed: true } as { summary: string })
 
-    expect(result.passed).toBe(true)
-    expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: chat, finish: 'merge', handback: { summary: 'Plan agreed.' } })
-    const types = listAfter(ctx, f.id, 0).map((e) => e.type)
-    expect(types.indexOf(OWNER_CHANGED)).toBeLessThan(types.indexOf(LEAD_HANDED_BACK))
-    expect(promptsOf(chat)[0]?.text).toContain('you own it now')
-  })
-
-  it('a plan yes on a feature the human finishes changes no owner', async () => {
-    const chat = orchestrator()
-    const f = seedFeature(ctx, projectId, { slug: 'mine', chatId: chat, finish: 'you' })
-    await toolHandBack(ctx, leadOf(f.id), { summary: 'Plan agreed.', planAgreed: true })
-    expect(getFeatureRow(ctx, f.id).heldBy).toBeUndefined()
+    expect(result).not.toHaveProperty('passed')
+    expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, finish: 'you' })
+    expect(listAfter(ctx, f.id, 0).some((e) => e.type === OWNER_CHANGED)).toBe(false)
+    expect(promptsOf(chat)[0]?.text).not.toContain('you own it now')
   })
 
   it('is no tool for a side chat or a worker', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'x', heldBy: orchestrator() })
     const side = createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' })
     await expect(toolHandBack(ctx, side, { summary: 'done' })).rejects.toThrow(GateError)
+  })
+})
+
+/** A lead's wait on the human under an epic owner makes the feature the human's (one-place-to-answer decisions 9, 13). */
+describe('wait_for_you under an epic owner', () => {
+  const HAND_OVER = 'This is yours now: it needed you. Payments carries on with the rest of the batch.'
+
+  function epic(): string {
+    const id = orchestrator()
+    setSessionTitle(ctx, id, 'Payments')
+    return id
+  }
+
+  it('releases the feature to the human (finish you, one needs-you event, handback cleared), records the wait, and wakes the epic once with the line', async () => {
+    const owner = epic()
+    const f = seedFeature(ctx, projectId, { slug: 'fx-rates', title: 'FX rates', heldBy: owner, chatId: owner, finish: 'merge' })
+    setHandback(ctx, f.id, 'Plan is ready.')
+    const lead = leadOf(f.id)
+
+    const result = await toolWaitForYou(ctx, lead, { why: 'which currency for mixed teams?' })
+
+    expect(result).toMatchObject({ ok: true, waitingReason: 'which currency for mixed teams?', nowYours: true })
+    expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, chatId: owner, finish: 'you', handback: null })
+    const changes = listAfter(ctx, f.id, 0).filter((e) => e.type === OWNER_CHANGED)
+    expect(changes.map((e) => e.data)).toEqual([
+      expect.objectContaining({ owner: null, chatId: owner, finish: 'you', cause: 'needs-you', from: owner }),
+    ])
+    expect(listAfter(ctx, f.id, 0).filter((e) => e.type === HANDBACK_CLEARED)).toHaveLength(1)
+
+    const prompts = promptsOf(owner)
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toMatchObject({ source: 'runcastle' })
+    expect(prompts[0]?.text).toContain(`Tell them in one line: "FX rates needs you, so it's yours now. Open its chat to answer."`)
+    expect(prompts[0]?.text).toContain('carry on with the rest of the batch')
+
+    // The lead's chat says why it is suddenly the human's, as runcastle's line.
+    expect(readThreadEvents(lead.id).filter((e) => e.type === 'notice').map((e) => (e.type === 'notice' ? e.text : ''))).toEqual([HAND_OVER])
+
+    // A second wait on the human's own feature changes nothing more and wakes no one.
+    await toolWaitForYou(ctx, lead, { why: 'and the rounding?' })
+    expect(listAfter(ctx, f.id, 0).filter((e) => e.type === OWNER_CHANGED)).toHaveLength(1)
+    expect(promptsOf(owner)).toHaveLength(1)
+    expect(readThreadEvents(lead.id).filter((e) => e.type === 'notice')).toHaveLength(1)
+  })
+
+  it('on the human’s own feature only records the wait: no owner change, no line, no wake', async () => {
+    const chat = epic()
+    const f = seedFeature(ctx, projectId, { slug: 'mine', chatId: chat })
+    const lead = leadOf(f.id)
+
+    const result = await toolWaitForYou(ctx, lead, { why: 'pick a theme' })
+
+    expect(result).not.toHaveProperty('nowYours')
+    expect(result.waitingReason).toBe('pick a theme')
+    expect(listAfter(ctx, f.id, 0).some((e) => e.type === OWNER_CHANGED)).toBe(false)
+    expect(promptsOf(chat)).toHaveLength(0)
+    expect(readThreadEvents(lead.id).some((e) => e.type === 'notice')).toBe(false)
+  })
+
+  it('the epic is not told again on its next turn that the human took it', async () => {
+    const owner = epic()
+    const f = seedFeature(ctx, projectId, { slug: 'fx', heldBy: owner, chatId: owner, finish: 'show' })
+    await toolWaitForYou(ctx, leadOf(f.id), { why: 'which currency?' })
+    expect(takenByHumanNews(ctx, owner)).toEqual([])
   })
 })
 

@@ -170,7 +170,7 @@ export function RuncastleDisplay({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {display.orchestrator.map((message, i) => (
-        <OrchestratorMessage key={i} text={message.text} relayed={message.relayed} />
+        <OrchestratorMessage key={i} text={message.text} />
       ))}
     </div>
   )

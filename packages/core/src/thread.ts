@@ -248,21 +248,25 @@ export type TurnEnd = z.infer<typeof TurnEnd>
 export const RESTART_INTERRUPTED = 'Interrupted — runcastle restarted'
 
 /** What an orchestrator tool did to a feature, as the features card says it. */
-export const FeatureAction = z.enum([
+const FeatureActionName = z.enum([
   'created',
   'parked',
   'started',
   'planning',
   'planningStopped',
   'messaged',
-  'relayed',
   'brief',
   'taken',
   'merged',
   'driveStarted',
   'driveStopped',
 ])
-export type FeatureAction = z.infer<typeof FeatureAction>
+/**
+ * An older log's `relayed` (the epic passed on the human's answer, retired by
+ * one-place-to-answer decision 11) reads as the message it was.
+ */
+export const FeatureAction = z.preprocess((v) => (v === 'relayed' ? 'messaged' : v), FeatureActionName)
+export type FeatureAction = z.infer<typeof FeatureActionName>
 
 /** What the human reads of a runcastle prompt, beside the text the agent gets. */
 export const PromptDisplay = z.union([
@@ -276,7 +280,7 @@ export const PromptDisplay = z.union([
     ),
   }),
   z.object({ summary: z.string() }),
-  z.object({ orchestrator: z.array(z.object({ text: z.string(), relayed: z.boolean() })) }),
+  z.object({ orchestrator: z.array(z.object({ text: z.string() })) }),
   /** A worker handed its work back to the lead (interactive-workers decisions 4, 21): the handback card. */
   z.object({
     handback: z.object({

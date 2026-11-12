@@ -102,7 +102,7 @@ export const SEND_ROWS: FeatureActionRow[] = [
     featureId: COMPOSER.id,
     feature: COMPOSER,
     title: COMPOSER.title,
-    actions: ['relayed'],
+    actions: ['messaged'],
     quote: 'The last one I picked anywhere.',
   },
   { featureId: CHANGELOG.id, feature: CHANGELOG, title: CHANGELOG.title, actions: ['merged'], into: 'main' },

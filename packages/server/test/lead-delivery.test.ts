@@ -134,11 +134,11 @@ describe('deliverToLead', () => {
     await deliverToLead(ctx, f, {
       text: "From the project's orchestrator, not the human:\n\nFix the login",
       source: 'human',
-      orchestrator: { text: 'Fix the login', relayed: false },
+      orchestrator: { text: 'Fix the login' },
     })
 
     const [logged] = promptsOf(id)
-    expect(logged).toMatchObject({ text: expect.stringContaining('not the human:'), display: { orchestrator: [{ text: 'Fix the login', relayed: false }] } })
+    expect(logged).toMatchObject({ text: expect.stringContaining('not the human:'), display: { orchestrator: [{ text: 'Fix the login' }] } })
     await logUntil(id, turnsEnded(1))
     expect(sentToAgent()[0]).toContain("From the project's orchestrator, not the human:")
   })
