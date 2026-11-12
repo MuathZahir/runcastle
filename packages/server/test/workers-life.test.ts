@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FEATURE_NEEDS_YOU, type Feature, foldThread } from '@runcastle/core'
+import { BACKGROUND_WINDOW_MS, FEATURE_NEEDS_YOU, type Feature, foldThread } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markAwaitingInput, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { toolDeclareReady, toolDropWorker, toolLandWorker, toolMessageWorker, toolStartWorker } from '../src/mcp/server'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -271,6 +271,55 @@ describe('a worker that needs the human', () => {
     await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'approval')
     expect(needOf(ctx, feature)).toMatchObject({ kind: 'permission', threadId: id })
     await host.stop(id, 'archived')
+  })
+})
+
+describe('a worker whose turn ends with background work still running', () => {
+  const BACKGROUND = { reason: 'end_turn', background: true } as const
+
+  it('stays working, and hands back from the turn it starts by itself when that work finishes', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const id = await startWorker('Review')
+    await workerTurnEnded(ctx, { id }, BACKGROUND)
+    expect(status(id)).toBe('working')
+
+    engine.handbacks.set(id, { summary: 'Checks green, two findings', at: Date.now() })
+    await workerTurnEnded(ctx, { id }, { reason: 'end_turn' })
+    expect(status(id)).toBe('handed-back')
+  })
+
+  it('comes to need the human once the background window passes with the agent still idle', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const id = await startWorker('Review')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await workerTurnEnded(ctx, { id }, BACKGROUND)
+      markAwaitingInput(ctx, id)
+      vi.advanceTimersByTime(BACKGROUND_WINDOW_MS - 1)
+      expect(status(id)).toBe('working')
+      vi.advanceTimersByTime(1)
+      expect(status(id)).toBe('needs-you')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('starts the window again when a later turn also ends on background work', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const id = await startWorker('Review')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await workerTurnEnded(ctx, { id }, BACKGROUND)
+      markAwaitingInput(ctx, id)
+      vi.advanceTimersByTime(BACKGROUND_WINDOW_MS - 1)
+      await workerTurnEnded(ctx, { id }, BACKGROUND)
+      vi.advanceTimersByTime(1)
+      expect(status(id)).toBe('working')
+      vi.advanceTimersByTime(BACKGROUND_WINDOW_MS)
+      expect(status(id)).toBe('needs-you')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

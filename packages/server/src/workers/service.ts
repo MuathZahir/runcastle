@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { and, count, eq, inArray, isNull, ne } from 'drizzle-orm'
 import {
+  BACKGROUND_WINDOW_MS,
   type Ask,
   type Feature,
   type ModelEntry,
@@ -782,6 +783,31 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
 
 // --- turns ----------------------------------------------------------------------
 
+/** A worker whose turn ended with background work still running, by id: when it stops waiting on that work. */
+const backgroundWaits = new Map<string, ReturnType<typeof setTimeout>>()
+
+function forgetBackgroundWait(id: string): void {
+  const timer = backgroundWaits.get(id)
+  if (timer) clearTimeout(timer)
+  backgroundWaits.delete(id)
+}
+
+/**
+ * A worker that ended its turn on background work (a test run) stays working:
+ * the agent starts a turn by itself when the work finishes, and that turn's end
+ * hands back or asks for the human. Past the window background work counts for
+ * (threads-open-fast decision 2) with no turn running, it needs the human.
+ */
+function waitOutBackground(ctx: AppCtx, id: string): void {
+  const timer = setTimeout(() => {
+    backgroundWaits.delete(id)
+    const w = getWorker(ctx, id)
+    if (w?.status === 'working' && getSessionRow(ctx, id)?.awaitingInput) setStatus(ctx, w, 'needs-you')
+  }, BACKGROUND_WINDOW_MS)
+  timer.unref?.()
+  backgroundWaits.set(id, timer)
+}
+
 /**
  * A worker's turn ended. A new handback records the worker branch's commits and
  * files, marks it handed back and wakes the lead once (decision 4). A turn that
@@ -790,6 +816,7 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
  * the human (decision 5).
  */
 export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
+  forgetBackgroundWait(row.id)
   let w = getWorker(ctx, row.id)
   if (!w) return
   // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
@@ -813,7 +840,10 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   if (!note || !sb) {
     // Read again: the awaits above let a drive's end hand this worker back, which `w` would undo.
     const now = getWorker(ctx, w.id)
-    if (now?.status === 'working') setStatus(ctx, now, 'needs-you')
+    if (now?.status !== 'working') return
+    // Its background work still runs: the turn the agent starts when it finishes reports instead.
+    if (end?.reason === 'end_turn' && end.background) return waitOutBackground(ctx, w.id)
+    setStatus(ctx, now, 'needs-you')
     return
   }
   await engine.fetchBranch(sb)

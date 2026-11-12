@@ -62,3 +62,7 @@ human's own, copied from the brief; the human confirmed 5–15 with their yes to
 ## 15. Merges in quick succession each get their turn
 **Decision:** Each merge that passes the wake test is its own wake. Merges that land within the same moment (runcastle's short gathering window for news) join one turn; merges a minute apart are separate turns, the later one waiting behind the turn already running.
 **Why:** Decision 4 accepted one turn per merge, and the later turn sees the earlier merge already on main, so its check stays correct. Joining merges that queue behind a busy turn would need new queueing in the agent host for a case that happens rarely.
+
+## 16. A worker's handback is read from a turn its agent starts by itself
+**Decision:** When a worker hands back in a turn its agent started by itself (a background command or sub-agent finished), runcastle reads that handback, as it does at the end of any other turn. A worker whose turn ends while background work still runs stays "working" rather than "needs you"; it comes to need the human only if it is still idle once the background window (10 minutes) passes.
+**Why:** The human said "Fix it" (2026-11-12) after this feature's Review worker said it had handed back while the feature showed it as "needs you": its handback came in a self-started turn, which runcastle never checked. Fixed here because the review showed it, though it is not about merges.

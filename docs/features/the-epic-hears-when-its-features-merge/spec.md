@@ -93,6 +93,13 @@ epic does not wake.
 - Joining merges that queue behind a busy epic turn (decision 15).
 - A new look for the news row: it reuses the existing one.
 
+## Also fixed here
+
+- A worker's handback in a turn its agent started by itself is read, and a worker whose
+  turn ends on background work stays working until that work's own turn or the
+  background window passes (decision 16). Found by this feature's review; tests in the
+  agent-host and worker-life test files.
+
 ## Open questions
 
 - Settled in the build: a held prompt keeps its news row in the chat log and the

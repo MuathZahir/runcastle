@@ -185,8 +185,12 @@ export interface ThreadLifecycle {
   briefing?(row: SessionRow): string | undefined
   /** The process runs; `source` is who sent the prompt that started it. */
   started?(row: SessionRow, source: PromptOptions['source']): void
-  /** A turn ended, how it ended (`end`); `source` is who sent the prompt it answered. Never a compaction's turn, which moves nothing. */
-  turnEnded?(row: SessionRow, source: PromptOptions['source'], end: TurnEnding): void
+  /**
+   * A turn ended, how it ended (`end`); `source` is who sent the prompt it answered,
+   * or `agent` for a turn the agent started by itself (a background command finished).
+   * Never a compaction's turn, which moves nothing.
+   */
+  turnEnded?(row: SessionRow, source: PromptOptions['source'] | 'agent', end: TurnEnding): void
   /** The human sent a message to the thread. */
   humanPrompted?(row: SessionRow): void
   /** The process stopped, with who started it. */
@@ -201,6 +205,8 @@ export interface ThreadLifecycle {
 export interface TurnEnding {
   reason: TurnEnd
   error?: string
+  /** Background commands or subagents still run as it ends: the agent may start a turn by itself when they finish. */
+  background?: boolean
 }
 
 /** How long a watched turn may show no progress ({@link AgentHostDeps.stallBounds}). */
@@ -562,6 +568,11 @@ interface Thread {
   lastActiveAt?: number
   /** The idle stop is waiting for its compaction: the process stops when that turn ends, if nothing else came. */
   stopAfterCompaction?: boolean
+}
+
+/** `background: true` when the thread still runs background commands or subagents. */
+function backgroundOf(t: Thread): Pick<TurnEnding, 'background'> {
+  return t.tasks.length > 0 || t.agents.length > 0 ? { background: true } : {}
 }
 
 /** Read through a function so a check after an `await` is not narrowed away. */
@@ -1596,7 +1607,10 @@ class Host implements AgentHost {
     if (item.compaction) return this.compacted(t, end.reason)
     // Read before the lifecycle ends the run and makes the thread the lead's ordinary chat.
     const planned = item.source === 'runcastle' && row?.purpose === 'self-plan'
-    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, item.source, { reason: end.reason, ...(end.error !== undefined ? { error: end.error } : {}) }))
+    if (row) {
+      const ending: TurnEnding = { reason: end.reason, ...(end.error !== undefined ? { error: end.error } : {}), ...backgroundOf(t) }
+      this.hook(() => this.lifecycle.turnEnded?.(row, item.source, ending))
+    }
     // A self-planning run is over: the lead is compacted while its cache is warm (decision 6a).
     if (planned && this.compactNow(t, 'planned')) return
     this.pump(t)
@@ -1759,6 +1773,9 @@ class Host implements AgentHost {
     markAwaitingInput(this.ctx, t.id)
     t.turnEndedAt = Date.now()
     this.watchWindow(t)
+    // Its end is heard like any other: a worker may have handed back in it.
+    const row = getSessionRow(this.ctx, t.id)
+    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, 'agent', { reason, ...backgroundOf(t) }))
     this.pump(t)
   }
 
