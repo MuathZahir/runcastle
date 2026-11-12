@@ -164,7 +164,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div class="step"><h3>Fix</h3><p>The lead (or a worker it sent back) changes the code.</p></div>
     <div class="step cheap"><h3>Check <a class="pin" data-d="1">1</a><a class="pin" data-d="10">10</a></h3><p>A Haiku helper drives the app and screenshots each step. Tests, typecheck and builds count too <a class="pin" data-d="6">6</a>.</p></div>
     <div class="step warn"><h3>2nd failure <a class="pin" data-d="2">2</a><a class="pin" data-d="18">18</a></h3><p>Step back: is it this bug or the approach? Say so in one line.</p></div>
-    <div class="step stop"><h3>3rd failure <a class="pin" data-d="3">3</a><a class="pin" data-d="13">13</a></h3><p>Stop all work and tell you. Your new direction resets the count <a class="pin" data-d="20">20</a>.</p></div>
+    <div class="step stop"><h3>3rd failure <a class="pin" data-d="3">3</a><a class="pin" data-d="13">13</a></h3><p>The lead stops and tells you; workers on unrelated parts finish. Your new direction resets the count <a class="pin" data-d="20">20</a>.</p></div>
   </div></div>
 
   <div class="sub"><h3>What you see in the chat</h3>
@@ -255,7 +255,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Every self-check drive goes to the helper, the first included', 'One rule is easier to follow, and the first drive costs as much context as the rest.', 'assumed'],
     ['The helper drives and reports; the lead judges and fixes', 'Judging needs the strong model; one place where fixes happen.', 'assumed'],
     ['The helper drives whatever this project is', 'Runcastle serves projects of every shape, with or without scenarios.', 'assumed'],
-    ['A stop ends the turn at once', 'A problem that survives three fixes may mean the approach is wrong everywhere.', 'assumed'],
+    ['A stop halts the lead\'s own work, not workers on other parts', 'The approach worry applies only to dependent parts; halting independent workers wastes time.', 'assumed'],
     ['A change of approach never starts a new worker without a yes', 'Workers cost money; an owner can change the approach without changing the team.', 'assumed'],
     ['Nearby problems: the lead offers, workers report', 'Parking without asking would fill the backlog with unwanted things.', 'assumed'],
     ['The rules live in the feature skill; the helper recipe in a reference file', 'Rules always in view; the recipe only when driving; the skill does not grow.', 'assumed'],
@@ -271,7 +271,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     [7, 'Keep the old, stricter guard for workers sent back; apply the new rule to the lead\'s own fixes only.', 'It gives a failing worker one more try than today. The challenger disagreed: you asked about the agent\'s own loops, not about loosening workers.', 'challenged'],
     [8, 'Leave workers\' instructions alone and rely on the lead\'s count.', 'The brief says "no new machinery". This is one line of text, but it lives in server code.'],
     [10, 'The lead drives the first time itself; only repeats go to the helper.', 'Your words were "repeated drives". The challenger would follow them.', 'challenged'],
-    [13, 'Carry on with parts that do not depend on the stuck one, then stop.', 'Halting everything costs time you are already losing. The challenger preferred carrying on.', 'challenged'],
+    [13, 'Stop everything, workers included.', 'The orchestrator changed it: workers on independent parts now finish their assignment.', 'changed by the orchestrator'],
     [19, 'Every "how" change is the agent\'s call, as decision 4 reads.', 'It narrows what you agreed in decision 4, for cost, setup and data risks.']
   ]
   var list = $('#dlist')

@@ -65,12 +65,12 @@ Check first: 7, 8, 10, 13, 19
 **Why:** Runcastle is used on projects of every language and shape. Scenarios belong to the "Each feature's own scenarios" feature, so this guidance must work with or without one.
 **Assumed.** Alternative: web apps only.
 
-## 13. A stop ends the turn at once
-**Decision:** When the agent reaches the third failed round, it stops all work on the feature, not only the stuck part. It tells the human the problem, each try and what its check showed, what it thinks is wrong, and the direction it recommends, then waits with the "stuck" wait (or hands back to the orchestrator chat when one owns the feature).
-**Why:** A problem that survives three fixes often means the approach is wrong, which can affect the rest of the work. Telling the human at once is the whole point of the rule.
-**Assumed.** Alternative: carry on with the parts of the plan that do not depend on the stuck one, then stop and ask.
-**Challenged:** Halting everything wastes time the human is already losing; the worry that the approach is wrong applies only to the parts that depend on the stuck one.
-**For the human.** When you hear "stuck", nothing else on that feature moved after it.
+## 13. A stop halts the lead's own work, not workers on other parts
+**Decision:** When the lead reaches the third failed round, it stops its own work on the feature and starts nothing new. It tells the human the problem, each try and what its check showed, what it thinks is wrong, and the direction it recommends. Then it waits with the "stuck" wait, under an orchestrator chat too: the feature skill already sends anything only the human can decide, a stuck worker among them, to the human directly. Workers already at work on parts that do not depend on the stuck problem finish their current assignment and are not stopped. Their handbacks are landed or held as usual, but the lead sends none of them on new work until the human answers.
+**Why:** The worry that the approach is wrong applies only to the parts that depend on the stuck one; halting independent workers wastes the human's time. Telling the human at once is still the point of the rule.
+**Assumed.** Alternative: stop everything, workers included; or carry on with independent parts of the lead's own work too, then stop.
+**Changed by the orchestrator:** it first read "stop all work on the feature"; the orchestrator let independent workers finish, since halting them wastes the human's time.
+**For the human.** When you hear "stuck", the lead has stopped, but workers on unrelated parts may still finish what they were doing.
 
 ## 14. A change of approach never starts a new worker without a yes
 **Decision:** Changing how something is built is the agent's call (decision 4) when it does the new approach itself or sends an existing worker back with it. Starting a worker the agreed plan did not name still needs the human's yes, as it does today.

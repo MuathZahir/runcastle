@@ -6,7 +6,7 @@ A feature agent can change code, drive the app, find an issue, fix it and drive 
 
 ## Approach
 
-**What the human sees.** Feature agents check their own work through a cheap helper, so the lead's chat stays small. When a fix fails twice, the agent says in one line that it is stepping back and whether it keeps or changes its approach. When a problem survives three fixes, the agent stops all work on the feature and tells the human the problem, each try and what its check showed, what it thinks is wrong and the direction it recommends. The human gets a "stuck" wait, which runcastle already pings to their desktop and phone. The agent changes how things are built on its own, with one line saying what and why. It asks first when a change would alter what the human gets, or would cost them money, a setup step or their data. Problems it notices outside the feature come to the human as one-line offers to park them in the backlog, gathered into the next message rather than breaking off work.
+**What the human sees.** Feature agents check their own work through a cheap helper, so the lead's chat stays small. When a fix fails twice, the agent says in one line that it is stepping back and whether it keeps or changes its approach. When a problem survives three fixes, the lead stops its own work and starts nothing new (workers already at work on independent parts finish their assignment), and tells the human the problem, each try and what its check showed, what it thinks is wrong and the direction it recommends. The human gets a "stuck" wait, which runcastle already pings to their desktop and phone. The agent changes how things are built on its own, with one line saying what and why. It asks first when a change would alter what the human gets, or would cost them money, a setup step or their data. Problems it notices outside the feature come to the human as one-line offers to park them in the backlog, gathered into the next message rather than breaking off work.
 
 **Shape.** This is guidance text, plus one line in the worker briefing:
 
@@ -24,7 +24,7 @@ A feature agent can change code, drive the app, find an issue, fix it and drive 
   - how the helper drives each project shape: `agent-browser` against the lead's dev server for a web app, running commands for a CLI or API, and no helper when nothing can be driven (decision 12)
   - the helper's report: per step expected or not, anything odd, errors, screenshot paths. The helper never edits code (decision 11).
   - which screenshots the lead opens: failed or odd steps, plus the last one of a drive it calls a pass
-  - what a stop message holds, and that it uses `wait_for_you` with the `stuck` kind, or `hand_back` when an orchestrator chat owns the feature
+  - what a stop message holds, and that it uses `wait_for_you` with the `stuck` kind, even when an orchestrator chat owns the feature
 
   It reuses the existing "screenshot critique loop" and "Look at your own screens" patterns rather than restating them. Every self-check drive goes to the helper, the first included (decision 10).
 - **The worker briefing** (the text the server writes into every sandboxed worker's system prompt) gains one rule under "How you work" (decision 8). After the second failed try at the same problem, the worker steps back and rethinks the approach. After the third, it stops: a worker working on its own hands back with what it tried and what each try showed, and a worker working with the human tells the human. The review worker's briefing is untouched.
