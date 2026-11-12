@@ -14,6 +14,7 @@ import {
   RuncastleConfig as RuncastleConfigSchema,
   foldLegacyModelConfig,
   resolveDefaultBurnConcurrency,
+  stepDefaultModel,
 } from '@runcastle/core'
 import { hostLogicalCpus, migrateCollapsedModelSteps } from '@runcastle/core/config-load'
 import { configPath } from '@runcastle/core/paths'
@@ -349,10 +350,12 @@ function rawStepModels(fileRaw: Record<string, unknown>): Record<string, unknown
 
 /**
  * The per-step model fields (issue #48), one per `ModelStep`. Global-only: a
- * step present in the config file reports source `file`, otherwise the schema
- * default (only `smoke` has one) with source `default`.
+ * step present in the config file reports source `file`, otherwise its default
+ * with source `default`: the schema default for `smoke`, the runtime's review
+ * model for `review` (picked by the runtime of the global model in `config`),
+ * null for the rest.
  */
-function stepModelFields(fileRaw: Record<string, unknown>): SettingField[] {
+function stepModelFields(fileRaw: Record<string, unknown>, config: RuncastleConfig): SettingField[] {
   const set = rawStepModels(fileRaw)
   return MODEL_STEPS.map((step) => {
     const base = { key: `stepModels.${step}`, restartRequired: false, scope: 'global' as const }
@@ -360,7 +363,8 @@ function stepModelFields(fileRaw: Record<string, unknown>): SettingField[] {
     if (typeof v === 'string' && v !== '') {
       return { ...base, value: v, source: 'file' as const, editable: true }
     }
-    return { ...base, value: DEFAULTS.stepModels[step] ?? null, source: 'default' as const, editable: true }
+    const value = step === 'review' ? stepDefaultModel('review', config) : (DEFAULTS.stepModels[step] ?? null)
+    return { ...base, value, source: 'default' as const, editable: true }
   })
 }
 
@@ -461,7 +465,7 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
   // same in both scopes — append them to whichever view was requested.
   return {
     projectId,
-    fields: [...fields, ...stepModelFields(fileRaw)],
+    fields: [...fields, ...stepModelFields(fileRaw, ctx.config)],
     discovery: discoverySnapshot(ctx),
   }
 }

@@ -1094,6 +1094,20 @@ describe('stepRows', () => {
       effectiveRuntime: 'claude-code',
     })
     expect(row('chat')?.value).toBeNull()
+    // Unset Review runs on the review model of the default model's runtime.
+    expect(row('review')).toMatchObject({
+      value: null,
+      effectiveModel: 'claude-sonnet-5',
+      effectiveRuntime: 'claude-code',
+      description: 'The Review worker’s model',
+    })
+  })
+
+  it('shows a set Review model, and the Codex review default on a Codex default model', () => {
+    const set = stepRows(view([{ key: 'model', value: 'claude-opus-5' }, { key: 'stepModels.review', value: 'claude-haiku-4-5', source: 'file' }]))
+    expect(set.find((r) => r.step === 'review')).toMatchObject({ value: 'claude-haiku-4-5', effectiveModel: 'claude-haiku-4-5' })
+    const codex = stepRows(view([{ key: 'model', value: 'gpt-5.6-sol' }]))
+    expect(codex.find((r) => r.step === 'review')).toMatchObject({ value: null, effectiveModel: 'gpt-5.6-terra', effectiveRuntime: 'codex' })
   })
 })
 
