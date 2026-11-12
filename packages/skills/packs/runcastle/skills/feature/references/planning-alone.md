@@ -7,12 +7,30 @@ instead (`./grilling.md`); nothing here binds that conversation.
 You still look facts up, model the domain and park scope creep as
 `./grilling.md` says. What changes is who answers.
 
+**Never guess what, where or who.** Before you create, plan or design anything, you must be able to say three things from the human's own words: what they get, where it lives (wherever they or their users meet it: a page, a command, a notification, how an agent behaves) and who sees it. One is settled when the human said it, or when what they said allows only one reasonable reading; who sees it is also settled when the project has one kind of user. A brief settles them only in the human's words, never in another agent's reading. If any is open, ask before you go on, with your recommendation; when in doubt, ask. When the human says one is your call, say your pick back in one line. This holds whenever something new appears, mid-build too. Below these three (wording, layout details, edge cases) you may decide and be corrected.
+
 **Survey the code through a subagent.** This chat goes on to build the feature,
 so every file you read here is carried into every later call. Send the codebase
 survey to one Explore-type subagent, its model picked from the human's
 use-case notes (SKILL.md, "Build it the cheapest good way"), with your
 questions, and keep the short map it returns. Read a
 file yourself only to settle one fact the map left open.
+
+**The three come first.** Once you have read the brief and the survey's map,
+and before your first question round, check what, where and who against the
+brief: only the request it quotes and its `## Decided with the human` section
+count, never its other notes. **If any is open, stop there.** Write no
+decisions, spec, designs or plan. Your closing message says planning stopped
+because what the human gets, where it lives or who sees it is open, and asks
+each open one in full, numbered, with your recommendation and the real options
+the survey found ("the existing Activity page, or a new tab?"). Then call
+`mcp__runcastle__wait_for_you({ why: "what, where or who is open", kind:
+"answer" })`, or, when a chat owns the feature (SKILL.md, "Talk to your
+owner"), `hand_back({ summary })` with the same questions, and end the turn.
+**When the answers arrive**, record them in `decisions.md` as the human's
+(decided with them, no `**Assumed.**`) and finish the plan as this file says,
+from the question rounds on, ending on the request for the yes. Do not turn it
+into a live grill unless the human asks for one.
 
 **This run plans; it does not build.** Whatever the plan says,
 never call `start_worker` or `start_review` in this run: nothing starts
@@ -25,7 +43,8 @@ data. Write no other code.
 
 - **One turn.** Do the whole plan in this one turn. Never end the turn to ask a
   question or to report progress: nobody will reply, and ending the turn ends
-  the run.
+  the run. The one question that ends it early is an open what, where or who
+  (**The three come first**, above).
 - **Frontier rounds.** Work in question rounds. A question round is every open
   question that does not depend on an unanswered one. Write each as you would
   put it to the human, with your recommended answer and the main alternative,
@@ -80,7 +99,8 @@ data. Write no other code.
 Design when the feature **adds a screen or changes a screen's layout**. A small
 visual change (a colour, a label, one control) is described in the plan
 instead: it would not repay the install. A feature with no screen designs
-nothing.
+nothing. Never draw a screen whose what, where or who is your guess: you only
+reach this part once the three are settled (**The three come first**).
 
 - **When.** Once the decisions are recorded and before the spec, so the spec
   and the preview can name the designed components.

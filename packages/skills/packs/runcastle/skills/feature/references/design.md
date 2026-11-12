@@ -7,11 +7,14 @@ You edit the real component, a dev server hot-reloads it, and the human watches
 it beside this chat in any state without test-driving the app. What they approve
 is committed and ships; the build then covers only real data, API calls, behaviour.
 
-**Offer it early.** When the feature changes how a screen looks, offer it in your
-first reply, before you talk layout in words (the first time takes a few minutes
-to install and start). Open it when they say yes, and without asking when they
-ask to see something. With no human present, follow `./planning-alone.md`
-("Designing alone") and leave the designs waiting (section 8).
+**Offer it once what, where and who are settled.** When the feature changes how
+a screen looks, offer it before you talk layout in words, but only once the
+human has settled what they get, where it lives and who sees it (the skill's
+**Never guess what, where or who**). Before that, a screen is a guess about
+whether there is one, and where. The first time takes a few minutes to install
+and start. Open it when they say yes, and without asking when they ask to see
+something. With no human present, follow `./planning-alone.md` ("Designing
+alone") and leave the designs waiting (section 8).
 
 Taste work you would iterate on with the human for long goes to a "with you"
 worker instead (`./workers.md`). It shows its own preview in its chat, and this
@@ -140,7 +143,7 @@ several pages are merged into one page with a switcher.
 
 ## 8. Designs that wait for the human
 
-A self-planning run may leave designs uncommitted, waiting for the human. When
+An automatic planning run may leave designs uncommitted, waiting for the human. When
 they come back:
 
 - **They approve a screen**: commit it as section 5 says.

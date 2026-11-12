@@ -397,6 +397,24 @@ function howItHandsBack(kind: Exclude<WorkerKind, 'review' | DriveWorkerKind>): 
   }
 }
 
+/**
+ * The rule every runcastle agent carries word for word: the orchestrator's and
+ * the lead's skills and the lone-planning reference hold the same paragraph,
+ * and a test keeps the copies identical.
+ */
+export const NEVER_GUESS =
+  "**Never guess what, where or who.** Before you create, plan or design anything, you must be able to say three things from the human's own words: what they get, where it lives (wherever they or their users meet it: a page, a command, a notification, how an agent behaves) and who sees it. One is settled when the human said it, or when what they said allows only one reasonable reading; who sees it is also settled when the project has one kind of user. A brief settles them only in the human's words, never in another agent's reading. If any is open, ask before you go on, with your recommendation; when in doubt, ask. When the human says one is your call, say your pick back in one line. This holds whenever something new appears, mid-build too. Below these three (wording, layout details, edge cases) you may decide and be corrected."
+
+/** How the never-guess rule applies to this kind of worker. */
+function howItAsks(kind: Exclude<WorkerKind, 'review' | DriveWorkerKind>): string {
+  if (kind === 'unassigned') return "For you, that means: when the human's request leaves one of the three open, ask them in this chat before you build anything."
+  return (
+    'For you, that means: your goal and the feature\'s decisions carry what the human settled, through your lead. ' +
+    'If they leave one of the three open, hand back to your lead with the question instead of guessing. ' +
+    'When the human asks you here for something new, ask them about any of the three that is open before you build it.'
+  )
+}
+
 /** The worker's briefing: appended to Claude Code's system prompt, or after the human's instructions in a Codex worker's AGENTS.md. */
 export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
   if (brief.kind === 'review') return sandboxReviewBriefing(brief.label, sb.branch)
@@ -410,6 +428,11 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
     '',
     ...(brief.goal ? [`## Goal\n${brief.goal}`, ''] : []),
     ...(brief.doneWhen ? [`## Done when\n${brief.doneWhen}`, ''] : []),
+    '## Ask before you guess',
+    NEVER_GUESS,
+    '',
+    howItAsks(brief.kind),
+    '',
     '## How you work',
     `- Work in ${IN.repo}, on branch ${sb.branch}. Commit as you go with conventional messages: every commit is copied back to runcastle automatically. Uncommitted work is not handed back.`,
     `- To show the human a screen, call start_dev_server. Your dev server must accept connections from outside the container: listen on 0.0.0.0 (not localhost), port ${sb.port}. The human opens it at ${sb.previewUrl}.`,

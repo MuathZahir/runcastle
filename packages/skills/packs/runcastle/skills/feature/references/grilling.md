@@ -83,7 +83,7 @@ When the human later confirms or changes such a decision, remove its
 `**Assumed.**` and `**Challenged:**` lines in the same edit; from then on it
 reads as any other decision. Decisions they did not touch keep theirs.
 
-**A self-planned feature** also carries one line under the intro of
+**An automatically planned feature** also carries one line under the intro of
 `decisions.md`, `Check first: 8, 9, 17` (the numbers of its check-first
 decisions, at most five), kept in step with the Plan's Check first group; remove
 a number once the human confirms that decision. The Plan card counts it. **A
