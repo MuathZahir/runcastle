@@ -3,7 +3,6 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { and, count, eq, inArray, isNull, ne } from 'drizzle-orm'
 import {
-  wakeFailedWhy,
   type Ask,
   type Feature,
   type ModelEntry,
@@ -1119,8 +1118,7 @@ async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: str
   const short = failure.slice(0, 2000)
   const failed = updateWorker(ctx, w.id, { status: 'failed', failure: short })
   emitWorker(ctx, failed, 'worker.failed', `worker "${w.label}" failed: ${short}`, { failure: short, from: w.status })
-  // Its run is dead and only the human can start it again: runcastle says so on its chat (needs-you decision 9).
-  setWait(ctx, w.id, wakeFailedWhy(null), 'runcastle')
+  // The lead hears of it and decides whether the human does; a failed worker sets no need (needs-you decision 9).
   const feature = featureOf(ctx, w)
   if (!feature) return
   await deliverToLead(ctx, feature, {

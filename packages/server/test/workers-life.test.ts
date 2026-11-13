@@ -389,7 +389,7 @@ describe('a worker waiting on an ask', () => {
 })
 
 describe('a failed worker', () => {
-  it('is marked failed with what failed, and wakes its lead exactly once', async () => {
+  it('is marked failed with what failed, wakes its lead exactly once, and needs nobody else', async () => {
     const host = fakeHost()
     setAgentHostForTests(host.host)
     const id = await startWorker()
@@ -401,7 +401,8 @@ describe('a failed worker', () => {
     const toLead = host.sent.filter((s) => s.threadId === lead)
     expect(toLead).toHaveLength(1)
     expect(toLead[0]?.display).toEqual({ workerFailed: { workerId: id, label: 'Header', failure: 'its sandbox runcastle-worker-x is gone' } })
-    expect(needOf(ctx, feature)).toMatchObject({ why: 'The agent’s run failed', threadId: id, by: 'runcastle' })
+    // The lead decides whether the human hears of it (needs-you decision 9).
+    expect(needOf(ctx, feature)).toBeNull()
   })
 })
 
