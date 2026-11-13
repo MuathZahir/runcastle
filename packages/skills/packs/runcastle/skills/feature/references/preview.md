@@ -1,104 +1,65 @@
 # The Plan — the page the human looks at
 
-Load this when the decisions are settled and you are about to show the human
-the plan, or when a decision edit means the Plan has to be redrawn.
-Otherwise it costs this conversation nothing.
+Read this when you draw the Plan, or redraw it after `decisions.md` changes.
 
-The Plan (`preview.html`) is the one page the human reads the feature by. They confirm the
-plan by looking at it, and when tired it is the only thing they read before
-they say yes to the work. Draw it for that reader.
+The Plan (`preview.html`) is the one page the human reads the feature by, and
+when tired the only thing they read before their yes. Draw it for that reader.
 
 ## Show it, then get the yes
 
-1. **Draw it** from `./preview-starter.html`, following the rules below.
-2. **Check it against `decisions.md`** (the self-check at the end). Fix the
-   preview before anyone sees it.
-3. **Show it**: `show_plan()` posts the Plan card in the chat and opens the
-   Plan tab beside it. Tell the human what you propose — the workers, the work you
-   will do yourself, the Review worker at the end — and ask for their explicit yes. Then wait for the answer.
-4. **A correction is a decision edit plus a redraw.** Edit the decision in
-   `decisions.md` and redraw the preview in the same move, call `show_plan()`
-   again, then ask them to look again.
+1. Draw it from `./preview-starter.html` and run the self-check below.
+2. `show_plan()` posts the Plan card and opens the Plan tab. Tell the human the
+   workers, your own part and the review, and ask for their explicit yes.
+3. A correction is a decision edit plus a redraw: edit `decisions.md`, redraw,
+   `show_plan()` again, and ask them to look again.
 
-With no human present, steps 1 and 2 are the whole of this, plus one
-`show_plan()` before the closing message; `./planning-alone.md` says how that
-run asks for the yes.
-
-**Never skip the preview on your own judgement** — not because the feature is
-small, not because the grill went quickly. A small feature gets a small
-preview. **If the human says to skip it**, write no file. The yes is still
-needed.
-
-**The redraw rule.** Any later edit to `decisions.md` updates `preview.html` in
-the same move, before anything else, while the plan is still being agreed or
-built.
+Never skip the Plan on your own judgement; a small feature gets a small one. If
+the human says to skip it, write no file; the yes is still needed. Any later
+edit to `decisions.md` updates `preview.html` in the same move.
 
 ## The file
 
-- **Exactly one file, `preview.html`, at the root of the feature's docs dir**:
-  `docs/features/<slug>/preview.html`. Several screens or flows are sections of
-  that one page, never more files.
-- **Start from `./preview-starter.html`.** Copy it to that path with a shell
-  copy (`cp`), find its slots with `grep -n 'FILL:'` on the copy, and fill each
-  by editing; **never read the starter whole**. It carries runcastle's theme
-  tokens for both themes and the styles and markup for the fixed parts; do not
-  restyle them.
-- **The slots**, each a `<!-- FILL:<name> -->` line just above what to replace:
+- **Exactly one file**, `docs/features/<slug>/preview.html`. Several screens or
+  flows are sections of it. Throwaway explorations may go under
+  `docs/features/<slug>/prototypes/`; they are never shown.
+- **Copy the starter** with `cp`, find its slots with `grep -n 'FILL:'` on the
+  copy, and fill each by editing; never read the starter whole. Do not restyle
+  its fixed parts.
+- **The slots**, each a `<!-- FILL:<name> -->` line above what to replace:
   - `title`: the feature title in `<title>`.
-  - `what`: the `<h1>` title, the one- or two-sentence lede, `[slug]` in the meta line.
-  - `show`: replace the free-form comment below it with the show.
+  - `what`: the `<h1>`, a one- or two-sentence lede, `[slug]` in the meta line.
+  - `show`: the show, in place of the comment below it.
   - `screen`: the example screen block; copy and rename it per screen, or delete it.
   - `D`: one entry per decision, in order: `['Title', 'Why, in a sentence']`, or
-    `['Title', 'Why', 'assumed']` for a decision made without the human.
-  - `C`: Check first, an automatically planned feature only, at most five:
-    `[decisionNumber, 'Alternative', 'Why unsure', 'tag'?]`; leave `[]` for a grilled feature.
+    `['Title', 'Why', 'assumed']` for one marked `**Assumed.**`.
+  - `C`: check first, a plan made with nobody present only, at most five:
+    `[decisionNumber, 'Alternative', 'Why unsure', 'tag'?]`; else `[]`.
   - `later` / `not-this`: one `<li><i class="dot"></i>…</li>` per item left out.
-  - `hood`: the technical shape, inside the collapsed **Under the hood**.
-- **Throwaway explorations** may go under `docs/features/<slug>/prototypes/`.
-  They are never shown; the app shows only `preview.html`.
+  - `hood`: the technical shape.
 
-## Five parts, in this order
+## Five parts, in order
 
 1. **What this is.** One or two sentences.
-2. **The show.** Whatever explains how the feature will work. **It is free, with
-   no template**: screens, clickable prototypes, skeletons, flows, before and
-   after, scenarios. Choose the form that explains *this* feature — work with no
-   screen gets flows, use cases, before and after, or a clickable skeleton.
-   **It ends with who builds what**: each worker you offer by its label, one-line
-   purpose and kind ("with you" or "on its own"), what you build yourself, and
-   the Review worker at the end. The human's yes starts those workers.
-3. **What was decided.** Every decision in `decisions.md` by its number and
-   title, with the reason available on demand (the starter's `D` list builds
-   this). Where a decision is visible in the show, pin its number on that spot:
-   `<a class="pin" data-d="3">3</a>`.
-   **An automatically planned feature** (`./planning-alone.md`) opens this part with a
-   **Check first** group of at most five decisions, the ones the planner picked.
-   Each entry shows the decision's number and title, its alternative, and why it
-   is uncertain (the starter's `C` list builds this). The remaining decisions
-   follow in the list, each showing that it was assumed (a third element on its
-   `D` entry). **A grilled feature has neither**: no group and no assumed marks.
-4. **What is left out.** Out of scope, and under **Later** anything deferred
-   to a backlog feature.
-5. **Under the hood.** The technical shape for a reader who wants it,
-   **collapsed by default**, drawn where it can be.
+2. **The show.** Whatever explains how the feature will work, in no fixed form:
+   screens, clickable skeletons, flows, before and after, scenarios. It ends
+   with **who builds what**: each worker by label, one-line purpose and kind
+   ("with you" or "on its own"), your own part, and the review at the end.
+3. **What was decided.** Every decision in `decisions.md` by number and title,
+   the reason on demand. Pin a decision's number where the show shows it:
+   `<a class="pin" data-d="3">3</a>`. A plan made with nobody present opens with
+   the Check first group and marks its assumed decisions; one made with the
+   human has neither.
+4. **What is left out.** Out of scope, and under **Later** what was parked.
+5. **Under the hood.** The technical shape, collapsed by default.
 
-## Visual first
-
-**A short sentence beside a picture, never paragraphs, detail behind a click.**
-If a part reads as prose, draw it instead: a flow, a before and after, a
-toggled state, a list of dots.
-
-## The theme rule
-
-- **The page and every diagram and flow are runcastle-themed**, through the
-  starter's tokens, in light or dark to match the app.
-- **A mocked screen uses the styling of the project it belongs to**, inside the
-  framed `.screen` panel. A prototype of another product's UI can only be judged
-  in that product's look.
+A short sentence beside a picture, never paragraphs, detail behind a click. The
+page and its diagrams use the starter's runcastle tokens; a mocked screen uses
+the styling of the project it belongs to, inside the framed `.screen` panel.
 
 ## Screen blocks
 
-Each screen in the show is a **screen block**: the lines between two markers,
+Each screen in the show sits between two markers, `<name>` in kebab case and
+unique in the file:
 
 ```html
 <!-- screen:<name> -->
@@ -106,27 +67,15 @@ Each screen in the show is a **screen block**: the lines between two markers,
 <!-- /screen:<name> -->
 ```
 
-with `<name>` in kebab case and unique in the file. A worker that builds that
-screen is pointed at the block and reads only those lines — so put
-everything the screen needs to be understood between the markers, and nothing
-else. Delete the starter's `example-name` block if the show has no screen.
+A worker that builds the screen reads only those lines, so put everything the
+screen needs there and nothing else.
 
 ## Designed screens
 
-A screen designed in design mode (`./design.md`) is **not mocked
-again**. Its place in the show is a **designed-screen entry**:
-
-- its name, the same title you gave `show_design`;
-- one line saying what is real and what is sample data;
-- the states its switcher holds, so the plan says what the human will find.
-
-The entry has **no button**: the human reaches a design from its card in the chat
-and from the Design tab, which lists every design you showed with `show_design`.
-
-Wrap the entry in a screen block, but put no markup in it. The block names the
-**committed component file and the design page path**, so the worker that
-connects the screen has something to point at. Use the starter's `.designed`
-entry:
+A screen designed in design mode (`./design.md`) is not mocked again. Its block
+holds a designed-screen entry with no button and no mock markup: the title you
+gave `show_design`, one line on what is real and what is sample data, the states
+its switcher holds, and the committed component file and design page path.
 
 ```html
 <!-- screen:invoice-list -->
@@ -139,37 +88,28 @@ entry:
 <!-- /screen:invoice-list -->
 ```
 
-Hand mocks remain for screens nobody designed live, for server-built pages and
-for native mobile, which design mode cannot preview.
+Hand mocks remain for screens nobody designed, server-built pages and native
+mobile.
 
 ## Inline only
 
-**Styles, scripts and images are inline. The file makes no network request** —
-no `<link>`, no `@import`, no external `src` or `url(`; images are `data:` URIs
-or inline SVG. This is enforced, not a preference: the app renders the preview
-in a sandboxed frame that runs scripts and refuses every fetch, external image
-and font, form post and popup. Anything hosted elsewhere simply does not load.
-In-page links scroll by script (the starter does this), because hash navigation
-is unreliable inside that frame.
+Styles, scripts and images are inline; the file makes no network request: no
+`<link>`, no `@import`, no external `src` or `url(`, images as `data:` URIs or
+inline SVG. The app shows it in a sandboxed frame that refuses every fetch,
+external image, font, form post and popup. In-page links scroll by script, as
+the starter's do.
 
-## Sizing
+There is no minimum size: about a minute's read for a small feature, a few
+minutes for a large one.
 
-**There is no minimum.** A small feature's show can be a single picture and the
-other parts a line each. Reading target, as guidance and not a limit: **about a
-minute for a small feature, a few minutes for a large one.**
+## Self-check, before the human looks
 
-## Self-check, before you tell the human to look
-
-- Every decision in `decisions.md` appears in **What was decided**, by its number
-  and its title, in order — none missing, none renumbered.
-- For an automatically planned feature, the **Check first** group holds at most five
-  decisions, each with its alternative and why it is uncertain, and every
-  decision carrying an `**Assumed.**` line in `decisions.md` shows as assumed.
-  For a grilled feature, `C` is empty and no decision is marked.
-- Every pin points at the decision the spot actually shows.
+- Every decision appears in **What was decided**, by number and title, in order.
+- With nobody present: at most five in Check first, each with alternative and
+  why unsure, and every `**Assumed.**` decision shows as assumed. With the
+  human: `C` is empty and nothing is marked.
+- Every pin points at the decision that spot shows.
 - The five parts are in order; **Under the hood** is closed.
-- The show ends with who builds what: every worker by label, purpose and kind,
-  and the Review worker unless the human declined it.
-- Every screen designed in design mode is a designed-screen entry that names its
-  states, its committed component and design page, not a redrawn mock.
-- The file is still fully inline.
+- The show ends with who builds what, the review included unless declined.
+- Every designed screen is a designed-screen entry, not a redrawn mock.
+- The file is fully inline.

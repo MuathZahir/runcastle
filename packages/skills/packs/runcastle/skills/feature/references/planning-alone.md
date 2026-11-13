@@ -1,177 +1,89 @@
 # Planning with no human present
 
-Load this when your briefing says no human is present: a headless run that
-plans the feature while the human is away. With a human in the chat, grill them
-instead (`./grilling.md`); nothing here binds that conversation.
+Read this when your briefing says no human is present: a run that plans the
+feature while the human is away. Every rule in SKILL.md still holds; this page
+says only what differs.
 
-You still look facts up, model the domain and park scope creep as
-`./grilling.md` says. What changes is who answers.
+**One turn.** Do the whole plan in this one turn. Never end it to ask or to
+report progress: nobody replies, and ending the turn ends the run.
 
-**Never guess what, where or who.** Before you create, plan or design anything, you must be able to say three things from the human's own words: what they get, where it lives (wherever they or their users meet it: a page, a command, a notification, how an agent behaves) and who sees it. One is settled when the human said it, or when what they said allows only one reasonable reading; who sees it is also settled when the project has one kind of user. A brief settles them only in the human's words, never in another agent's reading. If any is open, ask before you go on, with your recommendation; when in doubt, ask. When the human says one is your call, say your pick back in one line. This holds whenever something new appears, mid-build too. Below these three (wording, layout details, edge cases) you may decide and be corrected.
+**Survey through a subagent.** This chat goes on to build the feature, so send
+the codebase survey to one Explore-type subagent with your questions, and keep
+the short map it returns. Read a file yourself only to settle one fact the map
+left open.
 
-**Survey the code through a subagent.** This chat goes on to build the feature,
-so every file you read here is carried into every later call. Send the codebase
-survey to one Explore-type subagent, its model picked from the human's
-use-case notes (SKILL.md, "Build it the cheapest good way"), with your
-questions, and keep the short map it returns. Read a
-file yourself only to settle one fact the map left open.
+**What, where and who come first.** Check them against the brief: only the
+request it quotes and its `## Decided with the human` section count. If any is
+open, stop there: write no decisions, spec, designs or plan. Your closing
+message says which is open and asks each in full, numbered, with your
+recommendation and the real options the survey found, then call
+`wait_for_you({ why: "what, where or who is open" })`. When the answers arrive,
+record them as the human's (no mark) and finish the plan as below.
 
-**The three come first.** Once you have read the brief and the survey's map,
-and before your first question round, check what, where and who against the
-brief: only the request it quotes and its `## Decided with the human` section
-count, never its other notes. **If any is open, stop there.** Write no
-decisions, spec, designs or plan. Your closing message says planning stopped
-because what the human gets, where it lives or who sees it is open, and asks
-each open one in full, numbered, with your recommendation and the real options
-the survey found ("the existing Activity page, or a new tab?"). Then call
-`mcp__runcastle__wait_for_you({ why: "what, where or who is open" })` and end the turn. On autopilot that wait goes to the
-epic, which answers or asks the human (SKILL.md, "The human, or the epic on
-autopilot").
-**When the answers arrive**, record them in `decisions.md` as the human's
-(decided with them, no `**Assumed.**`) and finish the plan as this file says,
-from the question rounds on, ending on the request for the yes. Do not turn it
-into a live grill unless the human asks for one.
+**Decide as you would recommend.** Where you would ask the human, take the
+answer you would recommend and record it at once with `**Assumed.**` and its
+main alternative (`./decisions-and-spec.md`). Record only decisions the human
+must see; build detail goes to the spec.
 
-**This run plans; it does not build.** Whatever the plan says,
-never call `start_worker` or `start_review` in this run: nothing starts
-without the human's yes. You write the feature's docs (`decisions.md`,
-`spec.md`, `preview.html`), and the preview names the workers you would start.
-The one exception
-is designing its screens (**Designing alone**, below): for that, and only that,
-you may install dependencies and write components, design pages and sample
-data. Write no other code.
+**Check first.** Pick at most five decisions for the human to look at first:
+guesses about their intent, and decisions that force several others. Write
+their numbers in `decisions.md`'s `Check first:` line and the Plan's `C` list.
 
-- **One turn.** Do the whole plan in this one turn. Never end the turn to ask a
-  question or to report progress: nobody will reply, and ending the turn ends
-  the run. The one question that ends it early is an open what, where or who
-  (**The three come first**, above).
-- **Frontier rounds.** Work in question rounds. A question round is every open
-  question that does not depend on an unanswered one. Write each as you would
-  put it to the human, with your recommended answer and the main alternative,
-  then accept your own recommendations and record them. Then ask what those
-  answers opened: that is the next question round. Write each to
-  `decisions.md` as it is decided (`./grilling.md`, the `**Assumed.**` shape),
-  not at the end, so a run that dies keeps what it had.
-- **Depth rule.** Record a decision only if it changes what the feature is or
-  does for its users, or the human might reasonably overturn it. Anything an
-  engineer would settle while building (wording, internal formats, test
-  coverage) is not a question; it goes to the spec as detail.
-- **Exactly one challenger.** When a question round would be empty, run one
-  separate agent: the Agent tool in Claude Code, `spawn_agent` in Codex. Give it
-  only the brief and `decisions.md`. Ask it for (a) design branches never asked,
-  within the depth rule, and (b) decisions it would have made differently, with
-  its reason. Do not tell it what you expect to hear. Ask its branches as one
-  more question round and decide them, with whatever they open. A decision it
-  disagrees with gets a `**Challenged:**` line with its reason, and your own
-  answer stands. There is no second pass. If you have no tool that runs a
-  separate agent, challenge your own plan as a separate pass and write in
-  `decisions.md` that the challenge was not independent.
-- **A refused tool is not a wait.** If a tool is refused, do not retry it and do
-  not wait: decide on what you know, and treat that decision as one to check
-  first.
-- **A timed-out tool is not a refused one.** A timeout is no answer, and the
-  call may have landed anyway. Retry it once, checking first that it did not
-  land. If the retry times out
-  too, carry on and say so in the closing message.
-- **Check first.** Pick at most five decisions for the human to check first:
-  guesses about their intent the brief did not settle, decisions that force
-  several others, and decisions the challenger disagreed with. They open the
-  Plan's decisions part (`./preview.md`). Record them in `decisions.md` as one
-  line under its intro, `Check first: 8, 9, 17` (the numbers, at most five),
-  kept in step with the Plan's Check first group; the Plan card counts it. Drop
-  a number once the human confirms that decision.
-- **For the human.** Every decision that changes what the human gets — what
-  they or their users see, how the app or runcastle behaves for them, a setting
-  of their own — gets a `**For the human.**` line under its `**Assumed.**`
-  line, whether or not it is one of the five to check first. Each one is put to
-  the human before your plan gets its yes. A decision only about how the feature
-  is built gets no mark. Never override a setting the human set themselves
-  without marking it. A decision the brief records under
-  `## Decided with the human` is already theirs: copy it into `decisions.md`
-  without `**Assumed.**`.
-- **Show with cards, never the panel.** You may design the feature's screens
-  (**Designing alone**, below) and call `show_design` and `show_plan`: they post
-  cards and open nothing, so the human finds them when they are back. Never call
-  `show_panel`: nobody is there to look.
+**Plan, never build.** Never call `start_worker` or `start_review` here. Write
+the docs (`decisions.md`, `spec.md`, `preview.html`) and, where the feature
+reshapes screens, design them (below). Write no other code.
+
+**Tools.** A refused tool is no wait: decide without it and put that decision
+in check first. A timeout may have landed: check, retry once, and if it times
+out again carry on and say so at the end.
+
+**Cards, never the panel.** `show_plan` and `show_design` post cards the human
+finds when back; never call `show_panel`.
 
 ## Designing alone
 
-Design when the feature **adds a screen or changes a screen's layout**. A small
-visual change (a colour, a label, one control) is described in the plan
-instead: it would not repay the install. A feature with no screen designs
-nothing. Never draw a screen whose what, where or who is your guess: you only
-reach this part once the three are settled (**The three come first**).
+Design only when the feature **adds a screen or changes a screen's layout**. A
+small visual change (a colour, a label, one control) is described in the Plan
+instead. Never design a screen whose what, where or who you guessed.
 
-- **When.** Once the decisions are recorded and before the spec, so the spec
-  and the preview can name the designed components.
-- **How.** As `./design.md` says for an attended chat: the project's own
-  install, the project's own frontend dev server, one design page per screen
-  with its states on a switcher (never a design per state or variant),
-  sample data, navigation off, real components, the project's design docs.
-  Design against the components on the feature's base branch; never read
-  another feature's worktree. If a screen needs a shared component changed, change
-  it here and say so in the closing message.
-- **Tweaks for taste.** Where a look is genuinely open (two layouts, a density,
-  an accent), leave a Tweaks menu on that design page instead of guessing
-  (`./design.md`, Tweaks). **At most two
-  open choices per screen**: past that, pick, and list your picks in the
-  closing message. Everything the menu needs, the alternative styles included,
-  lives in the design page, never in the app's own files.
-- **Look at your own screens.** Call `start_design_server({ command })`, which
-  also records the command so the human's Design tab can start it later. Then
-  check every state of every design page (each `?state=` address). With
-  `agent-browser` on the PATH, hand the loop to a subagent on the model the
-  human's notes give UI work:
-  it runs `agent-browser open <url>`, `agent-browser screenshot <path>` (a
-  temporary path, never in the repo), reads the image, critiques it against the
-  project's design docs, fixes it and looks again, closes with
-  `agent-browser close`, and returns its verdict and the final picture's path
-  for `show_design`. Do not read the images yourself. Without it, check that each
-  page compiles and serves, and say in the closing message that you never saw
-  them. The design server stops by itself when this run ends.
-- **Record every design.** Once a page is right, call `show_design({ path, title,
-  width? , picture? })` for it with a human title and the width you laid it out
-  at, passing the final screenshot you took of its most telling state as
-  `picture`, once per page, never once per state. It posts a design card
-  and records the design for the Design tab; it opens nothing in this run.
-- **A screen you cannot serve** (no frontend dev server you can work out, a
-  page the server builds, native mobile) is a hand mock in `preview.html`, as
-  any plan draws one. Say so in the closing message. Do not stop or ask.
-- **Leave the designs uncommitted.** Never commit a component, design page,
-  sample data or `.runcastle/design.json` you designed: only the human's
-  approval commits them. Commit your docs by path, so nothing designed rides
-  along.
-- **In the Plan**, each designed screen is a designed-screen entry
-  (`./preview.md`, Designed screens) naming its title, the states its switcher
-  holds, its component file and design page, with no button.
-  A worker that wires one follows `./workers.md` on designed screens.
+- **When:** once the decisions are recorded and before the spec, so the spec and
+  the Plan can name the designed components.
+- **How:** as `./design.md` says: one design page per screen, its states on a
+  switcher, sample data, real components, the project's design docs. Design
+  against the feature's base branch, never another feature's worktree. If a
+  shared component must change, change it and say so at the end.
+- **Tweaks:** at most two open choices per screen, on its Tweaks menu; past
+  that, pick and list your picks at the end.
+- **Look at your own screens:** `start_design_server({ command })`, then every
+  state of every page (each `?state=` address). With `agent-browser` on the
+  PATH, a subagent on the model the human's notes give UI work opens each, takes
+  screenshots to a temporary path, critiques them against the design docs,
+  fixes, looks again, and returns its verdict and the final picture's path. Do
+  not read the images yourself. Without it, check each page compiles and
+  serves, and say you never saw them.
+- **Record each page:** `show_design({ path, title, width, picture })` once per
+  page, never once per state, with the subagent's picture.
+- **A screen you cannot serve** (a page the server builds, native mobile) is a
+  hand mock in the Plan; say so at the end.
+- **Leave the designs uncommitted:** only the human's approval commits them.
+  Commit your docs by path, so nothing designed rides along.
 
-## Straight through, then ask
+## The end
 
-1. Write `spec.md` (`./spec.md`) once the decisions are recorded.
-2. Plan the workers by the offering rule (SKILL.md, "Build it the cheapest good
-   way"): each with its label, one-line purpose and kind, in the preview. Start
-   none. With none, the plan says you will build it yourself, and that is the
-   usual answer for a small feature.
-3. Draw the preview and run its self-check (`./preview.md`).
-4. Commit the docs.
-5. Call `show_plan()` once, before the closing message.
-6. **End with one closing chat message** that covers the plan only: that it was
-   made without the human, how many decisions it holds and which are to check
-   first (by number and title), which workers it offers and what you will do
-   yourself, and anything that stopped you doing the job (a refused or failed
-   tool the plan needed, and what you decided without it). Leave out the state
-   of tools and connectors the plan did not need. **If you designed**, also
-   name each designed screen and the states its switcher holds, the open Tweaks choices, any shared component you
-   changed, and whether you saw the screens in screenshots or only checked that
-   they compile, and say that only designs the human approves are committed. Close the message by asking
-   the human for their yes to start the work.
-7. Call `mcp__runcastle__wait_for_you({ why: "start the work?" })`, naming
-   any designs waiting for approval in its line. Write nothing after step 6's question, so the turn ends on
-   it, and then end the turn. The human answers in this chat when they
-   are back; their yes is what starts the work, in a later turn.
-   **On autopilot** (SKILL.md, "The human, or the epic on autopilot"), the
-   plan's yes is the epic's to give: call `hand_back({ summary })` in place
-   of `wait_for_you`, with the plan, its check-first decisions, every For the
-   human decision and any design waiting, and close the message by saying the
-   plan went to the epic for its yes.
+1. Write `spec.md`, plan the workers you would offer (label, purpose, kind,
+   none started; for a small feature, usually you alone), draw the Plan and run
+   its self-check (`./preview.md`), commit the docs.
+2. Call `show_plan()` once.
+3. One closing message: that the plan was made without the human, how many
+   decisions it holds and which to check first (number and title), the workers
+   it offers and what you would do yourself, and anything that stopped you (a
+   refused or failed tool, and what you decided without it). If you designed:
+   each screen and its states, the open Tweaks, any shared component changed,
+   whether you saw the screens or only checked they compile, and that only
+   designs the human approves are committed. End by asking for their yes to
+   start the work.
+4. Call `wait_for_you({ why: "start the work?" })`, naming any design waiting
+   for approval, and end the turn with the question last. **On autopilot** the
+   yes is the epic's: call `hand_back({ summary })` instead, with the plan, its
+   check-first decisions and any design waiting, and say the plan went to the
+   epic.
