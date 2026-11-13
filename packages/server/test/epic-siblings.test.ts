@@ -8,14 +8,14 @@ import { inProgressSiblings, mergeWakesEpic, type SiblingRow } from '../src/serv
  */
 
 function row(id: string, overrides: Partial<SiblingRow> = {}): SiblingRow {
-  return { id, slug: id, title: id, status: 'active', chatId: 'epic', heldBy: null, ...overrides }
+  return { id, slug: id, title: id, status: 'active', chatId: 'epic', ...overrides }
 }
 
 describe('inProgressSiblings', () => {
   const merged = { id: 'merged', chatId: 'epic' }
 
-  it('counts the epic’s other started features, whoever owns them', () => {
-    const rows = [row('merged'), row('a'), row('b', { heldBy: 'epic' }), row('c', { heldBy: 'other' })]
+  it('counts the epic’s other started features, on autopilot or not', () => {
+    const rows = [row('merged'), row('a'), row('b'), row('c')]
     expect(inProgressSiblings(rows, merged).map((r) => r.id)).toEqual(['a', 'b', 'c'])
   })
 

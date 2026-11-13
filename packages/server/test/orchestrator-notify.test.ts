@@ -136,7 +136,7 @@ describe('a merge, said to the feature’s epic (the-epic-hears-when-its-feature
         outcome: 'docs/features/export-csv/outcome.md',
         siblings: [
           { slug: 'import-csv', title: 'Import CSV', owner: 'the human' },
-          { slug: 'phone-cut', title: 'Phone cut', owner: 'this chat' },
+          { slug: 'phone-cut', title: 'Phone cut', owner: 'this epic, on autopilot' },
         ],
         wakes: true,
         ...overrides,
@@ -150,8 +150,8 @@ describe('a merge, said to the feature’s epic (the-epic-hears-when-its-feature
       [
         '[runcastle] export-csv merged into main by the human.',
         'In progress in this epic:',
-        '- import-csv: Import CSV (owned by the human)',
-        '- phone-cut: Phone cut (owned by this chat)',
+        '- import-csv: Import CSV (run by the human)',
+        '- phone-cut: Phone cut (run by this epic, on autopilot)',
         'Read the change: the merge commit 0123456789ab and docs/features/export-csv/outcome.md.',
       ].join('\n'),
     )
@@ -251,9 +251,9 @@ describe('the notifier', () => {
     return row.id
   }
 
-  /** A feature `holder` holds. */
-  function heldFeature(holder: string, slug = 'demo', overrides: Partial<Feature> = {}): Feature {
-    return seedFeature(ctx, projectId, { slug, heldBy: holder, ...overrides })
+  /** A feature on autopilot in the epic `holder`. */
+  function heldFeature(holder: string, slug = 'demo', overrides: Partial<Feature> & { lockedTo?: string } = {}): Feature {
+    return seedFeature(ctx, projectId, { slug, lockedTo: holder, ...overrides })
   }
 
   /** The lines each runcastle prompt said into the thread, one prompt per entry. */
@@ -324,7 +324,7 @@ describe('the notifier', () => {
   it('holds a batch whose every line is held, and wakes one with any waking line', async () => {
     const epic = projectSession()
     markSessionEnded(ctx, epic)
-    const merged = heldFeature(epic, 'merged', { chatId: epic, heldBy: null, status: 'shipped' })
+    const merged = heldFeature(epic, 'merged', { lockedTo: undefined, chatId: epic, status: 'shipped' })
     const shipped = emit(ctx, merged.id, { type: 'feature.shipped', message: 'merged to main', data: { base: 'main' } })
 
     announceMerge(ctx, shipped.id)
@@ -336,8 +336,8 @@ describe('the notifier', () => {
     await settle()
     expect(host.isRunning(epic)).toBe(false)
 
-    // Not of this epic, so the merge line stays held; its own line wakes.
-    const other = heldFeature(epic, 'other', { chatId: null })
+    // A draft is no sibling, so the merge line stays held; its own line wakes.
+    const other = heldFeature(epic, 'other', { status: 'draft' })
     announceMerge(ctx, shipped.id)
     emit(ctx, other.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'merged' } })
     const lines = await promptLines(epic, 2)
@@ -349,7 +349,7 @@ describe('the notifier', () => {
 
   it('says nothing of a merge as its live event arrives: only the merge flow announces it', async () => {
     const epic = projectSession()
-    const merged = heldFeature(epic, 'merged', { chatId: epic, heldBy: null, status: 'shipped' })
+    const merged = heldFeature(epic, 'merged', { lockedTo: undefined, chatId: epic, status: 'shipped' })
     emit(ctx, merged.id, { type: 'feature.shipped', message: 'merged to main', data: { base: 'main' } })
     await settle()
     expect(promptsOf(epic)).toEqual([])

@@ -18,7 +18,7 @@ import { Button,
   type MetaItem,
 } from '../ui'
 import { IconPlay, IconX, ProgressIcon } from '../icons'
-import { epicOwnerCrumbs } from './SidebarEpics'
+import { epicCrumb } from './SidebarEpics'
 import {
   isNewThreadHotkey,
   newThreadShortcut,
@@ -83,9 +83,6 @@ import { usePanelShow } from './workspace/use-panel-show'
 import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
-import { OwnerControl } from './workspace/OwnerControl'
-import { ownerReading } from '../lib/feature-owner'
-import { useSetOwner } from '../lib/use-set-owner'
 import { ACTION_ICON, NextStepBar } from './workspace/NextStepBar'
 import { FeatureStatusLine, StopAgentDialog } from './workspace/FeatureStatusLine'
 import { DrivePrerequisitesNotice } from './review/DrivePrerequisitesNotice'
@@ -165,7 +162,6 @@ export function Workspace({
 }) {
   const phone = useIsPhone()
   const utils = trpc.useUtils()
-  const setOwner = useSetOwner()
   const toast = useToast()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const resumeFailed = useResumeFailedAlert(featureId)
@@ -625,7 +621,7 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
-  const owner = ownerReading(feature, projectThreads.data ?? [])
+  const epicHeaderCrumb = onOpenThread ? epicCrumb(feature, projectThreads.data ?? [], onOpenThread) : null
   const threadCrumb = isDraft ? undefined : inFrontTitle
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
@@ -1144,18 +1140,8 @@ export function Workspace({
       ) : (
       <PageTopbar
         crumbs={[
-          // Its epic, then who owns it and how far its chat takes it: one crumb when the
-          // epic's chat owns it (every-feature-has-one-owner decisions 11, 12, 14, 21;
-          // orchestrator-chats-become-epics decision 15). Each gives way down to its floor.
-          ...epicOwnerCrumbs(feature, projectThreads.data ?? [], onOpenThread, owner, (inEpic) => (
-            <OwnerControl
-              owner={owner.owner}
-              {...(owner.chatName ? { chatName: owner.chatName } : {})}
-              feature={feature.title}
-              inEpic={inEpic}
-              onChoose={(choice) => setOwner(featureId, choice)}
-            />
-          )),
+          // Its epic first (orchestrator-chats-become-epics decision 15), when it has one to open.
+          ...(epicHeaderCrumb ? [epicHeaderCrumb] : []),
           {
             label: feature.title,
             shrink: true,
@@ -1171,7 +1157,7 @@ export function Workspace({
           },
           ...(threadCrumb ? [{ label: threadCrumb }] : []),
         ]}
-        // With the epic and the owner first, a feature with no thread after it is still the page.
+        // With the epic first, a feature with no thread after it is still the page.
         trail={!!threadCrumb}
         status={workerHeader ? workerHeader.status : status && <FeatureStatusLine status={status} onOpenThread={bringForward} />}
         actions={
@@ -1263,11 +1249,6 @@ export function Workspace({
                   onView={(target) => {
                     if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
                   }}
-                  ownedBy={
-                    owner.holderId && owner.chatName
-                      ? { chat: owner.chatName, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
-                      : null
-                  }
                 />
               }
               panel={

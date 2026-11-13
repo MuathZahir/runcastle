@@ -7,7 +7,8 @@ import { mayStartInBackground } from './database-copy'
 import type { EpicSibling } from './epic-siblings'
 import { epicSiblingsInProgress, mergeWakesEpic, ownerWords } from './epic-siblings'
 import { emit, getEventRow } from './events'
-import { chatNameOf } from './holding'
+import { chatNameOf } from '../threads/chat-name'
+import { isLocked } from './autopilot'
 import { getFeatureRow } from './repo'
 
 /**
@@ -133,7 +134,7 @@ function describe(event: EventRow, slug: string): string | null {
 function describeMerge(merge: MergeNews, slug: string): string {
   const head = `merged into ${merge.base} by ${merge.by}.`
   if (merge.siblings.length === 0) return `${head} ${NOTHING_TO_CHECK}`
-  const siblings = merge.siblings.map((s) => `- ${s.slug}: ${s.title} (owned by ${s.owner})`)
+  const siblings = merge.siblings.map((s) => `- ${s.slug}: ${s.title} (run by ${s.owner})`)
   const where = [
     ...(merge.sha ? [`the merge commit ${merge.sha.slice(0, 12)}`] : []),
     ...(merge.outcome ? [merge.outcome] : []),
@@ -257,7 +258,8 @@ function stateFor(ctx: AppCtx, event: EventRow, afterMerge = false): NotifyState
     feature: {
       slug: feature.slug,
       title: feature.title,
-      holderId: over ? null : (feature.heldBy ?? null),
+      // Only an epic running the feature on autopilot hears its news (merges aside).
+      holderId: over || !isLocked(ctx, feature) ? null : feature.chatId,
       ...(merge ? { merge } : {}),
     },
   }

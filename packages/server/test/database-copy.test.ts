@@ -198,7 +198,7 @@ describe('background messages on a copy', () => {
   it('tells no holder the drive has not started', async () => {
     const holder = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
     markSessionEnded(ctx, holder.id)
-    const f = seedFeature(ctx, projectId, { slug: 'held-copy', heldBy: holder.id })
+    const f = seedFeature(ctx, projectId, { slug: 'held-copy', lockedTo: holder.id })
     const event = emit(ctx, f.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'core' } })
 
     notifyOrchestrator(ctx, event.id)

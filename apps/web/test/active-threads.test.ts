@@ -1,14 +1,11 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { epicCrumb, epicOwnerCrumbs } from '../src/components/SidebarEpics'
-import { OwnerControl } from '../src/components/workspace/OwnerControl'
-import { ownerReading } from '../src/lib/feature-owner'
-import { TooltipProvider } from '../src/ui/tooltip'
+import { epicCrumb } from '../src/components/SidebarEpics'
 import { HoldMark, SidebarThreadList } from '../src/components/SidebarParts'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
-import { Crumbs, type Crumb } from '../src/ui/page'
+import { Crumbs } from '../src/ui/page'
 import {
   featureEpic,
   originFeatures,
@@ -33,12 +30,10 @@ const thread = (id: string, over: Partial<ThreadEntry> = {}): ThreadEntry => ({
   ...over,
 })
 
-const held = (title: string, heldBy: string, over: Partial<FeatureListItem> = {}): FeatureListItem =>
-  ({ ...listItem(), id: title, title, heldBy, status: 'active', ...over }) as FeatureListItem
-
-/** A feature cut by chat `chatId` (its origin), held by that chat unless `over` says otherwise. */
+/** A feature cut by chat `chatId` (its origin, its epic). */
 const cut = (title: string, chatId: string, over: Partial<FeatureListItem> = {}): FeatureListItem =>
-  ({ ...listItem(), id: title, title, chatId, heldBy: chatId, status: 'active', ...over }) as FeatureListItem
+  ({ ...listItem(), id: title, title, chatId, status: 'active', ...over }) as FeatureListItem
+const held = cut
 
 const active = (t: ThreadEntry, features: FeatureListItem[] = [], current: string | null = null) =>
   threadIsActive(t, { current, features, now })
@@ -71,16 +66,13 @@ describe('which threads the Orchestrator lists', () => {
   })
 
   it('keeps an epic listed while the human runs a feature it cut (decision 16)', () => {
-    // Taken by typing: nothing holds it, the origin stays.
-    expect(active(thread('a'), [cut('f', 'a', { heldBy: undefined })])).toBe(true)
-    expect(originFeatures('a', [cut('f', 'a', { heldBy: undefined })]).map((f) => f.id)).toEqual(['f'])
+    expect(active(thread('a'), [cut('f', 'a')])).toBe(true)
+    expect(originFeatures('a', [cut('f', 'a')]).map((f) => f.id)).toEqual(['f'])
   })
 
-  it('does not count a hold without the origin: holding is not cutting', () => {
-    expect(active(thread('a'), [held('f', 'a')])).toBe(false)
-    // Given to another chat, it moves with its origin.
-    expect(active(thread('a'), [cut('f', 'b', { heldBy: 'b' })])).toBe(false)
-    expect(active(thread('b'), [cut('f', 'b', { heldBy: 'b' })])).toBe(true)
+  it('counts a feature for the epic it belongs to only', () => {
+    expect(active(thread('a'), [cut('f', 'b')])).toBe(false)
+    expect(active(thread('b'), [cut('f', 'b')])).toBe(true)
   })
 
   it('does not count backlog, shipped or archived features, or another chat\'s', () => {
@@ -132,7 +124,6 @@ describe('the epic a feature names (decision 15)', () => {
 
   it('is its origin chat, whoever holds it', () => {
     expect(featureEpic({ chatId: 'a' }, threads)?.id).toBe('a')
-    expect(featureEpic({ chatId: 'a', ...{ heldBy: 'other' } }, threads)?.id).toBe('a')
   })
 
   it('is nothing with no origin chat, one the list lacks, or a chat that is not an epic', () => {
@@ -143,7 +134,7 @@ describe('the epic a feature names (decision 15)', () => {
   })
 
   it('leads the header with the epic glyph and name, and stays after ship', () => {
-    const shipped = cut('f', 'a', { status: 'shipped', heldBy: undefined })
+    const shipped = cut('f', 'a', { status: 'shipped' })
     const crumb = epicCrumb(shipped, threads, open)
     expect(crumb).not.toBeNull()
     const html = renderToStaticMarkup(createElement(Crumbs, { items: [crumb!, { label: 'f' }] }))
@@ -155,71 +146,6 @@ describe('the epic a feature names (decision 15)', () => {
 
   it('gives a feature with no epic no crumb', () => {
     expect(epicCrumb(listItem({ chatId: null }), threads, open)).toBeNull()
-  })
-})
-
-/** The orchestrator's change to decision 15: the epic and the owner control share one crumb when the epic's chat owns it. */
-describe('the feature header: epic and owner', () => {
-  const threads = [thread('a', { title: 'Payment System' }), thread('b', { title: 'Notes Triage' })]
-  const open = vi.fn()
-
-  /** The header's crumbs before the feature's own, and their text, crumbs joined by " › ". */
-  function header(f: FeatureListItem, onOpen: ((id: string) => void) | undefined = open): { crumbs: Crumb[]; text: string; html: string } {
-    const r = ownerReading(f, threads)
-    const crumbs = epicOwnerCrumbs(f, threads, onOpen, r, (inEpic) =>
-      createElement(OwnerControl, {
-        owner: r.owner,
-        ...(r.chatName ? { chatName: r.chatName } : {}),
-        feature: f.title,
-        inEpic,
-        onChoose: () => {},
-      }),
-    )
-    const html = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(Crumbs, { items: crumbs })))
-    return { crumbs, html, text: html.replace(/<\/li>/g, ' › ').replace(/<[^>]*>/g, '').replace(/ › $/, '').replace(/\s*·\s*/g, ' · ') }
-  }
-
-  it('makes one crumb when the epic chat owns it: the name opens the chat, the finish words the menu', () => {
-    const { crumbs, text, html } = header(cut('f', 'a', { finish: 'show' }))
-    expect(crumbs).toHaveLength(1)
-    expect(crumbs[0]!.onClick).toBeUndefined()
-    expect(html).toMatch(/<button type="button" title="Epic: Payment System"[^>]*>Payment System<\/button>/)
-    expect(html).toContain('aria-haspopup="menu"')
-    expect(html).toContain('title="Who finishes this feature: Payment System · you merge"')
-    expect(text).toBe('Payment System · you merge')
-    expect(text.match(/Payment System/g)).toHaveLength(1)
-    const merge = header(cut('f', 'a', { finish: 'merge' })).text
-    expect(merge).toBe('Payment System · merges it')
-  })
-
-  it('keeps both for a feature of the human’s whose finish is still the epic’s: it reads "Yours" (one-place-to-answer decision 8)', () => {
-    const { crumbs, text } = header(cut('f', 'a', { heldBy: undefined, finish: 'show' }))
-    expect(crumbs).toHaveLength(2)
-    expect(text).not.toContain('yours to plan first')
-    expect(text).toContain('Yours')
-  })
-
-  it('keeps both when the human took it', () => {
-    const { crumbs, text } = header(cut('f', 'a', { heldBy: undefined, finish: 'you' }))
-    expect(crumbs).toHaveLength(2)
-    expect(text).toContain('Payment System')
-    expect(text).toContain('Yours')
-  })
-
-  it('keeps both when another chat runs it', () => {
-    const { crumbs, text } = header(cut('f', 'a', { heldBy: 'b', finish: 'merge' }))
-    expect(crumbs).toHaveLength(2)
-    expect(text).toContain('Payment System')
-    expect(text).toContain('Notes Triage · merges it')
-  })
-
-  it('leaves the owner control alone with no epic', () => {
-    const none = header(listItem({ chatId: null }) as FeatureListItem)
-    expect(none.crumbs).toHaveLength(1)
-    expect(none.text).toBe('Yours')
-    const unopenable = header(cut('f', 'a', { finish: 'show' }), undefined)
-    expect(unopenable.crumbs).toHaveLength(1)
-    expect(unopenable.text).toBe('Payment System · you merge')
   })
 })
 

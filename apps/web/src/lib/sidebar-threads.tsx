@@ -81,11 +81,6 @@ function inMotionOrUpNext(f: FeatureListItem): boolean {
   return f.status === 'active' || (f.status === 'draft' && f.upNext)
 }
 
-/** The features a thread holds, in flight or up next. The app lists by origin now ({@link originFeatures}); old design pages still read this. */
-export function heldFeatures(threadId: string, features: readonly FeatureListItem[]): FeatureListItem[] {
-  return features.filter((f) => f.heldBy === threadId && inMotionOrUpNext(f))
-}
-
 /**
  * The features a chat cut that are in flight or up next: by origin (`chatId`),
  * whoever runs them now (orchestrator-chats-become-epics decisions 6, 16).

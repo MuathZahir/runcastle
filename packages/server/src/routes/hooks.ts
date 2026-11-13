@@ -8,7 +8,7 @@ import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { guardKindOf } from '../workers/drive'
 import { getRuntimeCtx } from '../launcher/runtime'
-import { sessionAudience, takenByHumanNews, toolsForAudience } from '../mcp/server'
+import { sessionAudience, toolsForAudience } from '../mcp/server'
 import { clearSentMemoryOnStart } from '../mcp/sent-memory'
 import {
   getSessionRow,
@@ -22,7 +22,7 @@ import { mergeInProgressAt, stagedPathsAt } from '../services/git'
 import { featureStateLine } from '../services/feature-state'
 import { isLeadSession } from '../services/lead-delivery'
 import { isMachinePrompt, isRuncastlePrompt, typedAfterOpening } from '../services/lead-prompt'
-import { releaseOnTyped } from '../services/holding'
+import { autopilotOf, lockedLine } from '../services/autopilot'
 import { markHumanMessage } from '../services/lead-status'
 import { clearWait } from '../services/waits'
 import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
@@ -98,7 +98,7 @@ hooks.post('/:event', async (c) => {
         case 'session-start':
           return c.json(await handleProjectScopedSessionStart(ctx, session, body.payload))
         case 'user-prompt':
-          return c.json(handleProjectScopedUserPrompt(ctx, session))
+          return c.json(handleProjectScopedUserPrompt(session))
         case 'session-end':
           return c.json(handleProjectScopedSessionEnd(ctx, session, body.payload))
         case 'pre-tool':
@@ -114,9 +114,12 @@ hooks.post('/:event', async (c) => {
     switch (event) {
       case 'session-start':
         return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
-      case 'user-prompt':
+      case 'user-prompt': {
+        const refused = refuseTypedOnAutopilot(ctx, session, feature, body.payload)
+        if (refused) return c.json(refused)
         if (isLeadSession(session)) handleLeadPrompt(ctx, session, feature, body.payload)
         return c.json(handleUserPrompt(ctx, feature, session))
+      }
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
       case 'pre-tool':
@@ -271,17 +274,12 @@ async function handleProjectScopedSessionStart(
   }
 }
 
-/**
- * Every turn of a project-scoped session is labelled; an orchestrator chat is
- * also told, once, of each feature the human took from it since
- * (every-feature-has-one-owner decision 23), as it is never woken for that.
- */
-function handleProjectScopedUserPrompt(ctx: AppCtx, session: SessionRow): unknown {
-  const taken = session.kind === 'project' ? takenByHumanNews(ctx, session.id) : []
+/** Every turn of a project-scoped session is labelled. */
+function handleProjectScopedUserPrompt(session: SessionRow): unknown {
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: [projectScopedPromptLabel(session.kind), ...taken.map((line) => `[runcastle] ${line}`)].join('\n'),
+      additionalContext: projectScopedPromptLabel(session.kind),
     },
   }
 }
@@ -395,19 +393,38 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
  * command: runcastle sends it, and stamping it would clear what the feature
  * waits on (lead-chats-stay-small decision 14). Nor does a prompt Claude Code
  * makes itself — a background helper's `<task-notification>`, a peer's message
- * (triage-batch decision 18): it would move a chat-owned feature to the human
- * and clear what its lead waits on and its stopped mark.
+ * (triage-batch decision 18): it would clear what its lead waits on and its
+ * stopped mark.
  */
 function handleLeadPrompt(ctx: AppCtx, session: SessionRow, feature: Feature, payload: Record<string, unknown> | undefined): void {
-  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt === undefined || COMPACT_TEXT.test(prompt.trimStart()) || isMachinePrompt(prompt)) return
-  // A chat nobody started opens on the human's first message, behind runcastle's held opening: still typed.
-  if (isRuncastlePrompt(prompt) && typedAfterOpening(prompt) === null) return
-  // Typing in the lead's main chat takes a chat-owned feature (every-feature-has-one-owner
-  // decision 23). Only this path: a delivered message, a worker or a side chat never does.
-  releaseOnTyped(ctx, feature.id)
+  if (!humanTyped(payload)) return
   markHumanMessage(ctx, feature.id, { typed: true })
   clearWait(ctx, session.id, 'human')
+}
+
+/** Whether the prompt in a `UserPromptSubmit` payload is one the human typed (see {@link handleLeadPrompt}). */
+function humanTyped(payload: Record<string, unknown> | undefined): boolean {
+  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
+  if (prompt === undefined || COMPACT_TEXT.test(prompt.trimStart()) || isMachinePrompt(prompt)) return false
+  // A chat nobody started opens on the human's first message, behind runcastle's held opening: still typed.
+  return !(isRuncastlePrompt(prompt) && typedAfterOpening(prompt) === null)
+}
+
+/**
+ * The human typed into a locked lead's chat (`epics-on-autopilot` decision
+ * 16): the prompt is blocked, saying where to talk instead. Nothing changes
+ * owner on typing. Null when the prompt may go on. The web app shows no message
+ * box there, and `thread.send` refuses the same for the lead and its workers.
+ */
+function refuseTypedOnAutopilot(
+  ctx: AppCtx,
+  session: SessionRow,
+  feature: Feature,
+  payload: Record<string, unknown> | undefined,
+): { decision: 'block'; reason: string } | null {
+  if (!isLeadSession(session) || !humanTyped(payload)) return null
+  const lock = autopilotOf(ctx, feature)
+  return lock ? { decision: 'block', reason: lockedLine(lock.epicName) } : null
 }
 
 async function handleSessionEnd(

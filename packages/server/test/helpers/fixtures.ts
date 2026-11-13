@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import type { AgentRuntime, DriveWorkerKind, Feature, Project, SessionPurpose, SessionRow, WorkerStatus } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import type { AppCtx } from '../../src/db/types'
-import { features, projects, workers } from '../../src/db/schema'
+import { eq } from 'drizzle-orm'
+import { features, projects, sessions, workers } from '../../src/db/schema'
 import { createSessionRow } from '../../src/launcher/sessions'
 import { rowToFeature, rowToProject } from '../../src/services/repo'
 
@@ -43,14 +44,16 @@ export function seedProject(ctx: AppCtx, repoPath: string = tmpRepo()): Project 
  * Insert a feature row directly with sensible defaults. A seeded feature is a
  * cut one, so it records a base (`main`) like every real feature does; pass
  * `baseBranch: null` for the two rows that genuinely have none — a parked draft,
- * or a legacy row from before the column existed.
+ * or a legacy row from before the column existed. `lockedTo` seeds a feature
+ * on autopilot in that epic: its chat, in the run, and the epic's switch on.
  */
 export function seedFeature(
   ctx: AppCtx,
   projectId: string,
-  overrides: Partial<Feature> & { baseBranch?: string | null } = {},
+  overrides: Partial<Feature> & { baseBranch?: string | null; lockedTo?: string } = {},
 ): Feature {
   const slug = overrides.slug ?? 'demo'
+  if (overrides.lockedTo) ctx.db.update(sessions).set({ autopilot: true }).where(eq(sessions.id, overrides.lockedTo)).run()
   const inserted = ctx.db
     .insert(features)
     .values({
@@ -59,9 +62,8 @@ export function seedFeature(
       slug,
       title: overrides.title ?? 'Demo feature',
       oneLiner: overrides.oneLiner ?? 'a demo feature',
-      heldBy: overrides.heldBy ?? null,
-      chatId: overrides.chatId ?? null,
-      finish: overrides.finish ?? 'you',
+      chatId: overrides.lockedTo ?? overrides.chatId ?? null,
+      inRun: overrides.lockedTo ? true : (overrides.inRun ?? false),
       brief: overrides.brief ?? null,
       branch: overrides.branch ?? `feature/${slug}`,
       baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,

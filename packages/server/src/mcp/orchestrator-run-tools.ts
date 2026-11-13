@@ -2,8 +2,9 @@ import type { SessionRow } from '@runcastle/core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
-import { requireMayMessage } from '../services/holding'
+import { InvalidInputError } from '../errors'
 import { deliverToLead } from '../services/lead-delivery'
+import { chatName } from '../threads/chat-name'
 import { capTurns, capTurnsCounted, mainChatTurns } from '../services/main-chat-excerpt'
 import { shownCopies, type ShownCopy } from '../threads/shown'
 import { reviewShots, type ReviewShots } from '../services/review-package'
@@ -12,6 +13,7 @@ import {
   ok,
   orchestratorTool,
   recordFeatureAction,
+  requireActableFeature,
   requireProjectFeature,
   type ResolveSession,
 } from './orchestrator-tools'
@@ -22,30 +24,48 @@ import { chatReadPosition, recordChatRead } from './sent-memory'
  * `the-feature-lead-runs-rounds` decision 11): a message to its lead.
  */
 
-const FROM_ORCHESTRATOR_LINE = "From the project's orchestrator, not the human:"
+/** The line a message from the epic opens with (`epics-on-autopilot` decision 22). */
+export function fromEpicLine(epicName: string): string {
+  return `From ${epicName}, the project's orchestrator, not the human:`
+}
+
+/** The line a relay of the human's own answer opens with (decision 25): the lead takes it as the human's. */
+export function relayLine(epicName: string): string {
+  return `From ${epicName}, the project's orchestrator, relaying the human's own words (take them as the human's):`
+}
 
 /** What `send_to_feature` did with the message. */
 export type SendToFeatureResult = { deliveredToLead: true }
 
 /**
- * Send a message to a feature of the project. Every chat on a feature is its lead, so
- * the message reaches it as the human's would — drive notes, an answer — and
- * counts as a human message, which clears a Stop.
+ * Send a message to a feature on autopilot in this epic. Every chat on a
+ * feature is its lead, so the message reaches it as the human's would — drive
+ * notes, an answer — and counts as a human message, which clears a Stop. It
+ * opens with the epic's name. `humanWords` relays the human's own answer,
+ * quoted as they wrote it and marked as theirs (decision 25), ahead of any
+ * message of the epic's own.
  */
 export async function toolSendToFeature(
   ctx: AppCtx,
   session: SessionRow,
-  input: { slug: string; message: string },
+  input: { slug: string; message?: string; humanWords?: string },
 ): Promise<SendToFeatureResult> {
-  // Allowed on a human-owned feature too: a marked note, or an answer to its lead (decisions 6, 9).
-  // It never carries the human's words (one-place-to-answer decision 11).
-  const feature = requireMayMessage(ctx, session, requireProjectFeature(ctx, session, input.slug))
+  const feature = requireActableFeature(ctx, session, input.slug, 'message')
+  const message = input.message?.trim() ?? ''
+  const human = input.humanWords?.trim() ?? ''
+  if (!message && !human) throw new InvalidInputError('send_to_feature needs a `message`, or the human’s own words in `humanWords`.')
+  const epic = chatName(session)
+  const parts = [
+    ...(human ? [`${relayLine(epic)}\n\n${human.split(/\r?\n/).map((l) => `> ${l}`).join('\n')}`] : []),
+    ...(message ? [`${fromEpicLine(epic)}\n\n${message}`] : []),
+  ]
+  const shown = [human ? `The human: ${human}` : '', message].filter(Boolean).join('\n\n')
   await deliverToLead(ctx, feature, {
-    text: `${FROM_ORCHESTRATOR_LINE}\n\n${input.message}`,
+    text: parts.join('\n\n'),
     source: 'human',
-    orchestrator: { text: input.message },
+    orchestrator: { text: shown },
   })
-  recordFeatureAction(ctx, session, feature.id, 'messaged', { quote: firstLine(input.message) })
+  recordFeatureAction(ctx, session, feature.id, 'messaged', { quote: firstLine(message || human) })
   return { deliveredToLead: true }
 }
 
@@ -160,10 +180,16 @@ export function registerOrchestratorRunTools(
       {
         title: 'Send a feature a message',
         description:
-          "Send a message to a feature's agent, marked as from the orchestrator, never as the human's words.",
+          "Send a message to the agent of a feature on autopilot in this epic, marked as from this epic, not the human. " +
+          'To pass on the human’s own answer, put their words verbatim in `humanWords`: it is marked as theirs. ' +
+          'Refused on a feature that is the human’s: link them to its chat instead.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
-          message: z.string().min(1).describe('What to change and why, or what you found.'),
+          message: z.string().optional().describe('Your own words: what to change and why, or what you found.'),
+          humanWords: z
+            .string()
+            .optional()
+            .describe('The human’s own answer, exactly as they wrote it here. Never your paraphrase.'),
         },
       },
       orchestratorTool(async (args, extra) => {

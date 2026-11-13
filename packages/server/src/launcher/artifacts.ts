@@ -645,36 +645,24 @@ export interface ProjectBrief {
    * stays live as notes are jotted mid-chat.
    */
   openNotes: number
-  /**
-   * The features a new thread already holds, by slug: only ever those inherited
-   * from a chat too long to reopen (`threads-hold-features` decision 10).
-   */
-  held?: string[]
 }
 
 /**
  * The orchestrating section of the project prompt: that this session is the
- * project's orchestrator, where its judgement is written down, that nothing will
- * prompt it, and which features it inherited from a chat too long to reopen.
+ * project's orchestrator, where its judgement is written down, and that nothing
+ * will prompt it.
  */
-function renderOrchestratingSection(held: string[], runtime: AgentRuntime): string[] {
+function renderOrchestratingSection(runtime: AgentRuntime): string[] {
   return [
     `## ${ORCHESTRATING}`,
-    "**You are this project's orchestrator.** You can check on any of its features, and message,",
-    'plan, start and merge the ones you hold, acting on what the human asked or agreed, as far as they asked.',
+    "**You are this project's orchestrator.** You can check on any of its features, create, start and",
+    'plan the ones you cut, and message, drive and merge them only while they are on autopilot in this epic,',
+    'acting on what the human asked or agreed, as far as they asked.',
     `Read and follow the "${ORCHESTRATING}" section of the \`${skillRef(runtime, 'project')}\``,
     'skill — it is how you judge every step; nothing here replaces it.',
     '',
     'You run without permission prompts: you edit the repo and run commands without asking.',
     '',
-    ...(held.length > 0
-      ? [
-          '### Features you hold',
-          'You replace a chat too long to reopen, so these are yours now. Read each before you act on it.',
-          ...held.map((slug) => `- ${slug}`),
-          '',
-        ]
-      : []),
   ]
 }
 
@@ -701,7 +689,7 @@ export function renderProjectPrompt(
   brief: ProjectBrief,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  const { project, branch, worktreePath, base, openNotes, held } = brief
+  const { project, branch, worktreePath, base, openNotes } = brief
   return [
     `# runcastle — ${project.name} (orchestrator)`,
     '',
@@ -747,7 +735,7 @@ export function renderProjectPrompt(
     "The runcastle skill pack also carries the feature sessions' entry skills; they are",
     'denied to this session by settings. Yours is the one named below.',
     '',
-    ...renderOrchestratingSection(held ?? [], runtime),
+    ...renderOrchestratingSection(runtime),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',

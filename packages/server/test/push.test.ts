@@ -114,16 +114,16 @@ describe('phone notifications', () => {
       })
     })
 
-    it('refuses a feature’s chat on a held feature, naming the holder, even if a phone is on', async () => {
+    it('refuses a feature’s chat on a feature on autopilot, naming the epic, even if a phone is on', async () => {
       addPushSubscription(ctx, phone('a'))
       const holder = session('project')
-      const feature = seedFeature(ctx, projectId, { heldBy: holder.id })
+      const feature = seedFeature(ctx, projectId, { lockedTo: holder.id })
       const { sent, send } = fakeSender()
 
       const refused = await toolNotifyHuman(ctx, session('chat', feature.id), { message: 'Hi' }, send).catch((e) => e)
 
       expect(refused).toBeInstanceOf(GateError)
-      expect((refused as GateError).message).toMatch(/holds this feature/)
+      expect((refused as GateError).message).toMatch(/on autopilot in the epic .*only the epic may notify/)
       expect(sent).toEqual([])
     })
 

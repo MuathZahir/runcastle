@@ -224,10 +224,8 @@ async function seedEpic(ctx: AppCtx, project: Project, epic: EpicSeed, now: numb
     ids.set(seed.title, feature.id)
     exec(
       ctx,
-      'UPDATE features SET chat_id = ?, held_by = ?, status = ?, up_next = ?, created_at = ? WHERE id = ?',
+      'UPDATE features SET chat_id = ?, status = ?, up_next = ?, created_at = ? WHERE id = ?',
       row.id,
-      // The epic runs what it cut, until it shipped.
-      seed.as === 'shipped' ? null : row.id,
       seed.as === 'shipped' ? 'shipped' : feature.status,
       seed.as === 'up-next' ? 1 : 0,
       now - epic.startedAgo + MINUTE,
