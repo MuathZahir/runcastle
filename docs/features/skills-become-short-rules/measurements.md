@@ -18,5 +18,16 @@ To fill in before ready.
 
 ## Replay
 
-To fill in before ready: the "Agents test like owners" brief planned by the new lead skill, beside
-its original 20 decisions.
+A subagent planned the "Agents test like owners" brief headless, by the new lead skill only
+(SKILL.md, planning-alone.md, decisions-and-spec.md), against the code at that brief's scaffold
+(444db055), without seeing the original plan.
+
+| Plan | Decisions | Assumed | Check first | decisions.md | spec.md |
+|---|---:|---:|---:|---:|---:|
+| Original (old skill) | 20 | n/a | n/a | 14,616 | 6,299 |
+| Replay (new skill) | 10 | 5 | 3 | 4,311 | 3,228 |
+
+Five of the ten are the brief's own "Decided with the human" lines, copied unmarked; the other
+five are the replay's assumptions. One pull it reported: the brief put "workers too" under "What it
+must not swallow", which the skill does not count as settling what, where or who, so it recorded
+that as an assumption to check first rather than asking.
