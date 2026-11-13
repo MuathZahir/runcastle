@@ -14,6 +14,8 @@ import {
   sendBackWorker,
   startReviewWorker,
   startWorker,
+  workerPrompted,
+  workerWaits,
 } from '../workers/service'
 import { isHostReview, reportReviewFinding, writeHostHandback } from '../workers/review'
 import { provideWorkerFeatureRead } from '../workers/tools'
@@ -29,6 +31,7 @@ import type {
   FeatureFinish,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
+  Need,
   PreparedKey as PreparedKeyT,
   Project,
   ReadyDeclaration,
@@ -46,7 +49,6 @@ import type {
 import {
   PreparedKey,
   ReviewFindingInput,
-  WaitingKind,
   WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
   isAgentDigestDoc,
@@ -84,8 +86,9 @@ import {
   list as listFeatures,
   listReadyDeclarations,
   requireNotStopped,
-  setWaiting,
 } from '../services/features'
+import { needOf } from '../services/feature-need'
+import { clearWait, setWait, waitOf } from '../services/waits'
 import { humanTypedAt } from '../services/lead-status'
 import {
   blocksOf,
@@ -420,15 +423,13 @@ export interface FeatureContext {
   /**
    * The lead's loop: the newest ready declaration; whether a drive of this
    * feature holds the drive slot; whether the human pressed Stop and has not
-   * replied since (nothing starts either); and why the feature waits on the
-   * human, if it does.
+   * replied since (nothing starts either); and what the feature needs from
+   * the human, if anything.
    */
   latestReady: ReadyDeclaration | null
   driveActive: boolean
   stopped: boolean
-  waitingReason: string | null
-  /** Which kind of wait `waitingReason` is (answer, plan, design, stuck); null when nothing is waited on. */
-  waitingKind: WaitingKind | null
+  need: Need | null
   /** When the human last typed in this feature's chat; null if they never have. */
   humanTypedAt: number | null
   /**
@@ -559,8 +560,7 @@ export function featureContext(
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
     driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
     stopped: feature.stoppedAt !== null,
-    waitingReason: feature.waitingReason,
-    waitingKind: feature.waitingKind,
+    need: needOf(ctx, feature),
     humanTypedAt: humanTypedAt(ctx, feature.id),
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
@@ -643,8 +643,8 @@ export interface FeatureStatusView {
   slug: string
   title: string
   status: FeatureStatusT
-  waitingReason: string | null
-  waitingKind: WaitingKind | null
+  /** What it needs from the human (its lead's or a worker's line); null when nothing. */
+  need: Need | null
   heldBy: string | null
   humanTypedAt: number | null
   /** How many of the feature's workers are in each status; a status with none is absent. */
@@ -668,8 +668,7 @@ export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureSt
     slug: feature.slug,
     title: feature.title,
     status: feature.status,
-    waitingReason: feature.waitingReason,
-    waitingKind: feature.waitingKind,
+    need: needOf(ctx, feature),
     heldBy: holder ? holderName(holder) : null,
     humanTypedAt: humanTypedAt(ctx, feature.id),
     workerCounts,
@@ -849,10 +848,10 @@ export function toolDeclareReady(
   ctx: AppCtx,
   session: SessionRow,
   input: { scenario: string },
-): { ok: true; waitingReason: string | null } {
+): { ok: true; need: Need | null } {
   const featureId = requireLeadFeatureId(session)
-  declareReady(ctx, featureId, input)
-  return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason }
+  declareReady(ctx, featureId, input, session.id)
+  return { ok: true, need: waitOf(ctx, session.id) }
 }
 
 /**
@@ -865,26 +864,40 @@ export async function toolHandBack(
   session: SessionRow,
   input: { summary: string },
 ): Promise<{ deliveredTo: string; state: string }> {
-  return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary)
+  return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary, session.id)
 }
 
+/** What `wait_for_you` takes: the one line the agent needs the human for, or a withdraw. */
+export type WaitForYouInput = { why: string; withdraw?: undefined } | { withdraw: true; why?: undefined }
+
 /**
- * The lead waits on the human. Under a chat owner (one-place-to-answer decision
- * 9) the feature becomes the human's first: its chat says so, and the chat that
- * owned it is woken once to tell the human where to answer.
+ * The calling agent waits on the human (needs-you-is-the-agent-s-call
+ * decisions 2, 6, 7): its chat — the lead's, an orchestrator chat's, a
+ * worker's — needs them with `why` until the human writes in it, or the agent
+ * withdraws it (`withdraw: true`) or replaces it. A worker reads "needs you"
+ * meanwhile. Under a chat owner (one-place-to-answer decision 9) a lead's
+ * feature becomes the human's first: its chat says so, and the chat that owned
+ * it is woken once to tell the human where to answer.
  */
 export async function toolWaitForYou(
   ctx: AppCtx,
   session: SessionRow,
-  input: { why: string; kind?: WaitingKind },
-): Promise<{ ok: true; waitingReason: string | null; waitingKind: WaitingKind | null; nowYours?: true }> {
-  const featureId = requireLeadFeatureId(session)
-  const released = releaseNeedsYou(ctx, featureId)
+  input: WaitForYouInput,
+): Promise<{ ok: true; need: Need | null; nowYours?: true }> {
+  if (input.withdraw) {
+    clearWait(ctx, session.id, 'withdrawn')
+    if (session.kind === 'worker') workerPrompted(ctx, session.id)
+    return { ok: true, need: null }
+  }
+  const why = input.why.trim()
+  if (!why) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+  const lead = session.kind === 'chat' && session.featureId ? session.featureId : null
+  const released = lead ? releaseNeedsYou(ctx, lead) : null
   if (released) sayHandOver(ctx, session.id, released)
-  setWaiting(ctx, featureId, input.why, input.kind)
-  if (released) await wakeEpicNeedsYou(ctx, getFeatureRow(ctx, featureId), released)
-  const { waitingReason, waitingKind } = getFeatureRow(ctx, featureId)
-  return { ok: true, waitingReason, waitingKind, ...(released ? { nowYours: true as const } : {}) }
+  const need = setWait(ctx, session.id, why, 'agent')
+  if (session.kind === 'worker') workerWaits(ctx, session.id)
+  if (lead && released) await wakeEpicNeedsYou(ctx, getFeatureRow(ctx, lead), released)
+  return { ok: true, need, ...(released ? { nowYours: true as const } : {}) }
 }
 
 /** The feature a DESIGN tool acts on: design mode belongs to the feature's own chat. */
@@ -2612,7 +2625,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // The lead (and its side sessions) close the review's findings: `resolve_finding`.
   resolve_finding: FEATURE_KINDS,
   declare_ready: ['chat'],
-  wait_for_you: ['chat'],
+  // A worker's own is served in its sandbox (`worker-mcp-script.ts`) and answered over the relay.
+  wait_for_you: ['chat', 'project'],
   // The lead's hands back to the orchestrator; a host worker's (a drive review, a drive worker) hands back to its lead.
   hand_back: ['chat', 'review', 'fix-drive-worker', 'scenario-worker'],
   // A `worker` session is in no list here: its tools are its own, served in its
@@ -3442,20 +3456,18 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Wait for the human',
         description:
-          'Say that nothing moves until the human acts, and why; use it for a yes, a decision, or ' +
-          'when stuck. When an orchestrator chat owns the feature, use it only for what the human alone decides: ' +
-          'the feature becomes theirs and they answer in your chat. Only the human’s next message to you (or an ' +
-          'orchestrator’s) clears it; ' +
-          'starting a worker or a review does not.',
+          'Tell the human you need them, in one short line saying what you need. It stays until the human ' +
+          'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human.',
         inputSchema: {
-          why: z.string().min(1).describe('A few words on what you wait for.'),
-          kind: WaitingKind.optional().describe('`plan`, `design` (a recorded design), `stuck`, or `answer` (default).'),
+          why: z.string().optional().describe('One short line: what you need from the human.'),
+          withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),
         },
       },
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(await toolWaitForYou(rs.ctx, rs.session, args))
+        const input: WaitForYouInput = args.withdraw ? { withdraw: true } : { why: args.why ?? '' }
+        return ok(await toolWaitForYou(rs.ctx, rs.session, input))
       },
     )
   }

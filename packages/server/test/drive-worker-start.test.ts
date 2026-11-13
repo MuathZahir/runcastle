@@ -25,7 +25,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { type AgentHost, createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
-import { appendThreadEvent } from '../src/threads/log'
+import { appendThreadEvent, readThreadEvents } from '../src/threads/log'
 import { forgetDriveTurnBasesForTests, handBackDriveWorkers, handBackOrphanedDriveWorkers } from '../src/workers/drive'
 import { writeHostHandback } from '../src/workers/review'
 import { getWorker, listProjectWorkers, listWorkers, setStatus, withWorkers, workerTurnSlot } from '../src/workers/service'
@@ -86,6 +86,7 @@ async function serveApp(): Promise<string> {
 
 const caller = () => createCallerFactory(appRouter)(ctx)
 const status = (id: string) => getWorker(ctx, id)?.status
+const turnEnded = (id: string) => readThreadEvents(id).some((e) => e.type === 'turn_ended')
 const scenarioWorkerOf = (featureId: string) => listWorkers(ctx, featureId).find((w) => w.kind === 'scenario')!.id
 
 /** A feature drive whose setup fails: what Fix drive works from. */
@@ -174,7 +175,7 @@ describe('Fix drive', () => {
     const first = promptsOf(sessionId)[0]?.text ?? ''
     expect(first).toContain('could-not-reach-postgres')
     expect(first).toContain('exit 3')
-    await until(() => status(sessionId) === 'needs-you')
+    await until(() => turnEnded(sessionId))
 
     // The drive stops; a later drive fails again and the same worker picks it up.
     await testDrive(ctx, project, feature, 'stop')
@@ -212,7 +213,7 @@ describe('New scenario / Fix it', () => {
     expect(brief).toContain('Only the human talks to you')
 
     // A second press sends the new ask into the same worker.
-    await until(() => status(sessionId) === 'needs-you')
+    await until(() => turnEnded(sessionId))
     const again = await caller().feature.openScenarioChat({ projectId: project.id, description: 'an empty cart' })
     expect(again.sessionId).toBe(sessionId)
     expect(promptsOf(sessionId).at(-1)?.text).toContain('an empty cart')
@@ -345,7 +346,7 @@ describe("the drive's end", () => {
   it("leaves the Fix-drive worker working through retry_drive's stop-and-start", async () => {
     await failedDrive()
     const { sessionId } = await caller().feature.fixDrive({ featureId: feature.id })
-    await until(() => status(sessionId) === 'needs-you')
+    await until(() => turnEnded(sessionId))
     setStatusWorking(sessionId)
     await toolRetryDrive(ctx, getSessionRow(ctx, sessionId)!)
     expect(status(sessionId)).toBe('working')
@@ -355,7 +356,7 @@ describe("the drive's end", () => {
   it('refuses a human message to a drive worker between drives, and allows it while its drive runs', async () => {
     await driveUp()
     const { sessionId } = await caller().feature.openScenarioChat({ projectId: project.id, description: 'x' })
-    await until(() => status(sessionId) === 'needs-you')
+    await until(() => turnEnded(sessionId))
     await expect(caller().thread.send({ threadId: sessionId, text: 'more' })).resolves.toBeDefined()
     await testDrive(ctx, project, feature, 'stop')
     await expect(caller().thread.send({ threadId: sessionId, text: 'more' })).rejects.toThrow(

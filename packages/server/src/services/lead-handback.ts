@@ -1,4 +1,4 @@
-import { READY_TO_TEST, type Feature, type WorkerRow } from '@runcastle/core'
+import { type Feature, type Need, readyToTestWhy, type WorkerRow } from '@runcastle/core'
 import { appendThreadEvent } from '../threads/log'
 import { seedFromTranscript } from '../threads/read'
 import type { AppCtx } from '../db/types'
@@ -8,7 +8,7 @@ import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { getSessionRow } from '../launcher/sessions'
 import { chatNameOf, holderName } from './holding'
-import { setHandback } from './lead-status'
+import { waitOf } from './waits'
 import { listWorkers } from '../workers/service'
 
 /** The event a lead's handback leaves on its feature's timeline. */
@@ -20,10 +20,10 @@ export const LEAD_HANDED_BACK = 'lead.handed_back'
  * what it waits on, and how many of its workers are at work, so the
  * orchestrator needs no fetch.
  */
-export function handbackStateLine(feature: Pick<Feature, 'waitingReason'>, workers: readonly Pick<WorkerRow, 'status'>[]): string {
-  const ready = feature.waitingReason === READY_TO_TEST
+export function handbackStateLine(wait: Pick<Need, 'why'> | null, workers: readonly Pick<WorkerRow, 'status'>[]): string {
+  const ready = !!wait?.why.startsWith(readyToTestWhy(''))
   const parts = [ready ? 'Ready to test' : 'Not declared ready']
-  if (feature.waitingReason && !ready) parts.push(`waits on the human: ${feature.waitingReason}`)
+  if (wait && !ready) parts.push(`waits on the human: ${wait.why}`)
   const working = workers.filter((w) => w.status === 'working' || w.status === 'queued').length
   parts.push(working ? `${working} ${working === 1 ? 'worker' : 'workers'} at work` : 'no workers at work')
   return parts.join(' · ')
@@ -43,6 +43,7 @@ export async function handBackToOrchestrator(
   ctx: AppCtx,
   feature: Feature,
   summary: string,
+  leadSessionId?: string,
 ): Promise<{ deliveredTo: string; state: string }> {
   const live = feature.status !== 'shipped'
   const targetId = live ? (feature.heldBy ?? feature.chatId) : null
@@ -55,7 +56,7 @@ export async function handBackToOrchestrator(
   if (!mayStartInBackground(holder)) {
     throw new GateError('this test drive has not started the orchestrator chat of this feature, so the handback was not sent')
   }
-  const state = handbackStateLine(feature, listWorkers(ctx, feature.id))
+  const state = handbackStateLine(leadSessionId ? waitOf(ctx, leadSessionId) : null, listWorkers(ctx, feature.id))
   const text =
     `[runcastle] ${feature.slug} handed back:\n${summary.trim()}\n` +
     `State: ${state}. ` +
@@ -68,9 +69,6 @@ export async function handBackToOrchestrator(
     { source: 'runcastle', display: { featureHandback: { featureId: feature.id, title: feature.title, summary: summary.trim(), state } } },
   )
   const name = holderName(holder)
-  // Outstanding until the orchestrator acts, the human writes, or the hold moves
-  // (the-status-tells-the-truth decisions 5, 7); a newer handback replaces it.
-  setHandback(ctx, feature.id, summary.trim())
   emit(ctx, feature.id, {
     type: LEAD_HANDED_BACK,
     message: `handed back to the orchestrator chat "${name}"`,

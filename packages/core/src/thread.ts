@@ -1,6 +1,7 @@
 import * as z from 'zod'
 import { WorkerKind } from './schemas'
 import type { EpicColor, EpicIconId } from './epic-look'
+import type { Need } from './feature-need'
 
 /**
  * Threads (chat-as-web-components; ADR-0015). Every agent conversation is a
@@ -651,11 +652,11 @@ export interface ThreadEntry {
   /** The human renamed this chat, which outranks every other name. Absent (false) on a thread with no log. */
   humanNamed?: boolean
   /**
-   * An orchestrator chat's: the features it is asking the human about now
-   * ({@link featuresAskedAbout}), by id; absent when none. While any are, the
-   * chat waits on the human (`state` is `waiting`).
+   * What this chat's agent waits on the human for: its own `wait_for_you`, or
+   * an open permission prompt or question box (needs-you-is-the-agent-s-call).
+   * Null when it waits on nobody.
    */
-  askingAbout?: string[]
+  need: Need | null
   /** A project chat's epic colour (epics-that-look-alive decision 2); absent on other roles and on rows from before colours. */
   color?: EpicColor
   /** A project chat's epic icon (decision 1); absent until one is picked, when it wears the default. */
@@ -851,41 +852,6 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
   if (!replied) return 'idle'
   const stillWorking = running && (subagents > 0 || (commands > 0 && now - endedAt < BACKGROUND_WINDOW_MS))
   return stillWorking && !ENDS_ASKING.test(lastSaid.trimEnd()) ? 'background' : 'replied'
-}
-
-/**
- * Which features an orchestrator chat is asking the human about
- * (every-feature-has-one-owner decision 17): when the chat waits on the human
- * with a question — an ask still open while its process runs, or its last turn
- * ended on a message holding a question mark anywhere (real orchestrator turns
- * often ask, then add a recommendation: "Start it now? I recommend yes.") — the features whose plan, design or review card it showed in
- * that turn, in the order first shown. Otherwise none: a chat that is working,
- * idle, or ended its turn on words that ask nothing is asking about nothing. A
- * card from an earlier turn never counts, nor one shown before the human last
- * wrote. A card logged before cards carried their feature names none.
- */
-export function featuresAskedAbout(events: readonly ThreadEvent[], running: boolean, now: number): string[] {
-  const activity = threadActivity(events, running, now)
-  if (activity !== 'asking' && activity !== 'replied') return []
-  let shown: string[] = []
-  let lastSaid = ''
-  let lastMessage: string | undefined
-  for (const e of outsideCompactions(liveEvents(events))) {
-    if ((e.type === 'prompt' && !e.held && !e.hidden) || e.type === 'turn_started') {
-      shown = []
-      if (e.type === 'turn_started') {
-        lastSaid = ''
-        lastMessage = undefined
-      }
-    } else if (e.type === 'agent_text') {
-      lastSaid = e.messageId === lastMessage ? lastSaid + e.text : e.text
-      lastMessage = e.messageId
-    } else if (e.type === 'plan_shown' || e.type === 'design_shown' || e.type === 'review_package') {
-      if (e.featureId && !shown.includes(e.featureId)) shown.push(e.featureId)
-    }
-  }
-  if (activity === 'replied' && !/[?？؟]/.test(lastSaid)) return []
-  return shown
 }
 
 /**

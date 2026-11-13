@@ -31,7 +31,6 @@ import { requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
 import { type ChatFinish, chatNameOf, holderName, requireHold, takeFeature } from '../services/holding'
-import { clearHandback } from '../services/lead-status'
 import { type EpicSibling, epicSiblingsInProgress } from '../services/epic-siblings'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
@@ -176,7 +175,6 @@ export function recordFeatureAction(
     action,
     ...extra,
   })
-  clearHandback(ctx, featureId, 'orchestrator')
 }
 
 /**

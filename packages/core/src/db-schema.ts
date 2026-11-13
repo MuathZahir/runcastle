@@ -163,7 +163,7 @@ export const features = sqliteTable('features', {
   /**
    * The up-next mark (`waiting-is-not-backlog` decision 1): "start by itself when
    * what I wait on ships". Meaningful only while `status = 'draft'`; starting
-   * clears it. Not `waitingReason`, which is the lead waiting on the human.
+   * clears it. Not a wait, which is an agent waiting on the human.
    * Every feature created before the column stays in the backlog (decision 9).
    */
   upNext: integer('up_next', { mode: 'boolean' }).notNull().default(false),
@@ -195,16 +195,6 @@ export const features = sqliteTable('features', {
    * message has arrived since; that message clears it.
    */
   stoppedAt: integer('stopped_at'),
-  /**
-   * Why nothing moves until the human acts — the status line's "Waiting for
-   * you · <why>". Cleared by the next human message or round dispatch.
-   */
-  waitingReason: text('waiting_reason'),
-  /**
-   * Which kind of wait `waitingReason` is (`WaitingKind`: answer, plan, design,
-   * stuck); set and cleared with it. Null with a reason reads as an answer.
-   */
-  waitingKind: text('waiting_kind', { enum: ['answer', 'plan', 'design', 'stuck'] }),
   /** When a human message last reached the lead (ms) — the after-Stop dispatch check. */
   lastHumanMessageAt: integer('last_human_message_at'),
   /** When the lead last dispatched a round (ms). */
@@ -213,15 +203,6 @@ export const features = sqliteTable('features', {
   planShownAt: integer('plan_shown_at'),
   /** When the human last opened the plan (ms): new to them while older than `planShownAt`. */
   planSeenAt: integer('plan_seen_at'),
-  /**
-   * The lead's outstanding handback to its orchestrator
-   * (`the-status-tells-the-truth-about-who-and-what` decisions 5, 7): when it
-   * handed back (ms) and its summary. Set by `hand_back`, replaced by a newer
-   * one, and cleared by an orchestrator action on the feature, a human message
-   * to the lead, or the hold moving. Both null when none is outstanding.
-   */
-  handbackAt: integer('handback_at'),
-  handbackSummary: text('handback_summary'),
 })
 
 /**
@@ -426,6 +407,15 @@ export const sessions = sqliteTable('sessions', {
   epicIcon: text('epic_icon').$type<EpicIconId>(),
   /** The human picked the icon (decision 3): `name_epic` never changes it again. */
   epicIconByHuman: integer('epic_icon_by_human', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * What this chat's agent waits on the human for (needs-you-is-the-agent-s-call):
+   * its one line, when it was set (ms), and who set it — the agent
+   * (`wait_for_you`, `declare_ready`) or runcastle for a dead run. All null when
+   * it waits on nobody. The human's message in this chat clears it.
+   */
+  waitWhy: text('wait_why'),
+  waitSince: integer('wait_since'),
+  waitBy: text('wait_by', { enum: ['agent', 'runcastle'] }),
 })
 
 /**

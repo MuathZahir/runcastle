@@ -16,7 +16,7 @@ import {
 import { acpLaunchInput } from '../src/threads/launch'
 import threadsApp from '../src/routes/threads'
 import { subscribeLive } from '../src/services/bus'
-import { setWaiting } from '../src/services/lead-status'
+import { setWait } from '../src/services/waits'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
@@ -186,8 +186,8 @@ describe('thread router', () => {
     await expect(acpLaunchInput(ctx, getSessionRow(ctx, fix) as SessionRow)).rejects.toThrow(/old drive chat/)
   })
 
-  // every-feature-has-one-owner decision 17: an orchestrator chat's row says which features it asks about.
-  it('lists an orchestrator chat that ended on a question after a plan card as waiting, asking about that feature', async () => {
+  // needs-you decision 6: a question mark after a plan card is no need; only the chat's own wait_for_you is.
+  it('lists an orchestrator chat that ended on a question after a plan card as idle, needing nobody', async () => {
     const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
     const quiet = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
     for (const id of [row.id, quiet.id]) {
@@ -198,10 +198,12 @@ describe('thread router', () => {
       appendThreadEvent(id, { type: 'turn_ended', reason: 'end_turn' })
     }
     const list = await caller.thread.list({ projectId })
-    expect(list.find((t) => t.id === row.id)).toMatchObject({ state: 'waiting', askingAbout: [featureId] })
-    const other = list.find((t) => t.id === quiet.id)
-    expect(other?.state).toBe('idle')
-    expect(other).not.toHaveProperty('askingAbout')
+    for (const id of [row.id, quiet.id]) expect(list.find((t) => t.id === id)).toMatchObject({ state: 'idle', need: null })
+    setWait(ctx, row.id, 'Approve this plan?')
+    expect((await caller.thread.list({ projectId })).find((t) => t.id === row.id)).toMatchObject({
+      state: 'idle',
+      need: { why: 'Approve this plan?', threadId: row.id, by: 'agent' },
+    })
   })
 
   // decision 14: a thread is named by what it is about, never by its kind.
@@ -489,74 +491,49 @@ describe('a feature whose lead replied with work left running (threads-open-fast
     const [row] = await caller.feature.list({ projectId })
     const full = await caller.feature.get({ id: featureId })
     const thread = (await caller.thread.list({ featureId }))[0]
-    return { waits: [row!.leadAwaitsHuman, full.leadAwaitsHuman], background: row!.leadInBackground, thread: thread!.state }
+    return { working: [row!.working, full.working], need: [row!.need, full.need], background: row!.leadInBackground, thread: thread!.state }
   }
 
   it('reads as working in every status, and the chat still reads its turn as over', async () => {
     const id = await replied('The tests are running, and I will commit once they are green.')
-    expect(await reads()).toEqual({ waits: [false, false], background: true, thread: 'working' })
+    expect(await reads()).toEqual({ working: [true, true], need: [null, null], background: true, thread: 'working' })
     expect((await caller.thread.view({ threadId: id })).state).toBe('idle')
   })
 
-  it('waits on the human at once when the reply ends on a question', async () => {
+  it('needs nobody when the reply ends on a question but the lead called no wait_for_you (needs-you decision 2)', async () => {
     await replied('The server is up. Shall I carry on?')
-    expect(await reads()).toEqual({ waits: [true, true], background: false, thread: 'idle' })
+    expect(await reads()).toEqual({ working: [false, false], need: [null, null], background: false, thread: 'idle' })
   })
 
-  it('shows no thread working once the lead said it waits on the human', async () => {
-    await replied('The tests are running.')
-    setWaiting(ctx, featureId, 'start round 1?')
-    expect((await reads()).thread).toBe('idle')
+  it('needs the human while its work still runs once it calls wait_for_you (needs-you decision 18)', async () => {
+    const id = await replied('The tests are running.')
+    setWait(ctx, id, 'Start round 1?')
+    const now = await reads()
+    expect(now.working).toEqual([true, true])
+    expect(now.need).toEqual([expect.objectContaining({ why: 'Start round 1?', threadId: id }), expect.objectContaining({ why: 'Start round 1?' })])
+    expect((await caller.thread.list({ featureId }))[0]?.need).toMatchObject({ why: 'Start round 1?' })
   })
 })
 
-describe('a feature whose lead replied (decision 15)', () => {
+describe('a feature whose lead replied (needs-you decision 2)', () => {
   /** What the sidebar and the header each read: `feature.list`'s row and `feature.get`. */
-  async function awaits(): Promise<[boolean, boolean]> {
+  async function needs(): Promise<unknown[]> {
     const [row] = await caller.feature.list({ projectId })
     const full = await caller.feature.get({ id: featureId })
-    return [row!.leadAwaitsHuman, full.leadAwaitsHuman]
+    return [row!.need, full.need]
   }
 
-  it('waits on the human in both reads once the lead answers their message', async () => {
+  it('needs nobody once the lead answers the human’s message, nor after a wake runcastle sent', async () => {
     const id = chat()
-    expect(await awaits()).toEqual([false, false])
     await caller.thread.send({ threadId: id, text: 'Fix the login page' })
     await logUntil(id, turnEnded)
-    expect(await awaits()).toEqual([true, true])
-  })
-
-  it('waits on the human after a wake runcastle sent ends its turn', async () => {
-    const id = chat()
+    expect(await needs()).toEqual([null, null])
     await host.prompt(id, { text: 'Round 2 returned.' }, { source: 'runcastle' })
-    await logUntil(id, turnEnded)
-    expect(await awaits()).toEqual([true, true])
+    await logUntil(id, (e) => e.filter((x) => x.type === 'turn_ended').length === 2)
+    expect(await needs()).toEqual([null, null])
   })
 
-  it('pushes a signal after which both reads wait, though the CLI’s Stop hook flipped the bit first', async () => {
-    const id = chat()
-    // Claude Code's Stop hook runs inside the CLI before the ACP turn returns,
-    // and it marks the row awaiting input (routes/hooks.ts) while the log does not yet say the turn ended.
-    fake.script.turn = async (t) => {
-      await t.say('Done.')
-      markAwaitingInput(ctx, id)
-    }
-    const reads: Promise<[boolean, boolean]>[] = []
-    const unsubscribe = subscribeLive((signal) => {
-      // What the browser does with a non-thread signal: a full resync.
-      if (signal.kind !== 'thread') reads.push(awaits())
-    })
-    try {
-      await caller.thread.send({ threadId: id, text: 'Fix the login page' })
-      await logUntil(id, turnEnded)
-      await new Promise((r) => setTimeout(r, 20))
-    } finally {
-      unsubscribe()
-    }
-    expect((await Promise.all(reads)).at(-1)).toEqual([true, true])
-  })
-
-  it('does not wait while the lead is mid-turn', async () => {
+  it('reads working while the lead is mid-turn', async () => {
     fake.script.turn = async (t) => {
       await t.cancelled
       return 'cancelled'
@@ -564,17 +541,8 @@ describe('a feature whose lead replied (decision 15)', () => {
     const id = chat()
     await caller.thread.send({ threadId: id, text: 'long' })
     await logUntil(id, (e) => e.some((x) => x.type === 'turn_started'))
-    expect(await awaits()).toEqual([false, false])
-  })
-
-  it('still waits after the idle stop, and a human message clears it at once', async () => {
-    const id = chat()
-    await caller.thread.send({ threadId: id, text: 'Fix the login page' })
-    await logUntil(id, turnEnded)
-    await host.stop(id, 'idle')
-    expect(await awaits()).toEqual([true, true])
-    // The message is logged before the agent is back to take it.
-    appendThreadEvent(id, { type: 'prompt', id: 'p_next', text: 'Thanks — now the signup page', source: 'human' })
-    expect(await awaits()).toEqual([false, false])
+    const [row] = await caller.feature.list({ projectId })
+    expect(row!.working).toBe(true)
   })
 })
+

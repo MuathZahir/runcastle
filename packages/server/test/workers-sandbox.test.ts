@@ -342,12 +342,12 @@ describe("the worker's runcastle tools", () => {
     rmTemp(dir)
   })
 
-  it('are exactly hand_back, start_dev_server, read_feature, show_file and park_feature, and runcastle offers a worker none of its own', async () => {
+  it('are exactly hand_back, wait_for_you, start_dev_server, read_feature, show_file and park_feature, and runcastle offers a worker none of its own', async () => {
     const mcp = runScript(dir, 'worker-mcp.cjs', WORKER_MCP_SCRIPT)
     children.push(mcp)
     const ask = mcpClient(mcp)
     const listed = await ask('tools/list')
-    expect(listed.result?.tools?.map((t) => t.name)).toEqual(['hand_back', 'start_dev_server', 'read_feature', 'show_file', 'park_feature'])
+    expect(listed.result?.tools?.map((t) => t.name)).toEqual(['hand_back', 'wait_for_you', 'start_dev_server', 'read_feature', 'show_file', 'park_feature'])
     expect(toolsForAudience('worker')).toEqual([])
   })
 

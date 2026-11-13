@@ -1,7 +1,6 @@
 import * as z from 'zod'
 import { AgentRuntime, ModelEntry } from './config'
 import { ReviewGateRun } from './review-gates'
-import { WaitingKind } from './feature-need'
 import { EPIC_COLORS, EPIC_ICON_IDS } from './epic-look'
 
 /**
@@ -601,16 +600,10 @@ export const Feature = z.object({
    * round dispatches while it is set, and the next human message clears it.
    */
   stoppedAt: z.number().nullable().default(null),
-  /** Why the feature waits on the human ("Waiting for you · <why>"); null when it does not. */
-  waitingReason: z.string().nullable().default(null),
-  /** Which kind of wait the reason is (`wait_for_you`'s `kind`); null with a reason reads as an answer. */
-  waitingKind: WaitingKind.nullable().default(null),
   /** When a human message last reached the lead (ms); null before the first. */
   lastHumanMessageAt: z.number().nullable().default(null),
   /** When the lead last dispatched a round (ms); null before the first. */
   lastDispatchAt: z.number().nullable().default(null),
-  /** The lead's outstanding handback to its orchestrator — see the db schema. Null when none is. */
-  handback: z.object({ at: z.number(), summary: z.string() }).nullable().default(null),
 })
 export type Feature = z.infer<typeof Feature>
 

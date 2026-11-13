@@ -56,9 +56,11 @@ describe('the lead’s MCP tools', () => {
     for (const tool of ['declare_ready', 'wait_for_you']) {
       expect(toolsForAudience('chat')).toContain(tool)
       expect(toolsForAudience('fix-drive-worker')).not.toContain(tool)
-      expect(toolsForAudience('project')).not.toContain(tool)
       expect(toolsForAudience('review')).not.toContain(tool)
     }
+    expect(toolsForAudience('project')).not.toContain('declare_ready')
+    // The project session waits on the human with its own wait_for_you (needs-you decision 6).
+    expect(toolsForAudience('project')).toContain('wait_for_you')
   })
 
   /** The named tool's published input properties, from `tools/list`. */
@@ -83,8 +85,9 @@ describe('the lead’s MCP tools', () => {
     expect(await inputProperties('declare_ready')).toEqual(['scenario'])
     const out = await call('declare_ready', { scenario: 'Checkout' })
     expect(out.isError).toBe(false)
-    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'ready to test' })
-    expect(getFeatureRow(ctx, featureId)).toMatchObject({ status: 'active', waitingReason: 'ready to test' })
+    expect(JSON.parse(out.text)).toMatchObject({ ok: true, need: { why: 'Ready to test · Checkout', threadId: sessionId, by: 'agent' } })
+    expect(getFeatureRow(ctx, featureId)).toMatchObject({ status: 'active' })
+    expect(featureContext(ctx, { featureId }).need).toMatchObject({ why: 'Ready to test · Checkout' })
     expect(featureContext(ctx, { featureId }).latestReady).toMatchObject({ scenario: 'Checkout' })
   })
 
@@ -107,20 +110,16 @@ describe('the lead’s MCP tools', () => {
     ).toEqual(['work', 'review', 'details', 'drive'])
   })
 
-  it('wait_for_you sets the waiting reason the context shows', async () => {
-    const out = await call('wait_for_you', { why: 'round 2 proposed' })
-    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'round 2 proposed', waitingKind: 'answer' })
-    expect(getFeatureRow(ctx, featureId).waitingReason).toBe('round 2 proposed')
-  })
+  it('wait_for_you takes a line or a withdraw, and the context shows the need', async () => {
+    expect((await inputProperties('wait_for_you')).sort()).toEqual(['why', 'withdraw'])
+    const out = await call('wait_for_you', { why: 'Plan ready for your yes' })
+    expect(JSON.parse(out.text)).toMatchObject({ ok: true, need: { why: 'Plan ready for your yes', threadId: sessionId, by: 'agent' } })
+    expect(featureContext(ctx, { featureId }).need).toMatchObject({ why: 'Plan ready for your yes' })
+    const waited = listAfter(ctx, featureId).filter((e) => e.type === 'session.waiting').at(-1)
+    expect(waited?.data).toMatchObject({ why: 'Plan ready for your yes', sessionId })
 
-  it('wait_for_you stores the kind of wait beside the reason, and the context shows it', async () => {
-    const out = await call('wait_for_you', { why: 'start round 1?', kind: 'plan' })
-    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'start round 1?', waitingKind: 'plan' })
-    expect(featureContext(ctx, { featureId })).toMatchObject({ waitingReason: 'start round 1?', waitingKind: 'plan' })
-    const waited = listAfter(ctx, featureId).filter((e) => e.type === 'feature.waiting').at(-1)
-    expect(waited?.data).toMatchObject({ why: 'start round 1?', kind: 'plan' })
-
-    expect((await call('wait_for_you', { why: 'x', kind: 'later' })).isError).toBe(true)
+    expect(JSON.parse((await call('wait_for_you', { withdraw: true })).text)).toEqual({ ok: true, need: null })
+    expect(featureContext(ctx, { featureId }).need).toBeNull()
   })
 
 })

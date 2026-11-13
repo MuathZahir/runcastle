@@ -1,11 +1,11 @@
-import { DEFAULT_RUNTIME, PLANNING_STOPPED, type SessionRow } from '@runcastle/core'
+import { DEFAULT_RUNTIME, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { chatKickoffHeader, kickoffFor } from '../launcher/launcher'
 import { landProjectSession, setThreadPurpose } from '../launcher/sessions'
 import { stopDesignServerForSession } from '../services/design'
 import { startDocsWatch } from '../services/docs-watch'
 import { emitForSession } from '../services/events'
-import { setWaiting } from '../services/lead-status'
+import { clearWait, waitOf } from '../services/waits'
 import { getFeatureRow, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { getWorker, humanWrote, isWorkerThread, workerAskAnswered, workerAskOpened, workerKickoff, workerStopped, workerTurnEnded } from '../workers/service'
@@ -70,8 +70,10 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
     },
 
     // The human writing anywhere lifts an account hold on the worker queue (burns-become-workers decision 21).
+    // The human writing in a chat answers what its agent waited on them for (needs-you decision 7).
     humanPrompted(row) {
       humanWrote(ctx, row)
+      clearWait(ctx, row.id, 'human')
     },
 
     // A worker halted on an ask reads "needs you" until it is answered.
@@ -80,6 +82,7 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
     },
 
     askAnswered(row) {
+      clearWait(ctx, row.id, 'answered')
       if (row.kind === 'worker') workerAskAnswered(ctx, row.id)
     },
   }
@@ -87,29 +90,19 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
 
 /**
  * A self-planning run is over: say whether the plan is complete, and make the
- * thread the lead's ordinary chat again, so asks reach the human. A run that
- * stopped to ask the human something (what, where or who was open:
- * agents-never-guess decision 13) keeps its question; one that stopped short
- * with no question leaves the feature waiting on the human
- * ({@link PLANNING_STOPPED}), whose next message picks it up with the lead.
- * No-op for a thread with any other purpose.
+ * thread the lead's ordinary chat again, so asks reach the human. The run is
+ * complete when it ended waiting on the human (`wait_for_you`: the plan's yes,
+ * or a question it could not answer itself); one that ended with no wait just
+ * ends, and reads idle (needs-you decision 2). No-op for a thread with any
+ * other purpose.
  */
 function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
   if (row.purpose !== 'self-plan' || !row.featureId) return
-  const { waitingReason, waitingKind } = getFeatureRow(ctx, row.featureId)
-  // The run asked the human a question (`wait_for_you`, kind `answer`) instead of finishing the plan.
-  const asked = waitingReason !== null && waitingKind === 'answer'
-  // The plan is complete when the run ended its turn asking the human for the yes.
-  const complete = waitingReason !== null && !asked
-  if (waitingReason === null) setWaiting(ctx, row.featureId, PLANNING_STOPPED, 'stuck')
+  const complete = waitOf(ctx, row.id) !== null
   emitForSession(ctx, row, {
     type: 'session.self_plan_ended',
-    message: complete
-      ? 'planning finished'
-      : asked
-        ? 'planning stopped to ask the human first'
-        : 'planning stopped before the plan was complete',
-    data: { sessionId: row.id, complete, ...(asked ? { asked } : {}) },
+    message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
+    data: { sessionId: row.id, complete },
   })
   setThreadPurpose(ctx, row.id, null)
 }

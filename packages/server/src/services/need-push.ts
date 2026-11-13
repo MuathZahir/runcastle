@@ -1,16 +1,17 @@
-import { FEATURE_NEEDS_YOU, type EventRow, type Feature, type NeedsYouData, needPings } from '@runcastle/core'
+import { FEATURE_NEEDS_YOU, type EventRow, needPings } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
+import { getSessionRow } from '../launcher/sessions'
 import { subscribeLive } from './bus'
-import { emit, getEventRow } from './events'
+import { emitScoped, getEventRow } from './events'
+import { holderName } from './holding'
 import { type PushOutcome, type PushSender, sendPushToAll } from './push'
 import { tryGetFeature } from './repo'
 
 /**
- * Runcastle's own phone pings (you-always-know-what-s-waiting decision 12): one
- * push to every subscribed phone each time a feature enters a need the desktop
- * pings for — the same {@link needPings} rule, so the two never disagree. A
- * stalled agent cannot ask to be pinged, so this does not wait for one to;
- * `notify_human` stays for what agents want to say beyond a wait.
+ * Runcastle's own phone pings (needs-you-is-the-agent-s-call decision 14): one
+ * push to every subscribed phone each time a chat enters a need, saying the
+ * agent's line — the same {@link needPings} rule as the desktop, so the two
+ * never disagree. `notify_human` stays for what agents want to say beyond a wait.
  */
 
 const path = (...segments: string[]): string =>
@@ -21,66 +22,36 @@ function sentence(text: string): string {
   return /[.?!…]$/.test(text) ? text : `${text}.`
 }
 
-/** The one plain sentence a push says for a need. */
-export function needPushBody(need: NeedsYouData): string {
-  const why = need.why ?? ''
-  switch (need.kind) {
-    case 'permission':
-      return sentence(`Waiting for your permission to run ${why}`)
-    case 'conflict':
-      return 'A merge stopped on a conflict.'
-    case 'worker':
-      return sentence(`${why} needs you`)
-    case 'answer':
-      return why ? sentence(`Needs your answer: ${why}`) : 'Needs your answer.'
-    case 'plan':
-      return 'Plan to approve.'
-    case 'design':
-      return 'Design to approve.'
-    case 'stopped':
-      return sentence(`Stopped: ${why}`)
-    case 'test':
-      return why ? sentence(`Ready to test: ${why}`) : 'Ready to test.'
-    case 'merge':
-      return 'Ready to merge.'
-    case 'handback':
-      // Only after the orchestrator left it an hour, or let go (the-status-tells-the-truth decision 2).
-      return why ? sentence(`Handed back, unanswered: ${why}`) : 'Handed back, unanswered.'
-  }
-}
-
-/**
- * Where a need's tap lands: the feature's chat, and for a worker's need that
- * worker's thread, named the way the web addresses an open thread (`?thread=`).
- */
-function needUrl(feature: Pick<Feature, 'projectId' | 'slug'>, need: NeedsYouData): string {
-  const chat = path('p', feature.projectId, 'f', feature.slug, 'chat')
-  return need.kind === 'worker' && need.threadId ? `${chat}?${new URLSearchParams({ thread: need.threadId })}` : chat
+/** What a push for a need says: the agent's line, as a sentence. */
+export function needPushBody(why: string): string {
+  return sentence(why)
 }
 
 /**
  * Push `event` to every phone when it is a need that pings; null when it is not
- * one. No phone subscribed sends nothing, quietly. A push that reached a phone
- * leaves one timeline line, as `notify_human`'s does.
+ * one. The tap opens the exact chat the need waits in (decision 3): a feature's
+ * chat, or an orchestrator chat. No phone subscribed sends nothing, quietly. A
+ * push that reached a phone leaves one timeline line, as `notify_human`'s does.
  */
 export async function pushNeed(ctx: AppCtx, event: EventRow, send?: PushSender): Promise<PushOutcome | null> {
-  if (event.type !== FEATURE_NEEDS_YOU || !event.featureId || !needPings(event.data)) return null
-  const feature = tryGetFeature(ctx, event.featureId)
-  if (!feature) return null
-  const outcome = await sendPushToAll(
-    ctx,
-    {
-      title: feature.title,
-      body: needPushBody(event.data),
-      url: needUrl(feature, event.data),
-    },
-    send,
-  )
+  if (event.type !== FEATURE_NEEDS_YOU || !needPings(event.data)) return null
+  const need = event.data
+  const thread = `?${new URLSearchParams({ thread: need.threadId })}`
+  const feature = need.featureId ? tryGetFeature(ctx, need.featureId) : null
+  let message: { title: string; url: string }
+  if (feature) {
+    message = { title: feature.title, url: `${path('p', feature.projectId, 'f', feature.slug, 'chat')}${thread}` }
+  } else {
+    const chat = getSessionRow(ctx, need.threadId)
+    if (!chat?.projectId) return null
+    message = { title: holderName(chat), url: `${path('p', chat.projectId, 'chat')}${thread}` }
+  }
+  const outcome = await sendPushToAll(ctx, { ...message, body: needPushBody(need.why) }, send)
   if (outcome.sent > 0) {
-    emit(ctx, feature.id, {
+    emitScoped(ctx, feature ? { featureId: feature.id } : { projectId: event.projectId }, {
       type: 'notification.sent',
-      message: `pinged your phone: ${event.data.words}`,
-      data: { sent: outcome.sent, need: event.data.kind },
+      message: `pinged your phone: ${need.why}`,
+      data: { sent: outcome.sent, threadId: need.threadId },
     })
   }
   return outcome

@@ -231,7 +231,7 @@ describe('a drive review', () => {
   it('gives the slot back when it is dropped or stopped, and fails when the drive cannot start', async () => {
     realHost(reviewer(() => {}))
     const { workerId } = await toolStartReview(ctx, leadSession(), {})
-    await until(() => getWorker(ctx, workerId)?.status === 'needs-you')
+    await until(() => readThreadEvents(workerId).some((e) => e.type === 'turn_ended'))
     await dropWorker(ctx, workerId)
     expect(drive.given).toContain(workerId)
 

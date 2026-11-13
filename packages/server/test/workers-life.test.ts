@@ -16,9 +16,10 @@ import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
+import { workerTools } from '../src/workers/tools'
 import {
   getWorker,
-  settleWorkersLeftWaiting,
+  workerPrompted,
   startUnassignedWorker,
   stopLeftoverWorkerSandboxes,
   withWorkers,
@@ -95,6 +96,7 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
 }
 
 const status = (id: string) => getWorker(ctx, id)?.status
+const turnEnded = (id: string) => readThreadEvents(id).some((e) => e.type === 'turn_ended')
 
 /** A real agent host over the fake ACP agent, the worker transport and the server's own lifecycle. */
 function realHost(fake: FakeAcp): AgentHost {
@@ -141,14 +143,14 @@ describe('one limit for agents working at once', () => {
     expect(turns.waiting()).toBe(1)
 
     turns.release()
-    await until(() => status(a) === 'needs-you')
+    await until(() => turnEnded(a))
     await until(() => turns.waiting() === 1)
     expect(status(b)).toBe('working')
     expect(listAfter(ctx, feature.id, 0).filter((e) => e.type === 'worker.status' && (e.data as { workerId: string }).workerId === b).map((e) => (e.data as { status: string }).status)).toEqual(['queued', 'working'])
 
-    // A worker waiting on the human holds no slot: a third starts at once.
+    // A worker with no turn running holds no slot: a third starts at once.
     turns.release()
-    await until(() => status(b) === 'needs-you')
+    await until(() => turnEnded(b))
     const c = await startWorker('Footer')
     await until(() => turns.waiting() === 1)
     expect(status(c)).toBe('working')
@@ -197,8 +199,10 @@ describe("the feature's Stop (burns-become-workers decision 15)", () => {
 
     await stopFeature(ctx, feature.id)
 
-    expect(status(a)).toBe('needs-you')
-    expect(status(b)).toBe('needs-you')
+    // Both read idle: the human stopped them, so nothing needs the human (needs-you decision 10).
+    expect(status(a)).toBe('working')
+    expect(status(b)).toBe('working')
+    expect(needOf(ctx, feature)).toBeNull()
     await until(() => agentSlots(ctx.config.burnConcurrency).held() === 0)
     // The queued turn never reached its agent, even once the slot it waited for freed.
     await new Promise((r) => setTimeout(r, 30))
@@ -222,26 +226,38 @@ describe("the feature's Stop (burns-become-workers decision 15)", () => {
 })
 
 describe('a worker that needs the human', () => {
-  it('raises the feature need once per entry, naming the worker and opening its thread', async () => {
+  /** The worker's own `wait_for_you`, as its sandbox relays it. */
+  const waitForYou = (id: string, args: Record<string, unknown>) =>
+    workerTools(ctx, getWorker(ctx, id)!, {} as never, engine)('wait_for_you', args)
+
+  it('stays working with no need when its turn ends without a handback', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const a = await startWorker('Header')
+    await workerTurnEnded(ctx, { id: a })
+    expect(status(a)).toBe('working')
+    expect(needOf(ctx, feature)).toBeNull()
+  })
+
+  it('needs the human once it calls wait_for_you: its feature’s need opens its thread, pinging once per entry', async () => {
     setAgentHostForTests(fakeHost().host)
     const watch = startNeedWatch(ctx)
     try {
       const a = await startWorker('Header')
-      await workerTurnEnded(ctx, { id: a })
-      expect(needOf(ctx, feature)).toMatchObject({ kind: 'worker', words: 'Header needs you', threadId: a, held: false })
-
+      await waitForYou(a, { why: 'Is the API key in the vault?' })
+      expect(status(a)).toBe('needs-you')
+      expect(needOf(ctx, feature)).toMatchObject({ why: 'Is the API key in the vault?', threadId: a, by: 'agent' })
       const pings = () => listAfter(ctx, feature.id, 0).filter((e) => e.type === FEATURE_NEEDS_YOU).map((e) => e.data)
       await until(() => pings().length === 1)
-      expect(pings()).toEqual([{ kind: 'worker', words: 'Header needs you', held: false, why: 'Header', threadId: a }])
+      expect(pings()).toEqual([{ why: 'Is the API key in the vault?', threadId: a, by: 'agent', featureId: feature.id }])
 
-      // A second worker coming to need the human is news of its own.
+      // A newer worker's wait is the feature's need, and news of its own.
       await new Promise((r) => setTimeout(r, 5))
       const b = await startWorker('Footer')
-      await workerTurnEnded(ctx, { id: b })
+      await waitForYou(b, { why: 'Grey or white?' })
       await until(() => pings().length === 2)
-      expect(pings()[1]).toMatchObject({ words: 'Footer needs you', threadId: b })
+      expect(needOf(ctx, feature)).toMatchObject({ threadId: b })
 
-      // The same worker ending another turn still waiting on the human pings nothing more.
+      // Its turn ending pings nothing more.
       await workerTurnEnded(ctx, { id: b })
       await new Promise((r) => setTimeout(r, 120))
       expect(pings()).toHaveLength(2)
@@ -250,15 +266,31 @@ describe('a worker that needs the human', () => {
     }
   })
 
-  it('raises no need for a "+" worker that has only said hello, until the human writes to it (decision 25)', async () => {
+  it('keeps needing the human through the lead’s message, and stops once the human writes to it or it withdraws', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const a = await startWorker('Header')
+    await waitForYou(a, { why: 'Grey or white?' })
+    await toolMessageWorker(ctx, leadSession(), { workerId: a, text: 'carry on' })
+    expect(status(a)).toBe('needs-you')
+    expect(needOf(ctx, feature)).toMatchObject({ threadId: a })
+
+    threadLifecycle(ctx).humanPrompted!(getSessionRow(ctx, a)!)
+    workerPrompted(ctx, a)
+    expect(needOf(ctx, feature)).toBeNull()
+    expect(status(a)).toBe('working')
+
+    await waitForYou(a, { why: 'Grey or white?' })
+    await waitForYou(a, { withdraw: true })
+    expect(needOf(ctx, feature)).toBeNull()
+    expect(status(a)).toBe('working')
+  })
+
+  it('a "+" worker that has only said hello needs nothing', async () => {
     setAgentHostForTests(fakeHost().host)
     const { workerId } = await startUnassignedWorker(ctx, feature.id)
     await workerTurnEnded(ctx, { id: workerId })
-    expect(getWorker(ctx, workerId)?.status).toBe('needs-you')
+    expect(getWorker(ctx, workerId)?.status).toBe('working')
     expect(needOf(ctx, feature)).toBeNull()
-
-    appendThreadEvent(workerId, { type: 'prompt', id: 'p_human', text: 'Make the footer grey', source: 'human' })
-    expect(needOf(ctx, feature)).toMatchObject({ kind: 'worker', threadId: workerId })
   })
 
   it('raises a permission need when its agent waits on an approval, opening the worker', async () => {
@@ -270,7 +302,7 @@ describe('a worker that needs the human', () => {
     const host = realHost(asked)
     const id = await startWorker()
     await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'approval')
-    expect(needOf(ctx, feature)).toMatchObject({ kind: 'permission', threadId: id })
+    expect(needOf(ctx, feature)).toMatchObject({ why: 'git push --force origin HEAD:main', threadId: id })
     await host.stop(id, 'archived')
   })
 })
@@ -289,49 +321,16 @@ describe('a worker whose turn ends with background work still running', () => {
     expect(status(id)).toBe('handed-back')
   })
 
-  it('starts no window while subagents run, which the host counts with no time limit', async () => {
+  it('never comes to need the human by itself, however long the work runs', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker('Review')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
-      await workerTurnEnded(ctx, { id }, { ...BACKGROUND, subagents: true })
+      await workerTurnEnded(ctx, { id }, BACKGROUND)
       markAwaitingInput(ctx, id)
       vi.advanceTimersByTime(BACKGROUND_WINDOW_MS * 3)
       expect(status(id)).toBe('working')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('comes to need the human once the background window passes with the agent still idle', async () => {
-    setAgentHostForTests(fakeHost().host)
-    const id = await startWorker('Review')
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      await workerTurnEnded(ctx, { id }, BACKGROUND)
-      markAwaitingInput(ctx, id)
-      vi.advanceTimersByTime(BACKGROUND_WINDOW_MS - 1)
-      expect(status(id)).toBe('working')
-      vi.advanceTimersByTime(1)
-      expect(status(id)).toBe('needs-you')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('starts the window again when a later turn also ends on background work', async () => {
-    setAgentHostForTests(fakeHost().host)
-    const id = await startWorker('Review')
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      await workerTurnEnded(ctx, { id }, BACKGROUND)
-      markAwaitingInput(ctx, id)
-      vi.advanceTimersByTime(BACKGROUND_WINDOW_MS - 1)
-      await workerTurnEnded(ctx, { id }, BACKGROUND)
-      vi.advanceTimersByTime(1)
-      expect(status(id)).toBe('working')
-      vi.advanceTimersByTime(BACKGROUND_WINDOW_MS)
-      expect(status(id)).toBe('needs-you')
+      expect(needOf(ctx, feature)).toBeNull()
     } finally {
       vi.useRealTimers()
     }
@@ -370,7 +369,7 @@ describe('a worker waiting on an ask', () => {
       await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'approval')
       expect(status(id)).toBe('needs-you')
       await until(() => pings().length === 1)
-      expect(pings()[0]).toMatchObject({ kind: 'permission' })
+      expect(pings()[0]).toMatchObject({ why: 'git push origin HEAD', threadId: id })
 
       await host.answer(id, foldThread(readThreadEvents(id)).ask!.id, { kind: 'approval', choice: 'allow' })
       expect(status(id)).toBe('working')
@@ -380,7 +379,8 @@ describe('a worker waiting on an ask', () => {
 
       finish()
       await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
-      await until(() => status(id) === 'needs-you')
+      await until(() => turnEnded(id))
+      expect(status(id)).toBe('working')
     } finally {
       watch.stop()
       await host.stop(id, 'archived')
@@ -401,7 +401,7 @@ describe('a failed worker', () => {
     const toLead = host.sent.filter((s) => s.threadId === lead)
     expect(toLead).toHaveLength(1)
     expect(toLead[0]?.display).toEqual({ workerFailed: { workerId: id, label: 'Header', failure: 'its sandbox runcastle-worker-x is gone' } })
-    expect(needOf(ctx, feature)).toMatchObject({ kind: 'worker', threadId: id })
+    expect(needOf(ctx, feature)).toMatchObject({ why: 'The agent’s run failed', threadId: id, by: 'runcastle' })
   })
 })
 
@@ -410,7 +410,7 @@ describe('idle stop and wake', () => {
     const fake = createFakeAcp()
     const host = realHost(fake)
     const id = await startWorker()
-    await until(() => status(id) === 'needs-you')
+    await until(() => turnEnded(id))
     const conversation = getSessionRow(ctx, id)!.ccSessionId
     const container = getWorker(ctx, id)!.container!
 
@@ -429,7 +429,7 @@ describe('idle stop and wake', () => {
     const fake = createFakeAcp()
     const host = realHost(fake)
     const id = await startWorker()
-    await until(() => status(id) === 'needs-you')
+    await until(() => turnEnded(id))
     const conversation = getSessionRow(ctx, id)!.ccSessionId!
     await host.stop(id, 'idle')
 
@@ -483,25 +483,6 @@ describe('a server restart', () => {
     expect(engine.held.get(getWorker(ctx, id)!.container!)).toBe(true)
   })
 
-  it('makes a worker left waiting out its background work need the human, waking none the restart cut off', async () => {
-    setAgentHostForTests(fakeHost().host)
-    const waiting = await startWorker('Header')
-    const cutOff = await startWorker('Footer')
-    const done = await startWorker('Sidebar')
-    await workerTurnEnded(ctx, { id: waiting }, { reason: 'end_turn', background: true })
-    engine.handbacks.set(done, { summary: 'Done', at: Date.now() })
-    await workerTurnEnded(ctx, { id: done })
-    expect(settleWorkersLeftWaiting(ctx, new Set([cutOff]))).toBe(1)
-    expect([status(waiting), status(cutOff), status(done)]).toEqual(['needs-you', 'working', 'handed-back'])
-  })
-
-  it('leaves a worker whose agent still runs (a hot reload kept it)', async () => {
-    const host = fakeHost()
-    setAgentHostForTests({ ...host.host, isRunning: () => true } as AgentHost)
-    const id = await startWorker()
-    expect(settleWorkersLeftWaiting(ctx, new Set())).toBe(0)
-    expect(status(id)).toBe('working')
-  })
 })
 
 describe('declare_ready', () => {

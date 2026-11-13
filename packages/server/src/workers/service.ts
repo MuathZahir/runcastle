@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { and, count, eq, inArray, isNull, ne } from 'drizzle-orm'
 import {
-  BACKGROUND_WINDOW_MS,
+  wakeFailedWhy,
   type Ask,
   type Feature,
   type ModelEntry,
@@ -38,6 +38,7 @@ import { emit, emitProject, listAfter } from '../services/events'
 import { branchChangesAhead, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
 import { featureLandingQueue } from '../services/landing-queue'
 import { deliverToLead } from '../services/lead-delivery'
+import { clearWait, setWait } from '../services/waits'
 import { mainChatExcerpt } from '../services/main-chat-excerpt'
 import { rosterConfig } from '../services/model-discovery'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../services/repo'
@@ -792,44 +793,17 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
 
 // --- turns ----------------------------------------------------------------------
 
-/** A worker whose turn ended with background work still running, by id: when it stops waiting on that work. */
-const backgroundWaits = new Map<string, ReturnType<typeof setTimeout>>()
-
-function forgetBackgroundWait(id: string): void {
-  const timer = backgroundWaits.get(id)
-  if (timer) clearTimeout(timer)
-  backgroundWaits.delete(id)
-}
-
-/**
- * A worker that ended its turn on background work (a test run) stays working:
- * the agent starts a turn by itself when the work finishes, and that turn's end
- * hands back or asks for the human. Past the window background work counts for
- * (threads-open-fast decision 2) with no turn running, it needs the human.
- */
-function waitOutBackground(ctx: AppCtx, id: string): void {
-  const timer = setTimeout(() => {
-    backgroundWaits.delete(id)
-    const w = getWorker(ctx, id)
-    if (w?.status === 'working' && getSessionRow(ctx, id)?.awaitingInput) setStatus(ctx, w, 'needs-you')
-  }, BACKGROUND_WINDOW_MS)
-  timer.unref?.()
-  backgroundWaits.set(id, timer)
-}
-
 /**
  * A worker's turn ended. A new handback records the worker branch's commits and
  * files, marks it handed back and wakes the lead once (decision 4). A turn that
  * failed is recovered from by itself where it can be ({@link recoverFromError});
- * one that ended otherwise without a handback leaves a working worker needing
- * the human (decision 5).
+ * one that ended otherwise without a handback leaves the worker as it is: it
+ * reads idle until a turn of it runs, and needs the human only if it said so
+ * with `wait_for_you` (needs-you-is-the-agent-s-call decisions 2, 6).
  */
 export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
-  forgetBackgroundWait(row.id)
   let w = getWorker(ctx, row.id)
   if (!w) return
-  // The host marks a thread awaiting input before it says a turn ended, and the next turn clears it.
-  const awaitingAtEnd = getSessionRow(ctx, row.id)?.awaitingInput === true
   // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
   const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
   const failed = error !== undefined && w.status === 'working' ? { error, verdict: classifyAgentError(error, w.runtime) } : undefined
@@ -848,18 +822,7 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   if (note && isDriveWorkerKind(w.kind)) return driveWorkerHandedBack(ctx, w, note)
   // A drive review stopped mid-turn gives the human their drive back; it takes it again with review_drive.
   if (!note && end?.reason === 'cancelled') await giveDriveBack(ctx, w)
-  if (!note || !sb) {
-    // Read again: the awaits above let a drive's end hand this worker back, which `w` would undo.
-    const now = getWorker(ctx, w.id)
-    if (now?.status !== 'working') return
-    // A newer turn began while this one's handback was read (a queued message, a send-back): it reports at its own end.
-    if (awaitingAtEnd && getSessionRow(ctx, w.id)?.awaitingInput === false) return
-    // Its background work still runs: the turn the agent starts when it finishes reports instead.
-    // Commands get the window the feature's own status gives them; subagents, like the host's count of them, none.
-    if (end?.reason === 'end_turn' && end.background) return end.subagents ? undefined : waitOutBackground(ctx, w.id)
-    setStatus(ctx, now, 'needs-you')
-    return
-  }
+  if (!note || !sb) return
   await engine.fetchBranch(sb)
   const changes = await branchChangesAhead(sb.repoPath, w.featureBranch, sb.branch)
   const commits = changes.commits.map((c) => `${c.sha.slice(0, 7)} ${c.subject}`)
@@ -1041,7 +1004,8 @@ async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
   const w = getWorker(ctx, id)
   const now = slots.tryTake(w?.runtime)
   if (now) return now
-  if (w && (w.status === 'working' || w.status === 'needs-you')) setStatus(ctx, w, 'queued')
+  // A worker that needs the human keeps saying so while its turn waits (needs-you decision 18).
+  if (w?.status === 'working') setStatus(ctx, w, 'queued')
   let release = await slots.take(w?.runtime)
   // Admitted by a slot freed by a turn whose failure then held this runtime: wait again.
   while (w && slots.holdOf(w.runtime) !== undefined) {
@@ -1071,26 +1035,47 @@ export function workerAskAnswered(ctx: AppCtx, id: string): void {
   workerPrompted(ctx, id)
 }
 
-/** The human typed to a worker: a worker waiting on them is working again. */
+/** The human typed to a worker, pressed its Stop, or it withdrew its wait: a worker waiting on them is working again. */
 export function workerPrompted(ctx: AppCtx, id: string): void {
   const w = getWorker(ctx, id)
   if (w?.status === 'needs-you') setStatus(ctx, w, 'working')
 }
 
 /**
+ * A worker's `wait_for_you` (needs-you-is-the-agent-s-call decision 6): its
+ * chat needs the human with `why`, and it reads "needs you" until the human
+ * writes to it or it withdraws.
+ */
+export function workerWaitsFor(ctx: AppCtx, id: string, why: string): void {
+  setWait(ctx, id, why, 'agent')
+  workerWaits(ctx, id)
+}
+
+/** A worker's wait was set: a working or queued worker reads "needs you". */
+export function workerWaits(ctx: AppCtx, id: string): void {
+  const w = getWorker(ctx, id)
+  if (w?.status === 'working' || w?.status === 'queued') setStatus(ctx, w, 'needs-you')
+}
+
+/** A worker's `wait_for_you({ withdraw: true })`: it no longer needs the human. */
+export function workerWithdraws(ctx: AppCtx, id: string): void {
+  clearWait(ctx, id, 'withdrawn')
+  workerPrompted(ctx, id)
+}
+
+/**
  * The feature's Stop (burns-become-workers decision 15): cancel the turn of
  * every worker of it that is working or queued — a turn waiting for its slot,
  * a retry waiting out its backoff, a drive review waiting for the drive. Each
- * stays where it is, enterable, and needs the human; nothing starts it again
- * until someone writes to it.
+ * stays where it is, enterable, and reads idle (needs-you decision 10); nothing
+ * starts it again until someone writes to it.
  */
 export async function stopFeatureWorkers(ctx: AppCtx, featureId: string): Promise<void> {
-  const live = listWorkers(ctx, featureId).filter((w) => w.status === 'working' || w.status === 'queued')
+  const live = listWorkers(ctx, featureId).filter((w) => w.status === 'working' || w.status === 'queued' || w.status === 'needs-you')
   for (const w of live) {
     forgetRetries(w.id)
     stopDriveWait(w.id)
-    // Needs the human first, so a turn its cancel ends finds nothing left to move.
-    setStatus(ctx, w, 'needs-you')
+    if (w.status !== 'working') setStatus(ctx, w, 'working')
     await agentHost(ctx)
       .cancel(w.id)
       .catch((err) => console.error(`worker ${w.id}: stop`, err))
@@ -1134,6 +1119,8 @@ async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: str
   const short = failure.slice(0, 2000)
   const failed = updateWorker(ctx, w.id, { status: 'failed', failure: short })
   emitWorker(ctx, failed, 'worker.failed', `worker "${w.label}" failed: ${short}`, { failure: short, from: w.status })
+  // Its run is dead and only the human can start it again: runcastle says so on its chat (needs-you decision 9).
+  setWait(ctx, w.id, wakeFailedWhy(null), 'runcastle')
   const feature = featureOf(ctx, w)
   if (!feature) return
   await deliverToLead(ctx, feature, {
@@ -1171,10 +1158,9 @@ export async function messageWorker(ctx: AppCtx, id: string, text: string): Prom
 
 async function promptWorker(ctx: AppCtx, w: WorkerRow, text: string): Promise<{ ok: true }> {
   requireOpen(w)
-  // Working before the prompt goes: a turn that must wait for a slot then reads `queued` over it.
-  const next = w.status === 'needs-you' ? setStatus(ctx, w, 'working') : w
+  // A message is not the human's word in the worker's chat: a worker that needs them still does (needs-you decision 7).
   await agentHost(ctx).prompt(w.id, { text }, { source: 'runcastle' })
-  emitWorker(ctx, next, 'worker.messaged', `message sent to worker "${w.label}"`, { text })
+  emitWorker(ctx, w, 'worker.messaged', `message sent to worker "${w.label}"`, { text })
   return { ok: true }
 }
 
@@ -1249,6 +1235,7 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
     }
   }
   const landed = updateWorker(ctx, w.id, { status: 'landed', outcome: 'landed', outcomeNote: null })
+  clearWait(ctx, w.id, 'closed')
   emitWorker(ctx, landed, 'worker.landed', `worker "${w.label}" landed ${changes.commits.length} commit(s) on ${feature.branch}`, {
     commits: changes.commits.length,
     files: changes.files.length,
@@ -1321,6 +1308,7 @@ async function retireWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
   forgetRetries(w.id)
   const drops = w.status !== 'dropped' && w.status !== 'landed'
   const dropped = drops ? updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null }) : w
+  clearWait(ctx, w.id, 'closed')
   await agentHost(ctx).stop(w.id, 'archived')
   await giveDriveBack(ctx, w)
   if (hasConversation(w)) await keepConversation(ctx, w)
@@ -1429,25 +1417,6 @@ export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[]
   return listWorkers(ctx, featureId).filter(
     (w) => HOLDS_READY.has(w.status) && !isDriveWorkerKind(w.kind) && !(w.kind === 'review' && w.status === 'handed-back'),
   )
-}
-
-/**
- * Server boot: a worker left working with no turn running was waiting out its
- * background work, which died with the last server, and so did the window that
- * would have said it needs the human. It needs them now. Workers whose turn the
- * restart cut off (`cutOff`) are woken to carry on instead; a drive worker is
- * handed back by the drive's own boot step; an agent still running (a `bun --hot`
- * reload) is left alone.
- */
-export function settleWorkersLeftWaiting(ctx: AppCtx, cutOff: ReadonlySet<string>): number {
-  const host = agentHost(ctx)
-  let settled = 0
-  for (const w of ctx.db.select().from(workers).all()) {
-    if (w.status !== 'working' || isDriveWorkerKind(w.kind) || cutOff.has(w.id) || host.isRunning(w.id)) continue
-    setStatus(ctx, w, 'needs-you')
-    settled++
-  }
-  return settled
 }
 
 /**

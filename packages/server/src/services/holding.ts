@@ -7,7 +7,6 @@ import { getSessionRow, projectSessions } from '../launcher/sessions'
 import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { threadName } from '../threads/naming'
 import { emit, emitProject } from './events'
-import { clearHandback } from './lead-status'
 import { getFeatureRow } from './repo'
 
 /**
@@ -118,7 +117,6 @@ function writeOwner(
     .set({ heldBy: next.owner, chatId: next.chatId, finish: next.finish })
     .where(eq(features.id, feature.id))
     .run()
-  clearHandback(ctx, feature.id, 'hold')
   const data: OwnerChange = { ...next, cause, from }
   const message = next.owner
     ? `owned by the orchestrator chat "${nameOf(ctx, next.owner)}", which ${FINISH_WORDS[next.finish]} (${CAUSE_WORDS[cause]})`
