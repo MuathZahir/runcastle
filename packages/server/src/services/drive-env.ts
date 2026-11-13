@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { scenarioDataDir } from '@runcastle/core/paths'
 
 /**
  * The drive's environment contract: identity in, `.runcastle/drive.env` out.
@@ -24,6 +25,12 @@ export interface DriveIdentity {
   slug: string
   /** The git branch under the wheel (`feature/add-billing`). */
   branch: string
+  /**
+   * The feature being driven. Set only on a feature's own drive, so its
+   * scenario-data folder is handed out; a project drive or the preparation dry
+   * run has no feature, and so no folder.
+   */
+  featureId?: string
 }
 
 /**
@@ -67,6 +74,8 @@ export function driveIdentityEnv(
     // Present exactly when the drive was started for a scenario, so setup can
     // shape the environment before boot (the scenario itself runs after it).
     ...(scenario ? { RUNCASTLE_SCENARIO: scenario } : {}),
+    // The feature's scenario-data folder. Path only: the drive start creates it.
+    ...(identity.featureId ? { RUNCASTLE_SCENARIO_DATA: scenarioDataDir(identity.featureId) } : {}),
   }
 }
 
@@ -107,6 +116,13 @@ function unquote(value: string): string {
 }
 
 /**
+ * The identity variables a drive sets only sometimes. An inherited copy is
+ * dropped, so their absence means what it says: a runcastle server that is
+ * itself under a drive must not pass its own feature's folder to a project drive.
+ */
+const OPTIONAL_IDENTITY_KEYS = ['RUNCASTLE_SCENARIO', 'RUNCASTLE_SCENARIO_DATA'] as const
+
+/**
  * The environment a drive's child processes run with: everything inherited,
  * with the drive's overrides on top. Ours win — the whole point is to replace a
  * `DATABASE_URL` the shell already exports.
@@ -115,7 +131,9 @@ export function driveProcessEnv(
   overrides: Record<string, string>,
   base: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  return { ...base, ...overrides }
+  const inherited = { ...base }
+  for (const key of OPTIONAL_IDENTITY_KEYS) delete inherited[key]
+  return { ...inherited, ...overrides }
 }
 
 /** One-line summary of what a drive overlaid, for the timeline. Names only. */

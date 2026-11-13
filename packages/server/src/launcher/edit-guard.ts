@@ -83,6 +83,12 @@ export interface EditGuardInput {
   worktreePath: string
   /** The feature this session belongs to; absent for a project-scoped session. */
   featureSlug?: string
+  /**
+   * The feature's scenario-data folder, outside the checkout. A `scenario`
+   * session on a feature's drive saves data copies there, as its brief says;
+   * absent on a project drive, which has no feature and no folder.
+   */
+  scenarioDataDir?: string
 }
 
 /**
@@ -149,13 +155,18 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   // writes the login route and the typecheck config, so the whole checkout is
   // open; afterwards only `.runcastle/`, where scenarios and their fixtures
   // live. `.gitignore` is not on that list: a scenario has no business there.
+  // On a feature's drive, the feature's scenario-data folder is open too.
   if (input.kind === 'scenario') {
     if (input.purpose === 'scenario-setup' && within(resolve(input.worktreePath), target)) return null
     if (within(resolve(input.worktreePath, SCENARIO_WRITABLE), target)) return null
+    if (input.scenarioDataDir && within(resolve(input.scenarioDataDir), target)) return null
+    const writable = input.scenarioDataDir
+      ? `\`${SCENARIO_WRITABLE}\` and the feature's data folder (\`RUNCASTLE_SCENARIO_DATA\`)`
+      : `\`${SCENARIO_WRITABLE}\``
     return {
       reason:
         'A scenario session writes scenarios and their shared code, so it may write only ' +
-        `\`${SCENARIO_WRITABLE}\` — ${input.filePath} is outside it. A change to the app itself ` +
+        `${writable} — ${input.filePath} is outside them. A change to the app itself ` +
         'belongs in a worker assignment; tell the human what the scenario needs.',
     }
   }

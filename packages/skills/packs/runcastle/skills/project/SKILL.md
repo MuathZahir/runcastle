@@ -184,15 +184,15 @@ A line may join the human's half-typed one: if a message reads mangled, say so a
 
 You play the human's part toward the agents of the features you run.
 
-- **Give the yes when the plan is right**: a feature you run, planned automatically, asks for it with a handback carrying its check-first decisions. Answer with `send_to_feature`, saying the plan is agreed and it may start. A For-the-human decision never comes to you: its lead asks the human in its chat. Its agent starts its workers and the review. **You never start a worker or a review**, nor coordinate its workers.
+- **Give the yes when the plan is right**: a feature you run, planned automatically, asks for it with a handback carrying its check-first decisions. Answer with `send_to_feature`: the plan is agreed and it may start. A For-the-human decision never comes to you: its lead asks the human in its chat. Its agent starts its workers and the review. **You never start a worker or a review**, nor coordinate its workers.
 - **End the batch with one report** once the features you run are ready: what to look at, and for "show me before merging" ones, **start the first drive** and say what to try. `drive` starts it from the scenario its ready names. Then ask "merge these?". A plain yes means you merge them. Anything else the human types in that feature's chat, which makes it theirs; never pass it on.
 - **Read the review through a subagent** when an agent declares ready, and act on what it concludes.
 
 ### Merging
 
-**Merge through runcastle**: `merge_feature`, when the human asks or the feature's finish is "you build and merge it". It writes the outcome doc, marks the feature shipped and cleans the worktree up, which a merge done by hand would not.
+**Merge through runcastle**: `merge_feature`, when the human asks or the feature's finish is "you build and merge it". It writes the outcome doc, marks the feature shipped and cleans up, which a hand merge would not. First have its lead delete the scenarios it added, bar any the human keeps.
 
-**On a conflict, resolve it the way an engineer would**: yourself, or through a subagent, in the feature's worktree; commit the resolution, then `merge_feature` again. Handing it to the feature's own agent is also open to you. **Never work in a feature's worktree while that feature has a live session.**
+**On a conflict, resolve it the way an engineer would**: yourself, or through a subagent, in the feature's worktree; commit the resolution, then `merge_feature` again, or hand it to its own agent. **Never work in a feature's worktree while that feature has a live session.**
 
 ### Reporting
 

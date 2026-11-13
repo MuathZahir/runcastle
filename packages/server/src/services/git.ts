@@ -21,7 +21,7 @@ import type {
   ScenarioFailure,
 } from '@runcastle/core'
 import { DEFAULT_DOCS_COMMIT_PREFIX, DRIVE_LOOP_KEYS, driveDenialOf, newId } from '@runcastle/core'
-import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
+import { PROJECT_WORKTREE_SLUG, scenarioDataDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { AppCtx } from '../db/types'
@@ -2466,7 +2466,7 @@ export async function testDrive(
       project.repoPath,
       'teardown',
       project.driveStopCommand,
-      driveOverlay({ slug: feature.slug, branch }, readDriveEnvFile(project.repoPath)),
+      driveOverlay({ slug: feature.slug, branch, featureId: feature.id }, readDriveEnvFile(project.repoPath)),
     )
     // Only now, with teardown done, may what setup left running die with its job.
     await setupJob?.kill()
@@ -2566,6 +2566,11 @@ export async function testDrive(
     return deniedStart(DENY_ACTIVE_RUN, 'active_run')
   }
 
+  // The feature's scenario-data folder exists before anything is handed its
+  // path. Not best-effort: scenarios that cannot find their data make a broken
+  // drive, so a failure here fails the start, before the checkout is touched.
+  mkdirSync(scenarioDataDir(feature.id), { recursive: true })
+
   // Free the feature branch from EVERY worktree that currently holds it so the
   // main checkout can switch onto it — git refuses two worktrees on one branch.
   // This is the talk worktree AND the sandcastle burner's `.sandcastle/worktrees/*`
@@ -2615,7 +2620,7 @@ export async function testDrive(
   // command starts against services that exist. What that means is the
   // project's business — we hand it the drive's identity, run its string and
   // report the exit code.
-  const identity: DriveIdentity = { slug: feature.slug, branch }
+  const identity: DriveIdentity = { slug: feature.slug, branch, featureId: feature.id }
   const setup = await runDriveHookStep(
     ctx,
     scope,
@@ -3346,7 +3351,7 @@ function scenarioDriveScope(
   }
   const feature = tryGetFeature(ctx, state.featureId)
   if (!feature) return null
-  return { scope: { featureId: state.featureId }, identity: { slug: feature.slug, branch: state.branch } }
+  return { scope: { featureId: state.featureId }, identity: { slug: feature.slug, branch: state.branch, featureId: state.featureId } }
 }
 
 /**

@@ -1,5 +1,6 @@
 import { AUTOSTART_FAILED, unresolvedMergeConflict } from '@runcastle/core'
-import { featureDocsRel } from '@runcastle/core/paths'
+import { featureDocsRel, scenarioDataDir } from '@runcastle/core/paths'
+import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
 import { stopDesignServer } from './design'
 import { emit, listAfter } from './events'
@@ -92,6 +93,13 @@ export async function mergeFeatureFlow(
     await stopDesignServer(ctx, featureId, 'shipped')
     // A shipped feature's workers go: each keeps a whole copy of the repo (interactive-workers decision 18).
     await removeFeatureWorkers(ctx, featureId, 'merged')
+    // The feature's scenario data leaves with it. Best-effort: a stray copy is
+    // harmless, and the merge has landed.
+    try {
+      rmSync(scenarioDataDir(featureId), { recursive: true, force: true })
+    } catch {
+      // left behind; nothing reads it once the feature has shipped
+    }
     // Last, and best-effort: the merge has landed, so a worktree that will
     // not go is reported by an event, never by failing the ship.
     await retireShippedWorktree(ctx, project, feature)
