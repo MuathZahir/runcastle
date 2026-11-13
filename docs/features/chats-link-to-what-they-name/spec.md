@@ -42,7 +42,7 @@ While a resolution is loading, the words render as plain text and become a link 
 
 ## Out of scope
 
-- Feature docs shown in the Plan tab, phone notifications and the Review Package's findings: names there stay plain text (decision 9).
+- Feature docs shown in the Plan tab's sealed frame and phone notifications: names there stay plain text (decision 9). Other text the app renders through the same markdown component (the brief, a Review Package's account) gets the links too, as amended in decision 9.
 - A link to one exact design or to a file shown with `show_file`; a link to the orchestrator's chat (decision 10).
 - Turning names into links without the agent writing a link (decision 1).
 - Any status dot, chip or "needs you" mark on a link: that belongs to "Needs you is the agent's call".

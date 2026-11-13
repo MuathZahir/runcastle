@@ -59,6 +59,7 @@ An independent challenger read the brief and decisions 1–6. Its unasked branch
 **Decision:** Links work in what agents write in chats. Feature docs shown in the Plan tab (brief, decisions, spec), phone notifications and the Review Package's findings keep showing names as plain text.
 **Why:** The brief is about chats, and the docs render in a sealed frame that cannot reach the app's navigation. A notification's tap already lands on the chat that sent it, where the link is.
 **Assumed.** Alternative: also link names in feature docs shown in the Plan tab.
+**Amended in the build (2026-11-13, the lead's call):** the link renderer lives in the app's one markdown component, so a runcastle link an agent writes in other text the app renders with it (the brief on the feature's details, a Review Package's written account) also opens what it names. Keeping those as plain text would take extra code for no gain; before, such a link rendered with an empty address. The Plan tab's sealed frame and phone notifications are unchanged.
 
 ## 10. No link to the orchestrator's chat
 **Decision:** There is no target for the orchestrator's chat. "Your lead" is reached with a feature link, which opens the lead's chat.
