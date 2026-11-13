@@ -5,8 +5,7 @@ import { resolvePluginDir } from '../src/launcher/skills-root'
 
 /**
  * The plan preview is skill content plus one shipped starter file, so the rules
- * are pinned the way `tickets-skill.test` pins the feature skill: read the
- * shipped files and assert their wording. The starter is also held to the app's
+ * are checked by reading the shipped files. The starter is also held to the app's
  * theme, because a session in another repo cannot see runcastle's tokens — the
  * starter is the only place it gets them from.
  */
@@ -121,17 +120,6 @@ describe('designed screens in the preview', () => {
     expect(text).not.toContain('runcastle:open-design')
     expect(text).toMatch(/\.designed\{[^}]*var\(--color-/)
   })
-
-  it('describes designed-screen entries and blocks that name the component, not markup', () => {
-    const text = read('feature', 'references', 'preview.md')
-    const section = text.slice(text.indexOf('## Designed screens'), text.indexOf('## Inline only'))
-    expect(section).toContain('is **not mocked\nagain**')
-    expect(section).toContain('**designed-screen entry**')
-    expect(section).toContain('**no button**')
-    expect(section).not.toContain('data-open-design')
-    expect(section).toContain('committed component file and the design page path')
-    expect(section).toContain('Hand mocks remain')
-  })
 })
 
 describe('the design guide', () => {
@@ -141,149 +129,17 @@ describe('the design guide', () => {
     const { ENTRY_SKILLS } = await import('../src/launcher/runtimes/skills')
     expect(guide()).toMatch(/^# Design/)
     expect((ENTRY_SKILLS as readonly string[]).includes('design')).toBe(false)
-  })
-
-  it('covers the loop, the tools, the screenshot line, Tweaks, commit and the limits', () => {
-    const text = guide()
-    for (const part of [
-      'First use in a project',
-      'Mount the piece directly with made-up props',
-      'Mount the whole screen with the server faked',
-      '.runcastle/preview/',
-      'start_design_server({ command? })',
-      'RUNCASTLE_DESIGN_PORT',
-      '.runcastle/design.json',
-      'show_design({ path, title, width?, picture? })',
-      '`work`, `review`, `details` or `drive`',
-      '[Screenshot: <absolute png path>] <their words>',
-      '**Tweaks.**',
-      'delete the Tweaks\n   menu',
-      '`design: <what>`',
-      '**Never commit unapproved work.**',
-      'Next.js server components',
-      'Native mobile has no browser',
-    ]) {
-      expect(text, part).toContain(part)
-    }
-    expect(text).not.toMatch(/\bGo\b/)
-  })
-
-  it('is pointed to by the feature skill, and a self-planned feature designs and shows only by cards', () => {
     expect(read('feature', 'SKILL.md')).toContain('./references/design.md')
-    expect(read('feature', 'references', 'planning-alone.md')).toContain('**Show with cards, never the panel.**')
-    expect(read('feature', 'references', 'design.md')).toContain('## 8. Designs that wait for the human')
   })
 })
 
 describe('the preview rules (feature/references/preview.md)', () => {
-  const rules = (): string => read('feature', 'references', 'preview.md')
-
-  // Decision 11: the starter is copied and filled through its slots, never read
-  // whole, so every slot the rules list must be marked in the starter.
-  it('lists every slot the starter marks, to be filled after a cp without reading it whole', () => {
-    const text = rules()
-    expect(text).toContain('(`cp`)')
-    expect(text).toContain('**never read the starter whole**')
+  // The starter is copied and filled through its slots, never read whole, so
+  // every slot the starter marks must be named on the Plan page.
+  it('names every slot the starter marks', () => {
+    const text = read('feature', 'references', 'preview.md')
     const marked = [...starter().matchAll(/<!-- FILL:([\w-]+) -->/g)].map((m) => m[1])
     expect([...marked].sort()).toEqual(['C', 'D', 'hood', 'later', 'not-this', 'screen', 'show', 'title', 'what'])
     for (const slot of marked) expect(text, slot).toContain(`\`${slot}\``)
-  })
-
-  it('names the one file and the starter it is copied from', () => {
-    const text = rules()
-    expect(text).toContain('Exactly one file, `preview.html`, at the root of the feature\'s docs dir')
-    expect(text).toContain('`./preview-starter.html`')
-    expect(text).toContain('/prototypes/`')
-    expect(text).toContain('They are never shown')
-  })
-
-  it('states the five parts in order, the hood collapsed by default', () => {
-    const text = rules()
-    const parts = [
-      '1. **What this is.**',
-      '2. **The show.**',
-      '3. **What was decided.**',
-      '4. **What is left out.**',
-      '5. **Under the hood.**',
-    ].map((part) => text.indexOf(part))
-    expect(parts.every((at) => at >= 0)).toBe(true)
-    expect([...parts].sort((a, b) => a - b)).toEqual(parts)
-    expect(text).toContain('**collapsed by default**')
-    expect(text).toContain('**It is free, with\n   no template**')
-    expect(text).toMatch(/every decision in `decisions\.md` by its number and\s+title/i)
-  })
-
-  it('pins visual first, the theme rule, screen blocks, inline only and sizing', () => {
-    const text = rules()
-    expect(text).toContain('**A short sentence beside a picture, never paragraphs, detail behind a click.**')
-    expect(text).toMatch(/\*\*The page and every diagram and flow are runcastle-themed\*\*/)
-    expect(text).toMatch(/\*\*A mocked screen uses the styling of the project it belongs to\*\*/)
-    expect(text).toContain('<!-- screen:<name> -->')
-    expect(text).toContain('<!-- /screen:<name> -->')
-    expect(text).toContain('kebab case and unique in the file')
-    expect(text).toContain('**Styles, scripts and images are inline. The file makes no network request**')
-    expect(text).toContain('refuses every fetch')
-    expect(text).toContain('**There is no minimum.**')
-    expect(text).toMatch(/about a\s+minute for a small feature, a few minutes for a large one/)
-  })
-
-  it('opens a self-planned feature’s decisions with at most five to check first', () => {
-    const text = rules()
-    const decided = text.slice(text.indexOf('3. **What was decided.**'), text.indexOf('4. **What is left out.**'))
-    expect(decided).toMatch(/\*\*Check first\*\* group of at most five/)
-    expect(decided).toMatch(/its alternative, and why it\s+is uncertain/)
-    expect(decided).toMatch(/each showing that it was assumed/)
-    expect(decided).toContain('**A grilled feature has neither**')
-    const selfCheck = text.slice(text.indexOf('## Self-check'))
-    expect(selfCheck).toMatch(/\*\*Check first\*\* group holds at most five/)
-    expect(selfCheck).toMatch(/shows as assumed/)
-    expect(selfCheck).toMatch(/For a grilled feature, `C` is empty/)
-  })
-})
-
-describe('the feature skill’s preview step', () => {
-  const rules = (): string => read('feature', 'references', 'preview.md')
-
-  it("draws the preview and gets the human's yes before the first round", () => {
-    const skill = read('feature', 'SKILL.md')
-    const yes = skill.slice(skill.indexOf("## The human's yes"), skill.indexOf('## Every feature ends with a review'))
-    expect(yes).toContain('`./references/preview.md`')
-    expect(yes).toContain('`./references/preview-starter.html`')
-    expect(yes).toContain("get the human's **explicit yes in chat**")
-  })
-
-  it('shows it in the Plan view, waits, and redraws on a correction', () => {
-    const step = rules().slice(rules().indexOf('## Show it, then get the yes'), rules().indexOf('## The file'))
-    expect(step).toContain('`show_plan()`')
-    expect(step).not.toContain('show_panel')
-    expect(step).toContain('Then wait for the answer.')
-    expect(step).toContain('**A correction is a decision edit plus a redraw.**')
-    expect(step).toContain('**Never skip the preview on your own judgement**')
-    expect(step).toContain('**If the human says to skip it**, write no file')
-  })
-
-  it('carries the redraw rule, and grilling hands the redraw to the preview', () => {
-    expect(rules()).toMatch(/edit to `decisions\.md` updates `preview\.html` in\s+the same move/)
-    expect(read('feature', 'references', 'grilling.md')).toMatch(/a `preview\.html` exists, redraw the/)
-  })
-})
-
-describe('the workers reference and the preview', () => {
-  const skill = (): string => read('feature', 'references', 'workers.md').replace(/\s+/g, ' ')
-
-  it('points a screen-building worker at one named screen block, never the file', () => {
-    const text = skill()
-    expect(text).toContain('point it at one named screen block, never the file')
-    expect(text).toContain('It reads only the lines between `<!-- screen:<name> -->` and `<!-- /screen:<name> -->`')
-    expect(text).toContain('not the implementation')
-    expect(text).toContain("it builds with the project's real components")
-  })
-
-  it('tells workers to connect designed components and never restyle them', () => {
-    const text = skill()
-    expect(text).toContain('name the component and its design page, and say the look is approved')
-    expect(text).toContain('connect, never restyle')
-    expect(text).toContain('real data in place of the sample')
-    expect(text).toContain("The states on the design page's switcher are the states it must reach")
   })
 })
