@@ -200,8 +200,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <div class="flow">
   <span class="n">Agent calls <span class="mono">wait_for_you</span> (or <span class="mono">declare_ready</span>, or a prompt opens)</span><a class="pin" data-d="2">2</a>
   <span class="a">→</span><span class="n am2">Needs you · its line · one ping</span><a class="pin" data-d="14">14</a>
-  <span class="a">→</span><span class="n">Its next turn starts, for any reason</span><a class="pin" data-d="7">7</a>
-  <span class="a">→</span><span class="n">Working, then Idle, unless it asks again</span>
+  <span class="a">→</span><span class="n">You write in that chat, or the agent withdraws it</span><a class="pin" data-d="7">7</a>
+  <span class="a">→</span><span class="n">Working, then Idle</span>
 </div>
 <div class="flow">
   <span class="n">Merge conflict · failed worker</span><span class="a">→</span><span class="n">a message to the lead, which decides</span><a class="pin" data-d="9">9</a>
@@ -277,7 +277,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The wait kinds go', 'wait_for_you takes only why; the agent\'s line replaces "Plan to approve" and the rest.', 'assumed'],
     ['Every need kind runcastle derived is deleted', 'Delete the ten kinds rather than hide them behind one label.', 'assumed'],
     ['Leads, orchestrator chats and workers all call it', 'The same guess lives in epic chats and workers; one rule for every agent.', 'assumed'],
-    ['What clears it', 'The agent\'s next turn, whatever starts it; it asks again if it still waits.', 'assumed'],
+    ['What clears it', 'Only the human writing in that chat, or the agent replacing or withdrawing it; a worker handback or orchestrator message does not.', 'assumed'],
     ['Ready to test is a "needs you"', 'declare_ready reads "Needs you · Ready to test"; "Ready to merge" goes.', 'assumed'],
     ['Events with no agent behind them go to the agent; a dead run needs you', 'Conflicts and failed workers go to the lead; a crashed or limit-stopped run is the one need runcastle sets.', 'assumed'],
     ['Stop reads idle', 'The human did it; nothing to tell them.', 'assumed'],
@@ -296,7 +296,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
     [6, 'Only the lead calls it; workers and epic chats keep their own states', 'Gives workers and epic chats a new tool; the challenger would keep "on its own" workers asking their lead'],
-    [7, 'Only a message from a person clears it', 'The chosen rule needs agents to ask again after any wake; the alternative leaves stale amber'],
+    [7, 'Any new turn of the agent clears it; it asks again if it still waits', 'Changed on the orchestrator\'s view; the challenger preferred the alternative'],
     [9, 'A dead run shows only in its chat and reads idle', 'The one need runcastle writes itself; changed after the challenger'],
     [13, 'Keep "With <chat>" as a plain word on the row', 'Touches how epic-run features read, next to "Ownership is a label"'],
     [17, 'Keep a quiet "it replied" hint, no ping', 'An agent that forgets the tool leaves nothing amber']

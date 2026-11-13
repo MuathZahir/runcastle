@@ -37,11 +37,11 @@ Check first: 6, 7, 9, 13, 17
 **For the human.** Workers and epic chats stop showing "Needs you" when they merely finished talking.
 
 ## 7. What clears it
-**Decision:** A need lasts until that agent starts its next turn, for whatever reason: the human's reply, an orchestrator's message, or one of runcastle's own notices (a worker handed back, a review finished). If it still needs the human at the end of that turn, it calls `wait_for_you` again. Answering a permission prompt or question box clears that one at once.
-**Why:** The brief: "your reply (or the agent's next tool call that takes it back) clears it". A need that outlives a new turn would read "Needs you" while the agent works, which is the complaint this feature fixes.
-**Assumed.** Alternative: only a message from a person clears it; runcastle's notices leave it standing.
-**Challenged:** The challenger showed the alternative leaves a row amber while the lead works on a worker's handback, and lets an unrelated orchestrator "status?" wipe the human's question either way. The planner took this over its first answer, which was the alternative.
-**For the human.** An agent woken by anything must ask again if it still needs you.
+**Decision:** A need clears only when the human writes in that chat (or answers its prompt or question box, presses Stop, or closes the feature), or when the agent itself replaces it (a new `wait_for_you` or `declare_ready`) or withdraws it (`wait_for_you` with nothing to wait for). A worker handing back, a review finishing, a merge conflict or an orchestrator's message does not clear it: the human's question is still open, and the row keeps reading "Needs you" while the agent works on (decision 18).
+**Why:** The brief: "your reply (or the agent's next tool call that takes it back) clears it". A need wiped by a machine wake would read Working while the human is really being waited on, the false status this feature exists to kill. Withdrawing a question that went moot is rarer than re-asking after every wake, so it asks less of agents.
+**Assumed.** Alternative: any new turn of the agent clears it, and the agent calls `wait_for_you` again if it still waits.
+**Changed by the orchestrator:** the planner first chose the alternative (on the challenger's point that a need could outlive a moot question); the orchestrator showed it wipes a still-open question on every worker handback or orchestrator message. The planner now recommends this rule.
+**For the human.** A question stays flagged until you answer it or the agent takes it back.
 
 ## 8. Ready to test is a "needs you"
 **Decision:** `declare_ready` sets "Needs you · Ready to test · <scenario>". The Test drive button stays where it is. It clears like any need, on the human's next message; a drive alone does not clear it. "Ready to merge" goes: a feature that is ready to test is ready to merge.

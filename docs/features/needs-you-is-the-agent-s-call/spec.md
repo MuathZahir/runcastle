@@ -29,11 +29,12 @@ are pinged once with the agent's line. Nothing else pings.
 Ending a turn never sets it. Every agent's instructions carry the rule: if your last
 message asks the human anything, call `wait_for_you` with one short line.
 
-**What clears it.** The agent's next turn, whatever starts it (the human's reply, an
-orchestrator's message, a runcastle notice); answering the prompt or question box; or
-closing (merge, archive, shelf, or dropping or landing the worker). An agent that still
-needs the human at the end of a new turn calls the tool again. "Needs you" beats
-"Working": a wait stands while subagents, background commands or workers still run.
+**What clears it.** Only the human writing in that chat (or answering its prompt or
+question box, pressing Stop, or closing the feature: merge, archive, shelf, or dropping
+or landing the worker), or the agent itself replacing the need (a new `wait_for_you` or
+`declare_ready`) or withdrawing it. A worker handing back, a review finishing, a merge
+conflict or an orchestrator's message does not clear it. "Needs you" beats "Working":
+a wait stands while the agent, its subagents, background commands or workers still run.
 
 **Events with no agent behind them** go to the lead as a message: a merge conflict
 (today it wakes nobody), a failed worker and a dead sandbox (already delivered). The lead
@@ -47,7 +48,7 @@ shows its problem on its own row in red, outside the Needs you lane, with no pin
   worker, each orchestrator chat. It holds the line, when it was set, and whether
   runcastle or the agent set it. The feature-level waiting columns and the `waitingKind`
   column go (a migration). `wait_for_you` keeps its name; its input is `{ why }` only.
-  A turn starting on a session clears that session's wait.
+  The human's message in that chat clears that session's wait; `wait_for_you({ withdraw: true })` lets the agent take it back (the input is `{ why }` or `{ withdraw: true }`).
 - *A feature's need* is the newest of: its lead's wait, its workers' waits, and an open
   prompt or question box in any of its threads. In core this is one small pure function
   over a list of waits; it replaces the ranked candidates, the held logic and every
@@ -94,9 +95,10 @@ shows its problem on its own row in red, outside the Needs you lane, with no pin
 ## Seams
 
 - **`wait_for_you` → `feature.get().need`** (existing tool, existing query): a lead's call
-  shows its line; its next turn clears it. The main end-to-end seam.
+  shows its line; the human's message in that chat or a withdraw clears it, a worker
+  handback or orchestrator message does not. The main end-to-end seam.
 - **`declare_ready` → `need`** (existing): reads "Ready to test · <scenario>", cleared by
-  the next turn.
+  the human's next message.
 - **Core need function** (new, replaces `featureNeed`): pure, waits in, newest need out;
   unit-tested in core.
 - **Worker status** (existing `workers/service` turn-end path): a turn with no handback
@@ -116,6 +118,8 @@ shows its problem on its own row in red, outside the Needs you lane, with no pin
 
 - Who owns a feature, the automatic owner switch, the finish choice and refusals:
   "Ownership is a label".
+- Routing a feature's need to an orchestrator chat. A feature's question shows in its
+  own chat; nothing here forwards it to an epic.
 - Rewriting the skills into short rules: "Skills become short rules".
 - A fallback for an agent that forgets the tool (decided: none).
 - Changing the plan card, design cards, Approve button, Test drive or Merge buttons.
