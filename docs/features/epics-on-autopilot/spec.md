@@ -17,8 +17,8 @@ chat or the epic's.
 
 **For the human.** Every feature is theirs by default, worked in its own chat. When they
 tell an epic (an orchestrator chat plus the features it created) "go on autopilot", after
-the epic's grill, its cut, and their yes to the orchestrator's run plan, the features in
-that run plan lock: their chats can be watched but not typed in, their acting buttons go,
+the epic's grill, its cut, and their yes to the orchestrator's run plan, the epic's
+features lock (the run plan says which ones it works): their chats can be watched but not typed in, their acting buttons go,
 and a lock note links to the epic. The epic chat becomes the only place the human talks.
 Leads report to the orchestrator; the orchestrator answers what it can (all of it, if the
 human handed over their decisions, within the hard limits) and asks the human only what it
@@ -29,12 +29,12 @@ On waking they get one summary of what was decided for them, with links.
 
 **The shape.**
 
-- **State.** Two facts replace ownership. On the epic (the orchestrator chat's session):
-  whether autopilot is on. On the feature: whether it is in its epic's run. A feature is
-  locked exactly when it is in the run and its epic is on autopilot. The feature's epic is
-  the chat that created it (the existing link from a feature to the chat that cut it);
-  "also run X" re-points that link. The `held_by` and `finish` columns are dropped by a
-  migration; every epic starts with autopilot off (decision 21).
+- **State.** One fact replaces ownership: on the epic (the orchestrator chat's session),
+  whether autopilot is on. A feature is locked exactly when its epic is on autopilot and
+  the feature is not shipped or archived. The feature's epic is the chat that created it
+  (the existing link from a feature to the chat that cut it); "also run X" re-points that
+  link. The `held_by` and `finish` columns are dropped by a migration; every epic starts
+  with autopilot off (decision 21).
 - **One check replaces the hold refusals.** The holding service (`requireHold`,
   `requireMayMessage`, owner writes, owner reads, the three startup repairs, the
   automatic flip on `wait_for_you`, the take-on-typing hook) is deleted. In its place, one
@@ -42,9 +42,8 @@ On waking they get one summary of what was decided for them, with links.
   creating, starting, planning, reading, editing a draft's brief and dependencies on the
   epic's own features; yes for messaging a lead, stopping a run, driving and merging only
   when the feature is locked to that epic. The orchestrator's acting tools call it.
-- **Orchestrator tools.** `take_feature` is deleted. A new tool turns autopilot on for the
-  calling epic with the list of features it runs, adds or removes features from the run,
-  and turns it off. Its description says it is called only on the human's words, after the
+- **Orchestrator tools.** `take_feature` is deleted. A new tool turns autopilot on or off for
+  the calling epic, and moves another feature into it ("also run X"). Its description says it is called only on the human's words, after the
   human agreed a run plan. `send_to_feature` opens with the epic's name (decision 22).
   `create_feature` loses the "run it for me" answer; a feature created while the epic is on
   autopilot joins the run.
@@ -57,8 +56,7 @@ On waking they get one summary of what was decided for them, with links.
 - **Turning off.** The tool and the "End autopilot" link call the same service function:
   it clears the epic's switch and every feature's membership, emits one event, prompts
   each locked lead once ("this feature is the human's again; re-ask any open question with
-  wait_for_you"), and tells the orchestrator. Taking back one feature does the same for
-  that feature only. Nothing running stops. Turning on (or adding a feature) is the
+  wait_for_you"), and tells the orchestrator. Nothing running stops. Turning on (or adding a feature) is the
   mirror: a wait already open in a joining feature's chat is closed and its lead is told
   to re-ask through the epic.
 - **Usage limits.** No machinery: the human's "carry on after a usage limit" setting
@@ -103,7 +101,7 @@ On waking they get one summary of what was decided for them, with links.
 
 ## Seams
 
-- **The autopilot service** (new): turn on with a list, add, remove, turn off; and the
+- **The autopilot service** (new): turn on, turn off, move a feature in; and the
   "may this chat act on this feature" check. Observe the stored switch and memberships,
   the event it emits, and the prompts it sends to leads and the orchestrator. Unit-tested
   against the database like the holding service was.

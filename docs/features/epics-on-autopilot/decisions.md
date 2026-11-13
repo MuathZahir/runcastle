@@ -61,11 +61,11 @@ Check first: 14, 16, 17, 18, 23
 **Assumed.** Alternative: membership fixed at creation, with no way to add a feature to an epic later.
 **For the human.**
 
-## 14. Autopilot runs the features its run plan gives it; the rest stay yours
-**Decision:** Turning autopilot on names the features it runs, from the agreed run plan. Only those lock. A feature the run plan leaves for the human's grill stays the human's and unlocked, so they can grill it in its own chat while the others carry on. The human can add one later ("also run C") or take one back ("I'll do C myself") in the epic. Ending autopilot still returns them all at once.
-**Why:** The run plan already leaves some features for the human's grill (decision 10). If those locked too, the human could only grill them through the epic, with the orchestrator relaying each question: the relay ADR-0021 removed because the human answered twice.
-**Assumed.** Alternative: autopilot locks every feature in the epic, and a feature left for the human's grill is grilled through the epic chat.
-**Challenged:** A per-feature "in the run" mark, with "also run C" and "I'll do C myself", is per-feature ownership and `take_feature` under new names, the thing this feature exists to delete. Keep it only if the human accepts that knowingly; otherwise lock the whole epic and grill C after ending autopilot.
+## 14. Autopilot locks the whole epic
+**Decision:** Turning autopilot on locks every open feature of the epic. The run plan says which ones the orchestrator works and how far; a feature it leaves for the human's grill sits locked and untouched until the human ends autopilot and grills it in its own chat. "Also run X" moves X into the epic. There is no per-feature "in the run" mark and no taking one feature back: to work on one feature themselves, the human ends autopilot. Autopilot ends only when the human says so (decision 5), never by itself when the work is done.
+**Why:** A per-feature mark with add and remove is per-feature ownership under a new name, the thing this feature deletes (the challenger's point, which the orchestrator backed). The brief says "the epic's features work for the orchestrator". One switch per epic and nothing per feature is the simplest model.
+**Assumed.** Alternative: only the run plan's features lock, so the human can grill a left-over feature in its own chat while the others carry on.
+**Changed by the orchestrator:** it recommended locking the whole epic; the first draft locked only the run plan's features.
 **For the human.**
 
 ## 15. With autopilot off, the orchestrator creates and starts, and nothing more
