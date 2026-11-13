@@ -181,7 +181,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <p class="legend">Coloured: the skill. Grey: the briefing, which keeps only facts about the session <a class="pin" data-d="3">3</a>. Reference pages are read only when needed and stay under 6K each <a class="pin" data-d="6">6</a>.</p>
 
   <h3>The rules, drafted</h3>
-  <p class="hint">Your yes or edits here settle the lists; the wording is polished with you in a worker <a class="pin" data-d="12">12</a>.</p>
+  <p class="hint">Your yes or edits here settle the lists; workers then write each skill from its list, and you read the final text at review <a class="pin" data-d="12">12</a>.</p>
   <div class="rules">
     <div>
       <h3>Feature lead · 11 rules</h3>
@@ -233,8 +233,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h3>Who builds what</h3>
   <ul class="who">
     <li><b>Me, first:</b> the measuring script, and today's numbers from main. <a class="pin" data-d="11">11</a></li>
-    <li><b>Lead rules</b><span class="k">with you</span> rewrites the lead's skill and its pages to the agreed rules; reports what it moved or dropped.</li>
-    <li><b>Orchestrator rules</b><span class="k">with you</span> rewrites the orchestrator's skill and pages the same way, in parallel.</li>
+    <li><b>Lead rules</b><span class="k">on its own</span> rewrites the lead's skill and its pages to the agreed rules; reports what it moved or dropped.</li>
+    <li><b>Orchestrator rules</b><span class="k">on its own</span> rewrites the orchestrator's skill and pages the same way, in parallel.</li>
     <li><b>Briefings and tools</b><span class="k">on its own</span> after both land: briefings down to facts, tool contracts into descriptions, stale round and ticket text out, tests to size budgets.</li>
     <li><b>Me, then:</b> one replay, where a subagent plans the "Agents test like owners" brief by the new rules, set beside its original 20 decisions; then the project's checks.</li>
     <li><b>Review worker</b> at the end: reads the diff, runs the checks, and lists anything today's skills did that the new ones lost.</li>
@@ -255,7 +255,6 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <!-- FILL:later -->
     <div><h3>Later</h3><ul>
       <li><i class="dot"></i>The real-run comparison, on your next feature after publish <a class="pin" data-d="11">11</a></li>
-      <li><i class="dot"></i>Fixing the charter's stale "one owner" line, passed to the orchestrator chat <a class="pin" data-d="5">5</a></li>
     </ul></div>
     <!-- FILL:not-this -->
     <div><h3>Not this feature</h3><ul>
@@ -305,7 +304,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Planning alone shrinks to one page', '12K of procedure for a run the human reviews anyway; the challenger adds decisions.', 'assumed'],
     ['Size budgets replace tests that pin wording', 'A budget enforces "sharpen, don\'t add" without freezing words.', 'assumed'],
     ['Measured before and after', 'A script for sizes, one replay of a past brief before ready, and your next real feature after publish.', 'assumed'],
-    ['The human approves the rule text itself', 'The rules are the product; a yes to a count without the text is a yes to nothing.', 'assumed']
+    ['The human approves the rule lists in the Plan; workers write on their own', 'Your yes on the rules is required, but two wording sessions are the detail-managing you asked to stop. Changed on the orchestrator\'s advice.', 'assumed']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
@@ -315,7 +314,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     [6, 'Exactly ten rules each, preparation cut to a few lines', 'The counts are my reading of "about ten"; the challenger called fixed counts arbitrary.', 'challenged'],
     [9, 'Keep the challenger agent in headless planning', 'It is the one check on a planner working alone; I drop it because it adds decisions.'],
     [10, 'No size budgets; rely on the before-and-after numbers', 'The brief said "pin behaviour"; a budget is my guess at that, and the challenger calls it new machinery.', 'challenged'],
-    [12, '"On its own" workers write the skills; you read them at review', 'Polishing with you costs two short sessions of your time.']
+    [12, 'Two "with you" workers, so you polish each skill\'s wording', 'My first plan had these; the orchestrator advised against spending your time on two sessions.', 'changed']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

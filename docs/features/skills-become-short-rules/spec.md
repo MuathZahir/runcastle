@@ -15,7 +15,8 @@ wants agents that apply a short set of rules with judgement.
 
 **What the human gets.** Both agents run on a short numbered list of rules they can read in a
 minute: 11 for the lead, 12 for the orchestrator (drafts in `preview.html`, settled by the human's
-yes and refined with them in "with you" workers, decision 12). Plans hold only the decisions the
+yes there; workers write each skill from its list and the human reads the final text at review,
+decision 12). Plans hold only the decisions the
 human made or must make; build detail goes to the spec (decision 8). Any agent that fails twice at
 the same problem changes its approach, and after a third failure stops and asks (decision 7).
 
@@ -67,8 +68,8 @@ the same problem changes its approach, and after a third failure stops and asks 
   go in the outcome. Before ready, a subagent plans the "Agents test like owners" brief by the new
   lead skill; its decision count and plan size are compared with the original's 20 decisions.
 
-**Order of work.** The lead writes the measuring script and records main's numbers. The two "with
-you" skill workers run in parallel, each owning only its skill folder and reporting which contracts
+**Order of work.** The lead writes the measuring script and records main's numbers. The two "on its
+own" skill workers run in parallel, each owning only its skill folder and reporting which contracts
 it removed and which behaviours it dropped. Then one "on its own" worker does briefings, tool
 descriptions and tests from those reports. Then the replay, the project's checks, and the Review
 worker.
@@ -88,12 +89,12 @@ worker.
 - Worker, review, Q&A and code-review prompts (decision 2).
 - Any machinery change: waits, autopilot, ownership, tool refusals. Those belong to the features that
   already merged.
-- The charter (`CONTEXT.md`); its "Rules, not procedures" principle already exists. Locked decision
-  18 reading stale is passed to the orchestrator chat.
+- The charter (`CONTEXT.md`); its "Rules, not procedures" principle already exists, and the
+  orchestrator has already brought locked decisions 9 and 18 in line with autopilot (ADR-0022).
 
 ## Open questions
 
-- Whether the rule counts hold once written; the "with you" workers may land at 10 or 13 with the
-  human's say.
+- Whether the rule counts hold once written; a worker may land at 10 or 13 if the agreed
+  list writes that way, and says so in its handback.
 - Whether a real run after publish shows agents asking too much or too little; the fix is to sharpen
   a rule, not add one.

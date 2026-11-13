@@ -29,7 +29,7 @@ Check first: 3, 6, 9, 10, 12
 **Assumed.** Alternative: a short "Tools" section at the end of each skill.
 
 ## 5. The charter principle is already there
-**Decision:** Nothing is added to the charter (`CONTEXT.md`, the project's vision and locked decisions). Its "Rules, not procedures" principle, dated 2026-11-13, already says to sharpen an existing rule rather than add a paragraph or a mechanism; checked on this branch. The orchestrator chat is told that locked decision 18 ("every feature has one owner") reads stale since autopilot; only it may write the charter.
+**Decision:** Nothing is added to the charter (`CONTEXT.md`, the project's vision and locked decisions). Its "Rules, not procedures" principle, dated 2026-11-13, already says to sharpen an existing rule rather than add a paragraph or a mechanism; checked on this branch. The orchestrator has already rewritten locked decisions 9 and 18 to match autopilot (ADR-0022); 18 now reads "A feature is the human's, unless its epic is on autopilot", and the skills are written against that.
 **Why:** The brief's ask is met on main already, and the lead may not write the charter.
 
 ## 6. The lead gets 11 rules, the orchestrator 12, plus short format pages
@@ -72,8 +72,9 @@ Check first: 3, 6, 9, 10, 12
 **Assumed.** Alternative: run a full benchmark feature on both versions before merge.
 **For the human.** Their next real feature after publish is the real test.
 
-## 12. The human approves the rule text itself
-**Decision:** The Plan carries the drafted rules for both skills; the human's yes or edits there settle the rule lists. Each skill is then written by a "with you" worker, so the human can tweak the wording in that worker before it hands back.
-**Why:** The rules are the product here; a yes to "11 rules" without their text is a yes to nothing.
-**Assumed.** Alternative: "on its own" workers write the skills from the Plan's lists, and the human reads them only at review.
-**For the human.** It costs them two short wording sessions, one per skill.
+## 12. The human approves the rule lists in the Plan; workers write on their own
+**Decision:** The Plan carries the drafted rules for both skills; the human's yes or edits there settle the rule lists. Each skill is then written by an "on its own" worker from the agreed list, and the human reads the final text at review.
+**Why:** The rules are the product, so the human's yes on their text is required; but sitting through two wording sessions is the detail-managing the human asked to stop.
+**Assumed.** Alternative: two "with you" workers, so the human polishes each skill's wording before it hands back.
+**Changed by the orchestrator:** it judged two "with you" sessions too much of the human's time, given they want to stop managing details.
+**For the human.** They see the final wording only at review, not while it is written.
