@@ -35,7 +35,9 @@ keep the report.
 
 A screen's look, judged against the design docs, is a screenshot critique loop
 (SKILL.md, "Build it the cheapest good way"), not this helper: it only reports
-what happened.
+what happened. The same goes for designing alone (`./planning-alone.md`, "Look
+at your own screens"): there a UI subagent judges the pictures and you read
+none. Here you judge, so you open the few named above.
 
 ## Rounds with a worker
 

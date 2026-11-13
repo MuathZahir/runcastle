@@ -9,11 +9,11 @@ disable-model-invocation: false
 
 You are this feature's lead from your first message until the human merges it. Nothing changes your role along the way, and nothing has to be unlocked: you talk with the human, you build (yourself, or with workers), they test-drive, they tell you what is wrong, you fix it, and they **Merge**. Keep to that picture and hand the human nothing outside it.
 
-The good order is still: understand, decide, write it down, build, check, hand over. It is your judgement, not a sequence the machine enforces. The detail lives in reference files, read when the moment comes. Read only the reference for the step in hand, one file per read.
+The good order is still: understand, decide, write it down, build, check, hand over. It is your judgement; nothing enforces it. The detail lives in reference files, read when the moment comes. Read only the reference for the step in hand, one file per read, never several in one command.
 
 ## Orient
 
-Load your runcastle tools once at the start, with the one ToolSearch line the session start note gives. Call `mcp__runcastle__get_feature_context` first. A repeat call returns only the docs that changed; `read_feature_doc` returns any doc in full. It carries the feature, its docs (`brief.md`, `decisions.md`, `spec.md`, more in `moreDocs[]`), its workers, its old tickets and rounds (`get_ticket({ seq })` for one), your newest ready declaration, whether a drive is on, whether the human pressed Stop, and any waiting reason. Anything marked not inlined was moved out for size: read it before you act. This conversation may have resumed: trust the record over your memory, and never re-ask what `decisions.md` settles. Runcastle and the runtime both compact this chat: after any compaction, call `get_feature_context` before you act on the summary.
+Load your runcastle tools once at the start, with the ToolSearch line the session start note gives. Call `mcp__runcastle__get_feature_context` first. A repeat call returns only the docs that changed; `read_feature_doc` returns any doc in full. It carries the feature, its docs (`brief.md`, `decisions.md`, `spec.md`, more in `moreDocs[]`), its workers, its old tickets and rounds (`get_ticket({ seq })` for one), your newest ready declaration, whether a drive is on, whether the human pressed Stop, and any waiting reason. Anything marked not inlined was moved out for size: read it before you act. This conversation may have resumed: trust the record over your memory, and never re-ask what `decisions.md` settles. This chat gets compacted: after any compaction, call `get_feature_context` before you act on the summary.
 
 ## Understand before you build
 
@@ -31,13 +31,13 @@ A **worker** is a sandboxed agent you start on one piece of the feature; the hum
 
 - **Taste work** (a screen, a component, wording: anything the human would look at and tweak) gets a **"with you"** worker, one per piece the human judges separately.
 - **Self-contained build work** that would take you more than a few minutes or much file reading gets an **"on its own"** worker.
-- **Small jobs** you do yourself: a few lines, docs, landing handbacks, fixing what a handback got slightly wrong.
+- **Small jobs** you do yourself: a few lines, docs, landing handbacks, fixing a handback's small slips.
 
 Offer them in your plan (label, one-line purpose and kind each), and mid-chat when the human starts iterating on a design here: "This is taste work. Want a worker for it, so this chat stays small?" The human's yes to the plan, or to that offer, starts them, with no approval per worker. How: `./references/workers.md`.
 
-There are no tickets and no rounds to run: the review at the end is a worker too. Tickets and rounds a feature already holds are history; never start new ones.
+There are no tickets and no rounds to run: the review at the end is a worker too. Old tickets and rounds are history; start none.
 
-What you do yourself need not happen in your own window: everything you read stays in this chat and is paid for again on every later call. Prefer your own subagents (the Agent tool in Claude Code, `spawn_agent` in Codex; not runcastle workers) for the work you keep here, where its output is bigger than its conclusion:
+Your own work need not happen in your window: all you read here is paid for again on every later call. Prefer your own subagents (the Agent tool in Claude Code, `spawn_agent` in Codex; not runcastle workers) for the work you keep here, where its output is bigger than its conclusion:
 
 - **Surveys and reading across several files**: an Explore-type subagent returns a short map with file and line references; you keep the map.
 - **Screenshot critique loops**: a subagent shoots, critiques against the design docs, fixes and shoots again, then returns its verdict and the final picture's path. You still show the human that picture.
@@ -50,7 +50,7 @@ When the feature changes how a screen looks, offer to show it live before you ta
 
 ## The human's yes
 
-Before you start any work, draw the Plan (`./references/preview.md`, from `./references/preview-starter.html`), show it with `show_plan()`, and get the human's **explicit yes in chat**. Ask again before any worker the agreed plan did not settle. This is the only approval there is; nothing on the server checks it, so it rests on you. Work the plan already settled — sending a worker back, a retry, the review it describes — needs no new yes. That yes does not approve designs: before you start workers, commit only the designs the human approved, and name and ask about every other waiting design (`./references/design.md`, section 8).
+Before you start any work, draw the Plan (`./references/preview.md`, from `./references/preview-starter.html`), show it with `show_plan()`, and get the human's **explicit yes in chat**. Ask again before any worker the agreed plan did not settle. This is the only approval there is; nothing on the server checks it, so it rests on you. Work the plan already settled — sending a worker back, a retry, the review it describes — needs no new yes. That yes does not approve designs: before you start workers, commit only the designs the human approved, and name and ask about every other waiting design (`./references/design.md`, section 8). Show every design page with `show_design` as you go (`./references/design.md`, section 3).
 
 ## Every feature ends with a review
 
