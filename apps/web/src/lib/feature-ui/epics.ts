@@ -13,6 +13,8 @@ import { relTime } from '../format'
 /** A feature in the epic list. */
 export interface EpicFeature {
   feature: FeatureListItem
+  /** Locked to its epic's autopilot run (epics-on-autopilot): its needs go to the epic, never to its own row. */
+  locked?: boolean
 }
 
 /** One epic: its chat, and the features it cut that are in motion or up next. */
@@ -25,6 +27,8 @@ export interface Epic {
   icon?: EpicIconId | null
   /** How many of its features shipped (decision 4): the slim row's "3 shipped". */
   shipped?: number
+  /** It runs its features by itself (epics-on-autopilot): the card wears the autopilot look. */
+  autopilot?: boolean
 }
 
 /** One group of the list, in display order: an epic, or the features with no epic (decision 7). */

@@ -2,13 +2,14 @@ import { Fragment, isValidElement, type ReactNode } from 'react'
 import { cx, StatusDot } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry } from '../lib/chat-thread'
-import { IconArrowRight, IconList, IconPlus } from '../icons'
+import { IconArrowRight, IconList, IconLock, IconPlus } from '../icons'
 import { EpicIcon, epicStyle, type EpicColor, type EpicIconId } from '../lib/epic-look'
 import { epicIsIdle, epicOwnerJoin, idleEpicFacts, orderEpicList, type Epic } from '../lib/feature-ui/epics'
 import type { OwnerReading } from '../lib/feature-owner'
 import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
+import { AutopilotMark } from './autopilot/AutopilotParts'
 import { featureStateWords, openRowMenu, SIDEBAR_CARD, SidebarFeatureRow, ThreadListMore } from './SidebarParts'
 
 /**
@@ -277,9 +278,16 @@ export function SidebarEpicCard({
   actions = [],
   color,
   icon,
+  autopilot = false,
   children,
 }: {
   chat: ThreadEntry
+  /**
+   * It runs its features by itself (epics-on-autopilot decision 7): the
+   * "Autopilot" mark at the name's end, and `data-autopilot` on the card for
+   * the autopilot look. Its own need still lights the amber dot.
+   */
+  autopilot?: boolean
   /** Its colour (decision 2): the head's wash, grid and tile. */
   color?: EpicColor | null | undefined
   /** Its icon (decision 1); the default chat bubble while unset. */
@@ -300,6 +308,7 @@ export function SidebarEpicCard({
   return (
     <div
       style={epicStyle(color)}
+      {...(autopilot ? { 'data-autopilot': '', 'data-autopilot-state': asking ? 'asking' : working ? 'working' : 'resting' } : {})}
       className={cx(
         // One hairline in every state: the head says which epic is open and which works.
         'card relative isolate shrink-0 overflow-hidden rounded-lg',
@@ -331,6 +340,11 @@ export function SidebarEpicCard({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-md font-semibold tracking-tight text-text">{chat.title}</span>
+              {autopilot && (
+                <span className={cx('inline-flex transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
+                  <AutopilotMark working={working} />
+                </span>
+              )}
               {asking && (
                 <span className={cx('transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
                   <StatusDot tone="warning" />
@@ -528,6 +542,17 @@ export interface SidebarEpicsProps {
   onNewEpic?: () => void
   /** The new, still-empty epic chat is in front: the slot shows it open. */
   newEpicOpen?: boolean
+  /** The mark a locked feature's row wears at its title's end (epics-on-autopilot); a small lock by default. */
+  lockMark?: ReactNode
+}
+
+/** A locked feature's mark: a small lock in its epic's colour. */
+function LockedMark() {
+  return (
+    <span aria-label="On autopilot" className="inline-flex text-[color-mix(in_oklab,var(--epic-text)_80%,var(--color-text-tertiary))]">
+      <IconLock size={12} />
+    </span>
+  )
 }
 
 /**
@@ -553,11 +578,12 @@ export function SidebarEpics({
   noun = 'epic',
   onNewEpic,
   newEpicOpen = false,
+  lockMark,
 }: SidebarEpicsProps) {
   const groups = orderEpicList(epics, other)
   const slim = groups.map((g) => g.kind === 'epic' && epicIsIdle(g.epic))
   const many = noun === 'epic' ? 'Epics' : 'Chats'
-  const row = (f: FeatureListItem, words: string) => {
+  const row = (f: FeatureListItem, words: string, locked = false) => {
     const workers = workersFor?.(f)
     const ownerChoices = ownerChoicesFor?.(f)
     return (
@@ -569,6 +595,7 @@ export function SidebarEpics({
         actions={featureActions?.(f) ?? []}
         nested
         words={words}
+        {...(locked ? { lock: lockMark ?? <LockedMark /> } : {})}
         {...(ownerChoices ? { ownerChoices } : {})}
         {...(workers ? { workers } : {})}
       />
@@ -604,8 +631,9 @@ export function SidebarEpics({
                 actions={epicActions?.(g.epic.chat) ?? []}
                 color={g.epic.color}
                 icon={g.epic.icon}
+                autopilot={!!g.epic.autopilot}
               >
-                {g.epic.features.map((x) => row(x.feature, featureStateWords(x.feature)))}
+                {g.epic.features.map((x) => row(x.feature, featureStateWords(x.feature), !!x.locked))}
               </SidebarEpicCard>
             ) : (
               <OtherFeaturesCard label="Other features">{g.features.map((f) => row(f, featureStateWords(f)))}</OtherFeaturesCard>
