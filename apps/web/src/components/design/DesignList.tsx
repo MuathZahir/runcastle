@@ -43,6 +43,7 @@ function DesignRow({ design, now, index, onOpen }: { design: DesignEntry; now: n
         </span>
         <span className="truncate text-xs text-text-tertiary">
           {designWidthLabel(design.width)} · shown {relTimeAgo(design.shownAt, now)}
+          {design.state === 'approved' && design.approvedBy === 'autopilot' && ' · approved by autopilot'}
         </span>
       </span>
       {/* Its state is the group's heading, said once (DESIGN.md principle 5). */}
@@ -147,7 +148,10 @@ export function DesignBar({
   onBack,
   onStep,
   onApprove,
+  locked = false,
 }: {
+  /** The feature is on its epic's autopilot (epics-on-autopilot decision 16): its state in place of Approve. */
+  locked?: boolean
   design: DesignEntry
   /** Its place in the list's order, from 0. */
   index: number
@@ -178,7 +182,7 @@ export function DesignBar({
         </span>
         <IconButton size="sm" label="Next design" icon={<IconChevronRight />} disabled={index >= count - 1} onClick={() => onStep(index + 1)} />
       </span>
-      {design.state === 'waiting' ? (
+      {design.state === 'waiting' && !locked ? (
         showing && (
           <Button
             size="sm"

@@ -15,7 +15,7 @@ import {
 import { toolCreateFeature, toolGetProjectContext, toolsForAudience } from '../src/mcp/server'
 import {
   orchestratorTool,
-  toolTakeFeature,
+  toolSetAutopilot,
   requireOrchestratorSession,
   requireProjectFeature,
 } from '../src/mcp/orchestrator-tools'
@@ -97,20 +97,23 @@ describe('the orchestrator’s gate', () => {
     }
   })
 
-  it('logs a feature_acted in the calling chat for each feature it creates or takes, and none for a refused call', async () => {
+  it('logs a feature_acted in the calling chat for each feature it creates or puts on autopilot, and none for a refused call', async () => {
     const session = projectSession()
     const made = await toolCreateFeature(ctx, session, { title: 'Login form', oneLiner: 'log in' })
     const parked = await toolCreateFeature(ctx, session, { title: 'Later thing', oneLiner: 'parked', draft: true })
     const other = seedFeature(ctx, projectId, { slug: 'humans' })
-    toolTakeFeature(ctx, session, { slug: 'humans' })
+    await toolSetAutopilot(ctx, session, { action: 'on' })
+    await toolSetAutopilot(ctx, session, { action: 'add', features: ['humans'] })
     await expect(toolCreateFeature(ctx, session, { title: 'No line', oneLiner: ' ' })).rejects.toThrow()
-    expect(() => toolTakeFeature(ctx, session, { slug: 'nope' })).toThrow(GateError)
+    await expect(toolSetAutopilot(ctx, session, { action: 'add', features: ['nope'] })).rejects.toThrow(GateError)
 
     const acted = readThreadEvents(session.id).filter((e) => e.type === 'feature_acted')
     expect(acted.map((e) => e.type === 'feature_acted' && [e.featureId, e.title, e.action])).toEqual([
       [made.id, 'Login form', 'created'],
       [parked.id, 'Later thing', 'parked'],
-      [other.id, other.title, 'taken'],
+      [made.id, 'Login form', 'autopilotOn'],
+      [parked.id, 'Later thing', 'autopilotOn'],
+      [other.id, other.title, 'autopilotOn'],
     ])
   })
 
@@ -171,7 +174,7 @@ describe('the orchestrator’s gate', () => {
       'drive',
       'merge_feature',
       'add_to_brief',
-      'take_feature',
+      'set_autopilot',
     ]
     expect(toolsForAudience('project')).toEqual(expect.arrayContaining(tools))
     for (const kind of ['chat', 'fix-drive-worker', 'review'] as const) {

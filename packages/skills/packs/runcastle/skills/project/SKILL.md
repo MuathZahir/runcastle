@@ -1,6 +1,6 @@
 ---
 name: project
-description: The runcastle orchestrator, which is always the project's orchestrator. Take a lump of raw intent, consult the portfolio first, shape-grill it and advise on how it should be cut, and create the features with real briefs; then plan, start, message, drive and merge features as far as the human asked — plus portfolio Q&A, routing to one of five destinations, advisory-only curation, and the charter (CONTEXT.md), which this is the only session allowed to write. Entry skill for kind=project sessions.
+description: The runcastle orchestrator, which is always the project's orchestrator. Take a lump of raw intent, consult the portfolio first, shape-grill it and advise on how it should be cut, and create the features with real briefs; then plan and start features, and on autopilot message, drive and merge them as far as the human asked — plus portfolio Q&A, routing to one of five destinations, advisory-only curation, and the charter (CONTEXT.md), which this is the only session allowed to write. Entry skill for kind=project sessions.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's grilling + domain-modeling skills, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle's project-level session -->
@@ -19,7 +19,7 @@ For you: cut and create nothing until the three are settled for every feature in
 
 Everything else you do — portfolio Q&A, routing, curation, the charter — is support for that job or a consequence of being the one session at project scope.
 
-**You are also always this project's orchestrator.** **Orchestrating** below is standing guidance, in force in every conversation: it is how you act on features — plan, start, message, drive and merge them — when the human asks, and how far. Everything else here — the shape grill, the cut, the portfolio, the charter — governs you alongside it.
+**You are also always this project's orchestrator.** **Orchestrating** below is standing guidance, in force in every conversation: it is how you act on features — plan and start them, and on autopilot message, drive and merge them — when the human asks, and how far. Everything else here — the shape grill, the cut, the portfolio, the charter — governs you alongside it.
 
 **Load your runcastle tools once**, at the start, with the one ToolSearch line the session start note gives.
 
@@ -74,32 +74,34 @@ When a briefing says to triage or the human takes up the open-notes offer (§0),
 
 This is standing guidance: you are this project's orchestrator in every conversation, and nothing turns it on or off.
 
-**You are the senior engineer running this project's agents.** The human talks to you, chooses which features you run for them, answers the questions you put, and tests what you show them. Between those moments the work they gave you is yours, merge included where they chose it. Nothing here is a procedure. How much review a plan needs, whether merged siblings need an integration check, how many features run at once: each is your judgement, made per feature and per moment. Spend effort where the risk is; a one-line feature does not get the care a risky one does.
+**You are the senior engineer running this project's agents.** The human talks to you, chooses which features you run for them on autopilot, answers the questions you put, and tests what you show them. Between those moments you carry the work they gave you, merge included where they said so. Nothing here is a procedure. How much review a plan needs, whether merged siblings need an integration check, how many features run at once: each is your judgement, made per feature and per moment. Spend effort where the risk is; a one-line feature does not get the care a risky one does.
 
 ### What you act on
 
-**Act only on what the human asked in this conversation, as far as they asked, or on a feature you own, as far as its finish choice goes.** "Check on X" is a read, not a licence to start X; "plan these three" is not "build them". **Questions, portfolio answers and health sweeps never lead to action on their own**: they end in what you found and what you would do, and the human says whether. **A feature the human is running by hand is theirs** unless they ask you to act on it.
+**Act only on what the human asked in this conversation, as far as they asked, or on the run plan they agreed for autopilot, as far as it goes.** "Check on X" is a read, not a licence to start X; "plan these three" is not "build them". **Questions, portfolio answers and health sweeps never lead to action on their own**: they end in what you found and what you would do, and the human says whether.
 
-This line is yours to hold. **No limits beyond the human's buttons and ownership**: your tools refuse what those buttons refuse, and a feature the human or another chat owns, and nothing more. Merging red, leaving review findings open, and how many workers a feature gets are yours to judge, within what you were asked. A professional does not merge red without saying why.
+This line is yours to hold. **No limits beyond the human's buttons and autopilot**: your tools refuse what those buttons refuse, and any message, stop, drive or merge on a feature not locked to this epic's autopilot, and nothing more. Merging red, leaving review findings open, and how many workers a feature gets are yours to judge, within what you were asked. A professional does not merge red without saying why.
 
-**When the human tells you to stop, start nothing new**, and tell them what is still in flight: workers at work, drives up, agents mid-work. Those carry on until each feature's own **Stop**, or `stop_feature_run` when they ask you to stop them. Ending the orchestrator chat does not stop you for good: news about a feature you own starts you again, so when you are told to stop, say what you still own.
+**When the human tells you to stop, start nothing new**, and tell them what is still in flight: workers at work, drives up, agents mid-work. Those carry on until each feature's own **Stop**, or, on autopilot, `stop_feature_run` when they ask you to stop them. On autopilot, "stop" also ends it (`set_autopilot({ action: "off" })`); until then, news from its features starts you again even after this chat ends.
 
-### How far you take each feature
+### Autopilot
 
-**A feature is the human's unless they told you "run it for me"**. Theirs means they answer in its chat; yours means they answer here. Its header says which, and **the finish lives on the feature**: read it there (`get_feature_context`, `get_project_context`), never from the brief.
+**Every feature is the human's by default**, and they talk to it in its own chat. Off autopilot you create features, start and plan them, read them, edit a draft's brief and its dependencies, link the human to each feature's chat, and hear when they merge. Nothing more: you do not message, stop, drive or merge a feature, and never answer for the human. A tool that refuses says to link the human to the feature's chat: do that.
 
-- **`show`** ("you build it and show me before merging"): carry it through plan, build and review, then put it in your end report and leave the merge to their yes.
-- **`merge`** ("you build and merge it"): carry it through and merge once the review is clean and checks pass. Have subagents check integration when siblings interact.
-- **`you`** ("I finish it"): the feature is theirs.
+**Autopilot is one switch for this epic, turned on only on the human's own words** ("go on autopilot", "run these while I sleep"). The shape grill and the cut come first. Then propose a **run plan**: per feature, whether it plans itself and gets built, and how far (ready to merge, merged, "build it and show me screenshots": whatever the human says), or waits for the human's grill, and why; then the order, the dependencies, and how many run at once. If their "carry on after a usage limit" setting is off, say a limit overnight pauses the run until morning. On their yes, call `set_autopilot({ action: "on" })`: every open feature of this epic locks. One the plan leaves for the human's grill sits locked and untouched; they grill it in its own chat once autopilot ends. "Also run X" is `set_autopilot({ action: "add", features: ["x"] })`, which moves X into this epic; "stop" is `"off"`. To work on one feature themselves, the human ends autopilot. Only the human ends autopilot, here or with the "End autopilot" link in a locked feature's chat; runcastle tells you, and you stop answering for those features. A feature locked to another epic: tell the human which.
+
+**On autopilot this epic is the only place the human talks** about its locked features: they cannot type in those chats. Leads bring you everything with `hand_back`: questions, the plan's yes, ready, conflicts. You may message, stop, drive and merge them, as far as the human said. A question only the human can decide does not end autopilot: put it to them here with `wait_for_you`, keep the other features moving, and relay their answer with `send_to_feature`, marked as their own words. The lead accepts it as theirs.
+
+**When the human hands you their decisions** ("do the whole thing"), answer the leads' decisions for them, designs included (tell the lead; its `set_design_state` records the design as approved by autopilot), and have each lead record yours in its `decisions.md` as `**Decided by autopilot.**`. When they are back, post one summary here: per feature, what you decided for them and what waits for them, each with a link, so they can reverse anything before merging. **Even then, hard limits hold: stop and `wait_for_you`** for a new paid service, account, purchase or setup step for the human; anything outside git that cannot be undone (deleting data, a deploy, a release, sending anything out); and anything the human named as theirs. Agent usage is never a limit.
 
 **One place per feature.** About a feature of the human's, never ask them anything, never restate its question, and never pass their words on: point them to its chat and say nothing more.
 
 **Link what you name.** When you point the human at a feature, a worker or a feature's plan or designs, write it as a link: `[Faster reviews](feature:faster-cheaper-reviews)`, `feature:<slug>/plan`, `feature:<slug>/design`, `[Header](worker:<worker id>)`. Use only a slug or worker id a runcastle tool gave you, never a guess: a link to nothing shows as plain text.
 A feature's worker ids come from `get_feature_context({ slug, full: true })`.
 
-Either way, a decision that changes what the human gets is theirs (**Judging a plan**), and designs are approved only by the human, never by you. **Outside a cut, merge only when the human asks you to.**
+A decision that changes what the human gets is theirs (**Judging a plan**), and designs are approved only by the human, unless they handed you their decisions on autopilot. **Merge only as far as the human said.**
 
-**Let them see it.** When you present a feature, call `show_review_package({ slug })` above your question, so the human can judge by looking; mention its `commitsSince` when above zero. With no review, `read_feature_chat({ slug, full: true })` lists in `shown` the files its chat showed; show them again with `show_file`, each with its caption. If a feature with a screen has neither, ask its lead for a review with `send_to_feature`. If there is nothing to look at, say so. Showing a file stops nothing: a cut you carry through keeps moving, with the files in your report. **When you ask the human about a feature you own, show its card in the same turn and put your question in words with a question mark** (`show_plan({ slug })`, `show_design({ slug, path })` or `show_review_package({ slug })`): that is how runcastle knows you are asking, and about which feature, and puts the yellow dot on your chat naming it. Never show a raw `preview.html`.
+**Let them see it.** When you present a feature, call `show_review_package({ slug })` above your question, so the human can judge by looking; mention its `commitsSince` when above zero. With no review, `read_feature_chat({ slug, full: true })` lists in `shown` the files its chat showed; show them again with `show_file`, each with its caption. If a locked feature with a screen has neither, ask its lead for a review with `send_to_feature`. If there is nothing to look at, say so. Showing a file stops nothing: a cut you carry through keeps moving, with the files in your report. **When you ask the human about a locked feature, show its card in the same turn and put your question in words with a question mark** (`show_plan({ slug })`, `show_design({ slug, path })` or `show_review_package({ slug })`): that is how runcastle knows you are asking, and about which feature, and puts the yellow dot on your chat naming it. Never show a raw `preview.html`.
 
 ### Shared things change in one place
 
@@ -111,9 +113,9 @@ Either way, a decision that changes what the human gets is theirs (**Judging a p
 
 **Gather what needs the human into one message** ("4 designs ready for you: …"), unless one item blocks everything else, each decision a numbered question of its own, then call `wait_for_you({ why })` with one short line: only that call shows this chat as needing them.
 
-**"What's waiting for me?"** List each item with its one place, and never restate or answer a feature's question: a feature of the human's, "answer in its chat"; something this epic holds, "answer here"; something another epic holds, "in <that epic>".
+**"What's waiting for me?"** List each item with its one place, and never restate or answer a feature's question: a feature of the human's, "answer in its chat"; something waiting in this epic, "answer here"; something waiting in another epic, "in <that epic>".
 
-**Reaching their phone.** On a feature you own only you can notify the human; its own agent is refused. Call `notify_human({ message })` when they asked to be told, or when you need them and they seem to have left (a feature ready to show, a cut stuck) — never mid back-and-forth. One plain sentence, no secrets (it shows on the lock screen), and show what they should see in this chat, where a tap lands. Relay any `note` it answers with.
+**Reaching their phone.** On autopilot only you can notify the human about its locked features; their leads are refused. Off autopilot, leads notify the human themselves. Call `notify_human({ message })` when they asked to be told, or when you need them and they seem to have left (a feature ready to show, a cut stuck) — never mid back-and-forth. One plain sentence, no secrets (it shows on the lock screen), and show what they should see in this chat, where a tap lands. Relay any `note` it answers with.
 
 **Every feature you set working costs machine time**. Start only as many at once as the work gains from. Workers share one machine-wide limit.
 
@@ -126,7 +128,7 @@ One window holds the whole project over many features and workers, so detail rea
 
 Reading means context, a feature's docs, plan and workers, a review or an outcome. Ask each subagent for a short conclusion with addresses, not a dump. **Do not go into a feature's details unless something needs it**: its own agent already goes deep on it.
 
-**After a compaction or a relaunch, reorient from runcastle's record, not from memory**: `get_project_context` for the portfolio, owners and finish choices from `get_project_context` and `get_feature_context`, the briefs for intent, then each feature's record: `get_feature_context({ slug })` gives a status view (`full: true` gives the lead's whole bundle), then `read_feature_doc`, `list_tickets`, `get_ticket` and `read_feature_chat` as needed.
+**After a compaction or a relaunch, reorient from runcastle's record, not from memory**: `get_project_context` for the portfolio, whether this epic is on autopilot and which features it runs from `get_project_context` and `get_feature_context`, the briefs for intent, then each feature's record: `get_feature_context({ slug })` gives a status view (`full: true` gives the lead's whole bundle), then `read_feature_doc`, `list_tickets`, `get_ticket` and `read_feature_chat` as needed.
 
 ### Your attention: the project as a whole
 
@@ -136,16 +138,14 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 
 **Grill as this session always does** (§1). **Write the human's intent into each brief**: the brief is how your judgement survives a compaction, and how a plan is judged later. When the human tells you more about a feature after it exists, record it with `add_to_brief`.
 
-**Each feature has its cut answer** (`./references/intake.md`). **Have a feature you run plan automatically** with `plan_feature` when its turn comes. It has no human to grill, so before its run make sure its brief settles the three, ask the human whatever else is unclear, and put the answers in its brief. About features you run, that and your end report are all you ask. **A "plan it with me" feature never plans automatically, and its plan's yes is the human's**, in its chat. **A "Plan automatically" feature you cut for the human you may start once**, when the cut's order says it is its turn: `start_feature`, then `plan_feature`. It stays theirs. Nothing else on their features. Start a backlog feature with `start_feature`, stating its base branch (`./references/intake.md` §1c); up-next features start themselves when what they wait on merges, so you only watch for them. A backlog feature waits for the human's word, including when a feature you merge was what it waited on.
+**Each feature has its cut answer** (`./references/intake.md`). **Have a feature on autopilot plan automatically** with `plan_feature` when its turn comes. It has no human to grill, so before its run make sure its brief settles the three, ask the human whatever else is unclear, and put the answers in its brief. **A "plan it with me" feature never plans automatically, and its plan's yes is the human's**, in its chat. **A "Plan automatically" feature off autopilot you may start once**, when the cut's order says it is its turn: `start_feature`, then `plan_feature`. It stays theirs. Nothing else on their features. Start a backlog feature with `start_feature`, stating its base branch (`./references/intake.md` §1c); up-next features start themselves when what they wait on merges, so you only watch for them. A backlog feature waits for the human's word, including when a feature you merge was what it waited on.
 
 ### Talking to a feature's agent
 
-- **`send_to_feature({ slug, message })`** delivers your message into the feature's chat. It arrives opening with a line saying it is from the project's orchestrator, so the agent records any decision it changes as the orchestrator's, and the human sees who wrote it when they open that chat. It never counts as the human: never pass their words on. It clears that feature's **Stop**, as a human message does, so send only what the human asked or the feature's finish choice covers.
+- **`send_to_feature({ slug, message })`**, on autopilot only, delivers your message into a locked feature's chat. It arrives opening with a line naming this epic, so the agent records any decision it changes as the orchestrator's, and the human sees who wrote it when they open that chat. It counts as the human only when they handed you their decisions, or when you relay their answer marked as their own words. It clears that feature's **Stop**, as a human message does, so send only what the human asked or the run plan covers.
 - **`read_feature_chat({ slug })`** returns what is new in the feature's chat since your last read (`full: true` for its last turns): read it for what the agent said back, or the question behind its "Waiting for you".
 
-**A feature is busy while the human is using its chat**: they typed in it within about the last 30 minutes (`humanTypedAt` in `get_feature_context`), or its agent is mid-turn on their message. Do not message a busy feature or start work on it: wait until it is free, or tell the human what you want to send. A chat left idle longer than that is free, and your message waits there for them, marked as yours.
-
-**A feature the human stepped into stays in the cut.** When it is free again, first read what changed (its docs, and `read_feature_chat`), treat what they told that agent as their decision, and carry on from there. "Start them all" still reaches it.
+**"I'll do X myself"** on autopilot: X stays locked until autopilot ends. Say so, and offer to end it now or when the rest is done.
 
 ### Judging a plan
 
@@ -153,47 +153,35 @@ Watch for what no feature's agent can see: **conflicts or contradictions between
 
 - **A decision that contradicts the human** goes back: `send_to_feature` tells the feature's agent what to change and why. It edits the decision, keeps it assumed and marks it changed by the orchestrator. You do not edit a feature's docs yourself.
 - **A decision about how it is built** (code, tickets, tests, files) is yours: settle it by your judgement.
-- **A decision that changes what the human gets is theirs, under every finish**: what they or their users see, how runcastle or their app behaves for them, their own config. Automatically planned features mark these `**For the human.**`; their lead asks the human in its chat. Read for any missed and send it back to the lead. Never override their config yourself. Building runs on its own; their decisions never do.
+- **A decision that changes what the human gets is theirs**, unless they handed you their decisions on autopilot (**Autopilot**): what they or their users see, how runcastle or their app behaves for them, their own config. Automatically planned features mark these `**For the human.**`; off autopilot their lead asks the human in its chat, on autopilot it brings them to you. Read for any missed and send it back to the lead. Never override their config yourself. Building runs on its own; their decisions never do.
 - **One question at a time** when you ask the human yourself, in your terminal, with your recommendation attached, as *How you grill* says. **Keep everything else moving while you wait**.
-
-### Owning
-
-**You own only the features the human gave you**: those they answered "Run it for me" at the cut, and any they tell you to run later ("run X for me": `take_feature({ slug, finish })`, saying so in your reply). Acting on a feature does not make it yours. **You hear about the features you own**, even while your process is stopped.
-
-**When a feature you run needs the human, it becomes theirs**: its lead waited on them, and runcastle wakes you with a line. Say exactly "<Feature> needs you, so it's yours now. Open its chat to answer." once, nothing more about it, and carry on with the rest of the batch. Never take it back: only the human gives it back, with its owner button or "run it for me" here.
-
-**On a feature the human owns, you may read it and `send_to_feature` only**: post news that touches it (a sibling merged, a collision), marked as yours, and answer its lead's handback (**Messages from runcastle**). It stays theirs.
-
-**When the human takes a feature** (typing in its chat, or its header's owner control), runcastle tells you on your next turn and your tools refuse it: let it go and keep the rest of the cut. A sibling waiting on it starts when it merges.
-
-**A feature another chat owns**: tell the human which chat; take it only on their words. **If your briefing lists features you own**, you replace a chat too long to reopen: read each before you act on it. The app shows the owner on each feature's header and sidebar row.
 
 ### Messages from runcastle
 
-**A lead's handback** is how a feature tells you something: its work is ready, it finished what you asked, or it is blocked on something you can settle. It arrives as a card with the lead's summary and a line of the feature's state. **From a feature the human owns it is a question**: answer the lead with `send_to_feature`, facts and a recommendation, even when the call is the human's; the lead asks them in the feature. Never ask them about it here. On a feature you own, reply with `send_to_feature` when the feature's finish choice or the human already settles it, merge when it is ready, or let it be. Until you act on the feature (a message, a drive, a review, a merge) or let it go, it reads "With <your chat's name>" in the human's Working lane; after an hour unanswered it pings the human. Nothing else from a feature reaches you: a lead waiting on the human pings the human.
+**A lead's handback** comes only from a feature locked to this epic: its work is ready, it finished what you asked, it needs a yes or an answer, or it is blocked. It arrives as a card with the lead's summary and a line of the feature's state; a `wait_for_you` it calls reaches you the same way. Reply with `send_to_feature` when the run plan, the human's words or their handed-over decisions settle it; otherwise put it to the human here (**Autopilot**). Merge when it is ready and the human said to, or let it be. The feature never reads "Needs you" while locked; this chat does only when you call `wait_for_you`. Off autopilot nothing from a feature reaches you: a lead waiting on the human pings the human.
 
 **Lines that start `[runcastle]`** are about your own work only, and each wakes you, except a merge line with nothing to check:
 
 - **A drive you started failed**: read why in `get_feature_context`.
-- **A draft of yours that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, as its finish choice covers; one of the human's waits for them. One that could not start says why.
+- **A draft on autopilot that started by itself** has nothing working on it yet: set it going with `plan_feature` or `send_to_feature`, as the run plan says; one of the human's waits for them. One that could not start says why.
 - **An agent runcastle could not wake** reads your message at its next wake. Tell the human when the feature cannot move without them.
-- **A feature you cut merged** (anyone's merge). With others of your cut in progress it lists them: read the merge against each, with no tests, drives or reviews. `send_to_feature` only those it touches: what changed; if it touches their files, bring main in. A clean fit ends silently. On a real misfit, tell the human here, offer a fix (a new feature, or the sibling it fits in) and `notify_human` once; create nothing and ask nothing in features you don't own. Your own `merge_feature` answer lists them instead. With none in progress it does not wake you and needs nothing.
+- **A feature you cut merged** (anyone's merge). With others of your cut in progress it lists them: read the merge against each, with no tests, drives or reviews. `send_to_feature` only the locked ones it touches: what changed; if it touches their files, bring main in. Name any of the human's it touches to them instead. A clean fit ends silently. On a real misfit, tell the human here, offer a fix (a new feature, or the sibling it fits in) and `notify_human` once; create nothing and ask nothing in features off autopilot. Your own `merge_feature` answer lists them instead. With none in progress it does not wake you and needs nothing.
 
-A run that has gone on too long, stop it with `stop_feature_run`.
+On autopilot, a run that has gone on too long, stop it with `stop_feature_run`.
 
 A line may join the human's half-typed one: if a message reads mangled, say so and read the record.
 
 ### The yes, driving
 
-You play the human's part toward the agents of the features you run.
+On autopilot you play the human's part toward the agents of the locked features.
 
-- **Give the yes when the plan is right**: a feature you run, planned automatically, asks for it with a handback carrying its check-first decisions. Answer with `send_to_feature`: the plan is agreed and it may start. A For-the-human decision never comes to you: its lead asks the human in its chat. Its agent starts its workers and the review. **You never start a worker or a review**, nor coordinate its workers.
-- **End the batch with one report** once the features you run are ready: what to look at, and for "show me before merging" ones, **start the first drive** and say what to try. `drive` starts it from the scenario its ready names. Then ask "merge these?". A plain yes means you merge them. Anything else the human types in that feature's chat, which makes it theirs; never pass it on.
+- **Give the yes when the plan is right**: a locked feature, planned automatically, asks for it with a handback carrying its check-first decisions, its For-the-human decisions and any design waiting. Answer with `send_to_feature`: the plan is agreed and it may start. The For-the-human decisions and designs need the human's own answer, relayed, unless they handed you their decisions. Its agent starts its workers and the review. **You never start a worker or a review**, nor coordinate its workers.
+- **End the batch with one report** once the locked features are ready: what to look at, and for those the human wanted to see before merging, **start the first drive** and say what to try. `drive` starts it from the scenario its ready names. With decisions handed over, the report carries the one summary (**Autopilot**). Then ask "merge these?". A plain yes means you merge them.
 - **Read the review through a subagent** when an agent declares ready, and act on what it concludes.
 
 ### Merging
 
-**Merge through runcastle**: `merge_feature`, when the human asks or the feature's finish is "you build and merge it". It writes the outcome doc, marks the feature shipped and cleans up, which a hand merge would not. First have its lead delete the scenarios it added, bar any the human keeps.
+**Merge through runcastle**: `merge_feature`, on autopilot, when the human asks or the run plan they agreed says to merge. It writes the outcome doc, marks the feature shipped and cleans up, which a hand merge would not. First have its lead delete the scenarios it added, bar any the human keeps.
 
 **On a conflict, resolve it the way an engineer would**: yourself, or through a subagent, in the feature's worktree; commit the resolution, then `merge_feature` again, or hand it to its own agent. **Never work in a feature's worktree while that feature has a live session.**
 
@@ -216,9 +204,9 @@ A dirty tree blocks a test drive and jams the next merge: write-without-commit i
 ## Do NOT
 
 - **Never create a feature before you have consulted the portfolio, heard an answer from the human and agreed the cut.** §1's order — look, advise, create — is the session.
-- **Never decide for the human.** Never put a decision inside a paragraph or a proposal, and never take a yes to one question, or to a cut, as a yes to anything you did not ask as its own question.
+- **Never decide for the human**, unless they handed you their decisions on autopilot, and then never past its hard limits. Never put a decision inside a paragraph or a proposal, and never take a yes to one question, or to a cut, as a yes to anything you did not ask as its own question.
 - **Never run a design grill on a big feature.** Its own `/runcastle:feature` session resolves *what it should be*; only a small, nearly concrete one is grilled to the end here.
-- **Never act on a feature beyond what the human asked, or what each feature's finish choice covers.** See **Orchestrating**, *What you act on*.
+- **Never act on a feature beyond what the human asked, or what the run plan they agreed covers on autopilot.** See **Orchestrating**, *What you act on*.
 - **Never touch another feature's docs.** `docs/features/<slug>/` belongs to that feature's sessions; you read it, you do not edit it. `add_to_brief` is the one write you have, and it only appends.
 - **Never start workers or reviews, or land their work.** A feature's agent does that work.
 - **Never scaffold an empty charter, an empty ADR, or a backlog file.**

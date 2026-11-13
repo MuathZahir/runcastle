@@ -1,6 +1,6 @@
 # ADR-0021: One place to answer — a feature is the human's unless they hand it over
 
-- **Status:** accepted (2026-11-12); in force once `one-place-to-answer` merges
+- **Status:** superseded by ADR-0022 (epics on autopilot); was accepted (2026-11-12)
 - **Deciders:** Muath + the orchestrator (decisions 1–7), Muath + the feature lead of `one-place-to-answer` (8–16)
 - **Amends:** ADR-0016 (orchestrator threads hold features): its decision 2, and its consequence that a held feature's human is reached only through its orchestrator
 - **Builds on:** `every-feature-has-one-owner` (the holder of ADR-0016 is shown to the human as the feature's owner), and replaces its decisions 4, 14 and 18

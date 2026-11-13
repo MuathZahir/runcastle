@@ -18,7 +18,9 @@ import { Button,
   type MetaItem,
 } from '../ui'
 import { IconPlay, IconX, ProgressIcon } from '../icons'
-import { epicOwnerCrumbs } from './SidebarEpics'
+import { autopilotCrumb, epicCrumb } from './SidebarEpics'
+import { AutopilotLock } from './autopilot/AutopilotLock'
+import { epicNameOf } from '../lib/feature-ui/epics'
 import {
   isNewThreadHotkey,
   newThreadShortcut,
@@ -83,9 +85,6 @@ import { usePanelShow } from './workspace/use-panel-show'
 import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
-import { OwnerControl } from './workspace/OwnerControl'
-import { ownerReading } from '../lib/feature-owner'
-import { useSetOwner } from '../lib/use-set-owner'
 import { ACTION_ICON, NextStepBar } from './workspace/NextStepBar'
 import { FeatureStatusLine, StopAgentDialog } from './workspace/FeatureStatusLine'
 import { DrivePrerequisitesNotice } from './review/DrivePrerequisitesNotice'
@@ -165,7 +164,6 @@ export function Workspace({
 }) {
   const phone = useIsPhone()
   const utils = trpc.useUtils()
-  const setOwner = useSetOwner()
   const toast = useToast()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const resumeFailed = useResumeFailedAlert(featureId)
@@ -625,7 +623,26 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
-  const owner = ownerReading(feature, projectThreads.data ?? [])
+  // Locked to its epic's autopilot (epics-on-autopilot decisions 3, 16): watched, not acted on.
+  // The server says so; when autopilot ends its event refetches this and the page is ordinary again.
+  const autopilot = full.autopilot
+  const locked = !!autopilot
+  const autopilotEpic = autopilot ? (projectThreads.data ?? []).find((t) => t.id === autopilot.epicId && t.role === 'project') : undefined
+  const lockNote = autopilot && (
+    <AutopilotLock
+      projectId={feature.projectId}
+      autopilot={autopilot}
+      color={autopilotEpic?.color}
+      working={autopilotEpic?.state === 'working'}
+      onOpenEpic={onOpenThread}
+    />
+  )
+  // Its epic first: "<epic> · Autopilot" while locked, else the plain epic crumb.
+  const epicHeaderCrumb = autopilot
+    ? autopilotCrumb(autopilot, projectThreads.data ?? [], onOpenThread)
+    : onOpenThread
+      ? epicCrumb(feature, projectThreads.data ?? [], onOpenThread)
+      : null
   const threadCrumb = isDraft ? undefined : inFrontTitle
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
@@ -892,15 +909,17 @@ export function Workspace({
   const driveRefusal = agentDriveRefusal(driveQ.data, featureId)
   const refuseDrive = (a: NextAction | undefined): NextAction | undefined =>
     a && driveRefusal && a.kind === 'testDriveStart' ? { ...a, disabled: driveRefusal } : a
-  const unrefused: HeaderActions = status ? headerActions(ns, status) : { overflow: [] }
+  // Locked: no Stop, Test drive or Merge, nor anything else the row offers — the epic acts (decision 16).
+  const unrefused: HeaderActions = status && !locked ? headerActions(ns, status) : { overflow: [] }
   const headerRow: HeaderActions = {
     ...unrefused,
     ...(unrefused.action ? { action: refuseDrive(unrefused.action) } : {}),
     overflow: unrefused.overflow.map((a) => refuseDrive(a)!),
   }
 
-  // A parked draft keeps its next-step bar in its header, where its body is the page.
-  const draftRow = isDraft && (
+  // A parked draft keeps its next-step bar in its header, where its body is the page;
+  // a locked one (left for the human's grill) shows the lock note there instead.
+  const draftRow = isDraft && (lockNote || (
     <NextStepBar
       ns={ns}
       guidance={guidance}
@@ -915,7 +934,7 @@ export function Workspace({
         onPick: (base) => setDraftPick({ featureId, base }),
       }}
     />
-  )
+  ))
   const resumeAlert = resumeFailed.message && (
     <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">
       <span className="min-w-0 flex-1">
@@ -1022,6 +1041,7 @@ export function Workspace({
             {...(panel.state.path ? { path: panel.state.path } : {})}
             onOpen={(path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })}
             onList={() => panel.dispatch({ type: 'designList' })}
+            locked={locked}
           />
         )
       // The drive is the page, not a panel (test-drive-looks-the-part decision 13).
@@ -1081,7 +1101,7 @@ export function Workspace({
     headerRow.merge,
     driveCommand,
   ].filter((a, i, all): a is NextAction => !!a && all.findIndex((b) => b?.kind === a.kind) === i)
-  const paletteCommands: FeatureCommands | null = threadable
+  const paletteCommands: FeatureCommands | null = threadable && !locked
     ? {
         title: feature.title,
         commands: paletteActions.map((a) => ({
@@ -1119,6 +1139,7 @@ export function Workspace({
           sub={feature.title}
           onOpen={(path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })}
           onBack={() => panel.dispatch({ type: 'close' })}
+          locked={locked}
         />
       ) : phoneView && (
         <PhoneViewScreen title={labelOf(phoneView)} sub={feature.title} onBack={() => backInApp(() => panel.dispatch({ type: 'close' }))}>
@@ -1144,18 +1165,8 @@ export function Workspace({
       ) : (
       <PageTopbar
         crumbs={[
-          // Its epic, then who owns it and how far its chat takes it: one crumb when the
-          // epic's chat owns it (every-feature-has-one-owner decisions 11, 12, 14, 21;
-          // orchestrator-chats-become-epics decision 15). Each gives way down to its floor.
-          ...epicOwnerCrumbs(feature, projectThreads.data ?? [], onOpenThread, owner, (inEpic) => (
-            <OwnerControl
-              owner={owner.owner}
-              {...(owner.chatName ? { chatName: owner.chatName } : {})}
-              feature={feature.title}
-              inEpic={inEpic}
-              onChoose={(choice) => setOwner(featureId, choice)}
-            />
-          )),
+          // Its epic first (orchestrator-chats-become-epics decision 15), when it has one to open.
+          ...(epicHeaderCrumb ? [epicHeaderCrumb] : []),
           {
             label: feature.title,
             shrink: true,
@@ -1171,13 +1182,14 @@ export function Workspace({
           },
           ...(threadCrumb ? [{ label: threadCrumb }] : []),
         ]}
-        // With the epic and the owner first, a feature with no thread after it is still the page.
+        // With the epic first, a feature with no thread after it is still the page.
         trail={!!threadCrumb}
         status={workerHeader ? workerHeader.status : status && <FeatureStatusLine status={status} onOpenThread={bringForward} />}
         actions={
           workerHeader ? (
             <>
-              {workerHeader.actions}
+              {/* A locked feature's workers take no Stop either (decision 16). */}
+              {!locked && workerHeader.actions}
               <PanelToggle
                 open={!!shown}
                 views={tabs}
@@ -1263,11 +1275,8 @@ export function Workspace({
                   onView={(target) => {
                     if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
                   }}
-                  ownedBy={
-                    owner.holderId && owner.chatName
-                      ? { chat: owner.chatName, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
-                      : null
-                  }
+                  lock={lockNote || undefined}
+                  epicName={autopilot?.epicName ?? epicNameOf(feature, projectThreads.data ?? [])}
                 />
               }
               panel={

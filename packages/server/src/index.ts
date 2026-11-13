@@ -33,7 +33,6 @@ import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { onDriveEnded, recoverCutOffDrives } from './services/git'
 import { handBackDriveWorkers, handBackOrphanedDriveWorkers } from './workers/drive'
 import { startModelDiscovery } from './services/model-discovery'
-import { moveHumanFinishes, moveOwners, sweepHolders } from './services/holding'
 import { startNeedPush } from './services/need-push'
 import { startNeedWatch } from './services/need-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
@@ -252,14 +251,7 @@ export async function startServer(): Promise<void> {
   // an unforeseen service-level rejection is logged, never allowed to delay boot.
   startModelDiscovery(ctx)
 
-  // Give features in flight their holder, once, before any news goes out.
-  sweepHolders(ctx)
-  // …then move them to one owner each, once (every-feature-has-one-owner decision 24).
-  moveOwners(ctx)
-  // …then the human's features finish with them, once (one-place-to-answer decision 10).
-  moveHumanFinishes(ctx)
-
-  // Tell a feature's holder when something ends on it
+  // Tell the epic running a feature on autopilot when something ends on it
   // (`whole-cuts-plan-themselves` decision 11).
   startOrchestratorNotifier(ctx)
 

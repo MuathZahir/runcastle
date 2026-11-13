@@ -13,6 +13,8 @@ import { relTime } from '../format'
 /** A feature in the epic list. */
 export interface EpicFeature {
   feature: FeatureListItem
+  /** Locked to its epic's autopilot run (epics-on-autopilot): its needs go to the epic, never to its own row. */
+  locked?: boolean
 }
 
 /** One epic: its chat, and the features it cut that are in motion or up next. */
@@ -25,6 +27,8 @@ export interface Epic {
   icon?: EpicIconId | null
   /** How many of its features shipped (decision 4): the slim row's "3 shipped". */
   shipped?: number
+  /** It runs its features by itself (epics-on-autopilot): the card wears the autopilot look. */
+  autopilot?: boolean
 }
 
 /** One group of the list, in display order: an epic, or the features with no epic (decision 7). */
@@ -47,7 +51,8 @@ export function featureIsYellow(f: FeatureListItem): boolean {
 
 /** Something in the epic is yellow: its chat needs you, or one of its features does (decision 8). */
 export function epicIsYellow(epic: Pick<Epic, 'chat' | 'features'>): boolean {
-  return !!epic.chat.need || epic.features.some((x) => featureIsYellow(x.feature))
+  // A locked feature's needs are its epic's (epics-on-autopilot decision 17): only the chat's own counts for it.
+  return !!epic.chat.need || epic.features.some((x) => !x.locked && featureIsYellow(x.feature))
 }
 
 /** Inside an epic: needs you first, then working, idle, up next; ties keep their order. */
@@ -134,11 +139,13 @@ export function epicsFrom(
   const moving = features.filter(inEpic)
   const epics = epicChats.map((chat) => ({
     chat,
-    features: moving.filter((f) => f.chatId === chat.id).map((feature) => ({ feature })),
+    // Locked to its epic's autopilot (epics-on-autopilot decision 14): the server says so on the feature.
+    features: moving.filter((f) => f.chatId === chat.id).map((feature) => ({ feature, locked: !!feature.autopilot })),
     color: chat.color ?? null,
     icon: chat.icon ?? null,
     // The list carries shipped features for the Shipped shelf, so the count needs no server read.
     shipped: features.filter((f) => f.status === 'shipped' && f.chatId === chat.id).length,
+    autopilot: !!chat.autopilot,
   }))
   const other = moving.filter((f) => !f.chatId || !ids.has(f.chatId))
   return { epics, other }
@@ -148,20 +155,4 @@ export function epicsFrom(
 export function epicNameOf(f: Pick<FeatureListItem, 'chatId'>, chats: readonly ThreadEntry[]): string | null {
   if (!f.chatId) return null
   return chats.find((t) => t.id === f.chatId && t.role === 'project')?.title ?? null
-}
-
-/**
- * How a feature header's trail opens (decision 15, as the orchestrator changed
- * it): `owner`, no epic, so the owner control stands alone; `one`, the epic's
- * chat owns it, so the epic and the owner are one
- * crumb ("◆ Payment System · you merge ▾"); `two`, the human or a different
- * chat owns it, so both show ("◆ Payment System › Yours ▾").
- */
-export function epicOwnerJoin(
-  epicId: string | null,
-  owner: { owner: { kind: 'you' | 'chat' }; holderId?: string; chatId?: string },
-): 'owner' | 'one' | 'two' {
-  if (!epicId) return 'owner'
-  if (owner.owner.kind !== 'chat') return 'two'
-  return (owner.holderId ?? owner.chatId) === epicId ? 'one' : 'two'
 }

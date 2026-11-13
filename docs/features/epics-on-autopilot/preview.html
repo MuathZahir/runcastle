@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Epics on autopilot preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.talk{margin-top:12px;display:grid;gap:10px}
+.talk .you{justify-self:start;padding:2px 10px;border-radius:999px;background:var(--color-surface-inset);color:var(--color-text-secondary);font-size:12px}
+.lanes{display:grid;grid-template-columns:1fr 2fr;gap:12px;align-items:start}
+.feats{display:grid;gap:6px}
+.node{display:grid;gap:2px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.node .m{color:var(--color-text-secondary);font-size:12px}
+.talk[data-mode="off"] .on-only,.talk[data-mode="on"] .off-only{display:none}
+.talk[data-mode="on"] .epic{border-color:var(--color-accent);box-shadow:0 0 0 1px var(--color-accent-subtle)}
+.talk[data-mode="on"] .f:has(.lock){opacity:.75;border-style:dashed}
+.flow{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.flow li{display:grid;gap:4px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);counter-increment:step}
+.flow li b::before{content:counter(step) " · ";color:var(--color-text-tertiary);font-weight:400}
+.flow li span{color:var(--color-text-secondary);font-size:12px}
+.del{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.del span{padding:2px 8px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);text-decoration:line-through}
+.who{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.who > div{padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.who b{margin-right:8px}.who p{margin:4px 0 0;color:var(--color-text-secondary);font-size:12px}
+.hoodl{display:grid;gap:8px;padding-left:18px;color:var(--color-text-secondary)}
+@media (max-width:760px){.lanes,.flow,.who{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Epics on autopilot</h1>
+  <p class="lede">Tell an epic "go on autopilot" and talk only to it, so you can go to sleep. Every other feature is simply yours; per-feature owners go away.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/epics-on-autopilot/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+  <h3 class="sub">Where you talk</h3>
+  <p class="hint">One switch per epic. Flip it to see where your words go.</p>
+  <div class="seg" role="group" aria-label="Autopilot">
+    <button type="button" data-ap="off" aria-pressed="true">Autopilot off</button>
+    <button type="button" data-ap="on" aria-pressed="false">Autopilot on</button>
+  </div>
+  <div class="talk" data-mode="off">
+    <div class="you">You</div>
+    <div class="lanes">
+      <div class="node epic"><b>Epic chat</b><span class="m off-only">creates, starts, links <a class="pin" data-d="15">15</a></span><span class="m on-only">the only place you talk <a class="pin" data-d="3">3</a></span></div>
+      <div class="feats">
+        <div class="node f"><b>Feature A</b><span class="m off-only">yours, type here <a class="pin" data-d="2">2</a></span><span class="m on-only lock">locked: watch only <a class="pin" data-d="16">16</a></span></div>
+        <div class="node f"><b>Feature B</b><span class="m off-only">yours, type here</span><span class="m on-only lock">locked: watch only</span></div>
+        <div class="node f"><b>Feature C</b><span class="m off-only">yours, type here</span><span class="m on-only">left for your grill: yours <a class="pin" data-d="14">14</a></span></div>
+      </div>
+    </div>
+    <p class="hint off-only">You answer each feature in its own chat. The orchestrator does not message them or answer for them.</p>
+    <p class="hint on-only">A and B report to the epic; it asks you only what it cannot settle <a class="pin" data-d="17">17</a>. C was left out of the run plan, so it stays yours.</p>
+  </div>
+
+  <h3 class="sub">One night on autopilot</h3>
+  <ol class="flow">
+    <li><b>Grill and cut</b><span>The epic grill stays, as today <a class="pin" data-d="9">9</a></span></li>
+    <li><b>Run plan</b><span>"A and B to ready to merge, C waits for your grill" <a class="pin" data-d="10">10</a></span></li>
+    <li><b>"Go on autopilot"</b><span>Said in the epic chat; no button <a class="pin" data-d="8">8</a>. Hand over your decisions if you want <a class="pin" data-d="11">11</a></span></li>
+    <li><b>Overnight</b><span>Leads ask the epic; it answers within the hard limits <a class="pin" data-d="18">18</a> and carries on after a usage limit <a class="pin" data-d="23">23</a></span></li>
+    <li><b>Morning</b><span>One summary: what was decided for you, what waits, with links <a class="pin" data-d="19">19</a></span></li>
+    <li><b>"Stop"</b><span>Or "End autopilot" in any locked chat. Every feature is yours again; leads re-ask what is open <a class="pin" data-d="20">20</a></span></li>
+  </ol>
+
+  <h3 class="sub">What it deletes</h3>
+  <div class="del">
+    <span>Per-feature owners</span><span>"Take a feature"</span><span>The finish choice</span><span>"Run it for me"</span><span>The automatic flip to you</span><span>Hold refusals</span><span>Startup owner repairs</span><span>Owner crumbs and strip</span>
+  </div>
+  <p class="hint">Deleted, not wrapped <a class="pin" data-d="1">1</a>. What replaces them: a switch on the epic, a mark on each feature in its run, and one check.</p>
+
+  <h3 class="sub">The two screens, designed live</h3>
+  <p class="hint">Open them from their cards in the chat or the Design tab. Nothing is committed until you approve it.</p>
+  
+<!-- FILL:screen -->
+<!-- screen:autopilot-sidebar -->
+<div class="designed">
+  <h3>Sidebar on autopilot</h3>
+  <p>The real sidebar components with the autopilot look; the epics and features are sample data. <a class="pin" data-d="7">7</a></p>
+  <p>States: off · on · needs-you · partial · phone.</p>
+  <p class="mono">src/components/SidebarEpics.tsx, SidebarParts.tsx, autopilot/AutopilotParts.tsx · design page /preview/autopilot-sidebar.html</p>
+</div>
+<!-- /screen:autopilot-sidebar -->
+<!-- screen:autopilot-feature -->
+<div class="designed" style="margin-top:8px">
+  <h3>Feature chat on autopilot</h3>
+  <p>A feature's page and lead chat with the lock note; the chat is sample data. <a class="pin" data-d="16">16</a></p>
+  <p>States: locked-working · locked-idle · confirm-end · ended.</p>
+  <p class="mono">src/components/autopilot/AutopilotParts.tsx (lock note, header label, end dialog) · design page /preview/autopilot-feature.html</p>
+</div>
+<!-- /screen:autopilot-feature -->
+
+  <h3 class="sub">Who builds what</h3>
+  <div class="who">
+    <div><b>Server: autopilot replaces ownership</b><span class="tag">on its own</span><p>The epic switch and run marks, the one check, the autopilot tool, leads routed to the epic, typing refused on locked chats, the usage-limit wake, and deleting the holding code and its repairs.</p></div>
+    <div><b>Web: autopilot screens</b><span class="tag">on its own</span><p>Wires the two approved designs to real data, deletes the owner UI, rewrites the two epic scenarios. Starts after the server worker lands.</p></div>
+    <div><b>Me</b><span class="tag">lead</span><p>The skill lines about ownership, the new record that replaces ADR-0016 and ADR-0021, and landing both workers.</p></div>
+    <div><b>Review worker</b><span class="tag">at the end</span><p>Drives the scenarios, runs the checks, reports a Review Package.</p></div>
+  </div>
+
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>The broader skill rewrite: "Skills become short rules"</li>
+      <li><i class="dot"></i>Charter decisions 9 and 18: the project session, at merge</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The status model (already merged)</li>
+      <li><i class="dot"></i>Any autopilot button in the main UI</li>
+      <li><i class="dot"></i>Scheduling, quiet hours, cost budgets</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+<ul class="hoodl">
+        <li><b>State.</b> The epic's chat gets an "autopilot on" switch; each feature gets "in its epic's run". Locked = both. The feature's epic is the chat that created it, a link that exists today. The per-feature owner and finish columns are dropped.</li>
+        <li><b>One check</b> replaces the hold refusals: off autopilot an epic may create, start, plan and read its features; on, it may also message, stop, drive and merge the ones in its run.</li>
+        <li><b>Tools.</b> "Take a feature" goes. A new orchestrator tool turns autopilot on with its list, adds or removes a feature, and turns it off. The "End autopilot" link calls the same service.</li>
+        <li><b>Leads.</b> On autopilot their hand-back and their wait-for-you both go to the epic and set no need on the feature. A dead lead run is reported to the epic.</li>
+        <li><b>Typing.</b> The hook that made a feature yours when you typed becomes a refusal on locked chats; the web shows no message box there.</li>
+        <li><b>Records.</b> A new ADR supersedes ADR-0016 and ADR-0021.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ["Autopilot is one switch per epic", "Handing single features to a chat is what grew the owner machinery; it is deleted, not wrapped."],
+    ["Autopilot off is the default, and every feature is the human's", "One obvious place per feature: its own chat."],
+    ["Autopilot on: the epic chat is the only place the human talks", "Locked feature chats can be watched, with a note linking to the epic."],
+    ["How far autopilot goes is whatever the human says in the epic", "No finish setting; the orchestrator follows your words."],
+    ["Only the human turns autopilot off", "A question only you can answer waits in the epic; the rest carries on."],
+    ["Turning autopilot off returns every feature to the human", "Each lead is told and each chat opens for typing."],
+    ["It must be very obvious which features are on autopilot", "A distinct sidebar look; locked features show no needs of their own."],
+    ["Switched through the chat, with one escape hatch", "No button; an End autopilot link in locked chats covers a stuck orchestrator."],
+    ["The epic grill stays, before autopilot", "Grill, cut, run plan, yes, then autopilot."],
+    ["The orchestrator proposes a run plan before going on autopilot", "Per feature: what it will do and why; your yes is the agreement."],
+    ["The human can hand over their decisions", "\"Do the whole thing\" lets the orchestrator answer the leads; charter decision 9 becomes a default."],
+    ["On autopilot with decisions handed over, leads accept the orchestrator's answers", "Otherwise handing over would stall at the first design."],
+    ["An epic's features are the ones it created, plus any the human adds", "Reuses the existing link to the chat that cut the feature.", 'assumed'],
+    ["Autopilot runs the features its run plan gives it; the rest stay yours", "A feature left for your grill stays unlocked, so you grill it in its own chat.", 'assumed'],
+    ["With autopilot off, the orchestrator creates and starts, and nothing more", "Starting is not answering; talking to a lead waits for autopilot.", 'assumed'],
+    ["A locked feature can be watched, not acted on", "No message box, no Stop, Test drive, Merge or Approve; one place to act.", 'assumed'],
+    ["What a locked feature needs goes to the orchestrator, and only the orchestrator pings you", "You are woken only for what it could not settle, always in the epic.", 'assumed'],
+    ["Hard limits stay, even with decisions handed over", "New paid services or accounts, things outside git that cannot be undone, and what you named as yours.", 'assumed'],
+    ["Every decision made for the human is marked and summed up", "\"Decided by autopilot\" in decisions.md, and one summary with links.", 'assumed'],
+    ["Ending autopilot: work carries on, and each lead re-asks what is still open", "Nothing running stops; the lead knows its own open questions.", 'assumed'],
+    ["Features held by an epic today become the human's at upgrade", "Old owner settings do not map onto a run plan; you turn autopilot on again in words.", 'assumed'],
+    ["The orchestrator's messages name the epic", "A lead, and you reading its chat, see which epic is talking.", 'assumed'],
+    ["Autopilot carries on after a usage limit, whatever the setting says", "The most common overnight failure; overrides your setting while autopilot is on.", 'assumed'],
+    ["A question already waiting moves to the epic when its feature joins autopilot", "A locked chat cannot be answered.", 'assumed'],
+    ["On autopilot without handed-over decisions, the human approves in the epic", "The epic links to the plan or design; your relayed words count as yours.", 'assumed']
+  ]
+  // <!-- FILL:C -->
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [14, "Lock every feature in the epic; grill C through the epic, or after ending autopilot.", "It brings back a per-feature mark, which the challenger called ownership under a new name.", "challenged"],
+    [16, "Lock only the message box; keep Stop (and maybe Test drive and Merge) working.", "The challenger argues Stop is a safety brake you may want at night without ending the whole run.", "challenged"],
+    [17, "A dead lead run shows Needs you on the epic directly.", "Decides what can wake you overnight."],
+    [18, "No fixed limits; the orchestrator judges each case.", "The brief left the limits to the grill; they decide what autopilot may do while you sleep."],
+    [23, "Follow your \"carry on after a usage limit\" setting, with a warning in the run plan.", "It overrides a setting of yours while autopilot is on."]
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-ap]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $('.talk').dataset.mode = b.dataset.ap
+      $$('[data-ap]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+    })
+  })
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

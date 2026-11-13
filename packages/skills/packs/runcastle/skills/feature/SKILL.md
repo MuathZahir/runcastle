@@ -87,14 +87,13 @@ When the human says the work is good, ask once which of the feature's scenarios 
 
 Commit what you write, docs included, with conventional subjects (`feat(scope): …`, `docs(scope): …`), and only once the project's checks are green for code. **Never reword a `ticket(<seq>): …` or `runcastle: …` commit**: those belong to the machinery and other branches already carry them. While the human drives, your commits wait until the drive stops.
 
-## Talk to your owner
+## The human, or the epic on autopilot
 
-Every feature has one owner, and its header says which: the human ("Yours") or one epic (an orchestrator chat). Bring everything to your owner, and to nobody else. Designs always wait for the human's own yes, in this chat.
+A feature is the human's unless its epic (the orchestrator chat that created it) is on autopilot and runs it. `get_feature_context` says which: `autopilot` is null, or names the epic.
 
-- **Under the human**, ask them here with `wait_for_you`, as below. **A decision beyond this feature** (another feature, which features exist) goes first to the chat it came from with `hand_back({ summary })`; put its answer to the human here. With no such chat, `hand_back` is refused: ask the human.
-- **Under an epic**, what the epic can answer goes to it with `hand_back({ summary })`: the plan's yes under automatic planning, "ready", a merge conflict. The epic never reads this chat, so the summary says what is done, what is left, what you need and what the human told you directly.
-- **Anything only the human can decide goes to `wait_for_you`, under an epic too**: what they get, where it lives or who sees it, a design to approve, a stop after three failed rounds, a For-the-human decision. It makes the feature the human's at once: the header then reads "Yours", runcastle tells the epic, and you carry on with the human in this chat. It never goes back by itself.
-- **When the human types to you while an epic owns it**, it is theirs too: talk to them from then on.
+- **Off autopilot** (the usual case), talk to the human here and ask with `wait_for_you`, as below. The orchestrator does not message you or answer for the human, and `hand_back` to it is refused.
+- **On autopilot**, the human cannot type in this chat: the epic is the only place they talk. Bring everything to the epic with `hand_back({ summary })`: questions, the plan's yes, "ready", a merge conflict. The epic never reads this chat, so the summary says what is done, what is left and what you need. A `wait_for_you` you call anyway goes to the epic the same way. The epic answers what it can; when the human handed their decisions to it, its answers count as theirs, designs and behaviour included, and it asks the human only what it cannot answer.
+- **When autopilot ends**, runcastle tells you the feature is the human's again. Re-ask any open question here with `wait_for_you`.
 
 **Link what you name.** When you point the human at a feature, a worker or a feature's plan or designs, write it as a link: `[Faster reviews](feature:faster-cheaper-reviews)`, `feature:<slug>/plan`, `feature:<slug>/design`, `[Header](worker:<worker id>)`. Use only a slug or worker id a runcastle tool gave you, never a guess: a link to nothing shows as plain text.
 
@@ -103,12 +102,12 @@ Every feature has one owner, and its header says which: the human ("Yours") or o
 - Carry on through anything the agreed plan settled. Stop and ask before anything it did not: a design decision, a scope change, a trade-off the human would have a view on. Say what you need decided and what you would do, call `wait_for_you({ why })`, and end your turn.
 - **Ask with the tool, every time.** If your last message asks the human anything (a question, a yes, a design to look at, a stop), call `wait_for_you({ why })` with one short line of what you need. Only that call tells them: ending your turn never does, and nothing else turns the feature "Needs you". It stays until the human writes in this chat, even while you go on working on a worker's handback; if the question stops mattering, take it back with `wait_for_you({ withdraw: true })`.
 - **Your question is the last thing you write.** Put it after any `wait_for_you` call, so the turn ends on it. Never point back at words the human may not see ("that question", "my reply above"): ask it again in full.
-- **Reaching their phone.** Runcastle pings the human's desktop and phone whenever the feature starts needing them. Call `notify_human({ message })` only for something they asked to be told beyond a wait, such as the screenshots when done: one plain sentence, no secrets (it shows on the lock screen), with what they should see in this chat. Under an epic it is refused: say so here. Relay any `note` it answers with.
+- **Reaching their phone.** Runcastle pings the human's desktop and phone whenever the feature starts needing them. Call `notify_human({ message })` only for something they asked to be told beyond a wait, such as the screenshots when done: one plain sentence, no secrets (it shows on the lock screen), with what they should see in this chat. On autopilot it is refused: tell the epic instead. Relay any `note` it answers with.
 - After the human presses Stop, start nothing until they reply.
 
 ## Situations
 
-- **An orchestrator note** — a message that opens with a line saying it is from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's (`./references/grilling.md`). It never counts as the human: it confirms no decision of theirs. It never approves a design: designs wait for the human (`./references/design.md`, section 8).
+- **An orchestrator note** — a message that opens with a line saying it is from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's (`./references/grilling.md`). Off autopilot it never counts as the human: it confirms no decision of theirs and never approves a design (`./references/design.md`, section 8). On autopilot it counts as the human's when the human handed their decisions to the epic, or when its opening line says it relays the human's own answer; mark a decision it makes `**Decided by autopilot.**`.
 - **A merge conflict to resolve** — whoever sends it, first check it still stands (`git merge-base --is-ancestor <base> HEAD`). If the base is already in, say so in one line and stop: no checks, no review. Otherwise resolve it on the feature branch so both sides' intent survives, run the checks, commit.
 - **A worker's handback, or a failed worker** — `./references/workers.md`.
 - **A shipped feature** — it is done: answer questions and amend its docs only.

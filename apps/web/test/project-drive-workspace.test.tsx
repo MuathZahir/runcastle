@@ -183,7 +183,6 @@ vi.mock('../src/trpc', () => {
         testDrive: { useMutation: mutation },
         archive: { useMutation: mutation },
         unarchive: { useMutation: mutation },
-        setOwner: { useMutation: mutation },
         delete: { useMutation: mutation },
       },
     },

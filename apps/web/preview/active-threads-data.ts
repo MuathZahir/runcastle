@@ -1,6 +1,6 @@
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
-import { heldFeatures as holdsOf, threadIsActive } from '../src/lib/sidebar-threads'
+import { originFeatures as holdsOf, threadIsActive } from '../src/lib/sidebar-threads'
 import { busyFeatures } from './sidebar-data'
 
 /**
@@ -65,10 +65,10 @@ const holdings: Record<string, string> = {
   'Export a feature as PDF': VPS,
 }
 
-/** The busy project, with its holders. */
+/** The busy project, with the epics that cut its features. */
 export const heldFeatures: FeatureListItem[] = busyFeatures.map((f) => {
-  const heldBy = holdings[f.title]
-  return heldBy ? { ...f, heldBy, ...(f.title === 'Dark terminal palette' ? { status: 'active' as const } : {}) } : f
+  const chatId = holdings[f.title]
+  return chatId ? { ...f, chatId, ...(f.title === 'Dark terminal palette' ? { status: 'active' as const } : {}) } : f
 })
 
 export { holdsOf }

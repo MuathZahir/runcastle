@@ -2,7 +2,8 @@ import type { Feature } from '@runcastle/core'
 import { and, asc, eq } from 'drizzle-orm'
 import { features } from '../db/schema'
 import type { AppCtx } from '../db/types'
-import { chatNameOf } from './holding'
+import { chatNameOf } from '../threads/chat-name'
+import { epicOnAutopilot } from './autopilot'
 
 /**
  * The epic's other features in progress when one of its features merges
@@ -18,7 +19,6 @@ export type SiblingRow = {
   title: string
   status: Feature['status']
   chatId?: string | null
-  heldBy?: string | null
 }
 
 /**
@@ -43,41 +43,41 @@ export function mergeWakesEpic(input: { siblings: number; epicId: string; merged
   return input.siblings > 0 && input.mergedBy !== input.epicId
 }
 
-/** One in-progress sibling as the epic reads it: who owns it, in the epic's words. */
+/** One in-progress sibling as the epic reads it: who runs it, in the epic's words. */
 export interface EpicSibling {
   slug: string
   title: string
-  /** `the human`, `this chat` (the epic), or `the chat "<name>"`. */
+  /** `this epic, on autopilot` when it is locked to the epic; else `the human`. */
   owner: string
 }
 
-/** Who owns a sibling, or who merged, said to the epic `epicId`. */
-export function ownerWords(ctx: AppCtx, heldBy: string | null, epicId: string): string {
-  if (!heldBy) return 'the human'
-  if (heldBy === epicId) return 'this chat'
-  return `the chat "${chatNameOf(ctx, heldBy)}"`
+/** Who merged, said to the epic `epicId`: the human, this chat, or another chat by name. */
+export function ownerWords(ctx: AppCtx, threadId: string | null, epicId: string): string {
+  if (!threadId) return 'the human'
+  if (threadId === epicId) return 'this chat'
+  return `the chat "${chatNameOf(ctx, threadId)}"`
 }
 
 /** The merged feature's epic's in-progress siblings, read now. Empty for a feature with no epic. */
 export function epicSiblingsInProgress(ctx: AppCtx, merged: Pick<Feature, 'id' | 'chatId' | 'projectId'>): EpicSibling[] {
   const epicId = merged.chatId
   if (!epicId) return []
-  const rows: SiblingRow[] = ctx.db
+  const rows = ctx.db
     .select({
       id: features.id,
       slug: features.slug,
       title: features.title,
       status: features.status,
       chatId: features.chatId,
-      heldBy: features.heldBy,
     })
     .from(features)
     .where(and(eq(features.projectId, merged.projectId), eq(features.chatId, epicId)))
     .orderBy(asc(features.createdAt))
     .all()
+  const on = epicOnAutopilot(ctx, epicId)
   return inProgressSiblings(rows, merged).map((r) => ({
     slug: r.slug,
     title: r.title,
-    owner: ownerWords(ctx, r.heldBy ?? null, epicId),
+    owner: on ? 'this epic, on autopilot' : 'the human',
   }))
 }

@@ -35,7 +35,6 @@ vi.mock('../src/trpc', () => ({
       list: { useQuery: () => ({ data: data.features, isLoading: false }) },
       archive: { useMutation: () => ({ mutate: data.archive }) },
       unarchive: { useMutation: () => ({ mutate: data.unarchive }) },
-      setOwner: { useMutation: () => ({ mutate: vi.fn() }) },
       delete: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
     project: {
@@ -112,9 +111,8 @@ function rail(
 
 const titled = (title: string, over: Parameters<typeof listItem>[0] = {}) => ({
   ...listItem({ id: title, ...over }),
-  // The fixture keeps only the fields it knows; the origin chat and holder ride along.
+  // The fixture keeps only the fields it knows; the origin chat rides along.
   ...('chatId' in over ? { chatId: over.chatId } : {}),
-  ...('heldBy' in over ? { heldBy: over.heldBy } : {}),
   title,
 })
 
@@ -165,7 +163,7 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
   it('lists the epics on a feature page, with no Orchestrator card and no lanes, and opens a chat from its row', () => {
     const onOpenChat = vi.fn()
     data.threads = [epic('pay', 'Payment System', { state: 'working' })]
-    data.features = [titled('Retry policy', { chatId: 'pay', heldBy: 'pay' })]
+    data.features = [titled('Retry policy', { chatId: 'pay' })]
     rail({ view: 'feature', onOpenChat })
     expect(within(epics()).getByText('Payment System')).toBeTruthy()
     expect(within(screen.getByRole('group', { name: 'Payment System' })).getByText('Retry policy')).toBeTruthy()
@@ -179,8 +177,8 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
   it('reads each nested feature in the four words, with no owner prefix, and puts Needs you first', () => {
     data.threads = [epic('pay', 'Payment System', { state: 'working' }), epic('notes', 'Notes triage', { state: 'working' })]
     data.features = [
-      titled('Billing emails', { chatId: 'pay', heldBy: 'notes', working: true }),
-      titled('Export to CSV', { chatId: 'pay', heldBy: 'pay', need: need('May I run git push?') }),
+      titled('Billing emails', { chatId: 'pay', working: true }),
+      titled('Export to CSV', { chatId: 'pay', need: need('May I run git push?') }),
     ]
     rail()
     const nested = screen.getByRole('group', { name: 'Payment System' })

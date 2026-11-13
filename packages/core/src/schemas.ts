@@ -557,14 +557,6 @@ export const ProjectFinding = z.object({
 })
 export type ProjectFinding = z.infer<typeof ProjectFinding>
 
-/**
- * How far a feature's chat takes it (`every-feature-has-one-owner` decision 7):
- * `you` the human finishes it; `show` the chat builds it and shows the human
- * before merging; `merge` the chat builds and merges it.
- */
-export const FeatureFinish = z.enum(['you', 'show', 'merge'])
-export type FeatureFinish = z.infer<typeof FeatureFinish>
-
 export const Feature = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -589,12 +581,8 @@ export const Feature = z.object({
   createdAt: z.number(),
   /** The up-next mark — see the db schema. Only meaningful on a draft. */
   upNext: z.boolean().default(false),
-  /** The project thread holding this feature — see the db schema. Unset when none does. */
-  heldBy: z.string().optional(),
-  /** The feature's chat (an orchestrator thread id) — see the db schema. Null when it has none. */
+  /** The feature's epic (an orchestrator thread id) — see the db schema. Null when it has none. */
   chatId: z.string().nullable().default(null),
-  /** How far its chat takes the feature — see the db schema. */
-  finish: FeatureFinish.default('you'),
   /**
    * When the human pressed Stop (ms); null when the feature is not stopped. No
    * round dispatches while it is set, and the next human message clears it.
@@ -692,6 +680,8 @@ export const SessionRow = z.object({
   epicIcon: z.enum(EPIC_ICON_IDS).optional(),
   /** The human picked the icon (decision 3); unset reads as false. */
   epicIconByHuman: z.boolean().optional(),
+  /** A project chat on autopilot (`epics-on-autopilot` decision 1); unset reads as off. */
+  autopilot: z.boolean().optional(),
 })
 export type SessionRow = z.infer<typeof SessionRow>
 

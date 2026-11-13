@@ -1,6 +1,6 @@
 # ADR-0016: Orchestrator threads hold features
 
-- **Status:** accepted (2026-10-31)
+- **Status:** superseded by ADR-0022 (epics on autopilot); was accepted (2026-10-31)
 - **Deciders:** Muath + project session
 - **Amended by:** ADR-0021 (creating a feature no longer holds it; a held feature that needs the human becomes theirs)
 - **Amends:** decisions 2 and 3 of `docs/features/one-orchestrator-no-mode/decisions.md`

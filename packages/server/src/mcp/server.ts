@@ -28,7 +28,6 @@ import type {
   DependencyRef,
   DesignState,
   DriveCallResult,
-  FeatureFinish,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Need,
@@ -109,8 +108,8 @@ import {
 } from '../services/designs'
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
-import { type ChatFinish, chatNameOf, giveToChat, holderName, holderOf, releasedFrom, releaseNeedsYou, requireHold } from '../services/holding'
-import { handBackToOrchestrator, sayHandOver, wakeEpicNeedsYou } from '../services/lead-handback'
+import { autopilotOf, epicOnAutopilot, isLocked, requireMayAct } from '../services/autopilot'
+import { handBackToOrchestrator, workerAsksEpic } from '../services/lead-handback'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   closeAsAddressed,
@@ -361,8 +360,12 @@ export interface FeatureContext {
   blocks: { slug: string; upNext: boolean }[]
   /** This feature's own up-next mark: it starts by itself when its dependencies ship. */
   upNext: boolean
-  /** The name of the project thread holding it (`threads-hold-features`); null when none does. */
-  heldBy: string | null
+  /**
+   * The epic running it on autopilot (`epics-on-autopilot`): report to it with
+   * `hand_back`. Null when it is not on autopilot: it is the human's, and
+   * questions go to them with `wait_for_you`.
+   */
+  autopilot: { epic: string; chatId: string } | null
   /**
    * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
    * ceiling, whole, in fill order: brief → decisions → spec. On a repeat read
@@ -554,7 +557,7 @@ export function featureContext(
   // Fill order (decisions.md #5), not the reading order `agentDigestDocOrder` gives.
   canonical.sort((a, b) => agentDigestFillRank(a.doc.relPath) - agentDigestFillRank(b.doc.relPath))
 
-  const holder = holderOf(ctx, feature)
+  const lock = autopilotOf(ctx, feature)
   const header = {
     feature,
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
@@ -565,7 +568,7 @@ export function featureContext(
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
     upNext: feature.upNext,
-    heldBy: holder ? holderName(holder) : null,
+    autopilot: lock ? { epic: lock.epicName, chatId: lock.epicId } : null,
     annotatedModels: annotatedModels(ctx),
     ...(scenarios ? { scenarios } : {}),
     reviewEvidence: latestReviewWorker ? workerReviewEvidenceOf(latestReviewWorker) : null,
@@ -645,7 +648,8 @@ export interface FeatureStatusView {
   status: FeatureStatusT
   /** What it needs from the human (its lead's or a worker's line); null when nothing. */
   need: Need | null
-  heldBy: string | null
+  /** The epic running it on autopilot; null when it is the human's. */
+  autopilot: { epic: string; chatId: string } | null
   humanTypedAt: number | null
   /** How many of the feature's workers are in each status; a status with none is absent. */
   workerCounts: Partial<Record<WorkerStatusT, number>>
@@ -663,13 +667,13 @@ export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureSt
   const feature = getFeatureRow(ctx, reader.featureId)
   const workerCounts: Partial<Record<WorkerStatusT, number>> = {}
   for (const w of listWorkers(ctx, feature.id)) workerCounts[w.status] = (workerCounts[w.status] ?? 0) + 1
-  const holder = holderOf(ctx, feature)
+  const lock = autopilotOf(ctx, feature)
   return {
     slug: feature.slug,
     title: feature.title,
     status: feature.status,
     need: needOf(ctx, feature),
-    heldBy: holder ? holderName(holder) : null,
+    autopilot: lock ? { epic: lock.epicName, chatId: lock.epicId } : null,
     humanTypedAt: humanTypedAt(ctx, feature.id),
     workerCounts,
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
@@ -855,9 +859,9 @@ export function toolDeclareReady(
 }
 
 /**
- * A lead hands back to its owner chat, or on a human-owned feature to its chat
- * (agents-are-woken-only-when-it-matters decisions 20–22; every-feature-has-one-owner
- * decisions 14, 20). It never moves the owner (one-place-to-answer decision 8).
+ * A lead on autopilot reports to its epic (agents-are-woken-only-when-it-matters
+ * decisions 20–22; epics-on-autopilot decision 17). Off autopilot it is
+ * refused, pointing at `wait_for_you`: the feature is the human's.
  */
 export async function toolHandBack(
   ctx: AppCtx,
@@ -875,15 +879,15 @@ export type WaitForYouInput = { why: string; withdraw?: undefined } | { withdraw
  * decisions 2, 6, 7): its chat — the lead's, an orchestrator chat's, a
  * worker's — needs them with `why` until the human writes in it, or the agent
  * withdraws it (`withdraw: true`) or replaces it. A worker reads "needs you"
- * meanwhile. Under a chat owner (one-place-to-answer decision 9) a lead's
- * feature becomes the human's first: its chat says so, and the chat that owned
- * it is woken once to tell the human where to answer.
+ * meanwhile. A lead or a worker of a locked feature (epics-on-autopilot
+ * decision 17) asks its epic instead, delivered as a handback is, and neither
+ * the feature nor the worker needs anybody: `toEpic` names the epic it went to.
  */
 export async function toolWaitForYou(
   ctx: AppCtx,
   session: SessionRow,
   input: WaitForYouInput,
-): Promise<{ ok: true; need: Need | null; nowYours?: true }> {
+): Promise<{ ok: true; need: Need | null; toEpic?: string }> {
   if (input.withdraw) {
     clearWait(ctx, session.id, 'withdrawn')
     if (session.kind === 'worker') workerPrompted(ctx, session.id)
@@ -891,13 +895,17 @@ export async function toolWaitForYou(
   }
   const why = input.why.trim()
   if (!why) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
-  const lead = session.kind === 'chat' && session.featureId ? session.featureId : null
-  const released = lead ? releaseNeedsYou(ctx, lead) : null
-  if (released) sayHandOver(ctx, session.id, released)
+  const asker = (session.kind === 'chat' || session.kind === 'worker') && session.featureId ? getFeatureRow(ctx, session.featureId) : null
+  if (asker && isLocked(ctx, asker)) {
+    const { deliveredTo } =
+      session.kind === 'worker'
+        ? await workerAsksEpic(ctx, asker, getWorker(ctx, session.id)?.label ?? 'a worker', why)
+        : await handBackToOrchestrator(ctx, asker, why, session.id, { asks: true })
+    return { ok: true, need: null, toEpic: deliveredTo }
+  }
   const need = setWait(ctx, session.id, why, 'agent')
   if (session.kind === 'worker') workerWaits(ctx, session.id)
-  if (lead && released) await wakeEpicNeedsYou(ctx, getFeatureRow(ctx, lead), released)
-  return { ok: true, need, ...(released ? { nowYours: true as const } : {}) }
+  return { ok: true, need }
 }
 
 /** The feature a DESIGN tool acts on: design mode belongs to the feature's own chat. */
@@ -1763,17 +1771,9 @@ export async function toolCreateFeature(
   const created =
     session.kind !== 'project'
       ? await createFeatureFor(ctx, session, input)
-      : await runAsActor('orchestrator', async () => {
-          const choice = cutChoice(input)
-          const made = await createFeatureFor(
-            ctx,
-            session,
-            { ...input, brief: choice.brief },
-            { threadId: session.id, finish: choice.finish },
-          )
-          if (choice.chatOwns) giveToChat(ctx, made.id, session.id, choice.chatOwns, 'create')
-          return made
-        })
+      : await runAsActor('orchestrator', () =>
+          createFeatureFor(ctx, session, { ...input, brief: briefWithPlanning(input) }, { threadId: session.id }),
+        )
   recordFeatureAction(ctx, session, created.id, input.draft ? 'parked' : 'created')
   return created
 }
@@ -1787,31 +1787,16 @@ const PLANNING_LINE: Record<PlanningChoice, string> = {
 }
 
 /**
- * The cut-time answer (one-place-to-answer decision 14): "Plan it with me"
- * (`with-me`, `you`), "Plan automatically" (`self`, `you`) or "Run it for me"
- * (`self`, `show`|`merge`). The chat owns the feature exactly when its finish
- * is the chat's; a grilled feature handed to the chat is refused (it is the
- * human's, given afterwards with its owner button or "run it for me").
- * Planning is not stored on the feature: it travels in the brief (a "Planning
- * mode:" line, added when the brief has none) and in the self-planning launch
- * the chat starts later. Omitted, a feature is the human's, planned with them.
+ * The cut-time answer: "Plan it with me" (`with-me`) or "Plan automatically"
+ * (`self`). Planning is not stored on the feature: it travels in the brief (a
+ * "Planning mode:" line, added when the brief has none) and in the
+ * self-planning launch the chat starts later. Omitted, the brief is as given.
  */
-function cutChoice(input: CreateFeatureInput): { finish: FeatureFinish; chatOwns: ChatFinish | null; brief?: string } {
-  const finish = input.finish ?? 'you'
-  if (input.planning === 'with-me' && finish !== 'you') {
-    throw new GateError(
-      'a feature planned with the human ("Plan it with me") is theirs, so this chat cannot own it from the cut: ' +
-        'create it with finish "you". They give it to this chat afterwards with its owner button, or by telling you "run it for me".',
-    )
-  }
-  const chatOwns = finish !== 'you' ? finish : null
-  // "Run it for me" plans automatically, whether or not the call said so.
-  const planning = input.planning ?? (chatOwns ? 'self' : undefined)
-  const brief =
-    planning === undefined || /^Planning mode:/im.test(input.brief ?? '')
-      ? input.brief
-      : [input.brief?.trimEnd(), PLANNING_LINE[planning]].filter(Boolean).join('\n\n') + '\n'
-  return { finish, chatOwns, ...(brief !== undefined ? { brief } : {}) }
+function briefWithPlanning(input: CreateFeatureInput): string | undefined {
+  const planning = input.planning
+  return planning === undefined || /^Planning mode:/im.test(input.brief ?? '')
+    ? input.brief
+    : [input.brief?.trimEnd(), PLANNING_LINE[planning]].filter(Boolean).join('\n\n') + '\n'
 }
 
 interface CreateFeatureInput {
@@ -1824,15 +1809,13 @@ interface CreateFeatureInput {
   upNext?: boolean
   /** From an orchestrator chat: how it is planned. */
   planning?: PlanningChoice
-  /** From an orchestrator chat: how far the chat takes it. */
-  finish?: FeatureFinish
 }
 
 async function createFeatureFor(
   ctx: AppCtx,
   session: SessionRow,
   input: CreateFeatureInput,
-  chat?: { threadId: string; finish: FeatureFinish },
+  chat?: { threadId: string },
 ): Promise<CreateFeatureResult> {
   const project = createFeatureProject(ctx, session, input)
   const dependsOn = input.dependsOn ?? []
@@ -1924,7 +1907,7 @@ export function toolSetFeatureDependencies(
   const [dependentId] = featureIdsBySlug(ctx, project.id, [input.slug])
   const dependencyIds = featureIdsBySlug(ctx, project.id, input.dependsOn)
   // Only the draft being reordered is acted on; the features it names are read.
-  requireHold(ctx, session, getFeatureRow(ctx, dependentId as string))
+  requireMayAct(ctx, session.id, getFeatureRow(ctx, dependentId as string), 'dependencies')
   const edges = setDependencies(ctx, dependentId as string, dependencyIds)
   // After the new set is written, so one call can both set the edges and mark the draft.
   const feature =
@@ -1989,23 +1972,8 @@ export interface ProjectContext {
   featureIndex: string[]
   /** Says where shipped features' docs live and how to reach an unlisted one. */
   featureIndexNote: string
-  /** The features the human took from this chat since it was last told, once each; see {@link takenByHumanNews}. */
-  takenByHuman?: string[]
-}
-
-/**
- * The features the human took from this chat that it has not been told about
- * yet, one line each (every-feature-has-one-owner decision 23): the chat is not
- * woken for it; it reads this on its next turn, once. Empty when there is none.
- */
-export function takenByHumanNews(ctx: AppCtx, sessionId: string): string[] {
-  return releasedFrom(ctx, sessionId)
-    .filter((r) => tellOnce(sessionId, `released:${r.featureId}:${r.at}`))
-    .map(
-      (r) =>
-        `The human took \`${r.slug}\` (${r.title}) from you on ${new Date(r.at).toISOString().slice(0, 16).replace('T', ' ')}: ` +
-        'it is theirs now. You may still send_to_feature and read it; do not act on it otherwise.',
-    )
+  /** Whether this chat (an epic) is on autopilot; unset for any other caller. */
+  autopilot?: boolean
 }
 
 /**
@@ -2073,7 +2041,6 @@ export async function toolGetProjectContext(
   const baseBranches = await readBaseBranches(project)
   const charter = projectCharter(session, input.full === true)
   const { selectable: _selectable, ...defaultBranches } = baseBranches
-  const taken = session.kind === 'project' ? takenByHumanNews(ctx, session.id) : []
   return {
     project: input.full
       ? project
@@ -2084,7 +2051,7 @@ export async function toolGetProjectContext(
     adrsNote: ADRS_NOTE,
     featureIndex: featureIndex(ctx, project.id, session.id),
     featureIndexNote: FEATURE_INDEX_NOTE,
-    ...(taken.length > 0 ? { takenByHuman: taken } : {}),
+    ...(session.kind === 'project' ? { autopilot: epicOnAutopilot(ctx, session.id) } : {}),
   }
 }
 
@@ -2130,8 +2097,7 @@ function featureIndex(ctx: AppCtx, projectId: string, callerId: string): string[
     ...all.filter((f) => f.status === 'draft'),
     ...shipped.slice(0, FEATURE_INDEX_SHIPPED_CAP),
   ]
-  const names = new Map<string, string>()
-  const lines = listed.map((feature) => `${featureIndexLine(feature, workerStateOf(ctx, feature))}${holderMark(ctx, feature, callerId, names)}`)
+  const lines = listed.map((feature) => `${featureIndexLine(feature, workerStateOf(ctx, feature))}${epicMark(feature, callerId)}`)
 
   const olderShipped = shipped.length - Math.min(shipped.length, FEATURE_INDEX_SHIPPED_CAP)
   const archived = all.filter((f) => f.status === 'archived').length
@@ -2250,15 +2216,17 @@ function workerStateOf(ctx: AppCtx, feature: FeatureListItem): string {
     .join(', ')
 }
 
-/** ` · held by …` for an index line: a thread needs the holder before it acts, not after a refusal. */
-function holderMark(ctx: AppCtx, feature: FeatureListItem, callerId: string, names: Map<string, string>): string {
-  if (!feature.heldBy || feature.status === 'shipped') return ''
-  if (feature.heldBy === callerId) return ' · held by you'
-  if (!names.has(feature.heldBy)) {
-    const row = holderOf(ctx, feature)
-    names.set(feature.heldBy, row ? holderName(row) : feature.heldBy)
+/**
+ * ` · …` for an index line: whether the feature is this epic's, and whether it
+ * is on autopilot, so a chat knows what it may do before it acts, not after a
+ * refusal.
+ */
+function epicMark(feature: FeatureListItem, callerId: string): string {
+  if (feature.status === 'shipped') return ''
+  if (feature.autopilot) {
+    return feature.autopilot.epicId === callerId ? ' · this epic, on autopilot' : ` · on autopilot in "${feature.autopilot.epicName}"`
   }
-  return ` · held by "${names.get(feature.heldBy)}"`
+  return feature.chatId === callerId ? ' · this epic’s, the human’s to work' : ''
 }
 
 /** One feature's brief on request: the fetch-one behind a slim index line. */
@@ -2688,7 +2656,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   drive: ['project'],
   merge_feature: ['project'],
   add_to_brief: ['project'],
-  take_feature: ['project'],
+  set_autopilot: ['project'],
   // The chat's own epic name (orchestrator-chats-become-epics decision 12): `toolNameEpic`.
   name_epic: ['project'],
 }
@@ -2959,7 +2927,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Create a feature',
         description:
           'Create a feature from a title, one-liner and brief, started or parked (`draft: true`). ' +
-          'Opens no terminal; feature sessions may only park drafts. Your chat owns it exactly when `finish` is `show` or `merge`.',
+          'Opens no terminal; feature sessions may only park drafts. It is your epic’s feature; made while you are on autopilot, it joins the run.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
           oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
@@ -2975,13 +2943,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .enum(['with-me', 'self'])
             .optional()
             .describe(
-              '`with-me` ("Plan it with me"): grilled in its chat. `self`: plans alone ("Plan automatically", "Run it for me").',
-            ),
-          finish: z
-            .enum(['you', 'show', 'merge'])
-            .optional()
-            .describe(
-              '`you`: the human’s. "Run it for me" (this chat owns it): `show` (show them first) or `merge`. Never with `with-me`.',
+              '`with-me` ("Plan it with me"): grilled in its chat. `self`: plans alone ("Plan automatically").',
             ),
         },
       },
@@ -3457,7 +3419,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Wait for the human',
         description:
           'Tell the human you need them, in one short line saying what you need. It stays until the human ' +
-          'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human.',
+          'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human. ' +
+          'On autopilot it goes to your epic instead, as a handback does.',
         inputSchema: {
           why: z.string().optional().describe('One short line: what you need from the human.'),
           withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),
@@ -3512,12 +3475,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     server.registerTool(
       'hand_back',
       {
-        title: 'Hand back to the orchestrator',
+        title: 'Hand back to your epic',
         description:
-          'Bring the orchestrator chat that owns this feature what it answers itself: the plan’s yes under automatic ' +
-          'planning, ready, merge conflicts. What only the human decides goes to wait_for_you, which makes the feature theirs. ' +
-          'When the human owns it, ask its chat what reaches beyond the feature. ' +
-          'Wakes it once with your summary and a line of the feature’s state. Refused when the feature has no chat.',
+          'On autopilot only: report to the epic running this feature (questions, plans and designs for a yes, ready to test, ' +
+          'failures, merge conflicts). It answers or asks the human. Wakes it once with your summary and a line of the ' +
+          'feature’s state. Off autopilot the feature is the human’s: refused, ask them with wait_for_you.',
         inputSchema: {
           summary: z
             .string()

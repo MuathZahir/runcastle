@@ -78,7 +78,7 @@ describe('a merge tells the feature’s epic', () => {
   }
 
   /** A started feature with a branch holding one commit, ready to merge. */
-  async function mergeable(slug: string, overrides: Partial<Feature> = {}): Promise<Feature> {
+  async function mergeable(slug: string, overrides: Partial<Feature> & { lockedTo?: string } = {}): Promise<Feature> {
     await createFeatureBranch(project, slug, 'main')
     await g.checkout(`feature/${slug}`)
     writeFileSync(join(repoPath, `${slug}.txt`), `${slug}\n`)
@@ -114,7 +114,7 @@ describe('a merge tells the feature’s epic', () => {
       [
         '[runcastle] export-csv merged into main by the human.',
         'In progress in this epic:',
-        '- import-csv: Import CSV (owned by the human)',
+        '- import-csv: Import CSV (run by the human)',
         `Read the change: the merge commit ${sha.slice(0, 12)} and docs/features/export-csv/outcome.md.`,
       ].join('\n'),
     )
@@ -157,42 +157,27 @@ describe('a merge tells the feature’s epic', () => {
     expect(getFeatureRow(ctx, waiting.id).status).toBe('active')
     const prompt = await onePrompt(epic.id)
     expect(prompt.held).toBeUndefined()
-    expect(prompt.text).toContain('\n- ui: UI (owned by the human)\n')
+    expect(prompt.text).toContain('\n- ui: UI (run by the human)\n')
   })
 
   it('holds the line when the epic merged the feature itself, saying so', async () => {
     const epic = chat()
-    const merged = await mergeable('export-csv', { chatId: epic.id, heldBy: epic.id })
-    seedFeature(ctx, project.id, { slug: 'import-csv', title: 'Import CSV', chatId: epic.id, heldBy: epic.id })
+    const merged = await mergeable('export-csv', { lockedTo: epic.id })
+    seedFeature(ctx, project.id, { slug: 'import-csv', title: 'Import CSV', lockedTo: epic.id })
 
     const res = await toolMergeFeature(ctx, epic, { slug: 'export-csv' })
-    expect(res).toMatchObject({ ok: true, inProgress: [{ slug: 'import-csv', title: 'Import CSV', owner: 'this chat' }] })
+    expect(res).toMatchObject({ ok: true, inProgress: [{ slug: 'import-csv', title: 'Import CSV', owner: 'this epic, on autopilot' }] })
 
     const prompt = await onePrompt(epic.id)
     expect(prompt.held).toBe(true)
     expect(prompt.text).toMatch(/^\[runcastle\] export-csv merged into main by this chat\.\n/)
-    expect(prompt.text).toContain('- import-csv: Import CSV (owned by this chat)')
-  })
-
-  it('wakes the epic when another chat merged it, naming that chat', async () => {
-    const epic = chat()
-    const other = chat()
-    await mergeable('export-csv', { chatId: epic.id, heldBy: other.id })
-    seedFeature(ctx, project.id, { slug: 'import-csv', chatId: epic.id })
-
-    await toolMergeFeature(ctx, other, { slug: 'export-csv' })
-
-    const prompt = await onePrompt(epic.id)
-    expect(prompt.held).toBeUndefined()
-    expect(prompt.text).toMatch(/^\[runcastle\] export-csv merged into main by the chat "[^"]+"\.\n/)
-    expect(prompt.display?.news?.[0]?.events[0]?.words).toMatch(/^Merged by (?!you$)/)
-    expect(promptsOf(other.id)).toEqual([])
+    expect(prompt.text).toContain('- import-csv: Import CSV (run by this epic, on autopilot)')
   })
 
   it('sends nothing for a feature with no epic, even to its holder', async () => {
     const holder = chat()
-    const merged = await mergeable('loner', { heldBy: holder.id })
-    seedFeature(ctx, project.id, { slug: 'sibling', heldBy: holder.id })
+    const merged = await mergeable('loner', {})
+    seedFeature(ctx, project.id, { slug: 'sibling' })
 
     await caller.feature.merge({ featureId: merged.id })
 
@@ -215,7 +200,7 @@ describe('a merge tells the feature’s epic', () => {
     const epic = chat()
     const holder = chat()
     const merged = await mergeable('core', { chatId: epic.id })
-    const waiting = seedFeature(ctx, project.id, { slug: 'ui', status: 'draft', baseBranch: null, chatId: epic.id, heldBy: holder.id })
+    const waiting = seedFeature(ctx, project.id, { slug: 'ui', status: 'draft', baseBranch: null, lockedTo: holder.id })
     setDependencies(ctx, waiting.id, [merged.id])
     setUpNext(ctx, waiting.id, true)
 
@@ -224,7 +209,7 @@ describe('a merge tells the feature’s epic', () => {
     const told = await onePrompt(holder.id)
     expect(told.text).toMatch(/^\[runcastle\] ui started by itself because core shipped\./)
     const epicPrompt = await onePrompt(epic.id)
-    expect(epicPrompt.text).toMatch(/^\[runcastle\] core merged into main by the human\.\n/)
+    expect(epicPrompt.text).toMatch(/^\[runcastle\] core merged into main by the human\./)
     expect(epicPrompt.text).not.toContain('started by itself')
   })
 })

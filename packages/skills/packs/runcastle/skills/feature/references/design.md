@@ -154,9 +154,11 @@ they come back:
   **only** the designs whose `state` is `approved`, saying which; name every other
   waiting design (and which are not even `opened`) and ask before you start work.
   Mark a rejected screen dropped and leave it out of the workers you start.
-- **The orchestrator says yes to start the work** while designs wait: do not
-  start. The designs wait for the human's own yes in this chat: call
-  `wait_for_you` for them, which makes the feature the human's.
+- **The orchestrator says yes to start the work** while designs wait: off
+  autopilot, do not start; the designs wait for the human's own yes in this
+  chat. On autopilot, its approval counts when the human handed their decisions
+  to the epic or it relays the human's own answer: record the design approved
+  with `set_design_state`.
 
 A design waiting for approval does not tell the human by itself: when you want them to
 look, say so with `wait_for_you({ why })`, naming the design.

@@ -4,7 +4,6 @@ import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp from '../src/mcp/server'
-import { toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
 import { listAfter } from '../src/services/events'
 import { deliverToLead } from '../src/services/lead-delivery'
 import { markHumanMessage } from '../src/services/lead-status'
@@ -123,16 +122,15 @@ describe('wait_for_you → feature.get().need', () => {
     expect(listAfter(ctx, featureId, 0).find((e) => e.type === 'session.wait_cleared')?.data).toMatchObject({ cause: 'human' })
   })
 
-  it('is not cleared by a worker handback, send_to_feature, a runcastle notice or the after-Stop mark', async () => {
+  it('is not cleared by a worker handback, a runcastle notice or the after-Stop mark', async () => {
     await call(leadId, 'wait_for_you', { why: 'Which coupon codes stack?' })
     const feature = getFeatureRow(ctx, featureId)
     // A worker's handback reaches the lead as a runcastle message.
     await deliverToLead(ctx, feature, { text: 'Worker "api" handed back', source: 'runcastle', display: undefined })
-    // The orchestrator's send_to_feature.
-    const epic = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
-    await toolSendToFeature(ctx, epic, { slug: 'coupons', message: 'Go with stacking off.' })
+    // (The orchestrator's send_to_feature reaches only a feature on autopilot,
+    // and joining autopilot closes the lead's wait: epics-on-autopilot decision 24.)
     markHumanMessage(ctx, featureId)
-    expect(prompted.length).toBeGreaterThanOrEqual(2)
+    expect(prompted.length).toBeGreaterThanOrEqual(1)
     expect(await need()).toMatchObject({ why: 'Which coupon codes stack?', threadId: leadId })
   })
 

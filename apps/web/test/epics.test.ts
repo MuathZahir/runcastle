@@ -6,13 +6,11 @@ import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
 import {
   epicNameOf,
-  epicOwnerJoin,
   epicsFrom,
   orderEpicList,
   shelfFeatureWords,
   type Epic,
 } from '../src/lib/feature-ui/epics'
-import { ownerReading } from '../src/lib/feature-owner'
 import { listItem, need } from './fixtures'
 
 /**
@@ -33,9 +31,9 @@ const chat = (id: string, title: string, over: Partial<ThreadEntry> = {}): Threa
   ...over,
 })
 
-/** A feature cut by `chatId`, run by that chat unless `over` says otherwise. */
+/** A feature cut by `chatId`. */
 const feature = (id: string, chatId: string | null, over: Partial<FeatureListItem> = {}): FeatureListItem =>
-  ({ ...listItem({ id }), title: id, chatId, heldBy: chatId ?? undefined, ...over }) as FeatureListItem
+  ({ ...listItem({ id }), title: id, chatId, ...over }) as FeatureListItem
 
 const asking = (why: string) => need(why)
 const everyone = () => true
@@ -47,8 +45,8 @@ describe('membership (decisions 6, 7)', () => {
   it('nests a feature under the chat it came from, whoever runs it', () => {
     const features = [
       feature('mine', 'pay'),
-      feature('taken', 'pay', { heldBy: undefined }),
-      feature('lent', 'pay', { heldBy: 'ship' }),
+      feature('taken', 'pay'),
+      feature('lent', 'pay', { autopilot: { epicId: 'pay', epicName: 'Payment System' } }),
     ]
     const { epics, other } = epicsFrom([pay, ship], features, everyone)
     expect(epics.find((e) => e.chat.id === 'pay')?.features.map((x) => x.feature.id)).toEqual(['mine', 'taken', 'lent'])
@@ -224,9 +222,9 @@ describe('the list (SidebarEpics, static markup)', () => {
 
   it('nests the features in the four words, with no owner prefix, then Other features', () => {
     const features = [
-      feature('Retry policy', 'pay', { heldBy: undefined }),
-      feature('Labels', 'pay', { heldBy: 'ship', working: true }),
-      feature('Loose', null, { heldBy: undefined }),
+      feature('Retry policy', 'pay'),
+      feature('Labels', 'pay', { working: true }),
+      feature('Loose', null),
     ]
     const { epics, other } = epicsFrom([pay, ship], features, everyone)
     const html = render(epics, other)
@@ -240,25 +238,3 @@ describe('the list (SidebarEpics, static markup)', () => {
   })
 })
 
-describe('the header joins the epic and its owner (decision 15, changed by the orchestrator)', () => {
-  const chat = (id: string) => ({ owner: { kind: 'chat' as const }, chatId: id, holderId: id })
-
-  it('is one crumb when the epic chat owns it', () => {
-    expect(epicOwnerJoin('a', chat('a'))).toBe('one')
-  })
-
-  it('is two for a feature of the human\'s whose finish is still the epic\'s: no "yours to plan" crumb (one-place-to-answer decision 8)', () => {
-    const reading = ownerReading({ status: 'active', chatId: 'a', finish: 'show' }, [{ id: 'a', title: 'Payments' }])
-    expect(epicOwnerJoin('a', reading)).toBe('two')
-  })
-
-  it('is two when the human or another chat owns it', () => {
-    expect(epicOwnerJoin('a', { owner: { kind: 'you' }, chatId: 'a' })).toBe('two')
-    expect(epicOwnerJoin('a', chat('b'))).toBe('two')
-  })
-
-  it('is the owner alone with no epic', () => {
-    expect(epicOwnerJoin(null, chat('a'))).toBe('owner')
-    expect(epicOwnerJoin(null, { owner: { kind: 'you' } })).toBe('owner')
-  })
-})

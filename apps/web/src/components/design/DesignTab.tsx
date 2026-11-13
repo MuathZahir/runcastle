@@ -24,8 +24,11 @@ export function DesignTab({
   path,
   onOpen,
   onList,
+  locked = false,
 }: {
   featureId: string
+  /** The feature is on its epic's autopilot (epics-on-autopilot decision 16): every design readable, none approvable here. */
+  locked?: boolean
   /** The open design's page, or none for the list. */
   path?: string
   /** Open the design at this page. */
@@ -99,6 +102,7 @@ export function DesignTab({
           if (step) onOpen(step.path)
         }}
         onApprove={() => approve(open)}
+        locked={locked}
       />
       <div className="min-h-0 flex-1">
         <DesignView

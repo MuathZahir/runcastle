@@ -168,27 +168,11 @@ export const features = sqliteTable('features', {
    */
   upNext: integer('up_next', { mode: 'boolean' }).notNull().default(false),
   /**
-   * The project thread (a session id) that holds this feature
-   * (`threads-hold-features` decision 1): the one thread that hears its news and
-   * may act on it. Null means no thread does, and the feature stays the human's.
-   */
-  heldBy: text('held_by'),
-  /**
-   * The feature's chat (`every-feature-has-one-owner` decision 21): the
-   * orchestrator thread it came from, replaced when the human gives it to
-   * another chat, moved with holds to a replacement chat. Null for a feature
-   * made with New feature. Unlike `heldBy` it stays when the human takes the
-   * feature: the lead's handback goes there, and the owner control offers to
-   * give the feature back to it.
+   * The feature's epic (`epics-on-autopilot` decision 13): the orchestrator
+   * chat that created it, re-pointed when the human tells another epic to also
+   * run it. Null for a feature made with New feature.
    */
   chatId: text('chat_id'),
-  /**
-   * How far its chat takes the feature (decision 7): `you` the human finishes
-   * it, `show` the chat builds it and shows the human before merging, `merge`
-   * the chat builds and merges it. On a human-owned feature with a chat's
-   * choice, the chat takes it at the plan's yes (decision 14).
-   */
-  finish: text('finish', { enum: ['you', 'show', 'merge'] }).notNull().default('you'),
   /**
    * When the human pressed Stop (`the-feature-lead-runs-rounds` decision 23);
    * null when not stopped. Dispatch is refused while it is set and no human
@@ -221,7 +205,7 @@ export const designs = sqliteTable(
     width: integer('width'),
     picture: text('picture'),
     state: text('state', { enum: ['waiting', 'approved', 'dropped'] }).notNull(),
-    approvedBy: text('approved_by', { enum: ['human', 'lead'] }),
+    approvedBy: text('approved_by', { enum: ['human', 'lead', 'autopilot'] }),
     shownAt: integer('shown_at').notNull(),
     /** When the human last opened it; null until they have. */
     seenAt: integer('seen_at'),
@@ -407,6 +391,12 @@ export const sessions = sqliteTable('sessions', {
   epicIcon: text('epic_icon').$type<EpicIconId>(),
   /** The human picked the icon (decision 3): `name_epic` never changes it again. */
   epicIconByHuman: integer('epic_icon_by_human', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * An epic on autopilot (`epics-on-autopilot` decisions 1, 14): every feature
+   * of it (`features.chat_id`) not shipped or archived is locked to it. Only a
+   * project chat sets it; off at upgrade (decision 21).
+   */
+  autopilot: integer('autopilot', { mode: 'boolean' }).notNull().default(false),
   /**
    * What this chat's agent waits on the human for (needs-you-is-the-agent-s-call):
    * its one line, when it was set (ms), and who set it — the agent

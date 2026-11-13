@@ -9,7 +9,6 @@ import { ToastProvider } from '../src/lib/toast'
 import { cx, IconButton, Kbd, SectionLabel } from '../src/ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../src/ui/dropdown-menu'
 import { PageTopbar, type Crumb } from '../src/ui/page'
-import { OwnerControl, type FeatureOwner } from '../src/components/workspace/OwnerControl'
 import { ProjectSwitcher } from '../src/components/ProjectSwitcher'
 import { CollapseSidebarButton } from '../src/components/Frame'
 import {
@@ -440,44 +439,15 @@ function findOpen(s: Sample, open: Open): { epic: string | null; feature: Featur
   return { epic: shelved?.epic ?? null, feature: shelved?.feature ?? null, holder: shelved ? { kind: 'you' } : null }
 }
 
-/**
- * The header's epic and owner (decision 15, as the orchestrator changed it):
- * one crumb when the epic's chat owns the feature ("Payment System · you
- * merge ▾"), two when the human or another chat does, the owner alone with no epic.
- */
-function headerCrumbs(epic: string | null, holder: EpicHolder | null): Crumb[] {
-  if (!holder) return epic ? [{ label: epic, icon: <EpicGlyph small /> }] : []
-  const owner: FeatureOwner =
-    holder.kind === 'you'
-      ? { kind: 'you' }
-      : { kind: 'chat', name: holder.kind === 'epic' ? epic ?? '' : holder.title, finish: 'show' }
-  const control = (inEpic: boolean) => (
-    <OwnerControl owner={owner} {...(epic ? { chatName: epic } : {})} inEpic={inEpic} onChoose={noop} />
-  )
-  if (!epic) return [{ label: control(false) }]
-  if (holder.kind !== 'epic') return [{ label: epic, icon: <EpicGlyph small />, onClick: noop }, { label: control(false) }]
-  return [
-    {
-      icon: <EpicGlyph small />,
-      label: (
-        <span className="inline-flex min-w-0 items-center">
-          <button type="button" className="block max-w-44 cursor-pointer truncate rounded-md hover:text-text">
-            {epic}
-          </button>
-          <span aria-hidden="true" className="pl-1 text-text-tertiary">
-            ·
-          </span>
-          {control(true)}
-        </span>
-      ),
-    },
-  ]
+/** The header's epic (decision 15): its name, when the feature has one. */
+function headerCrumbs(epic: string | null): Crumb[] {
+  return epic ? [{ label: epic, icon: <EpicGlyph small />, onClick: noop }] : []
 }
 
 function Panel({ s, open }: { s: Sample; open: Open }) {
   const { epic, feature, holder } = findOpen(s, open)
   const crumbs: Crumb[] = [
-    ...headerCrumbs(epic, feature ? holder : null),
+    ...headerCrumbs(epic),
     ...(feature ? [{ label: feature.title, icon: <FeatureProgressIcon f={feature} size={14} label="" /> }] : []),
   ]
   return (

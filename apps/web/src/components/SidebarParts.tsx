@@ -98,12 +98,14 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
  * "Merged", or its shelf. An up-next draft says what it starts after, or the
  * problem that keeps it from starting (decision 16).
  */
-export function featureStateWords(f: FeatureListItem): string {
-  const need = needsMe(f)
+export function featureStateWords(f: FeatureListItem, locked = false): string {
+  // Locked to its epic's autopilot (epics-on-autopilot decision 17): never Needs you; the epic carries it.
+  const need = locked ? null : needsMe(f)
   if (need) return `Needs you · ${need.why}`
   if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Merged'
   if (f.status === 'archived') return 'Archived'
+  if (locked) return f.working ? 'Working' : 'Idle'
   return triageOf(f) === 'working' ? 'Working' : 'Idle'
 }
 
@@ -160,6 +162,7 @@ function TwoLineRow({
   wordsClassName,
   aside,
   dot,
+  mark,
   quiet = false,
   active = false,
   flat = false,
@@ -176,6 +179,8 @@ function TwoLineRow({
   wordsClassName?: string
   aside?: ReactNode
   dot?: StatusTone
+  /** A small mark at the title's end, where the dot sits (a locked feature's autopilot mark). */
+  mark?: ReactNode
   quiet?: boolean
   active?: boolean
   /** Active inside a card that already marks it (the open feature with its threads): no fill of its own. */
@@ -212,6 +217,9 @@ function TwoLineRow({
           >
             {title}
           </span>
+          {mark !== undefined && (
+            <span className={cx('inline-flex shrink-0 transition-opacity duration-(--dur-1)', actions !== undefined && CONCEAL_NAV)}>{mark}</span>
+          )}
           {dot && (
             <span className={cx('transition-opacity duration-(--dur-1)', CONCEAL_NAV)}>
               <StatusDot tone={dot} />
@@ -268,14 +276,12 @@ export function SidebarFeatureRow({
   needsYou = false,
   workers,
   words: wordsProp,
-  ownerChoices,
+  lock,
 }: {
   f: FeatureListItem
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
-  /** The owner choices atop the row's "…" menu (every-feature-has-one-owner decision 11); none for a feature with no chat. */
-  ownerChoices?: ReactNode
   nested?: boolean
   /** A "+" on the row (the preview frames' first drafts; the app's rows carry none since the feature's own page holds it). */
   onNewThread?: () => void
@@ -298,16 +304,30 @@ export function SidebarFeatureRow({
   workers?: { live: number; onOpen: () => void }
   /** The second line's words in place of the feature's own: a row under its epic, a shelf row naming its epic. */
   words?: string
+  /**
+   * The feature is locked to its epic's autopilot run (epics-on-autopilot
+   * decisions 7, 17): this mark at the title's end, and never the amber dot —
+   * its needs go to the epic, whose card carries them.
+   */
+  lock?: ReactNode
 }) {
   const shown = folded ? undefined : threads
   const lane = triageOf(f)
-  const nm = needsMe(f)
+  const nm = lock === undefined ? needsMe(f) : null
   const words = wordsProp ?? featureStateWords(f)
-  const menu = actions.length > 0 || ownerChoices ? <FeatureActionsMenu actions={actions} {...(ownerChoices ? { choices: ownerChoices } : {})} /> : undefined
+  const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
   const row = (
     <TwoLineRow
       title={f.title}
-      tooltip={nm ? `${f.title} — Needs you · ${nm.why}` : f.status === 'draft' ? `${f.title} — ${rowChip(f).title}` : f.title}
+      tooltip={
+        lock !== undefined
+          ? `${f.title} — on autopilot`
+          : nm
+            ? `${f.title} — Needs you · ${nm.why}`
+            : f.status === 'draft'
+              ? `${f.title} — ${rowChip(f).title}`
+              : f.title
+      }
       glyph={<FeatureProgressIcon f={f} size={12} />}
       words={words}
       wordsClassName={cx(
@@ -316,7 +336,8 @@ export function SidebarFeatureRow({
         upNextProblem(f) && 'text-danger-text',
       )}
       aside={relTime(f.lastActivityAt)}
-      dot={rowDot(f) ?? (needsYou ? 'warning' : undefined)}
+      dot={lock !== undefined ? undefined : (rowDot(f) ?? (needsYou ? 'warning' : undefined))}
+      {...(lock !== undefined ? { mark: lock } : {})}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}
       active={active}
       flat={shown !== undefined}

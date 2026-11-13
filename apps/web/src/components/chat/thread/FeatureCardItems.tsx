@@ -49,6 +49,13 @@ export interface WorkerLinks {
 
 export const WorkerLinksContext = createContext<WorkerLinks | null>(null)
 
+/**
+ * The epic a feature's chat belongs to, by name (epics-on-autopilot decision
+ * 22): the orchestrator's messages there are signed with it rather than the
+ * generic "Epic". The feature's chat column provides it; null signs "Epic".
+ */
+export const OrchestratorNameContext = createContext<string | null>(null)
+
 type HandbackDisplay = Extract<PromptDisplay, { handback: unknown }>['handback']
 
 /**
@@ -149,6 +156,7 @@ export function RuncastleDisplay({
   at?: number
 }) {
   const { find, open, linked } = useLiveFeature()
+  const from = useContext(OrchestratorNameContext)
   if ('news' in display) {
     return (
       <NewsBlock
@@ -172,7 +180,7 @@ export function RuncastleDisplay({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {display.orchestrator.map((message, i) => (
-        <OrchestratorMessage key={i} text={message.text} />
+        <OrchestratorMessage key={i} text={message.text} {...(from ? { from } : {})} />
       ))}
     </div>
   )
