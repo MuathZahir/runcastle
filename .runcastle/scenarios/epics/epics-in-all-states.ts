@@ -101,6 +101,8 @@ interface EpicSeed {
   answered: string
   /** The feature whose plan the last turn showed, by title, so the chat asks about it. */
   asksAbout?: string
+  /** The chat's own `wait_for_you` line: only its agent's call makes the epic need the human. */
+  asks?: string
   features: FeatureSeed[]
 }
 
@@ -114,6 +116,7 @@ const EPICS: EpicSeed[] = [
     said: 'People should be able to save a card and pay with one tap next time.',
     answered: 'Here is the plan for Saved cards. Should a saved card expire after a year of no use, or never?',
     asksAbout: 'Saved cards',
+    asks: 'Should a saved card expire after a year of no use, or never?',
     features: [{ title: 'Saved cards', as: 'active', waiting: { why: 'Should a saved card expire after a year of no use?', kind: 'answer' } }],
   },
   {
@@ -237,6 +240,7 @@ async function seedEpic(ctx: AppCtx, project: Project, epic: EpicSeed, now: numb
     }
   }
   seedThreadLog(row.id, conversation(epic, now - epic.wroteAgo, ids))
+  if (epic.asks) setWait(ctx, row.id, epic.asks)
 }
 
 async function main(): Promise<void> {

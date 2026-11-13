@@ -10,7 +10,7 @@
  *   became theirs (an owner change with the `needs-you` cause, finish "you").
  *   Its chat shows runcastle's line "This is yours now: it needed you. Notes
  *   Export carries on with the rest of the batch." above the lead's question,
- *   which waits for an answer — the row reads "Yours · …", yellow.
+ *   which waits for an answer — the row reads "Needs you · …", yellow.
  * - **Export as Markdown** is still the epic's, shown before merging: its
  *   header reads "Notes Export · you merge".
  *

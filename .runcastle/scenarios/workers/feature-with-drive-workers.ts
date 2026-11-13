@@ -34,6 +34,7 @@ import type { AppCtx } from '../../../packages/server/src/db/types.ts'
 import { createSessionRow, markSessionEnded, setSessionTitle } from '../../../packages/server/src/launcher/sessions.ts'
 import { createFeature } from '../../../packages/server/src/services/features.ts'
 import { listProjects } from '../../../packages/server/src/services/projects.ts'
+import { setWait } from '../../../packages/server/src/services/waits.ts'
 import { appendThreadEvent } from '../../../packages/server/src/threads/log.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from '../../drive-dir.ts'
 
@@ -164,6 +165,8 @@ async function main(): Promise<void> {
       'A signed-in shopper with an expired coupon in the cart.',
       `Wrote \`.runcastle/scenarios/expired-coupon.ts\` and ran it: the cart shows the expired coupon. Committed it on \`${feature.branch}\` (b7c8d9e Expired-coupon scenario). Want a variant with a valid one?`,
     )
+    // Its question needs the human only because its agent said so (needs-you-is-the-agent-s-call decision 6).
+    setWait(ctx, scenarios, 'Want a variant with a valid coupon?')
 
     // The Fix-drive worker, handed back once the app answered again, its card held for the lead's next message.
     const fixHandback = {
