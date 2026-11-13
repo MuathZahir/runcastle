@@ -3,7 +3,7 @@
 Planned without the human, in a headless run on 2026-11-12. Decisions 1–4 are the
 human's own, copied from the brief; the rest are assumed and marked so.
 
-Check first: 6, 7, 10, 11
+Check first: 7, 10, 11
 
 ## 1. A per-feature scenario is just a scenario the feature's agent writes
 **Decision:** No snapshot mechanism. When an agent reaches a state that is slow to reach (the bug it is fixing, a screen behind many steps), it writes a scenario for it, and every later drive of this feature starts there: the agent's own re-drives, the review's drive and the human's test drive. How the scenario builds the state is the agent's choice: seed code, a copy of data from the drive's database, a call to the app's API.
@@ -30,8 +30,7 @@ Check first: 6, 7, 10, 11
 ## 6. Every scenario the feature added leaves with it, whoever wrote it
 **Decision:** "The feature's scenarios" means every scenario file its branch added, including one the human asked for in the ＋ New scenario chat during this feature's test drive. A permanent scenario the branch only changed (fixed after an app change, say) is not one of them and stays. Runcastle's "own" mark covers added and changed files alike, so the lead checks which were added against the base branch. The lead lists them all and deletes all but the ones the human keeps. The scenario chat tells the human, when it writes one on a feature's drive, that it leaves with the feature unless they keep it.
 **Why:** One rule the lead can check from the branch alone, with no record of who wrote what. A scenario the human wanted for good is kept with one word.
-**Assumed.** Alternative: a scenario the human asked for in the scenario chat is permanent by default, and only agent-written ones leave.
-**For the human.**
+**The human (2026-11-13):** "This feature doesnt matter. I have many scenarios from other features too. Will clean them up at once when this is merged." The rule stands as planned; the human clears the existing pile by hand after merge. Alternative not taken: a scenario the human asked for in the scenario chat is permanent by default.
 
 ## 7. When the lead deletes them
 **Decision:** The lead deletes a scenario as soon as a fix makes it pointless, so the set stays small. The lead's ready message lists the feature's scenarios and says they leave with the feature unless the human keeps one. When the human says the work is good after a drive, the lead's reply asks once which to keep, and deletes the rest in its next commit (rewriting a kept data copy as seed code first). When an orchestrator chat owns the feature, it asks the lead to clear them before it merges.
