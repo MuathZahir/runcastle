@@ -34,6 +34,11 @@ export function shownWorkerStatus(w: { status: CoreWorkerStatus; need?: Need | n
   return w.status
 }
 
+/** How many workers are at work, counted as their cards read them: a turn running, not a stored status (needs-you decision 6). */
+export function workersAtWork(rows: readonly { status: CoreWorkerStatus; need?: Need | null; turnRunning?: boolean }[]): number {
+  return rows.filter((w) => shownWorkerStatus(w) === 'working').length
+}
+
 /**
  * Taste work the human iterates on, or work that runs in the background
  * (decision 5). A worker the human started with "+" has none: core's

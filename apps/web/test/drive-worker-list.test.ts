@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ThreadEntry, WorkerRow } from '@runcastle/core'
 import { FeatureSidebarPage } from '../src/components/workers/FeatureSidebarPage'
 import { workerColumnProps } from '../src/components/workers/WorkerChat'
-import { featureWorkerEntries, shownWorkerStatus, workerGroups, workerStatusWhy } from '../src/lib/workers'
+import { featureWorkerEntries, shownWorkerStatus, workerGroups, workerStatusWhy, workersAtWork } from '../src/lib/workers'
 import { listItem } from './fixtures'
 
 /**
@@ -102,6 +102,17 @@ describe('a worker’s shown status', () => {
   it('reads Working while a turn runs, else Idle', () => {
     expect(shownWorkerStatus({ status: 'working', need: null, turnRunning: true })).toBe('working')
     expect(shownWorkerStatus({ status: 'working', need: null, turnRunning: false })).toBe('idle')
+  })
+
+  it('counts for the status line only the workers whose turn runs, as their cards read', () => {
+    // The feature header read Working while every card read Idle (review finding_9GbzXIHZSuVg).
+    const rows = [
+      { status: 'working' as const, need: null, turnRunning: false },
+      { status: 'needs-you' as const, need: null, turnRunning: false },
+      { status: 'working' as const, need: null, turnRunning: true },
+    ]
+    expect(workersAtWork(rows)).toBe(1)
+    expect(workersAtWork(rows.slice(0, 2))).toBe(0)
   })
 
   it('keeps a settled, queued or failed worker’s own word', () => {

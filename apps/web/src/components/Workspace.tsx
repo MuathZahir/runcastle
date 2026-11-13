@@ -73,6 +73,7 @@ import { unsentNotes } from './review/SendToAgent'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
 import { useFeatureWorkers, useWorkerHeader, workerInFront } from './workers/WorkerChat'
+import { workersAtWork } from '../lib/workers'
 import { useStandingNotices } from './workspace/use-standing-notices'
 import { ScenarioChatContext } from './chat/ScenarioChat'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
@@ -218,7 +219,7 @@ export function Workspace({
   // The status line's inputs (`the-feature-lead-runs-rounds` decision 21): the
   // agent's ready declarations, and the workers at work (Stop cancels their turns).
   const workers = useFeatureWorkers(featureId)
-  const workersWorking = workers.filter((w) => w.status === 'working' || w.status === 'queued').length
+  const workersWorking = workersAtWork(workers)
   const declarationsQ = trpc.feature.readyDeclarations.useQuery({ featureId }, { refetchInterval: poll })
   const declared = (declarationsQ.data?.length ?? 0) > 0
   // What a drive of this feature can land on (drive-scenarios decision 7), for
