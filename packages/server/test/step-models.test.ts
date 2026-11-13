@@ -11,7 +11,8 @@ import { makeTestCtx } from './helpers/db'
 /**
  * Per-step model settings surface (issue #48). Step overrides live under
  * `stepModels` in the global config file, exposed as `stepModels.<step>` fields;
- * `review` is never exposed. A legacy `smokeModel` file folds into
+ * `review` is the Review worker’s model, its unset default the runtime’s review
+ * model. A legacy `smokeModel` file folds into
  * `stepModels.smoke`, and the next write persists the new shape.
  */
 
@@ -32,7 +33,7 @@ describe('per-step models (#48)', () => {
 
   const io = (env: Record<string, string | undefined> = {}) => ({ env, configFile })
 
-  it('exposes a field per step, the burn’s reviewer included', () => {
+  it('exposes a field per step, the Review worker’s included', () => {
     const view = getSettings(ctx, undefined, io())
     for (const step of [
       'chat',
@@ -71,7 +72,20 @@ describe('per-step models (#48)', () => {
     expect(field(getSettings(ctx, undefined, io()), 'stepModels.implement').source).toBe('default')
   })
 
-  it('writes the review step, so the reviewer runs on its own model', () => {
+  it('reports the runtime review model as the unset Review row’s default, and the stored value once set', () => {
+    // A file with a stepModels object but no review key still shows the default.
+    writeFileSync(configFile, JSON.stringify({ stepModels: { smoke: 'claude-haiku-4-5' } }))
+    const unset = field(getSettings(ctx, undefined, io()), 'stepModels.review')
+    expect(unset).toMatchObject({ value: 'claude-sonnet-5-5', source: 'default' })
+
+    ctx.config.model = 'gpt-5.6-sol'
+    expect(field(getSettings(ctx, undefined, io()), 'stepModels.review')).toMatchObject({ value: 'gpt-5.6-terra', source: 'default' })
+
+    updateSettings(ctx, { key: 'stepModels.review', value: 'claude-opus-5[1m]' }, io())
+    expect(field(getSettings(ctx, undefined, io()), 'stepModels.review')).toMatchObject({ value: 'claude-opus-5[1m]', source: 'file' })
+  })
+
+  it('writes the review step, so the Review worker runs on its own model', () => {
     updateSettings(ctx, { key: 'stepModels.review', value: 'claude-opus-5' }, io())
     expect(ctx.config.stepModels.review).toBe('claude-opus-5')
     expect(JSON.parse(readFileSync(configFile, 'utf8')).stepModels).toEqual({

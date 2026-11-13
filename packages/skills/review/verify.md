@@ -20,9 +20,9 @@ For each finding, re-run its repro step (in the app, or the command it names) an
 
 ## The project's checks
 
-Run these yourself, once each, in full, on `{{FEATURE_BRANCH}}` as it stands in your checkout, capturing each run's output to a file you read.
+Run these yourself, once each, in full{{PRIOR_CHECKS_UNLESS}}, on `{{FEATURE_BRANCH}}` as it stands in your checkout, capturing each run's output to a file you read.
 
-{{CHECKS}}
+{{CHECKS}}{{PRIOR_CHECKS}}
 
 ## Report and hand back
 

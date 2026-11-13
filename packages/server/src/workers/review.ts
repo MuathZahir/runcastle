@@ -13,7 +13,7 @@ import {
   resolvePreparedSettings,
   workerFeatureId,
 } from '@runcastle/core'
-import { reviewWalkthroughPath, sessionDir } from '@runcastle/core/paths'
+import { featureDocsRel, reviewWalkthroughPath, sessionDir } from '@runcastle/core/paths'
 import { and, desc, eq } from 'drizzle-orm'
 import { workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
@@ -168,6 +168,50 @@ export function buildChecksBlock(
   return [...commands, '', ...baseline].join('\n')
 }
 
+/** The lead's full checks, green on a clean tree apart from the known failures: the commit they ran on and the commands. */
+export interface ChecksPassed {
+  commit: string
+  commands: string[]
+}
+
+/**
+ * The `{{PRIOR_CHECKS}}` block (faster-cheaper-reviews decisions 3, 7, 8): how a
+ * review tells whether the lead's pass still holds for its checkout, and what it
+ * runs either way. The server checks nothing; the review runs the git commands.
+ * Empty without a pass, so the section reads as it always did.
+ */
+export function buildPriorChecksBlock(checksPassed: ChecksPassed | null | undefined, featureSlug: string): string {
+  if (!checksPassed) return ''
+  const sha = checksPassed.commit.trim()
+  const docs = `${featureDocsRel(featureSlug)}/`
+  return [
+    '',
+    '',
+    "### The lead's checks already passed",
+    '',
+    `The lead ran these commands on commit \`${sha}\`, on a clean tree, and they were green apart from the known failures:`,
+    '',
+    '```',
+    ...checksPassed.commands.map((c) => c.trim()),
+    '```',
+    '',
+    'Before you run any check, see whether that pass holds for your checkout. Run:',
+    '',
+    '```',
+    'git rev-parse HEAD',
+    'git status --porcelain --untracked-files=no',
+    `git diff --quiet ${sha} HEAD -- . ':!${docs}'`,
+    '```',
+    '',
+    `The pass holds when \`git status\` prints nothing (the tree is clean) and either HEAD is \`${sha}\` or the \`git diff\` exits 0 (nothing changed since, outside this feature's docs folder \`${docs}\`). ` +
+      'Then run only the typecheck among the checks above, and none if no check is a typecheck. ' +
+      `Say in your hand-back that the other checks were not run, citing the lead's pass on \`${sha}\`. ` +
+      'Never describe a check you cite as one you saw pass.',
+    '',
+    "Otherwise the pass does not hold: run every check in full, as above, and say in your hand-back why the lead's pass did not apply.",
+  ].join('\n')
+}
+
 /** The findings a verify review is given, each with what it needs to re-run it. */
 function findingsBlock(findings: ReviewFinding[]): string {
   return findings
@@ -213,12 +257,15 @@ export async function renderReviewAssignment(
   project: Project,
   site: ReviewSite,
   verify: ReviewVerify | null,
+  checksPassed?: ChecksPassed | null,
 ): Promise<string> {
   const base = feature.baseBranch ?? 'main'
   const shared = {
     FEATURE_BRANCH: feature.branch,
     BASE_BRANCH: base,
     CHECKS: buildChecksBlock(ctx.config, project),
+    PRIOR_CHECKS: buildPriorChecksBlock(checksPassed, feature.slug),
+    PRIOR_CHECKS_UNLESS: checksPassed ? ", unless the lead's pass below lets you cite it" : '',
     MODE_NAME: site.mode === 'drive' ? 'Drive' : 'Gates',
   }
   const mode =

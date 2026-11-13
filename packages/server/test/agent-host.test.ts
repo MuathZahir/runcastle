@@ -13,7 +13,7 @@ import { createSessionRow, getSessionRow, markSessionLive } from '../src/launche
 import { featureDocKey, recordSent, sentSha } from '../src/mcp/sent-memory'
 import { appendThreadEvent } from '../src/threads/log'
 import { subscribeLive } from '../src/services/bus'
-import { createAgentHost, type AgentHostDeps } from '../src/threads/host'
+import { createAgentHost, type AgentHostDeps, type TurnEnding } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -1265,6 +1265,57 @@ describe('a thread always shows what is happening', () => {
     expect(view.state).toBe('idle')
     expect(view.items.at(-1)).toMatchObject({ kind: 'agent', text: 'The build finished.' })
     expect(getSessionRow(ctx, id)!.awaitingInput).toBe(true)
+  })
+
+  it("tells the lifecycle a self-started turn ended, and that background work still ran as the first one ended", async () => {
+    const ends: { source: string; end: TurnEnding }[] = []
+    let later!: FakeTurn
+    setup(
+      {
+        turn: async (t) => {
+          later = t
+          await t.sdkMessage({
+            type: 'system',
+            subtype: 'background_tasks_changed',
+            tasks: [{ task_id: 'b1', task_type: 'local_bash', description: 'bun test' }],
+            uuid: '00000000-0000-0000-0000-000000000000',
+            session_id: 'acp-session-1',
+          })
+        },
+      },
+      { lifecycle: { turnEnded: (_row, source, end) => void ends.push({ source, end }) } },
+    )
+    const id = thread()
+    await host.prompt(id, { text: 'Test it' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await later.say('The tests passed.')
+    await later.sdkMessage(quietly)
+    await logUntil(id, turnsEnded(2))
+    await vi.waitFor(() => expect(ends).toHaveLength(2))
+    expect(ends[0]).toEqual({ source: 'human', end: { reason: 'end_turn', background: true } })
+    expect(ends[1].source).toBe('agent')
+    expect(ends[1].end.reason).toBe('end_turn')
+  })
+
+  it('tells the lifecycle when the work left running includes subagents', async () => {
+    const ends: TurnEnding[] = []
+    setup(
+      {
+        turn: (t) =>
+          t.sdkMessage({
+            type: 'system',
+            subtype: 'background_tasks_changed',
+            tasks: [{ task_id: 'a1', task_type: 'local_agent', subagent_type: 'Explore', description: 'Map the router' }],
+            uuid: '00000000-0000-0000-0000-000000000000',
+            session_id: 'acp-session-1',
+          }),
+      },
+      { lifecycle: { turnEnded: (_row, _source, end) => void ends.push(end) } },
+    )
+    const id = thread()
+    await host.prompt(id, { text: 'Look around' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await vi.waitFor(() => expect(ends).toEqual([{ reason: 'end_turn', background: true, subagents: true }]))
   })
 
   it('a runcastle prompt sent during a self-started turn waits for its end', async () => {

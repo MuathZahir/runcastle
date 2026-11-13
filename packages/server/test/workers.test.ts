@@ -220,6 +220,12 @@ describe('starting a worker', () => {
     expect(featureContext(ctx, { featureId: feature.id }).workers).toEqual([])
   })
 
+  it('runs an ordinary worker with no model on the chat step, never the review step', async () => {
+    ctx.config.stepModels = { ...ctx.config.stepModels, chat: 'claude-sonnet-5', review: 'claude-haiku-4-5' }
+    const id = await startHeader()
+    expect(getWorker(ctx, id)?.model).toBe('claude-sonnet-5')
+  })
+
   it('refuses a model the human did not annotate', async () => {
     await expect(
       toolStartWorker(ctx, leadSession(), { label: 'X', purpose: 'x', kind: 'on-its-own', goal: 'g', doneWhen: 'd', model: 'not-a-model' }),

@@ -4,6 +4,8 @@ Planned without the human (a headless planning run). Decisions 1–5 were settle
 
 Check first: 7, 8, 10, 13, 19
 
+**Accepted (2026-11-13):** the orchestrator, asked by the human to decide merge or fix, accepted decisions 6–20 as written, citing the human's wish for rules agents apply with judgement rather than a guide per scenario. The human did not answer them one by one.
+
 ## 1. Repeated drives go to a Haiku helper
 **Decision:** When the lead drives the app to check its own work, a helper agent on Haiku does the driving: it opens the scenario or page, does the steps the lead gives, screenshots each major step, and reports what it saw. The lead reads the report and the screenshots that matter, then fixes.
 **Why:** The drive-fix loop runs in the lead's own chat, on its strongest model, with a context that grows every round. Clicking is mechanical work.
