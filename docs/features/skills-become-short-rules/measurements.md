@@ -14,13 +14,13 @@ kind (name, description, input schema). Tokens are estimated as bytes ÷ 4.
 
 ## After
 
-(branch at 72ecd42b, 2026-11-13)
+(branch after the review fixes, 2026-11-13)
 
 | Session | Briefing | Skill | Tools (count) | Total bytes | ~Tokens | Change |
 |---|---:|---:|---:|---:|---:|---:|
-| Feature lead | 1,103 | 4,866 | 14,023 (22) | 19,992 | 4,998 | −39% |
-| Feature lead, planning alone | 1,971 | 9,846 | 14,023 (22) | 25,840 | 6,460 | −44% |
-| Orchestrator | 1,291 | 6,353 | 17,909 (30) | 25,553 | 6,388 | −49% |
+| Feature lead | 1,103 | 5,071 | 14,016 (22) | 20,190 | 5,048 | −39% |
+| Feature lead, planning alone | 1,971 | 10,051 | 14,016 (22) | 26,038 | 6,510 | −44% |
+| Orchestrator | 1,291 | 6,657 | 17,909 (30) | 25,857 | 6,464 | −48% |
 
 The tools column grew (+9% and +7%) because what a tool does, refuses and returns moved into its
 own description (decision 4). The skills and briefings shrank by 65–77%, and most of what
