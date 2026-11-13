@@ -27,10 +27,11 @@ export function featuresWith(workersNeedYou: number): FeatureListItem[] {
       ? {
           ...f,
           liveSession: null,
-          waitingReason: null,
+          working: true,
+          // The newest worker need is the feature's (needs-you decision 12): the Header worker's.
           need:
             workersNeedYou > 0
-              ? { kind: 'answer', words: workersNeedYou === 1 ? 'A worker needs you' : `${workersNeedYou} workers need you`, held: false, since: now - 4 * MIN }
+              ? { why: 'Search in the header, or behind ⌘K only?', since: now - 4 * MIN, threadId: 'worker_header', by: 'agent' as const }
               : null,
         }
       : f,
@@ -43,7 +44,8 @@ export const lead: ThreadEntry = {
   id: LEAD,
   title: 'Plan the sidebar refresh with me',
   role: 'main',
-  state: 'idle',
+  state: 'working',
+  need: null,
   createdAt: now - 2 * DAY,
   updatedAt: now - 6 * MIN,
   runtime: 'claude-code',
@@ -77,8 +79,10 @@ export const COUNTS = 'worker_counts'
 
 /** Two waiting on the human, two working and one queued, three done. */
 export const mixed: WorkerEntry[] = [
-  w(HEADER, 'Header', 'Project switcher, search and the new-chat button', 'needs-you', 3 * HOUR, 4 * MIN),
-  w(THREADS, 'Thread list', 'The open feature’s rows: two lines, status marks', 'needs-you', 2 * HOUR, 12 * MIN),
+  w(HEADER, 'Header', 'Project switcher, search and the new-chat button', 'needs-you', 3 * HOUR, 4 * MIN, {
+    need: { why: 'Search in the header, or behind ⌘K only?', since: now - 4 * MIN, threadId: HEADER, by: 'agent' },
+  }),
+  w(THREADS, 'Thread list', 'The open feature’s rows: two lines, status marks', 'idle', 2 * HOUR, 12 * MIN),
   w('worker_data', 'Worker list data', 'Serve each feature’s workers to the sidebar', 'working', 90 * MIN, 1 * MIN, { kind: 'on-its-own' }),
   w('worker_dots', 'Amber dot rule', 'Light a folded feature’s dot when a worker needs you', 'working', 70 * MIN, 2 * MIN, {
     kind: 'on-its-own',
@@ -106,7 +110,9 @@ export const failed: WorkerEntry[] = [
     kind: 'on-its-own',
     failure: 'container stopped unexpectedly',
   }),
-  w(HEADER, 'Header', 'Project switcher, search and the new-chat button', 'needs-you', 3 * HOUR, 4 * MIN),
+  w(HEADER, 'Header', 'Project switcher, search and the new-chat button', 'needs-you', 3 * HOUR, 4 * MIN, {
+    need: { why: 'Search in the header, or behind ⌘K only?', since: now - 4 * MIN, threadId: HEADER, by: 'agent' },
+  }),
   w('worker_dots', 'Amber dot rule', 'Light a folded feature’s dot when a worker needs you', 'working', 70 * MIN, 2 * MIN, {
     kind: 'on-its-own',
   }),

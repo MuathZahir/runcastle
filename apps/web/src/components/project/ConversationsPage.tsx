@@ -13,8 +13,8 @@ const ORDER: Group[] = ['Active', 'Today', 'Yesterday', 'This week', 'This month
  * Where a conversation lists: working or waiting on you, it is Active whatever
  * its age; otherwise by the calendar day of its last activity.
  */
-export function conversationGroup(t: Pick<ThreadEntry, 'state' | 'updatedAt'>, now: number): Group {
-  if (t.state !== 'idle') return 'Active'
+export function conversationGroup(t: Pick<ThreadEntry, 'state' | 'updatedAt'> & { need?: ThreadEntry['need'] }, now: number): Group {
+  if (t.state !== 'idle' || t.need) return 'Active'
   const today = new Date(now)
   // Midnight, the given number of days back: calendar days, whatever the clocks did.
   const since = (days: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() - days).getTime()
@@ -27,7 +27,7 @@ export function conversationGroup(t: Pick<ThreadEntry, 'state' | 'updatedAt'>, n
 
 /** Waiting on you lists before working, within Active. */
 function waitingFirst(t: ThreadEntry): number {
-  return t.state === 'waiting' ? 0 : t.state === 'working' ? 1 : 2
+  return t.need || t.state === 'waiting' ? 0 : t.state === 'working' ? 1 : 2
 }
 
 /** The filter's match in a title, marked. */
@@ -121,8 +121,8 @@ export function ConversationsPage({
   }
   const groups = ORDER.flatMap((g) => (by.has(g) ? [{ group: g, rows: by.get(g)! }] : []))
 
-  const waiting = threads.filter((t) => t.state === 'waiting').length
-  const working = threads.filter((t) => t.state === 'working').length
+  const waiting = threads.filter((t) => t.need || t.state === 'waiting').length
+  const working = threads.filter((t) => !t.need && t.state === 'working').length
 
   return (
     <div className="@container flex min-h-0 flex-1 flex-col">
