@@ -324,4 +324,15 @@ describe('the scenario edit guard', () => {
     expect(edit('app/models/user.ts')?.reason).toContain('.runcastle/')
     expect(edit('.gitignore')).not.toBeNull()
   })
+
+  // Its brief tells it to save a data copy there; a project drive has no folder.
+  it("opens the feature's scenario-data folder on a feature drive only", () => {
+    const dataDir = join(tmpdir(), 'rc-data', 'scenario-data', 'feat_abc')
+    const write = (filePath: string, scenarioDataDir?: string) =>
+      evaluateEditGuard({ kind: 'scenario', worktreePath, toolName: 'Write', filePath, scenarioDataDir })
+    expect(write(join(dataDir, 'users.json'), dataDir)).toBeNull()
+    expect(write(join(dataDir, 'users.json'))?.reason).toContain('.runcastle/')
+    expect(write(join(tmpdir(), 'rc-data', 'scenario-data', 'feat_other', 'x.json'), dataDir)).not.toBeNull()
+    expect(write('app/models/user.ts', dataDir)?.reason).toContain('RUNCASTLE_SCENARIO_DATA')
+  })
 })

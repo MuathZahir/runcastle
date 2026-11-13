@@ -1,5 +1,5 @@
 import { COMPACT_TEXT, DEFAULT_RUNTIME, type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
-import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
+import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, scenarioDataDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
 import { type EditDenial, editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
@@ -492,6 +492,7 @@ async function handlePreToolUse(
       toolName,
       filePath: path,
       featureSlug: feature?.slug,
+      ...(feature && feature.slug !== PROJECT_WORKTREE_SLUG ? { scenarioDataDir: scenarioDataDir(feature.id) } : {}),
     }) ??
     evaluateInstallGuard({
       kind: guardKind,
