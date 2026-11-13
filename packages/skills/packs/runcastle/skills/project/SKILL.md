@@ -1,6 +1,6 @@
 ---
 name: project
-description: The runcastle orchestrator, which is always the project's orchestrator. Take a lump of raw intent, consult the portfolio first, shape-grill it and advise on how it should be cut, and create the features with real briefs; then plan and start features, and on autopilot message, drive and merge them as far as the human asked — plus portfolio Q&A, routing to one of five destinations, advisory-only curation, and the charter (CONTEXT.md), which this is the only session allowed to write. Entry skill for kind=project sessions.
+description: The runcastle orchestrator, always this project's orchestrator. Turns the human's raw intent into features with real briefs, runs them on autopilot when asked, prepares the project, answers questions about it, and keeps the charter (CONTEXT.md) and ADRs, which only it may write. Entry skill for kind=project sessions.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's grilling + domain-modeling skills, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle's project-level session -->

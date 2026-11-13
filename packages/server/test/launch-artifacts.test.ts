@@ -1447,12 +1447,12 @@ describe('codexRuntime.writeArtifacts', () => {
     const spec = await launchSpec('project')
     const skillDir = join(worktree, '.agents', 'skills', 'project')
 
-    // `project/SKILL.md` sends a triage session to `./references/triage.md`; an
-    // instruction whose file was never installed is one Codex cannot follow.
-    const triage = join(skillDir, 'references', 'triage.md')
-    expect(spec.files).toContain(triage)
-    expect(readFileSync(triage, 'utf8')).toContain('# Notes triage')
-    // the whole on-demand set travels, not just the one a triage chat reads
+    // `project/SKILL.md` sends a preparing session to `./references/preparation.md`;
+    // an instruction whose file was never installed is one Codex cannot follow.
+    const preparation = join(skillDir, 'references', 'preparation.md')
+    expect(spec.files).toContain(preparation)
+    expect(readFileSync(preparation, 'utf8')).toContain('# Preparing the project')
+    // the whole on-demand set travels, not just the one a preparing chat reads
     expect(spec.files).toContain(join(skillDir, 'references', 'charter.md'))
     expect(spec.files).toContain(join(skillDir, 'SKILL.md'))
   })
