@@ -462,6 +462,7 @@ describe('project-session MCP tools', () => {
       'adrsNote',
       'featureIndex',
       'featureIndexNote',
+      'autopilot',
     ])
   })
 

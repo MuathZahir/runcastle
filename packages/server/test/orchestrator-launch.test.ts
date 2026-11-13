@@ -149,12 +149,11 @@ describe('the orchestrating section of the project prompt', () => {
     expect(out.slice(start, end)).not.toMatch(/setting|experimental/i)
   })
 
-  it('names the skill section, the prompts-off posture and what the thread inherited', () => {
-    const out = renderProjectPrompt({ ...brief, held: ['login-form', 'search'] }, 'codex')
+  it('names the skill section, the prompts-off posture and what autopilot allows', () => {
+    const out = renderProjectPrompt(brief, 'codex')
     expect(out).toContain("You are this project's orchestrator.")
     expect(out).toContain('"Orchestrating" section of the `$project`\nskill')
     expect(out).toMatch(/without permission prompts/)
-    expect(out).toContain('### Features you hold')
-    expect(out).toContain('- login-form\n- search')
+    expect(out).toMatch(/only while they are on autopilot in this epic/)
   })
 })

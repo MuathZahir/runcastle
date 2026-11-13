@@ -156,7 +156,7 @@ describe('hooks route', () => {
   })
 
   /** triage-batch decision 18: a prompt Claude Code makes itself is not the human typing. */
-  describe('a helper’s result reaching a chat-owned feature’s lead', () => {
+  describe('a helper’s result reaching an epic’s feature’s lead', () => {
     let chatId: string
 
     beforeEach(() => {
@@ -165,7 +165,7 @@ describe('hooks route', () => {
       chatId = chat.id
       ctx.db
         .update(features)
-        .set({ heldBy: chatId, chatId })
+        .set({ chatId })
         .where(eq(features.id, featureId))
         .run()
       setWait(ctx, sessionId, 'which model?')
@@ -176,22 +176,20 @@ describe('hooks route', () => {
     const row = () => ctx.db.select().from(features).where(eq(features.id, featureId)).get()!
     const humanMessages = () => listAfter(ctx, featureId, 0).filter((e) => e.type === 'lead.human_message')
 
-    it('leaves the owner and the lead’s wait, and emits no human message', async () => {
+    it('leaves the lead’s wait, and emits no human message', async () => {
       await prompt(
         '<task-notification>\n<task-id>b7x2</task-id>\n<status>completed</status>\n' +
           '<summary>Agent "Explore the drive slot" finished</summary>\n<result>The slot lives in Sidebar.tsx.</result>\n</task-notification>',
       )
       await prompt('  <task-notification>\n<summary>Background command "bun test" completed (exit code 0)</summary>\n</task-notification>')
       await prompt('<cross-session-message from="Notes triage">carry on</cross-session-message>')
-      expect(row()).toMatchObject({ heldBy: chatId })
       expect(waitOf(ctx, sessionId)?.why).toBe('which model?')
       expect(row().lastHumanMessageAt).toBeNull()
       expect(humanMessages()).toHaveLength(0)
     })
 
-    it('still lets a really typed prompt move the feature to the human and stamp the mark', async () => {
+    it('still lets a really typed prompt clear the wait and stamp the mark', async () => {
       await prompt('what does <task-notification> mean in the log?')
-      expect(row()).toMatchObject({ heldBy: null })
       expect(waitOf(ctx, sessionId)).toBeNull()
       expect(row().lastHumanMessageAt).not.toBeNull()
       expect(humanMessages()).toHaveLength(1)
