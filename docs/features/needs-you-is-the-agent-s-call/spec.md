@@ -126,6 +126,4 @@ shows its problem on its own row in red, outside the Needs you lane, with no pin
 
 ## Open questions
 
-- None blocking. The check-first decisions (6, 7, 9, 13, 17) may change the shape:
-  if the human keeps workers off `wait_for_you`, workers keep their own status words and
-  only "with you" workers' asks reach the feature row.
+- None. The human confirmed the decisions as a whole on 2026-11-13.

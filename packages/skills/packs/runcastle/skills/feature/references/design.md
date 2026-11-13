@@ -158,6 +158,5 @@ they come back:
   start. The designs wait for the human's own yes in this chat: call
   `wait_for_you` for them, which makes the feature the human's.
 
-"Design to approve" shows by itself, so you need no `wait_for_you` for it.
-`kind: "design"` is only for designs recorded with `show_design`: anything else you show for a yes
-(a file, a picture) is an answer.
+A design waiting for approval does not tell the human by itself: when you want them to
+look, say so with `wait_for_you({ why })`, naming the design.

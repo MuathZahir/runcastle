@@ -1,7 +1,7 @@
 # Decisions — Needs you is the agent's call
 
-Planned without the human (a headless planning run, 2026-11-13). Decisions marked
-human wants.
+Planned without the human (a headless planning run, 2026-11-13), then confirmed by the
+human as a whole on 2026-11-13. Decision 7 took the orchestrator's rule before that yes.
 
 ## 1. One bit: needs you, or not
 **Decision:** Every feature, every worker and every orchestrator chat shows one thing about the human: it needs you, or it does not. When it does, it shows the one line the agent wrote saying why. Nothing else about waiting shows.

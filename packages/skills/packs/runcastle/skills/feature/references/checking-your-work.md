@@ -66,7 +66,7 @@ land their handbacks as usual. Then one message:
 - what you think is wrong;
 - the direction you recommend, and whether it changes what they get;
 
-then `wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`, under an
+then `wait_for_you({ why: "stuck: <a few words>" })`, under an
 epic too. Their direction starts the count again.
 
 ## How and what
