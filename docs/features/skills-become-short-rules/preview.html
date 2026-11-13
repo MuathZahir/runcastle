@@ -294,28 +294,22 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['The skills describe today\'s main', 'Both machinery features the brief names have merged, so rounds, tickets, owners and waiting kinds leave every skill and briefing.'],
-    ['What the rewrite covers', 'The lead and orchestrator skills, their pages, their briefings and their tools; worker, review and Q&A prompts are already lean.', 'assumed'],
-    ['The briefing holds facts; the rules live once, in the skill', 'Copies in two places drift apart, as "one round at a time" shows.', 'assumed'],
-    ['Tool contracts go into the tool descriptions', 'A description is in view exactly when the tool is called, and only for sessions that have it.', 'assumed'],
+    ['What the rewrite covers', 'The lead and orchestrator skills, their pages, their briefings and their tools; worker, review and Q&A prompts are already lean.'],
+    ['The briefing holds facts; the rules live once, in the skill', 'Copies in two places drift apart, as "one round at a time" shows.'],
+    ['Tool contracts go into the tool descriptions', 'A description is in view exactly when the tool is called, and only for sessions that have it.'],
     ['The charter principle is already there', '"Rules, not procedures" in CONTEXT.md already says to sharpen a rule rather than add one.'],
-    ['The lead gets 11 rules, the orchestrator 12, plus short format pages', 'Rules carry the judgement; project preparation keeps one page of facts an agent cannot work out.', 'assumed'],
-    ['Step back after two failed tries, stop after three', 'Today only a worker sent back twice is covered, not the agent\'s own loops.', 'assumed'],
-    ['A plan records only the decisions the human made or must make', 'A recent plan came back with 20 decisions for five sentences of intent.', 'assumed'],
-    ['Planning alone shrinks to one page', '12K of procedure for a run the human reviews anyway; the challenger adds decisions.', 'assumed'],
-    ['Size budgets replace tests that pin wording', 'A budget enforces "sharpen, don\'t add" without freezing words.', 'assumed'],
-    ['Measured before and after', 'A script for sizes, one replay of a past brief before ready, and your next real feature after publish.', 'assumed'],
-    ['The human approves the rule lists in the Plan; workers write on their own', 'Your yes on the rules is required, but two wording sessions are the detail-managing you asked to stop. Changed on the orchestrator\'s advice.', 'assumed']
+    ['The lead gets 11 rules, the orchestrator 12, plus short format pages', 'Rules carry the judgement; project preparation keeps one page of facts an agent cannot work out.'],
+    ['Step back after two failed tries, stop after three', 'Today only a worker sent back twice is covered, not the agent\'s own loops.'],
+    ['A plan records only the decisions the human made or must make', 'A recent plan came back with 20 decisions for five sentences of intent.'],
+    ['Planning alone shrinks to one page', '12K of procedure for a run the human reviews anyway; the challenger adds decisions.'],
+    ['Size budgets replace tests that pin wording', 'A budget enforces "sharpen, don\'t add" without freezing words.'],
+    ['Measured before and after', 'A script for sizes, one replay of a past brief before ready, and your next real feature after publish.'],
+    ['The human approves the rule lists in the Plan; workers write on their own', 'Your yes on the rules is required, but two wording sessions are the detail-managing you asked to stop.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [3, 'Keep a short core of rules in the briefing, always in view', 'If an agent skips opening its skill, it has no rules at all. The challenger would keep a core in the briefing.', 'challenged'],
-    [6, 'Exactly ten rules each, preparation cut to a few lines', 'The counts are my reading of "about ten"; the challenger called fixed counts arbitrary.', 'challenged'],
-    [9, 'Keep the challenger agent in headless planning', 'It is the one check on a planner working alone; I drop it because it adds decisions.'],
-    [10, 'No size budgets; rely on the before-and-after numbers', 'The brief said "pin behaviour"; a budget is my guess at that, and the challenger calls it new machinery.', 'challenged'],
-    [12, 'Two "with you" workers, so you polish each skill\'s wording', 'My first plan had these; the orchestrator advised against spending your time on two sessions.', 'changed']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
