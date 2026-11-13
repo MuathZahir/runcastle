@@ -8,6 +8,7 @@ import { type AgentRuntime, type DriveWorkerKind, type WorkerKind, isDriveWorker
 import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
 import { CODEX_SETUP_MANAGED } from './codex-setup'
+import { LINK_WHAT_YOU_NAME } from './link-rule'
 import { sandboxReviewBriefing } from './review'
 import { type WorkerPermissionMode, permissionModeOf, workerAllowsItself } from './permissions'
 import {
@@ -454,6 +455,7 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
     `- Work in ${IN.repo}, on branch ${sb.branch}. Commit as you go with conventional messages: every commit is copied back to runcastle automatically. Uncommitted work is not handed back.`,
     `- To show the human a screen, call start_dev_server. Your dev server must accept connections from outside the container: listen on 0.0.0.0 (not localhost), port ${sb.port}. The human opens it at ${sb.previewUrl}.`,
     "- Runcastle's tools for you: hand_back, wait_for_you (one short line telling the human you need them; only this call does, ending your turn never does), start_dev_server, read_feature (the feature's state, decisions and the lead's latest turns), show_file (a file or screenshot, into this chat) and park_feature (work for another feature, parked in the backlog). You have no others, and no route to runcastle.",
+    `- ${LINK_WHAT_YOU_NAME}`,
     '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then call wait_for_you({ why }) and end your turn so the human can decide.',
     "- Checks: while you work, run only the tests that cover each slice before you commit it. Run the project-wide static check (typecheck or its equivalent) once at the end, and once more only after fixing what it found. Never run the full test suite or the project's verify commands whole: your lead runs those. Keep your hand-back summary short.",
     whenFixesFail(brief.kind),
