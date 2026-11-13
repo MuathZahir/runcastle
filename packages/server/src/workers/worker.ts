@@ -398,6 +398,23 @@ function howItHandsBack(kind: Exclude<WorkerKind, 'review' | DriveWorkerKind>): 
 }
 
 /**
+ * When a fix keeps failing (agents-test-like-owners decision 8): the same count
+ * the lead keeps, step back after the second failed try, stop after the third.
+ * A worker on its own stops by handing back; one with the human tells them.
+ */
+function whenFixesFail(kind: Exclude<WorkerKind, 'review' | DriveWorkerKind>): string {
+  const stop =
+    kind === 'on-its-own'
+      ? 'stop and hand back with what you tried and what each check showed'
+      : 'stop and tell the human here what you tried, what each check showed and what you recommend, then end your turn'
+  return (
+    '- When a fix fails its check (a drive, a test, the typecheck, a build), count the tries on that problem. ' +
+    'After the second, step back before a third: ask whether the approach is wrong, not just this bug, and change it if so. ' +
+    `After the third, ${stop}.`
+  )
+}
+
+/**
  * The rule every runcastle agent carries word for word: the orchestrator's and
  * the lead's skills and the lone-planning reference hold the same paragraph,
  * and a test keeps the copies identical.
@@ -439,6 +456,7 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
     "- Runcastle's tools for you: hand_back, start_dev_server, read_feature (the feature's state, decisions and the lead's latest turns), show_file (a file or screenshot, into this chat) and park_feature (work for another feature, parked in the backlog). You have no others, and no route to runcastle.",
     '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then end your turn so the human can decide.',
     "- Checks: while you work, run only the tests that cover each slice before you commit it. Run the project-wide static check (typecheck or its equivalent) once at the end, and once more only after fixing what it found. Never run the full test suite or the project's verify commands whole: your lead runs those. Keep your hand-back summary short.",
+    whenFixesFail(brief.kind),
     howItHandsBack(brief.kind),
     '- To hand back, call hand_back with a short summary: what you did, what is left, and every direction the human gave you directly in this conversation (your lead never reads it, so the summary is the only way it learns them). Then end your turn.',
   ].join('\n')

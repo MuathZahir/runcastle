@@ -86,14 +86,33 @@ describe('the feature skill', () => {
 
   it('stops itself when a round makes no progress, and leaves Merge and drafts alone', () => {
     const text = skill()
-    expect(text).toContain('**Runaway guard.**')
+    expect(text).not.toContain('**Runaway guard.**')
     expect(text).toContain('`wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`')
     expect(text).toContain("Merge is the human's, and so is starting a backlog feature.")
     expect(text).toContain('**Never reword a `ticket(<seq>): …` or `runcastle: …` commit**')
   })
 
+  it('owns the work: a helper drives, a step-back after two failed rounds, a stop after three (agents-test-like-owners)', () => {
+    const text = flat(skill())
+    expect(text).toContain('## Own the work')
+    expect(text).toContain('**Check through a helper.** Whenever you drive the app to check your work, the first time too')
+    expect(text).toContain('A round is your fix, or a worker you sent back, followed by any check (drive, test, typecheck, build) still showing that problem.')
+    expect(text).toContain('A new direction from the human resets the count.')
+    expect(text).toContain('**After the second, step back** before a third try')
+    expect(text).toContain('**After the third, stop.** Start nothing new; workers on parts that do not depend on it finish their assignment.')
+    expect(text).toContain('**Change how freely; ask before changing what.**')
+    expect(text).toContain('A worker the plan did not name still needs their yes.')
+    expect(text).toContain('**Name what is broken nearby** and offer to park it in the backlog')
+    expect(text).toContain('a stop after three failed rounds, a For-the-human decision')
+    const ref = flat(read('references', 'checking-your-work.md'))
+    expect(ref).toContain('**The helper never edits code**')
+    expect(ref).toContain('the last screenshot of a drive you are about to call a pass')
+    expect(ref).toContain('`wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`, under an epic too')
+    expect(flat(read('references', 'workers.md'))).toContain("Each send-back on the same problem is a round in that problem's count")
+  })
+
   it('links every reference file it carries', () => {
-    for (const ref of ['grilling', 'spec', 'workers', 'planning-alone', 'preview', 'design']) {
+    for (const ref of ['grilling', 'spec', 'workers', 'planning-alone', 'preview', 'design', 'checking-your-work']) {
       expect(skill()).toContain(`./references/${ref}.md`)
     }
     expect(skill()).toContain('./references/preview-starter.html')
@@ -142,7 +161,7 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
     // one-place-to-answer 9: what the epic answers goes by hand_back; what only the human
     // decides goes to wait_for_you, which makes the feature theirs.
     expect(text).toContain('**Under an epic**, what the epic can answer goes to it with `hand_back({ summary })`: the plan\'s yes under automatic planning, "ready", a merge conflict.')
-    expect(text).toContain('**Anything only the human can decide goes to `wait_for_you`, under an epic too**: what they get, where it lives or who sees it, a design to approve, a stuck worker, a For-the-human decision.')
+    expect(text).toContain('**Anything only the human can decide goes to `wait_for_you`, under an epic too**: what they get, where it lives or who sees it, a design to approve, a stop after three failed rounds, a For-the-human decision.')
     expect(text).toContain('It makes the feature the human\'s at once: the header then reads "Yours", runcastle tells the epic, and you carry on with the human in this chat. It never goes back by itself.')
     expect(text).toContain('**When the human types to you while an epic owns it**, it is theirs too')
     expect(text).toContain('and a sub-agent for as long as it runs')

@@ -162,6 +162,21 @@ describe('the briefing', () => {
     expect(text).toMatch(/static check .* once at the end/)
     expect(text).toMatch(/Never run the full test suite/)
   })
+
+  it('steps back after the second failed try and stops after the third (agents-test-like-owners decision 8)', async () => {
+    const id = await startWorker()
+    const w = getWorker(ctx, id)!
+    const sb = { id, engine: 'docker' as const, runtime: 'claude-code' as const, container: w.container!, repoPath: repo, featureBranch: w.featureBranch, branch: w.branch!, port: 41001, previewUrl: 'http://localhost:41001/' }
+    const brief = (kind: 'on-its-own' | 'with-you' | 'unassigned' | 'review'): string => workerBriefing(sb, { label: w.label, kind, goal: w.goal, doneWhen: w.doneWhen })
+    expect(brief('review')).not.toContain('step back')
+    expect(brief('review')).not.toContain('After the third')
+    for (const kind of ['on-its-own', 'with-you', 'unassigned'] as const) {
+      expect(brief(kind)).toContain('After the second, step back before a third: ask whether the approach is wrong')
+    }
+    expect(brief('on-its-own')).toContain('After the third, stop and hand back with what you tried and what each check showed.')
+    expect(brief('with-you')).toContain('After the third, stop and tell the human here what you tried')
+    expect(brief('unassigned')).toContain('After the third, stop and tell the human here what you tried')
+  })
 })
 
 describe('the conversation kept before the sandbox goes', () => {

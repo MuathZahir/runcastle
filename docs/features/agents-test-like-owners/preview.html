@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Agents test like owners preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.step{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 12px;background:var(--color-surface-raised)}
+.step h3{display:flex;gap:6px;align-items:center}
+.step p{margin-top:4px;color:var(--color-text-secondary);font-size:12px;line-height:18px}
+.step.warn{border-left:2px solid var(--color-warning)}.step.stop{border-left:2px solid var(--color-danger)}.step.cheap{border-left:2px solid var(--color-success)}
+.chat{margin-top:14px;display:grid;gap:8px;max-width:720px}
+.msg{border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);padding:8px 12px;background:var(--color-surface-raised);color:var(--color-text-secondary)}
+.msg b{color:var(--color-text);font-weight:500}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.split ul{margin:6px 0 0;padding-left:16px;color:var(--color-text-secondary)}
+.who{margin-top:12px;display:grid;gap:6px}
+.who div{display:flex;gap:10px;align-items:center}
+@media (max-width:760px){.flow,.split{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Agents test like owners</h1>
+  <p class="lede">Feature agents hand their check drives to a cheap helper, step back when a fix fails twice, stop and tell you after three, change how things are built freely, and ask before changing what you get.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/agents-test-like-owners/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+  <div class="sub"><h3>The check loop</h3><p class="hint">One count per problem, whoever tried: the lead's own fixes and its send-backs of a worker add up.</p>
+  <div class="flow">
+    <div class="step"><h3>Fix</h3><p>The lead (or a worker it sent back) changes the code.</p></div>
+    <div class="step cheap"><h3>Check <a class="pin" data-d="1">1</a><a class="pin" data-d="10">10</a></h3><p>A Haiku helper drives the app and screenshots each step. Tests, typecheck and builds count too <a class="pin" data-d="6">6</a>.</p></div>
+    <div class="step warn"><h3>2nd failure <a class="pin" data-d="2">2</a><a class="pin" data-d="18">18</a></h3><p>Step back: is it this bug or the approach? Say so in one line.</p></div>
+    <div class="step stop"><h3>3rd failure <a class="pin" data-d="3">3</a><a class="pin" data-d="13">13</a></h3><p>The lead stops and tells you; workers on unrelated parts finish. Your new direction resets the count <a class="pin" data-d="20">20</a>.</p></div>
+  </div></div>
+
+  <div class="sub"><h3>What you see in the chat</h3>
+  <div class="chat">
+    <div class="msg"><b>Stepping back:</b> the export still drops the last row after two fixes. Both patched the loop; the real cause is that the page size is read twice. I'm switching to one paged query instead.</div>
+    <div class="msg"><b>Stuck:</b> the export drops rows. Tried 1) loop fix, 2) bounds fix, 3) one paged query. Each drive showed 49 of 50 rows. I think the database view truncates. I recommend exporting from the table directly. That changes what the CSV includes, so it's your call.</div>
+    <div class="msg"><b>Noticed nearby:</b> the settings page saves twice on every click. Want me to park it in the backlog as its own feature? <a class="pin" data-d="5">5</a><a class="pin" data-d="15">15</a></div>
+  </div></div>
+
+  <div class="sub"><h3>How versus what <a class="pin" data-d="4">4</a></h3>
+  <div class="split">
+    <div class="step cheap"><h3>The agent's call, with one line saying why</h3><ul><li>Rewrite how something works</li><li>Switch to another free library</li><li>Throw away its own code</li><li>Send an existing worker back with a new approach <a class="pin" data-d="14">14</a></li></ul></div>
+    <div class="step warn"><h3>Comes to you first</h3><ul><li>A different screen or behaviour</li><li>A dropped requirement, or going against your decision</li><li>A paid service, new setup step, limiting licence, or risk to your data <a class="pin" data-d="19">19</a></li><li>A worker the plan didn't name <a class="pin" data-d="14">14</a></li></ul></div>
+  </div></div>
+
+  <div class="sub"><h3>Workers <a class="pin" data-d="8">8</a></h3><p class="hint">Their opening instructions gain the same rule: step back after the second failed try, then stop after the third. A worker on its own hands back to the lead; a worker working with you tells you. Workers still drive their own work themselves <a class="pin" data-d="17">17</a>.</p></div>
+
+  <div class="sub"><h3>Who builds what</h3>
+  <div class="who">
+    <div><i class="dot live"></i><span><b>The lead, itself:</b> the skill text, the new reference file, the one-line worker briefing rule and the tests. It is a few hundred words, so no workers.</span></div>
+    <div><i class="dot live"></i><span><b>Review worker</b>, checks only (nothing to drive): runs the project's checks and reads the diff against the spec.</span></div>
+  </div></div>
+<!-- FILL:screen -->
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Server-enforced counts or stops, if agents ignore the text</li>
+      <li><i class="dot"></i>Workers handing their drives to a helper</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Review speed (Faster, cheaper reviews)</li>
+      <li><i class="dot"></i>Making or running scenarios (Each feature's own scenarios)</li>
+      <li><i class="dot"></i>The orchestrator's skill (at its size cap)</li>
+      <li><i class="dot"></i>Any new tool, wait kind or server code</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <div class="flow" style="grid-template-columns:repeat(3,1fr)">
+        <div class="step"><h3>Feature skill main file</h3><p>A short "own the work" section replaces the runaway-guard bullet and keeps its exact <span class="mono">stuck</span> wait. It ends no longer than today, by tightening other text <a class="pin" data-d="16">16</a>.</p></div>
+        <div class="step"><h3>New reference file</h3><p>How to brief the helper, pick its model <a class="pin" data-d="9">9</a>, drive web, CLI or API <a class="pin" data-d="12">12</a>, read its report <a class="pin" data-d="11">11</a>, and write a stop message.</p></div>
+        <div class="step"><h3>Worker briefing string</h3><p>One line under "How you work" in the server's worker briefing. The review worker is untouched <a class="pin" data-d="8">8</a>. The workers reference notes that send-backs count <a class="pin" data-d="7">7</a>.</p></div>
+      </div>
+      <p class="hint" style="margin-top:10px">Tested at the existing feature-skill content test and worker-briefing tests. The never-guess and packaging tests stay green.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Repeated drives go to a Haiku helper', 'The drive-fix loop runs on the strongest model with a growing context; clicking is mechanical.'],
+    ['Step back after the second failed round', 'Agents get stuck on one bug instead of asking whether the approach is wrong.'],
+    ['Stop after three', 'The human watched an agent loop for an hour while assuming all was well.'],
+    ['Free to change how, asks before changing what', 'Act like an owner without taking the human\'s decisions.'],
+    ['Owner outside the task too', 'An owner notices; a feature stays one feature.'],
+    ['Every kind of check counts, not only drives', 'Looping on a failing test is the same trap as looping on a drive.', 'assumed'],
+    ['One count per problem, and it replaces the old runaway guard', 'Two rules with different counts for one situation would confuse the agent.', 'assumed'],
+    ['Workers carry the same rule in their own briefing', 'Workers loop the same way, and the briefing is the only text they surely read.', 'assumed'],
+    ['The helper\'s model comes from the human\'s model notes', 'Keeps Haiku here and works for every runcastle user.', 'assumed'],
+    ['Every self-check drive goes to the helper, the first included', 'One rule is easier to follow, and the first drive costs as much context as the rest.', 'assumed'],
+    ['The helper drives and reports; the lead judges and fixes', 'Judging needs the strong model; one place where fixes happen.', 'assumed'],
+    ['The helper drives whatever this project is', 'Runcastle serves projects of every shape, with or without scenarios.', 'assumed'],
+    ['A stop halts the lead\'s own work, not workers on other parts', 'The approach worry applies only to dependent parts; halting independent workers wastes time.', 'assumed'],
+    ['A change of approach never starts a new worker without a yes', 'Workers cost money; an owner can change the approach without changing the team.', 'assumed'],
+    ['Nearby problems: the lead offers, workers report', 'Parking without asking would fill the backlog with unwanted things.', 'assumed'],
+    ['The rules live in the feature skill; the helper recipe in a reference file', 'Rules always in view; the recipe only when driving; the skill does not grow.', 'assumed'],
+    ['Workers do not get their own helper', 'The brief places the helper on the lead\'s drives; a worker\'s context is thrown away anyway.', 'assumed'],
+    ['The step-back is said out loud', 'One line makes the hidden count visible and hard to dodge.', 'assumed'],
+    ['Some "how" changes still come to the human', 'A new cost, setup step or data risk lands on the human even if it is "how".', 'assumed'],
+    ['A new direction from the human starts a fresh count', 'The human\'s direction is a new approach; old failures should not count against it.', 'assumed']
+  ]
+  // <!-- FILL:C -->
+  // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [7, 'Keep the old, stricter guard for workers sent back; apply the new rule to the lead\'s own fixes only.', 'It gives a failing worker one more try than today. The challenger disagreed: you asked about the agent\'s own loops, not about loosening workers.', 'challenged'],
+    [8, 'Leave workers\' instructions alone and rely on the lead\'s count.', 'The brief says "no new machinery". This is one line of text, but it lives in server code.'],
+    [10, 'The lead drives the first time itself; only repeats go to the helper.', 'Your words were "repeated drives". The challenger would follow them.', 'challenged'],
+    [13, 'Stop everything, workers included.', 'The orchestrator changed it: workers on independent parts now finish their assignment.', 'changed by the orchestrator'],
+    [19, 'Every "how" change is the agent\'s call, as decision 4 reads.', 'It narrows what you agreed in decision 4, for cost, setup and data risks.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
