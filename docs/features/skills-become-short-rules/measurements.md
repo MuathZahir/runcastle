@@ -23,7 +23,7 @@ kind (name, description, input schema). Tokens are estimated as bytes ÷ 4.
 | Orchestrator | 1,291 | 6,353 | 17,909 (30) | 25,553 | 6,388 | −49% |
 
 The tools column grew (+9% and +7%) because what a tool does, refuses and returns moved into its
-own description (decision 4). The skills and briefings shrank by about 75–80%, and most of what
+own description (decision 4). The skills and briefings shrank by 65–77%, and most of what
 remains at start is now the tool list. Reference pages read on demand also shrank: the lead's from
 about 52K to 20K (plus the unchanged 15K Plan starter), the orchestrator's from about 66K to 9K.
 
