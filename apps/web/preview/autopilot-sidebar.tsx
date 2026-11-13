@@ -10,7 +10,6 @@ import { cx, IconButton } from '../src/ui'
 import { CollapseSidebarButton } from '../src/components/Frame'
 import { featureStateWords, Shelf, SidebarBackdrop, SidebarBackdropDrawn, SidebarFeatureRow, SidebarHead, SidebarStatusLine } from '../src/components/SidebarParts'
 import { SidebarEpics } from '../src/components/SidebarEpics'
-import { AutopilotMark } from '../src/components/autopilot/AutopilotParts'
 import { DesktopRail, PhoneRail, ProjectRailContext, type ProjectRailApi } from '../src/components/ProjectRail'
 import { IconArchive, IconDoc, IconGitMerge, IconList, IconMore, IconPanelRight, IconPencil, IconPlus, IconSearch } from '../src/icons'
 import { EpicIcon } from '../src/lib/epic-look'
@@ -20,19 +19,19 @@ import { shortcut } from '../src/lib/platform'
 import { applyStoredTheme, useTheme } from '../src/lib/theme'
 import { useIsPhone } from '../src/lib/use-phone'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
-import { useDesignReport, useDesignTweaks } from '../../../.runcastle/preview/design-report'
-import { DesignPanel, makeDeadEnd, type TweakSpec } from './autopilot-design-panel'
+import { useDesignReport } from '../../../.runcastle/preview/design-report'
+import { DesignPanel, makeDeadEnd } from './autopilot-design-panel'
 import { RAIL_TILES, STATES, type Sample, type StateKey } from './autopilot-sidebar-data'
 
 /**
  * Sidebar on autopilot (docs/features/epics-on-autopilot decisions 7, 14, 17):
  * the sidebar column with the epic "Checkout flow" off and on autopilot beside
  * ordinary epics. The rail, the head, the epic list, the cards, the rows and
- * the shelves are the real components; the autopilot looks the Tweaks switch
- * between are this page's own stylesheet over the card's `data-autopilot`.
+ * the shelves are the real components, the autopilot look included (the
+ * Moving edge, theme.css's `autopilot-edge`): this page shows exactly what the
+ * app does.
  *
- * States: ?state=off | on | needs-you | partial | phone.
- * Tweaks: "Autopilot look" (edge | scan | rail), "Locked mark" (lock | autopilot).
+ * States: ?state=off | on | needs-you | left-for-grill | phone.
  */
 
 applyStoredTheme()
@@ -46,157 +45,6 @@ const pickState = (): StateKey => STATES.find((x) => x.key === params.get('state
 
 /** A realistic sidebar: a little past the 248 default, as most people drag it. */
 const SIDEBAR_W = 288
-
-const TWEAKS: TweakSpec[] = [
-  {
-    name: 'look',
-    label: 'Autopilot look',
-    options: [
-      { value: 'edge', label: 'Moving edge' },
-      { value: 'scan', label: 'Scanlines' },
-      { value: 'rail', label: 'Tinted rail' },
-    ],
-  },
-  {
-    name: 'mark',
-    label: 'Locked mark',
-    options: [
-      { value: 'lock', label: 'Lock' },
-      { value: 'autopilot', label: 'Autopilot glyph' },
-    ],
-  },
-]
-
-type Tweaks = { look: string; mark: string }
-
-// ---------------------------------------------------------------------------
-// The autopilot looks: a stylesheet over the card's data-autopilot. Only the
-// epic's own colour (--epic, --epic-text), theme tokens, and motion that the
-// reduced-motion rule below stills.
-// ---------------------------------------------------------------------------
-
-const RING = 'inset 0 0 0 1px color-mix(in oklab, var(--epic) 34%, transparent)'
-
-/** The halo outside the card: the epic's colour, soft, all round. */
-const HALO = '0 0 0 1px color-mix(in oklab, var(--epic) 14%, transparent), 0 0 26px -8px color-mix(in oklab, var(--epic) 60%, transparent)'
-
-/* What both bright looks share: the head's wash a step brighter, and the rows
-   under it faintly in the epic's colour, so the card reads as one machine. */
-const LIT = `
-  [data-autopilot] > [data-epic] {
-    background: linear-gradient(100deg, color-mix(in oklab, var(--epic) 26%, var(--color-canvas)), color-mix(in oklab, var(--epic) 8%, var(--color-canvas)) 80%);
-  }
-  [data-autopilot] > [data-epic] + div {
-    background: linear-gradient(to bottom, color-mix(in oklab, var(--epic) 6%, transparent), transparent 70%);
-  }
-`
-
-const LOOKS: Record<string, string> = {
-  /* A light travels the card's edge in the epic's colour, over a tinted
-     hairline, with a soft drop of the same colour under it. When the epic
-     waits on you the light stops: the edge is evenly lit. */
-  edge: `
-    ${LIT}
-    [data-autopilot] {
-      box-shadow: ${RING}, ${HALO};
-    }
-    [data-autopilot]::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      z-index: 1;
-      border-radius: inherit;
-      padding: 1.5px;
-      pointer-events: none;
-      background: conic-gradient(
-        from var(--orbit-angle),
-        transparent 0 52%,
-        color-mix(in oklab, var(--epic) 55%, transparent) 72%,
-        var(--epic-text) 80%,
-        color-mix(in oklab, var(--epic) 55%, transparent) 85%,
-        transparent 96%
-      );
-      mask: linear-gradient(black 0 0) content-box exclude, linear-gradient(black 0 0);
-      animation: orbit 5s linear infinite;
-    }
-    [data-autopilot][data-autopilot-state='asking']::after {
-      animation: none;
-      background: color-mix(in oklab, var(--epic) 55%, transparent);
-    }
-    @media (prefers-reduced-motion: reduce) {
-      [data-autopilot]::after { background: color-mix(in oklab, var(--epic) 55%, transparent); }
-    }
-  `,
-  /* Fine scanlines over the card, fading down, a soft inner glow, and a slow
-     scan band passing top to bottom while the epic works. */
-  scan: `
-    ${LIT}
-    [data-autopilot] {
-      box-shadow: ${RING}, inset 0 0 22px -8px color-mix(in oklab, var(--epic) 55%, transparent), ${HALO};
-    }
-    [data-autopilot]::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      z-index: 1;
-      pointer-events: none;
-      background: repeating-linear-gradient(to bottom, color-mix(in oklab, var(--epic) 12%, transparent) 0 1px, transparent 1px 3px);
-      mask-image: linear-gradient(to bottom, black, transparent 85%);
-    }
-    [data-autopilot]::after {
-      content: '';
-      position: absolute;
-      inset-inline: 0;
-      top: 0;
-      height: 45%;
-      z-index: 1;
-      pointer-events: none;
-      background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--epic) 12%, transparent) 80%, color-mix(in oklab, var(--epic-text) 50%, transparent) 99%, transparent);
-      transform: translateY(-110%);
-      animation: autopilotScan 4.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-    }
-    [data-autopilot][data-autopilot-state='asking']::after { display: none; }
-    @keyframes autopilotScan { 0% { transform: translateY(-110%); } 65%, 100% { transform: translateY(240%); } }
-    @media (prefers-reduced-motion: reduce) {
-      [data-autopilot]::after { display: none; }
-    }
-  `,
-  /* Quiet: the epic's colour as a rail down the card's left edge, the whole
-     card faintly tinted, and one bead of light running down the rail. */
-  rail: `
-    [data-autopilot] {
-      background: linear-gradient(to right, color-mix(in oklab, var(--epic) 7%, var(--color-fill-card)), var(--color-fill-card) 45%);
-      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--epic) 22%, transparent);
-    }
-    [data-autopilot]::before {
-      content: '';
-      position: absolute;
-      inset-block: 0;
-      left: 0;
-      width: 3px;
-      z-index: 1;
-      pointer-events: none;
-      background: linear-gradient(to bottom, var(--epic), color-mix(in oklab, var(--epic) 40%, transparent));
-    }
-    [data-autopilot]::after {
-      content: '';
-      position: absolute;
-      inset-block: 0;
-      left: 0;
-      width: 3px;
-      z-index: 1;
-      pointer-events: none;
-      background: linear-gradient(to bottom, transparent, var(--epic-text), transparent) no-repeat;
-      background-size: 100% 36px;
-      animation: autopilotBead 3.2s ease-in-out infinite;
-    }
-    [data-autopilot][data-autopilot-state='asking']::after { display: none; }
-    @keyframes autopilotBead { from { background-position: 0 -36px; } to { background-position: 0 calc(100% + 36px); } }
-    @media (prefers-reduced-motion: reduce) {
-      [data-autopilot]::after { display: none; }
-    }
-  `,
-}
 
 // ---------------------------------------------------------------------------
 // Rows and menus
@@ -256,7 +104,7 @@ function useRail(): ProjectRailApi {
 // The sidebar, the panel stand-in
 // ---------------------------------------------------------------------------
 
-function DesignSidebar({ s, phone, mark }: { s: Sample; phone: boolean; mark: string }) {
+function DesignSidebar({ s, phone }: { s: Sample; phone: boolean }) {
   const theme = useTheme()
   return (
     <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
@@ -275,7 +123,6 @@ function DesignSidebar({ s, phone, mark }: { s: Sample; phone: boolean; mark: st
           epicActions={epicActions}
           featureActions={featureActions}
           onNewEpic={noop}
-          {...(mark === 'autopilot' ? { lockMark: <AutopilotMark word={false} /> } : {})}
         />
         <Shelves s={s} />
       </div>
@@ -319,8 +166,7 @@ function Panel() {
 
 function Page() {
   const [state, setState] = useState<StateKey>(pickState)
-  const [tweaks, setTweak] = useDesignTweaks<Tweaks>({ look: 'edge', mark: 'lock' })
-  useDesignReport(state, tweaks)
+  useDesignReport(state)
   const sample = useMemo(() => STATES.find((s) => s.key === state)!.make(), [state])
   const isPhone = useIsPhone()
   const rail = useRail()
@@ -331,14 +177,13 @@ function Page() {
   const phoneFrame = state === 'phone' || isPhone
   return (
     <ProjectRailContext.Provider value={rail}>
-      <style>{LOOKS[tweaks.look] ?? LOOKS.edge}</style>
       {phoneFrame ? (
         <div className={cx('flex h-dvh justify-center', isPhone ? 'bg-canvas' : 'items-center bg-[color-mix(in_oklab,var(--color-canvas)_70%,black)]')}>
           <div
             className={cx('flex h-full flex-col overflow-hidden bg-canvas', !isPhone && 'my-6 h-[844px] max-h-[calc(100dvh-48px)] rounded-[28px] shadow-[0_0_0_1px_var(--color-border)]')}
             style={{ width: isPhone ? '100%' : 390 }}
           >
-            <DesignSidebar s={sample} phone mark={tweaks.mark} />
+            <DesignSidebar s={sample} phone />
           </div>
         </div>
       ) : (
@@ -348,21 +193,14 @@ function Page() {
             <DesktopRail />
             <SidebarBackdropDrawn.Provider value>
               <div className="flex h-full shrink-0 flex-col" style={{ width: SIDEBAR_W }}>
-                <DesignSidebar s={sample} phone={false} mark={tweaks.mark} />
+                <DesignSidebar s={sample} phone={false} />
               </div>
             </SidebarBackdropDrawn.Provider>
           </div>
           <Panel />
         </div>
       )}
-      <DesignPanel
-        states={STATES}
-        state={state}
-        onPick={go}
-        tweaks={TWEAKS}
-        values={tweaks}
-        onTweak={(name, value) => setTweak(name as keyof Tweaks, value)}
-      />
+      <DesignPanel states={STATES} state={state} onPick={go} />
     </ProjectRailContext.Provider>
   )
 }

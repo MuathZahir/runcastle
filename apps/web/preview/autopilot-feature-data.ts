@@ -1,4 +1,4 @@
-import type { ThreadItem, ToolCall } from '../src/lib/chat-thread'
+import type { ThreadEntry, ThreadItem, ToolCall } from '../src/lib/chat-thread'
 
 /**
  * Sample chat for /preview/autopilot-feature.html (epics-on-autopilot
@@ -8,6 +8,21 @@ import type { ThreadItem, ToolCall } from '../src/lib/chat-thread'
  */
 
 export const EPIC = { id: 'chat_checkout', title: 'Checkout flow', color: 'violet', icon: 'credit-card' } as const
+/** The epic's chat, as the chat list holds it: what the header's crumb reads its look from. */
+export const EPIC_CHAT: ThreadEntry = {
+  id: EPIC.id,
+  title: EPIC.title,
+  role: 'project',
+  state: 'idle',
+  createdAt: Date.now() - 7 * 3_600_000,
+  updatedAt: Date.now() - 60_000,
+  runtime: 'claude-code',
+  epicNamed: true,
+  need: null,
+  color: EPIC.color,
+  icon: EPIC.icon,
+  autopilot: true,
+}
 export const FEATURE = 'Checkout page'
 /** What "End autopilot" gives back: every feature the epic runs. */
 export const LOCKED_FEATURES = ['Checkout page', 'Saved cards', 'Receipt emails']
@@ -29,7 +44,7 @@ let n = 0
 const call = (kind: ToolCall['kind'], title: string, status: ToolCall['status'] = 'completed'): ToolCall => ({ id: `c${++n}`, kind, title, status })
 const tools = (...calls: ToolCall[]) => ({ kind: 'tools' as const, id: `s${++n}`, calls })
 
-/** A line from the epic: an orchestrator message, which the chat shows under "Epic". */
+/** A line from the epic: an orchestrator message, which the chat signs with the epic's name. */
 function fromEpic(id: string, text: string): ThreadItem {
   return {
     kind: 'user',

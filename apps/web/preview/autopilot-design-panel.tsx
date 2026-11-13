@@ -6,35 +6,26 @@ import { useIsPhone } from '../src/lib/use-phone'
 /**
  * The epics-on-autopilot design pages' own controls (autopilot-sidebar,
  * autopilot-feature): a card in the bottom-right corner labelled
- * "Design · states", one button per state with the current one marked, the
- * Tweaks folded behind one button, and the theme. Not part of the design.
+ * "Design · states", one button per state with the current one marked, and
+ * the theme. Not part of the design. The pages show exactly what the app
+ * does, so there are no tweaks.
  */
 
-export interface TweakSpec {
-  name: string
-  label: string
-  options: { value: string; label: string }[]
-}
+/** The panel's open height and the gap under it: what a page keeps clear below ~1500px so the panel never covers its foot. */
+export const DESIGN_PANEL_CLEARANCE = 'max-[1500px]:pb-32'
 
 export function DesignPanel<K extends string>({
   states,
   state,
   onPick,
-  tweaks,
-  values,
-  onTweak,
 }: {
   states: { key: K; label: string; hint: string }[]
   state: K
   onPick: (k: K) => void
-  tweaks: TweakSpec[]
-  values: Record<string, string>
-  onTweak: (name: string, value: string) => void
 }) {
   const theme = useTheme()
   const phone = useIsPhone()
   const [open, setOpen] = useState(new URLSearchParams(location.search).get('panel') !== 'folded' && !phone)
-  const [tweaksOpen, setTweaksOpen] = useState(false)
   const chip = (on: boolean) =>
     cx('h-6 shrink-0 cursor-pointer rounded-md px-2 text-left whitespace-nowrap', on ? 'bg-surface-selected text-text' : 'hover:bg-surface-hover hover:text-text-secondary')
   if (!open) {
@@ -73,32 +64,6 @@ export function DesignPanel<K extends string>({
         ))}
       </div>
       <p className="m-0 px-2 pb-0.5 leading-4 text-pretty">{states.find((s) => s.key === state)?.hint}</p>
-      <div className="border-t border-border-subtle pt-1">
-        <button type="button" aria-expanded={tweaksOpen} onClick={() => setTweaksOpen(!tweaksOpen)} className={chip(tweaksOpen)}>
-          Tweaks {tweaksOpen ? '▾' : '▸'}
-        </button>
-        {tweaksOpen && (
-          <div className="flex flex-col gap-1 px-0.5 pt-1">
-            {tweaks.map((t) => (
-              <div key={t.name} role="radiogroup" aria-label={t.label} className="flex flex-wrap items-center gap-1">
-                <span className="w-24 shrink-0 px-1.5 text-text-secondary">{t.label}</span>
-                {t.options.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={values[t.name] === o.value}
-                    onClick={() => onTweak(t.name, o.value)}
-                    className={chip(values[t.name] === o.value)}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

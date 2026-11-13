@@ -98,12 +98,14 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
  * "Merged", or its shelf. An up-next draft says what it starts after, or the
  * problem that keeps it from starting (decision 16).
  */
-export function featureStateWords(f: FeatureListItem): string {
-  const need = needsMe(f)
+export function featureStateWords(f: FeatureListItem, locked = false): string {
+  // Locked to its epic's autopilot (epics-on-autopilot decision 17): never Needs you; the epic carries it.
+  const need = locked ? null : needsMe(f)
   if (need) return `Needs you · ${need.why}`
   if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Merged'
   if (f.status === 'archived') return 'Archived'
+  if (locked) return f.working ? 'Working' : 'Idle'
   return triageOf(f) === 'working' ? 'Working' : 'Idle'
 }
 

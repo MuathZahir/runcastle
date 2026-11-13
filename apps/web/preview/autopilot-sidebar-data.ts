@@ -86,14 +86,15 @@ function shelves(): Pick<Sample, 'backlog' | 'shipped' | 'archived'> {
 // The epic this page is about: "Checkout flow"
 // ---------------------------------------------------------------------------
 
-type Mode = 'off' | 'on' | 'needs-you' | 'partial'
+type Mode = 'off' | 'on' | 'needs-you' | 'left-for-grill'
 
 /**
  * Checkout flow. Off: an ordinary epic, one of its features asking you about
  * a design. On: the same features locked to the run — Working or Idle, never
  * Needs you. Needs you: the epic's own chat waits on you, its features carry
- * on. Partial: one feature was left out of the run for your grill; it stays
- * yours, with its own amber dot.
+ * on. Left for grill: the run plan left one feature for your grill; autopilot
+ * locks the whole epic (decision 14), so it sits locked and untouched, Idle,
+ * until you end autopilot.
  */
 function checkout(mode: Mode): Epic {
   const on = mode !== 'off'
@@ -107,9 +108,9 @@ function checkout(mode: Mode): Epic {
   const receipts = feature('Receipt emails', is.idle(4, 4))
   const locked = (f: FeatureListItem) => ({ feature: f, locked: on })
   const features = [locked(page), locked(cards), locked(receipts)]
-  if (mode === 'partial') {
-    // Left for the human's grill (decision 14): unlocked, and asking as any feature does.
-    features.unshift({ feature: feature('Refunds', is.needs('Plan to approve')), locked: false })
+  if (mode === 'left-for-grill') {
+    // Left for the human's grill (decision 14): locked with the rest, nobody working it.
+    features.push({ feature: feature('Refunds', { lastActivityAt: now - 3 * HOUR }), locked: true })
   }
   if (mode === 'off') {
     // Off, the asking feature leads its epic, as the list orders it.
@@ -156,19 +157,24 @@ function resting(): Epic[] {
 
 function sample(mode: Mode): Sample {
   const epic = checkout(mode)
-  const asking = mode === 'off' || mode === 'needs-you' || mode === 'partial'
+  const asking = mode === 'off' || mode === 'needs-you'
   // Yellow first: an epic that asks (itself or through a feature it holds) leads, in recency.
   const epics = asking ? [epic, agentStatus(), workerHandoff(), ...resting()] : [agentStatus(), epic, workerHandoff(), ...resting()]
   return { epics, ...shelves(), total: 23, openChat: null }
 }
 
-export type StateKey = 'off' | 'on' | 'needs-you' | 'partial' | 'phone'
+export type StateKey = 'off' | 'on' | 'needs-you' | 'left-for-grill' | 'phone'
 
 export const STATES: { key: StateKey; label: string; hint: string; make: () => Sample }[] = [
   { key: 'off', label: 'Off', hint: 'Checkout flow as any epic today: its features are yours, one asks you about a design.', make: () => sample('off') },
   { key: 'on', label: 'On', hint: 'On autopilot: the card wears the look; its features are locked, Working or Idle, never Needs you.', make: () => sample('on') },
   { key: 'needs-you', label: 'Needs you', hint: 'The epic itself waits on you: the amber dot is on its card; its locked features carry on.', make: () => sample('needs-you') },
-  { key: 'partial', label: 'Partial', hint: 'One feature was left out of the run for your grill: unlocked, asking as any feature does.', make: () => sample('partial') },
+  {
+    key: 'left-for-grill',
+    label: 'Left for grill',
+    hint: 'The run plan left Refunds for your grill. Autopilot locks the whole epic, so it sits locked and Idle until you end autopilot.',
+    make: () => sample('left-for-grill'),
+  },
   { key: 'phone', label: 'Phone', hint: 'The On state on a phone: the sidebar is the whole screen.', make: () => sample('on') },
 ]
 

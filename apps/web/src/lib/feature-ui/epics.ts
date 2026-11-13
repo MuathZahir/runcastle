@@ -51,7 +51,8 @@ export function featureIsYellow(f: FeatureListItem): boolean {
 
 /** Something in the epic is yellow: its chat needs you, or one of its features does (decision 8). */
 export function epicIsYellow(epic: Pick<Epic, 'chat' | 'features'>): boolean {
-  return !!epic.chat.need || epic.features.some((x) => featureIsYellow(x.feature))
+  // A locked feature's needs are its epic's (epics-on-autopilot decision 17): only the chat's own counts for it.
+  return !!epic.chat.need || epic.features.some((x) => !x.locked && featureIsYellow(x.feature))
 }
 
 /** Inside an epic: needs you first, then working, idle, up next; ties keep their order. */
@@ -138,11 +139,13 @@ export function epicsFrom(
   const moving = features.filter(inEpic)
   const epics = epicChats.map((chat) => ({
     chat,
-    features: moving.filter((f) => f.chatId === chat.id).map((feature) => ({ feature })),
+    // Locked to its epic's autopilot (epics-on-autopilot decision 14): the server says so on the feature.
+    features: moving.filter((f) => f.chatId === chat.id).map((feature) => ({ feature, locked: !!feature.autopilot })),
     color: chat.color ?? null,
     icon: chat.icon ?? null,
     // The list carries shipped features for the Shipped shelf, so the count needs no server read.
     shipped: features.filter((f) => f.status === 'shipped' && f.chatId === chat.id).length,
+    autopilot: !!chat.autopilot,
   }))
   const other = moving.filter((f) => !f.chatId || !ids.has(f.chatId))
   return { epics, other }

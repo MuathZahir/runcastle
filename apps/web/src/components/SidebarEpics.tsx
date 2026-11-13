@@ -8,7 +8,7 @@ import { epicIsIdle, idleEpicFacts, orderEpicList, type Epic } from '../lib/feat
 import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
-import { AutopilotMark } from './autopilot/AutopilotParts'
+import { AutopilotMark, AutopilotTrail } from './autopilot/AutopilotParts'
 import { featureStateWords, openRowMenu, SIDEBAR_CARD, SidebarFeatureRow, ThreadListMore } from './SidebarParts'
 
 /**
@@ -80,6 +80,27 @@ export function epicCrumb(
     // It gives way with the owner and the title, down to a few letters.
     shrink: true,
     ...(epic.title.length > 6 ? { floor: 'min-w-24' } : {}),
+  }
+}
+
+/**
+ * A locked feature's first crumb (epics-on-autopilot decision 3): "<epic> ·
+ * Autopilot", the epic's glyph before it. The name opens the epic's chat and
+ * gives way first; the mark never does. The epic's look comes from the chat
+ * list when it holds it; its name is the server's.
+ */
+export function autopilotCrumb(
+  autopilot: { epicId: string; epicName: string },
+  threads: readonly ThreadEntry[],
+  onOpen: ((chatId: string) => void) | undefined,
+): Crumb {
+  const chat = threads.find((t) => t.id === autopilot.epicId && t.role === 'project')
+  const epic = { title: chat?.title ?? autopilot.epicName, color: chat?.color ?? null }
+  return {
+    label: <AutopilotTrail epic={epic} working={chat?.state === 'working'} onOpenEpic={() => onOpen?.(autopilot.epicId)} />,
+    icon: <EpicGlyph small color={chat?.color} icon={chat?.icon} />,
+    shrink: true,
+    floor: 'min-w-44',
   }
 }
 
@@ -260,6 +281,8 @@ export function SidebarEpicCard({
       className={cx(
         // One hairline in every state: the head says which epic is open and which works.
         'card relative isolate shrink-0 overflow-hidden rounded-lg',
+        // The Moving edge (theme.css): its light travels while the epic works, stops while it asks.
+        autopilot && 'autopilot-edge',
       )}
     >
       <div
@@ -488,8 +511,6 @@ export interface SidebarEpicsProps {
   onNewEpic?: () => void
   /** The new, still-empty epic chat is in front: the slot shows it open. */
   newEpicOpen?: boolean
-  /** The mark a locked feature's row wears at its title's end (epics-on-autopilot); a small lock by default. */
-  lockMark?: ReactNode
 }
 
 /** A locked feature's mark: a small lock in its epic's colour. */
@@ -523,7 +544,6 @@ export function SidebarEpics({
   noun = 'epic',
   onNewEpic,
   newEpicOpen = false,
-  lockMark,
 }: SidebarEpicsProps) {
   const groups = orderEpicList(epics, other)
   const slim = groups.map((g) => g.kind === 'epic' && epicIsIdle(g.epic))
@@ -539,7 +559,7 @@ export function SidebarEpics({
         actions={featureActions?.(f) ?? []}
         nested
         words={words}
-        {...(locked ? { lock: lockMark ?? <LockedMark /> } : {})}
+        {...(locked ? { lock: <LockedMark /> } : {})}
         {...(workers ? { workers } : {})}
       />
     )
@@ -576,7 +596,7 @@ export function SidebarEpics({
                 icon={g.epic.icon}
                 autopilot={!!g.epic.autopilot}
               >
-                {g.epic.features.map((x) => row(x.feature, featureStateWords(x.feature), !!x.locked))}
+                {g.epic.features.map((x) => row(x.feature, featureStateWords(x.feature, !!x.locked), !!x.locked))}
               </SidebarEpicCard>
             ) : (
               <OtherFeaturesCard label="Other features">{g.features.map((f) => row(f, featureStateWords(f)))}</OtherFeaturesCard>

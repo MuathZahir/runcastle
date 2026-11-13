@@ -11,7 +11,7 @@ import { scenarioErrandHint } from '../chat/ScenarioChat'
 import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
 import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
 import { useFeatureWorkers, workerColumnProps, workerInFront } from '../workers/WorkerChat'
-import { WorkerLinksContext } from '../chat/thread/FeatureCardItems'
+import { OrchestratorNameContext, WorkerLinksContext } from '../chat/thread/FeatureCardItems'
 import { StartAgent, type StartAgentPress } from './StartAgent'
 
 const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans the work and hands it to workers.'
@@ -53,6 +53,8 @@ export function FeatureChat({
   onPlanItYourself,
   refusal,
   onView,
+  lock,
+  epicName = null,
 }: {
   full: FeatureFull
   column: FeatureChatColumn
@@ -77,6 +79,14 @@ export function FeatureChat({
   refusal?: string | undefined
   /** Open the panel view a notice points at. */
   onView: (target: ChatNoticeTarget) => void
+  /**
+   * The feature is on its epic's autopilot (epics-on-autopilot decisions 3, 16):
+   * the lock note, in place of the message box of every chat on it — the lead's
+   * and its workers'. No Start to offer either.
+   */
+  lock?: ReactNode
+  /** Its epic's name: what the epic's messages in the chat are signed with (decision 22). */
+  epicName?: string | null
 }) {
   const { inFront, main, scenario } = column
   const isMain = inFront === main
@@ -118,13 +128,14 @@ export function FeatureChat({
     }
   }
   // A press of its own keeps the screen through the page's hold, so it shows busy rather than blinking out.
-  const waits = isMain && column.listRead && column.main === null && startsItself(full) && (!holdStart || pressed !== undefined)
+  const waits = !lock && isMain && column.listRead && column.main === null && startsItself(full) && (!holdStart || pressed !== undefined)
 
   if (hidden) return null
   if (column.pending) return <ThreadOpening label="Chat" />
   return (
     // What the lead's handback and failure cards read and open (interactive-workers decision 21).
     <WorkerLinksContext.Provider value={{ workers, openWorker: column.pick }}>
+      <OrchestratorNameContext.Provider value={epicName}>
       <ThreadColumn
         // A fresh column per thread: its draft, attachments and scroll are its
         // own. The main chat keeps one through its start, so the first message
@@ -160,6 +171,7 @@ export function FeatureChat({
         draftKey={`feature:${full.feature.id}:main`}
         emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : (workerProps?.emptyHint ?? WORKER_PENDING_HINT)}
         {...(workerProps ? workerProps : isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
+        {...(lock ? { closed: lock } : {})}
         notices={alerts}
       >
         <FeatureNoticeDeck
@@ -170,6 +182,7 @@ export function FeatureChat({
           readyToTest={!!full.need?.why.startsWith(readyToTestWhy(''))}
         />
       </ThreadColumn>
+      </OrchestratorNameContext.Provider>
     </WorkerLinksContext.Provider>
   )
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Button, cx, Dialog, DialogBody, DialogFooter, DialogHeader, LINK } from '../../ui'
+import { Button, cx, Dialog, DialogBody, DialogFooter, DialogHeader } from '../../ui'
 import { IconArrowRight, IconAutopilot } from '../../icons'
 import { epicStyle, type EpicColor } from '../../lib/epic-look'
 import { RAISED } from '../chat/thread/surfaces'
@@ -123,7 +123,12 @@ export function AutopilotLockNote({
         </span>
         <span className="text-pretty text-text-tertiary">
           Talk to it in the epic’s chat; it passes your words on.{' '}
-          <button type="button" onClick={onEndAutopilot} className={cx(LINK, 'border-0 bg-transparent p-0')}>
+          {/* The autopilot's own colour, not the accent's blue: it acts on the epic's run. */}
+          <button
+            type="button"
+            onClick={onEndAutopilot}
+            className="cursor-pointer border-0 bg-transparent p-0 font-medium text-(--epic-text) underline-offset-2 transition-colors duration-(--dur-1) ease-app hover:underline"
+          >
             End autopilot
           </button>
         </span>

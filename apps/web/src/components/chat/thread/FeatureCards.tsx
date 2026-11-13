@@ -423,12 +423,12 @@ export function RuncastleNote({ summary, agentText }: { summary: string; agentTe
  * bubble on the right. It never carries the human's words (one-place-to-answer
  * decision 11).
  */
-export function OrchestratorMessage({ text }: { text: string }) {
+export function OrchestratorMessage({ text, from }: { text: string; /** The epic's name (epics-on-autopilot decision 22); "Epic" without one. */ from?: string }) {
   return (
     <div className="flex flex-col items-start gap-1.5 animate-rise-in">
-      <span className="flex items-center gap-2 text-sm">
+      <span className="flex min-w-0 max-w-full items-center gap-2 text-sm">
         <RuncastleMark />
-        <span className="font-medium text-text-secondary">Epic</span>
+        <span className="min-w-0 truncate font-medium text-text-secondary">{from ?? 'Epic'}</span>
       </span>
       <div className={cx(WELL, 'max-w-[85%] px-3.5 py-2.5 text-base break-words whitespace-pre-wrap text-text')}>{text}</div>
     </div>
