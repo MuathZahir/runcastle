@@ -171,7 +171,7 @@ export function FeatureChat({
         draftKey={`feature:${full.feature.id}:main`}
         emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : (workerProps?.emptyHint ?? WORKER_PENDING_HINT)}
         {...(workerProps ? workerProps : isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
-        {...(lock ? { closed: lock } : {})}
+        {...(lock ? { closed: lock, meta: null } : {})}
         notices={alerts}
       >
         <FeatureNoticeDeck
