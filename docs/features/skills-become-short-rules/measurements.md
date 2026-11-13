@@ -14,7 +14,18 @@ kind (name, description, input schema). Tokens are estimated as bytes ÷ 4.
 
 ## After
 
-To fill in before ready.
+(branch at 72ecd42b, 2026-11-13)
+
+| Session | Briefing | Skill | Tools (count) | Total bytes | ~Tokens | Change |
+|---|---:|---:|---:|---:|---:|---:|
+| Feature lead | 1,103 | 4,866 | 14,023 (22) | 19,992 | 4,998 | −39% |
+| Feature lead, planning alone | 1,971 | 9,846 | 14,023 (22) | 25,840 | 6,460 | −44% |
+| Orchestrator | 1,291 | 6,353 | 17,909 (30) | 25,553 | 6,388 | −49% |
+
+The tools column grew (+9% and +7%) because what a tool does, refuses and returns moved into its
+own description (decision 4). The skills and briefings shrank by about 75–80%, and most of what
+remains at start is now the tool list. Reference pages read on demand also shrank: the lead's from
+about 52K to 20K (plus the unchanged 15K Plan starter), the orchestrator's from about 66K to 9K.
 
 ## Replay
 
