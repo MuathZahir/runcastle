@@ -107,7 +107,7 @@ Check first: 14, 16, 17, 18, 23
 **For the human.**
 
 ## 21. Features held by an epic today become the human's at upgrade
-**Decision:** When this ships, every feature is the human's and every epic starts with autopilot off. Features an epic runs today, and their leads, are told once that the feature is the human's now. The human turns autopilot on again in words where they want it.
+**Decision:** When this ships, every feature is the human's and every epic starts with autopilot off. Nobody is messaged about it: the human merges this feature, so they know. The human turns autopilot on again in words where they want it.
 **Why:** The old "run it for me" and finish settings do not map cleanly onto a run plan the human agreed, and an upgrade happens when the human is present (they merge this feature).
 **Assumed.** Alternative: an epic holding features today starts on autopilot for those features.
 **For the human.**
