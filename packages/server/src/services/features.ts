@@ -12,7 +12,7 @@ import type {
   Ticket,
 } from '@runcastle/core'
 import { type FeatureFinish, isProviderHaltReason, newId, PROVIDER_HALT_CLEARED, READY_TO_TEST, STOPPED } from '@runcastle/core'
-import { sessionDir, worktreeDir } from '@runcastle/core/paths'
+import { scenarioDataDir, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
@@ -802,13 +802,19 @@ export async function deleteFeature(
     })
   }
 
-  // (7) Remove per-session artifact dirs, then delete all DB rows LAST.
+  // (7) Remove per-session artifact dirs and the feature's scenario-data
+  // folder, then delete all DB rows LAST.
   for (const s of listSessionsByFeature(ctx, featureId)) {
     try {
       rmSync(sessionDir(s.id), { recursive: true, force: true })
     } catch {
       // best-effort — a stray artifact dir is harmless; the DB rows still go
     }
+  }
+  try {
+    rmSync(scenarioDataDir(featureId), { recursive: true, force: true })
+  } catch {
+    // best-effort, as above
   }
   deleteFeatureRows(ctx, featureId)
 

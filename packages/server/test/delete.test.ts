@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { sessionDir } from '@runcastle/core/paths'
+import { scenarioDataDir, sessionDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -201,6 +201,18 @@ describe('feature delete', () => {
 
     // Session artifact dir removed.
     expect(existsSync(sessionDir(sessionId))).toBe(false)
+  })
+
+  it('removes the feature’s scenario-data folder', async () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'del-data' })
+    await createFeatureBranch(project, feature.slug, 'main')
+    const dataDir = scenarioDataDir(feature.id)
+    mkdirSync(dataDir, { recursive: true })
+    writeFileSync(join(dataDir, 'copy.sql'), 'select 1;\n')
+
+    await deleteFeature(ctx, feature.id)
+
+    expect(existsSync(dataDir)).toBe(false)
   })
 
   it('deletes matching runcastle temp branches, keeps unrelated branches', async () => {

@@ -61,7 +61,8 @@ When the work is done, start the **Review worker** before you say ready, however
 Before you say ready, land or drop every worker (a Review worker that handed back needs neither). Then run the project's own checks (its typecheck and its tests) and fix what they find, unless nothing changed since your last green run: on a clean tree, HEAD is that run's commit or differs from it only inside `docs/features/<slug>/`. Then call `declare_ready({ scenario })` — a short title for the drive the Test drive button starts — and in the same chat message tell the human:
 
 - **what to test**: what changed, where to look, what would count as broken;
-- **how you checked it**: for example "typecheck and tests green; the review found nothing".
+- **how you checked it**: for example "typecheck and tests green; the review found nothing";
+- **the feature's scenarios**, which to pick for what, and that they leave with the feature unless the human keeps one (`./references/workers.md`, "Ship a scenario").
 
 Pass on any warning `declare_ready` returns.
 
@@ -79,6 +80,8 @@ The human tells you what is wrong, in chat or as notes with screenshots you can 
 - **After the third, stop.** Start nothing new; workers on parts that do not depend on it finish their assignment. Tell the human what you tried, what each check showed, what you think is wrong and what you recommend, then `wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`.
 - **Change how freely; ask before changing what.** Rewriting how something works, another free library, throwing away your own code: your call, told in one line with why. Bring the human the problem and a recommended direction when a change would alter what they get (a screen, a behaviour, a dropped requirement, going against their decision), add a cost or a setup step of theirs (a paid service, an account, key or install), a licence that limits them, or risk their data. A worker the plan did not name still needs their yes.
 - **Name what is broken nearby** and offer to park it in the backlog, gathered into your next message; never fix it quietly here. What blocks this feature is this feature's.
+
+When the human says the work is good, ask once which of the feature's scenarios to keep, then delete the rest (`./references/workers.md`, "Ship a scenario").
 
 ## Commit your own work
 

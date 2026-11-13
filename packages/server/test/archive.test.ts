@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import { newId } from '@runcastle/core'
+import { scenarioDataDir } from '@runcastle/core/paths'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { emit, listAfter } from '../src/services/events'
 import { archiveFeature, unarchiveFeature } from '../src/services/features'
 import { getSessionRow } from '../src/launcher/sessions'
@@ -54,6 +57,17 @@ describe('feature archive / unarchive', () => {
     expect(archived.status).toBe('archived')
     const events = listAfter(ctx, f.id, 0)
     expect(events.some((e) => e.type === 'feature.archived')).toBe(true)
+  })
+
+  it('keeps the feature’s scenario-data folder, so an unarchive finds it', async () => {
+    const f = seedFeature(ctx, projectId, { status: 'active' })
+    const dataDir = scenarioDataDir(f.id)
+    mkdirSync(dataDir, { recursive: true })
+    writeFileSync(join(dataDir, 'copy.sql'), 'select 1;\n')
+
+    await archiveFeature(ctx, f.id)
+
+    expect(existsSync(join(dataDir, 'copy.sql'))).toBe(true)
   })
 
   it('ends a live session before archiving', async () => {

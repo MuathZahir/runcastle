@@ -5,6 +5,10 @@ import {
   identifierSafe,
   parseEnvFile,
 } from '../src/services/drive-env'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { scenarioDataDir } from '@runcastle/core/paths'
+import { useDataDir } from './helpers/data-dir'
 
 /**
  * The drive's environment contract: the server passes identity in as
@@ -66,6 +70,23 @@ describe('driveIdentityEnv', () => {
       RUNCASTLE_SCENARIO: '.runcastle/scenarios/a/b.ts',
     })
   })
+
+  // A feature's own drive hands out its scenario-data folder; a project drive
+  // or the preparation dry run has no feature, so no variable.
+  it('adds RUNCASTLE_SCENARIO_DATA only when the identity names a feature', () => {
+    const restore = useDataDir(join(tmpdir(), 'rc-drive-env-home'))
+    try {
+      expect(driveIdentityEnv(identity)).not.toHaveProperty('RUNCASTLE_SCENARIO_DATA')
+      expect(driveIdentityEnv({ ...identity, featureId: 'feat_abc' })).toMatchObject({
+        RUNCASTLE_SCENARIO_DATA: join(tmpdir(), 'rc-drive-env-home', '.runcastle', 'scenario-data', 'feat_abc'),
+      })
+      expect(scenarioDataDir('feat_abc')).toBe(
+        join(tmpdir(), 'rc-drive-env-home', '.runcastle', 'scenario-data', 'feat_abc'),
+      )
+    } finally {
+      restore()
+    }
+  })
 })
 
 describe('parseEnvFile', () => {
@@ -121,5 +142,16 @@ describe('driveProcessEnv', () => {
   it('passes the rest of the environment through untouched', () => {
     const merged = driveProcessEnv({}, { HOME: '/home/me' })
     expect(merged.HOME).toBe('/home/me')
+  })
+
+  // A runcastle server that is itself under a drive inherits its own feature's
+  // folder; a project drive it starts must not pass that on.
+  it('drops an inherited scenario or scenario-data variable the drive did not set', () => {
+    const base = { RUNCASTLE_SCENARIO: 'outer.ts', RUNCASTLE_SCENARIO_DATA: '/outer', HOME: '/home/me' }
+    const bare = driveProcessEnv({ RUNCASTLE_SLUG: 'main' }, base)
+    expect(bare.RUNCASTLE_SCENARIO).toBeUndefined()
+    expect(bare.RUNCASTLE_SCENARIO_DATA).toBeUndefined()
+    expect(bare.HOME).toBe('/home/me')
+    expect(driveProcessEnv({ RUNCASTLE_SCENARIO_DATA: '/inner' }, base).RUNCASTLE_SCENARIO_DATA).toBe('/inner')
   })
 })

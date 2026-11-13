@@ -599,6 +599,24 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
     "- the route checks the token, signs in through the app's own sign-in code, and redirects to `to`.",
     'An app without sign-in, or a scenario meant to land signed out, prints a plain `ENTRY_URL`.',
     '',
+    ...(feature
+      ? [
+          '## It leaves with the feature',
+          `A scenario you add on this drive belongs to ${feature.title}: it is deleted before the feature`,
+          'merges unless the human keeps it. Say so in one line when you land them.',
+          '- Seed code is the default. You may instead build the state from a copy of data in this',
+          "  drive's database: save the copy under `RUNCASTLE_SCENARIO_DATA` (in the identity above, outside",
+          '  git) and have the scenario load it. Never commit a copy: it can hold passwords and keys, and',
+          '  git keeps it forever. Copy only from this drive, trimmed to what the state needs.',
+          '- A scenario the human keeps must be seed code, so a kept copy is rewritten as seed code first.',
+          '',
+        ]
+      : [
+          '## It stays in the project',
+          'A scenario you add on the project drive is permanent, so it is seed code: never a copy of',
+          'database data, which would break as the app changes.',
+          '',
+        ]),
     '## Rules',
     `- **Commit before landing.** \`git commit\` your work onto \`${branch}\`, the branch checked out`,
     '  here, before the final `run_scenario`. Never push, never switch branches, never stop the drive.',

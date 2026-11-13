@@ -238,6 +238,19 @@ describe('the scenario briefing', () => {
     expect(text).not.toContain('Setup mode')
   })
 
+  it('says a feature drive\'s scenario leaves with the feature, and a project drive\'s stays as seed code', () => {
+    const onFeature = renderScenarioPrompt(brief({ feature: { title: 'Checkout' } as Feature }))
+    expect(onFeature).toContain('## It leaves with the feature')
+    expect(onFeature).toContain('belongs to Checkout')
+    expect(onFeature).toContain('`RUNCASTLE_SCENARIO_DATA`')
+    expect(onFeature).toContain('Never commit a copy')
+    expect(onFeature).not.toContain('## It stays in the project')
+
+    const onProject = renderScenarioPrompt(brief())
+    expect(onProject).toContain('## It stays in the project')
+    expect(onProject).not.toContain('RUNCASTLE_SCENARIO_DATA')
+  })
+
   it('teaches TOKEN and the sibling .http call', () => {
     const text = renderScenarioPrompt(brief())
     for (const expected of [
@@ -310,5 +323,16 @@ describe('the scenario edit guard', () => {
     expect(edit('.runcastle/scenarios/_fixtures/buyer.ts')).toBeNull()
     expect(edit('app/models/user.ts')?.reason).toContain('.runcastle/')
     expect(edit('.gitignore')).not.toBeNull()
+  })
+
+  // Its brief tells it to save a data copy there; a project drive has no folder.
+  it("opens the feature's scenario-data folder on a feature drive only", () => {
+    const dataDir = join(tmpdir(), 'rc-data', 'scenario-data', 'feat_abc')
+    const write = (filePath: string, scenarioDataDir?: string) =>
+      evaluateEditGuard({ kind: 'scenario', worktreePath, toolName: 'Write', filePath, scenarioDataDir })
+    expect(write(join(dataDir, 'users.json'), dataDir)).toBeNull()
+    expect(write(join(dataDir, 'users.json'))?.reason).toContain('.runcastle/')
+    expect(write(join(tmpdir(), 'rc-data', 'scenario-data', 'feat_other', 'x.json'), dataDir)).not.toBeNull()
+    expect(write('app/models/user.ts', dataDir)?.reason).toContain('RUNCASTLE_SCENARIO_DATA')
   })
 })
