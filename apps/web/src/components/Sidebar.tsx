@@ -5,7 +5,7 @@ import { cx, IconButton, Kbd, Skeleton, SkeletonBar } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem } from '../lib/api'
-import { sidebarLanes } from '../lib/feature-ui'
+import { needsMe, sidebarLanes } from '../lib/feature-ui'
 import type { WorkspaceView } from '../lib/project-workspace'
 import { pathFor } from '../lib/routes'
 import { useLivePoll, useLiveStatus } from '../lib/live'
@@ -157,6 +157,7 @@ export function Sidebar(props: SidebarProps) {
     onDraft,
     onOpenNote,
     onOpenCmdk,
+    onOpenWorkerChat,
   } = props
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -348,9 +349,19 @@ export function Sidebar(props: SidebarProps) {
   // no workers arrow (clicking-a-feature-opens-its-lead decision 8).
   const currentFeature = !phone && view === 'feature' ? selectedFeatureId : null
   const isOpen = (f: FeatureListItem) => f.id === currentFeature
-  // A feature row opens its lead, whatever its row says (decisions 1, 7); the
-  // open one's brings its lead back to the front.
+  // A feature row opens its lead (decisions 1, 7); the open one's brings its
+  // lead back to the front. A row that needs you opens the exact chat its
+  // question waits in, a worker's included (needs-you-is-the-agent-s-call decision 12).
   const selectFeature = (id: string) => {
+    const need = needsMe(features.find((f) => f.id === id) ?? { status: 'draft', need: null })
+    if (need && id === currentFeature && featureThreads?.threads.some((t) => t.id === need.threadId)) {
+      featureThreads.pick(need.threadId)
+      return
+    }
+    if (need && onOpenWorkerChat) {
+      onOpenWorkerChat(id, need.threadId)
+      return
+    }
     const main = id === currentFeature && featureThreads?.threads.find((t) => t.role === 'main')
     if (main) featureThreads?.pick(main.id)
     if (!main || main.id === UNSTARTED_CHAT) onSelect(id)

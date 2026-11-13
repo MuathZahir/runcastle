@@ -1,4 +1,4 @@
-import { stuckReason, unstartedState, type NeedKind, type UnstartedState } from '@runcastle/core'
+import { stuckReason, unstartedState, type Need, type UnstartedState } from '@runcastle/core'
 import type { FeatureFull, FeatureListItem } from '../api'
 import { relTime } from '../format'
 import { blockerList, blockers, upNextHint } from './dependencies'
@@ -7,48 +7,21 @@ import { blockerList, blockers, upNextHint } from './dependencies'
 const draftState = (f: FeatureListItem): UnstartedState | null => unstartedState(f, f.dependsOn)
 
 /**
- * Why a feature needs me: one of the server's needs (you-always-know-what-s-
- * waiting decision 1) — an answer, a plan, a permission prompt, a drive, a
- * merge… — or it is an Up next draft that is `stuck` and cannot start by itself.
+ * What a feature needs from me: the server's `need` (needs-you-is-the-agent-s-
+ * call decision 12), the agent's own line and the chat it waits in, so this
+ * row, the status line and the pings never disagree. Only a started feature
+ * needs anyone.
  */
-export type NeedsMeKind = NeedKind | 'stuck'
-
-export interface NeedsMe {
-  kind: NeedsMeKind
-  /** The need's words, as the status line says them ("Plan to approve"). */
-  label: string
-}
-
-/** The waiting reason `declare_ready` sets (tickets-and-review decision 7). */
-export { READY_TO_TEST } from '@runcastle/core'
-
-/**
- * An open terminal whose agent is mid-turn — the lead's twin of `workersWorking`.
- * A terminal still launching counts: nothing has stopped for anyone yet, and so
- * does a lead that replied while its background work runs (`leadInBackground`).
- */
-function agentMidTurn(f: FeatureListItem): boolean {
-  return (!!f.liveSession && !f.liveSession.awaitingInput) || f.leadInBackground
+export function needsMe(f: Pick<FeatureListItem, 'status' | 'need'>): Need | null {
+  return f.status === 'active' ? (f.need ?? null) : null
 }
 
 /**
- * Which features need me: the feature's `need`, worked out once on the server
- * (you-always-know-what-s-waiting decision 14), so this row, the status line and
- * the pings never disagree. A need held by the lead's outstanding handback is
- * not mine until its hour passes (decision 18; the-status-tells-the-truth
- * decision 5): it reads "With the orchestrator · …" among the working.
+ * An up-next draft that cannot start by itself any more: its problem, said on
+ * its own row in red, never in Needs you and never pinged (decision 16).
  */
-export function needsMe(f: FeatureListItem): NeedsMe | null {
-  // A parked draft claims no attention until the human clicks Start (decision 9).
-  // The one exception is an Up next feature that cannot start by itself any more
-  // (waiting-is-not-backlog decision 5) — the backlog itself never asks.
-  if (f.status === 'draft') {
-    return draftState(f) === 'stuck'
-      ? { kind: 'stuck', label: f.upNextProblem ?? stuckReason(f.dependsOn) }
-      : null
-  }
-  if (f.status !== 'active' || !f.need || f.need.held) return null
-  return { kind: f.need.kind, label: f.need.words }
+export function upNextProblem(f: FeatureListItem): string | null {
+  return draftState(f) === 'stuck' ? (f.upNextProblem ?? stuckReason(f.dependsOn)) : null
 }
 
 /**
@@ -76,28 +49,19 @@ export interface RowChip {
   kind: RowChipKind
   /** The chip's visible text — `''` for the shipped chip, which is its ✓ alone. */
   text: string
-  /** Hover sentence; for needs-me, the specific reason behind the generic label. */
+  /** Hover sentence; for needs-me, the agent's line behind the generic label. */
   title: string
-  /** needs-me only: which flavour of attention, which colours the dot. */
-  needs?: NeedsMeKind
 }
 
 /**
  * The one thing a feature row's chip says (decisions §1). The slot holds exactly
  * one thing, so the four candidates are ranked: something wants me > an agent is
  * working > it shipped > nothing is happening, and here is how long for.
- *
- * "An agent is working" covers both kinds of agent — the feature's workers and
- * its lead mid-turn — so the chip and the triage lane never
- * disagree about a feature.
  */
 export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   const nm = needsMe(f)
-  if (nm) return { kind: 'needsMe', text: 'Needs you', title: nm.label, needs: nm.kind }
-  if (f.workersWorking > 0) return { kind: 'working', text: 'Working', title: 'workers working' }
-  if (agentMidTurn(f)) {
-    return { kind: 'working', text: 'Working', title: 'the agent is working in the chat' }
-  }
+  if (nm) return { kind: 'needsMe', text: 'Needs you', title: nm.why }
+  if (f.status === 'active' && f.working) return { kind: 'working', text: 'Working', title: 'an agent is working' }
   if (f.status === 'shipped') return { kind: 'shipped', text: '', title: 'shipped' }
   // A parked idea's age is noise, not news (decision 9) — say what it IS instead:
   // Up next says what it starts after; a backlog row whether it could start
@@ -106,6 +70,8 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   if (state) {
     const open = blockers(f.dependsOn)
     const named = (verb: string) => (open.length === 1 ? `${verb} ${open[0]!.slug}` : `${verb} ${open.length}`)
+    const problem = upNextProblem(f)
+    if (problem) return { kind: 'draft', text: problem, title: problem }
     if (state === 'upNext') return { kind: 'draft', text: named('After'), title: upNextHint(f.dependsOn) }
     if (state === 'blocked')
       return { kind: 'draft', text: named('Blocked by'), title: `blocked by ${blockerList(f.dependsOn)}` }
@@ -146,7 +112,7 @@ export function sortForSidebar(features: FeatureListItem[]): FeatureListItem[] {
     // (decision 9) — more alive than a merged branch, not in the pipeline.
     // Up next is between the two: wanted, but not moving yet.
     const state = draftState(f)
-    if (state === 'upNext') return 2
+    if (state === 'upNext' || state === 'stuck') return 2
     if (state) return 3 + draftRank(f)
     return 1
   })
@@ -166,8 +132,8 @@ export { latestRun }
 
 export type TriageKey =
   | 'needsYou'
-  | 'agentWorking'
-  | 'inProgress'
+  | 'working'
+  | 'idle'
   | 'upNext'
   | 'drafts'
   | 'shipped'
@@ -184,27 +150,22 @@ export interface TriageGroup {
  * match wins. Archived wins over everything: an archived feature carries no
  * needs-me / working state, it only sits in the archived lane.
  *
- * `needsMe` has already claimed a feature the server says needs the human, so
- * a session left here is Agent working while its agent is mid-turn or its
- * orchestrator handles its need, and In progress otherwise.
+ * A started feature reads Needs you, else Working, else Idle
+ * (needs-you-is-the-agent-s-call decisions 15, 18).
  */
 export function triageOf(f: FeatureListItem): TriageKey {
   if (f.status === 'archived') return 'archived'
   if (f.status === 'shipped') return 'shipped'
   // Its own band (decision 9): a parked draft carries no working state, so it
   // never interleaves with things in motion. Up next has a band of its own,
-  // and one that can no longer start by itself needs you (waiting-is-not-backlog
-  // decisions 5 and 7).
+  // a stuck one included: its problem is a fact about the queue, not a
+  // question (needs-you decision 16).
   const state = draftState(f)
-  if (state === 'upNext') return 'upNext'
-  if (state === 'stuck') return 'needsYou'
+  if (state === 'upNext' || state === 'stuck') return 'upNext'
   if (state) return 'drafts'
-  // A need outranks workers at work: a permission prompt halts the lead where it stands.
   if (needsMe(f)) return 'needsYou'
-  // A need its orchestrator handles sits with the work in motion (decision 18).
-  if (f.workersWorking > 0 || f.need?.held) return 'agentWorking'
-  if (agentMidTurn(f)) return 'agentWorking'
-  return 'inProgress'
+  if (f.working) return 'working'
+  return 'idle'
 }
 
 /**
@@ -223,8 +184,8 @@ export function triage(
 ): TriageGroup[] {
   const buckets: Record<TriageKey, FeatureListItem[]> = {
     needsYou: [],
-    agentWorking: [],
-    inProgress: [],
+    working: [],
+    idle: [],
     upNext: [],
     drafts: [],
     shipped: [],
@@ -235,8 +196,8 @@ export function triage(
 
   const order: { key: TriageKey; label: string }[] = [
     { key: 'needsYou', label: 'Needs you' },
-    { key: 'agentWorking', label: 'Agent working' },
-    { key: 'inProgress', label: 'In progress' },
+    { key: 'working', label: 'Working' },
+    { key: 'idle', label: 'Idle' },
     { key: 'upNext', label: 'Up next' },
     { key: 'drafts', label: 'Backlog' },
     { key: 'shipped', label: 'Shipped' },
@@ -278,7 +239,7 @@ export function sidebarLanes(
  * draft or a shipped feature's retrospective became the first thing you saw
  * (findings F10.4).
  */
-const LANDING_LANES: readonly TriageKey[] = ['needsYou', 'agentWorking', 'inProgress']
+const LANDING_LANES: readonly TriageKey[] = ['needsYou', 'working', 'idle']
 
 /**
  * The feature to land on when entering a project with nothing stored, or `null`

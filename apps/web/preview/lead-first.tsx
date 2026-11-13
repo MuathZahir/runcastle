@@ -118,7 +118,7 @@ function Page() {
     view.level === 'workers' ? (
       <FeatureSidebarPage
         feature={open}
-        leadStatus="Talking with you"
+        leadStatus="Working"
         onBack={() => go({ ...view, level: 'list', motion: 'up' })}
         onNewWorker={noop}
         lead={lead}

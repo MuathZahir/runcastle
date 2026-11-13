@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
 import type { FeatureListItem } from '../src/lib/api'
-import { eventToNotification, notifyButton } from '../src/lib/notifications'
+import { eventToNotification, needPath, notifyButton } from '../src/lib/notifications'
+import { pathFor } from '../src/lib/routes'
 import { tabTitle } from '../src/lib/projects'
 import { NOTIFY_OFFER } from '../src/lib/vocabulary'
 
@@ -25,33 +26,51 @@ function ev(overrides: Partial<EventRow>): EventRow {
   }
 }
 
-describe('eventToNotification', () => {
-  it('pings for a need, titled with its words and naming the feature', () => {
-    const n = eventToNotification(
-      ev({ data: { kind: 'plan', words: 'Plan to approve', held: false, why: null } }),
-      'Dark mode',
-    )
-    expect(n).toEqual({ title: 'Plan to approve', body: 'Dark mode' })
+const lead = { why: 'Plan ready for your yes', threadId: 'lead-1', by: 'agent', featureId: 'f1' }
+
+describe('eventToNotification (needs-you-is-the-agent-s-call decision 14)', () => {
+  it('pings for every well-formed need, titled with the agent’s line and naming the feature', () => {
+    expect(eventToNotification(ev({ data: lead }), 'Dark mode')).toEqual({
+      title: 'Needs you · Plan ready for your yes',
+      body: 'Dark mode',
+    })
   })
 
   it('falls back to a generic feature name when no title is supplied', () => {
-    const n = eventToNotification(ev({ data: { kind: 'merge', words: 'Ready to merge', held: false, why: null } }))
-    expect(n).toEqual({ title: 'Ready to merge', body: 'your feature' })
+    expect(eventToNotification(ev({ data: lead }))).toEqual({ title: 'Needs you · Plan ready for your yes', body: 'your feature' })
   })
 
-  it('stays quiet for a need its owner chat or the chat it asks is handling, and for the human’s own Stop', () => {
-    const held: Array<[string, string]> = [
-      ['handback', 'With Notes triage · Ready to merge'],
-      ['plan', 'With Notes triage · Plan to approve'],
-      ['design', 'With Notes triage · Design to approve'],
-      ['handback', 'With Notes triage · asking you'],
-      ['handback', 'Asking Notes triage · Which feature owns the inbox?'],
-    ]
-    for (const [kind, words] of held) expect(eventToNotification(ev({ data: { kind, words, held: true, why: null } }))).toBeNull()
-    expect(
-      eventToNotification(ev({ data: { kind: 'stopped', words: 'Stopped · you stopped it', held: false, why: 'you stopped it' } })),
-    ).toBeNull()
+  it('names an epic’s chat for a need with no feature', () => {
+    const n = eventToNotification(ev({ featureId: undefined, data: { ...lead, featureId: null } }))
+    expect(n).toEqual({ title: 'Needs you · Plan ready for your yes', body: 'An epic’s chat' })
   })
+
+  it('stays quiet for a malformed one', () => {
+    expect(eventToNotification(ev({ data: { kind: 'plan', words: 'Plan to approve', held: false } }))).toBeNull()
+    expect(eventToNotification(ev({ data: { ...lead, by: 'someone' } }))).toBeNull()
+  })
+})
+
+describe('needPath (decision 12)', () => {
+  it('opens the exact chat on its feature’s page', () => {
+    expect(needPath(ev({ data: { ...lead, threadId: 'worker-2' } }), { projectId: 'p1', slug: 'dark-mode' })).toBe(
+      `${pathFor({ kind: 'feature', projectId: 'p1', featureSlug: 'dark-mode' })}?thread=worker-2`,
+    )
+  })
+
+  it('opens an epic’s own chat on the Orchestrator', () => {
+    expect(needPath(ev({ data: { ...lead, featureId: null, threadId: 'epic-1' } }), null)).toBe(
+      `${pathFor({ kind: 'chat', projectId: 'p1' })}?thread=epic-1`,
+    )
+  })
+
+  it('goes nowhere for a feature the server no longer lists, or an event that does not ping', () => {
+    expect(needPath(ev({ data: lead }), null)).toBeNull()
+    expect(needPath(ev({ type: 'run.finished', data: lead }), { projectId: 'p1', slug: 'x' })).toBeNull()
+  })
+})
+
+describe('eventToNotification, other events', () => {
 
   it('no longer pings when a round finishes or fails', () => {
     expect(eventToNotification(ev({ type: 'run.finished', data: { status: 'succeeded', summary: 'ok' } }))).toBeNull()
@@ -63,14 +82,14 @@ describe('eventToNotification', () => {
 describe('tabTitle', () => {
   const feature = (need: FeatureListItem['need']): FeatureListItem =>
     ({ status: 'active', need }) as FeatureListItem
-  const plan = { kind: 'plan', words: 'Plan to approve', held: false, since: 0 } as const
+  const plan = { why: 'Plan ready for your yes', since: 0, threadId: 't', by: 'agent' } as const
 
   it('counts the Needs-you features of every project', () => {
     expect(tabTitle([[feature(plan), feature(null)], [feature(plan)]])).toBe('(2) runcastle')
   })
 
-  it('leaves out a need its orchestrator is handling, and reads plain at zero', () => {
-    expect(tabTitle([[feature({ ...plan, held: true })], []])).toBe('runcastle')
+  it('reads plain at zero', () => {
+    expect(tabTitle([[feature(null)], []])).toBe('runcastle')
     expect(tabTitle([])).toBe('runcastle')
   })
 })

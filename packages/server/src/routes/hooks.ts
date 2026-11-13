@@ -24,6 +24,7 @@ import { isLeadSession } from '../services/lead-delivery'
 import { isMachinePrompt, isRuncastlePrompt, typedAfterOpening } from '../services/lead-prompt'
 import { releaseOnTyped } from '../services/holding'
 import { markHumanMessage } from '../services/lead-status'
+import { clearWait } from '../services/waits'
 import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
@@ -114,7 +115,7 @@ hooks.post('/:event', async (c) => {
       case 'session-start':
         return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
       case 'user-prompt':
-        if (isLeadSession(session)) handleLeadPrompt(ctx, feature, body.payload)
+        if (isLeadSession(session)) handleLeadPrompt(ctx, session, feature, body.payload)
         return c.json(handleUserPrompt(ctx, feature, session))
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
@@ -395,9 +396,9 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
  * waits on (lead-chats-stay-small decision 14). Nor does a prompt Claude Code
  * makes itself — a background helper's `<task-notification>`, a peer's message
  * (triage-batch decision 18): it would move a chat-owned feature to the human
- * and clear its waiting reason, stopped mark and handback.
+ * and clear what its lead waits on and its stopped mark.
  */
-function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
+function handleLeadPrompt(ctx: AppCtx, session: SessionRow, feature: Feature, payload: Record<string, unknown> | undefined): void {
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
   if (prompt === undefined || COMPACT_TEXT.test(prompt.trimStart()) || isMachinePrompt(prompt)) return
   // A chat nobody started opens on the human's first message, behind runcastle's held opening: still typed.
@@ -406,6 +407,7 @@ function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string,
   // decision 23). Only this path: a delivered message, a worker or a side chat never does.
   releaseOnTyped(ctx, feature.id)
   markHumanMessage(ctx, feature.id, { typed: true })
+  clearWait(ctx, session.id, 'human')
 }
 
 async function handleSessionEnd(

@@ -20,6 +20,9 @@ import {
   testDrive,
 } from '../src/services/git'
 import { getFeatureRow } from '../src/services/repo'
+import { createSessionRow } from '../src/launcher/sessions'
+import { setAgentHostForTests } from '../src/threads/host'
+import { appendThreadEvent, type AgentHost } from '../src/threads/types'
 import { storeTickets, updateTicket } from './helpers/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -131,6 +134,30 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     // A failed merge must not ship the feature.
     const row = getFeatureRow(ctx, feature.id)
     expect(row.status).toBe('active')
+  })
+
+  it('reaches the lead as a message naming the files, and makes nobody need the human by itself', async () => {
+    await makeConflict(project, g, 'clash')
+    const feature = seedFeature(ctx, project.id, { slug: 'clash' })
+    const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: project.repoPath }).id
+    appendThreadEvent(lead, { type: 'prompt', id: 'p0', text: 'hello', source: 'human' })
+    const prompted: { threadId: string; text: string }[] = []
+    setAgentHostForTests({
+      isRunning: () => false,
+      prompt: async (threadId: string, input: { text: string }) => {
+        prompted.push({ threadId, text: input.text })
+        return { promptId: 'p1' }
+      },
+    } as unknown as AgentHost)
+    try {
+      await caller.feature.merge({ featureId: feature.id })
+      expect(prompted).toHaveLength(1)
+      expect(prompted[0]?.threadId).toBe(lead)
+      expect(prompted[0]?.text).toContain('stopped on a conflict in: README.md')
+      expect((await caller.feature.get({ id: feature.id })).need).toBeNull()
+    } finally {
+      setAgentHostForTests(undefined)
+    }
   })
 
   /**

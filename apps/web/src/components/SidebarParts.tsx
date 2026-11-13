@@ -18,6 +18,7 @@ import {
   rowChip,
   ticketShare,
   triageOf,
+  upNextProblem,
 } from '../lib/feature-ui'
 import { relTime } from '../lib/format'
 import type { NotifyState } from '../lib/notifications'
@@ -92,35 +93,18 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
 }
 
 /**
- * A held need on a row with no workers at work: its words ("With Notes
- * triage · Plan to approve") stand in for "Agent working" (decision 18).
- */
-function heldNeedWords(f: FeatureListItem): string | null {
-  return f.workersWorking === 0 && f.need?.held ? f.need.words : null
-}
-
-/**
- * A row's second line: where the feature is, in words — what it needs in the
- * status line's own words (you-always-know-what-s-waiting decision 1). A
- * started feature with no agent at work and nothing asked of you is simply in
- * progress.
+ * A row's second line, in the status line's own words (needs-you-is-the-agent-
+ * s-call decision 15): "Needs you · <the agent's line>", "Working", "Idle",
+ * "Merged", or its shelf. An up-next draft says what it starts after, or the
+ * problem that keeps it from starting (decision 16).
  */
 export function featureStateWords(f: FeatureListItem): string {
-  const lane = triageOf(f)
-  if (lane === 'needsYou') {
-    // An Up next feature that cannot start by itself (its hover says why).
-    if (f.status === 'draft') return "Won't start by itself"
-    return needsMe(f)?.label ?? 'Needs you'
-  }
-  if (lane === 'agentWorking') {
-    if (f.workersWorking > 0) return `Working · ${f.workersWorking} ${f.workersWorking === 1 ? 'worker' : 'workers'}`
-    return heldNeedWords(f) ?? 'Agent working'
-  }
-  // Up next says what it starts after; a backlog draft whether it could start.
+  const need = needsMe(f)
+  if (need) return `Needs you · ${need.why}`
   if (f.status === 'draft') return rowChip(f).text
-  if (f.status === 'shipped') return 'Shipped'
+  if (f.status === 'shipped') return 'Merged'
   if (f.status === 'archived') return 'Archived'
-  return 'In progress'
+  return triageOf(f) === 'working' ? 'Working' : 'Idle'
 }
 
 /** The one trailing dot: amber when it needs you; none otherwise. */
@@ -317,18 +301,19 @@ export function SidebarFeatureRow({
 }) {
   const shown = folded ? undefined : threads
   const lane = triageOf(f)
-  const nm = lane === 'needsYou' ? needsMe(f) : null
+  const nm = needsMe(f)
   const words = wordsProp ?? featureStateWords(f)
   const menu = actions.length > 0 || ownerChoices ? <FeatureActionsMenu actions={actions} {...(ownerChoices ? { choices: ownerChoices } : {})} /> : undefined
   const row = (
     <TwoLineRow
       title={f.title}
-      tooltip={nm ? `${f.title} — ${nm.label}` : f.status === 'draft' ? `${f.title} — ${rowChip(f).title}` : f.title}
+      tooltip={nm ? `${f.title} — Needs you · ${nm.why}` : f.status === 'draft' ? `${f.title} — ${rowChip(f).title}` : f.title}
       glyph={<FeatureProgressIcon f={f} size={12} />}
       words={words}
       wordsClassName={cx(
-        lane === 'agentWorking' && !heldNeedWords(f) && 'text-shimmer',
-        nm && (nm.kind === 'stuck' ? 'text-danger-text' : 'text-text-secondary'),
+        lane === 'working' && 'text-shimmer',
+        nm && 'text-text-secondary',
+        upNextProblem(f) && 'text-danger-text',
       )}
       aside={relTime(f.lastActivityAt)}
       dot={rowDot(f) ?? (needsYou ? 'warning' : undefined)}
@@ -624,7 +609,6 @@ export function SidebarThreadRow({
   actions,
   mark,
   tip,
-  about,
 }: {
   thread: ThreadEntry
   active: boolean
@@ -632,21 +616,19 @@ export function SidebarThreadRow({
   actions: FeatureAction[]
   mark?: ReactNode
   tip?: ReactNode
-  /**
-   * A plain second line under the title: what an Orchestrator chat is asking
-   * about ("Asking about <feature>", every-feature-has-one-owner decisions 17,
-   * 30). The row's amber dot stays the only mark of the question.
-   */
-  about?: string | null
 }) {
   const bare = mark === null
+  // A chat that needs you says why under its title, in its agent's own line
+  // (needs-you-is-the-agent-s-call decisions 3, 6); its amber mark is the one dot.
+  const about = thread.need ? `Needs you · ${thread.need.why}` : null
+  const state = thread.need ? 'waiting' : thread.state
   const line = (
     <>
-      <ThreadGlyph state={thread.state} />
+      <ThreadGlyph state={state} />
       <span
         className={cx(
           'min-w-0 flex-1 truncate text-md',
-          active ? 'font-medium text-text' : thread.state === 'waiting' ? 'text-text' : 'text-text-secondary',
+          active ? 'font-medium text-text' : state === 'waiting' ? 'text-text' : 'text-text-secondary',
         )}
       >
         {thread.title}
@@ -740,7 +722,6 @@ export function SidebarThreadList({
   keep,
   markFor,
   tipFor,
-  aboutFor,
 }: {
   threads: readonly ThreadEntry[]
   /** The thread in front, or null when none is (the Conversations page). */
@@ -756,8 +737,6 @@ export function SidebarThreadList({
   markFor?: (t: ThreadEntry) => ReactNode
   /** The names behind that mark, on hover. */
   tipFor?: (t: ThreadEntry) => ReactNode
-  /** A plain second line under a row's title ("Asking about …"); null for none. */
-  aboutFor?: (t: ThreadEntry) => string | null
 }) {
   const [all, setAll] = useState(false)
   const listed = keep ? threads.filter(keep) : null
@@ -779,7 +758,6 @@ export function SidebarThreadList({
             actions={actionsFor(t)}
             mark={markFor?.(t)}
             tip={tipFor?.(t)}
-            about={aboutFor?.(t)}
           />
         </li>
       ))}
@@ -802,14 +780,15 @@ export function SidebarThreadList({
 
 /**
  * A worker's 12px mark on its row's second line, where a feature row shows its
- * progress glyph: a chat bubble waiting on you, a spinner working, a clock
- * queued, a red alert failed, an arrow handed back, the merge glyph landed, a
- * cross dropped, a lock for an old chat's read-only transcript.
+ * progress glyph: a chat bubble waiting on you or idle, a spinner working, a
+ * clock queued, a red alert failed, an arrow handed back, the merge glyph
+ * landed, a cross dropped, a lock for an old chat's read-only transcript.
  */
 export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'old'> }) {
   if (worker.old) return <IconLock size={12} className="shrink-0 text-icon" />
   switch (worker.status) {
     case 'needs-you':
+    case 'idle':
       return <IconMessage size={12} className="shrink-0 text-icon" />
     case 'working':
       return <Spinner size="sm" />
@@ -851,7 +830,7 @@ export function SidebarWorkerItem({
   const why = workerStatusWhy(w)
   const words = w.old ? OLD_CHAT_WORDS[w.old] : why ? `${WORKER_STATUS_WORDS[w.status]} · ${why}` : WORKER_STATUS_WORDS[w.status]
   const asks = !w.old && (w.status === 'needs-you' || w.status === 'failed')
-  const quiet = !!w.old || !(asks || w.status === 'working')
+  const quiet = !!w.old || !(asks || w.status === 'working' || w.status === 'idle')
   return (
     <TwoLineRow
       title={w.label}

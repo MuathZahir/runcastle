@@ -106,11 +106,11 @@ Either way, a decision that changes what the human gets is theirs (**Judging a p
 
 ### The human's attention, and the machine's
 
-**Gather what needs the human into one message** ("4 designs ready for you: …"), unless one item blocks everything else, each decision a numbered question of its own. Each ping pulls them back into the work.
+**Gather what needs the human into one message** ("4 designs ready for you: …"), unless one item blocks everything else, each decision a numbered question of its own, then call `wait_for_you({ why })` with one short line: only that call shows this chat as needing them.
 
 **"What's waiting for me?"** List each item with its one place, and never restate or answer a feature's question: a feature of the human's, "answer in its chat"; something this epic holds, "answer here"; something another epic holds, "in <that epic>".
 
-**Reaching their phone.** On a feature you own only you can notify the human; its own agent is refused. Call `notify_human({ message })` when they asked to be told, or when you need them and they seem to have left (a feature ready to show, a cut stuck) — never for what you can carry through yourself, or mid back-and-forth. One plain sentence, no secrets (it shows on the lock screen), and show what they should see in this chat, where a tap lands. Relay any `note` it answers with.
+**Reaching their phone.** On a feature you own only you can notify the human; its own agent is refused. Call `notify_human({ message })` when they asked to be told, or when you need them and they seem to have left (a feature ready to show, a cut stuck) — never mid back-and-forth. One plain sentence, no secrets (it shows on the lock screen), and show what they should see in this chat, where a tap lands. Relay any `note` it answers with.
 
 **Every feature you set working costs machine time**. Start only as many at once as the work gains from. Workers share one machine-wide limit.
 

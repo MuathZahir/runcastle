@@ -60,7 +60,7 @@ class TestEventSource extends EventTarget {
 
 /** `over` lays over what `feature.get` answers: its need, its sessions. */
 function fakes(threads: ThreadEntry[], extra: TrpcFakes = {}, over: Partial<FeatureFull> = {}): TrpcFakes {
-  const item = listItem({ id: FEATURE.id, slug: SLUG, waitingReason: 'question', leadAwaitsHuman: true })
+  const item = listItem({ id: FEATURE.id, slug: SLUG, need: needOf('Which retry policy?') })
   const feature = { ...full({ id: FEATURE.id, slug: SLUG }), ...over }
   return withShell({
     ...extra,
@@ -259,6 +259,7 @@ describe('runcastle on a phone', () => {
       createdAt,
       updatedAt: createdAt,
       runtime: 'claude-code',
+      need: null,
     })
     render(<Root path={`/p/${PROJECT_ID}/chat`} threads={[thread('th_new', 'Plan the export', 2), thread('th_old', 'Audit the journal', 1)]} />)
     fireEvent.click(await screen.findByRole('button', { name: /— switch chat$/ }))
@@ -282,6 +283,7 @@ describe('runcastle on a phone', () => {
       createdAt: 1,
       updatedAt: 1,
       runtime: 'claude-code',
+      need: null,
     }
     render(<Root path={path} threads={[old]} />)
     expect(await screen.findByRole('button', { name: /Audit the journal/ })).toBeTruthy()
@@ -478,9 +480,9 @@ describe('a design on a phone', () => {
         events: ({ after }: { after?: number }) => ({ events: LOG.filter((e) => after === undefined || e.i > after) }),
       },
     } as TrpcFakes
-    const over = { need: needOf('design', 'A design waits for you') } as Partial<FeatureFull>
+    const over = { need: needOf('A design waits for you') } as Partial<FeatureFull>
     const threads: ThreadEntry[] = [
-      { id: 'th_main', title: 'Agent', role: 'main', state: 'idle', createdAt: 1, updatedAt: 1, runtime: 'claude-code' },
+      { id: 'th_main', title: 'Agent', role: 'main', state: 'idle', createdAt: 1, updatedAt: 1, runtime: 'claude-code', need: null },
     ]
     return { fakes, over, seen, threads }
   }

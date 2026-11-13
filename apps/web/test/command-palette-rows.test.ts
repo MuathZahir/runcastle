@@ -123,7 +123,7 @@ describe('command palette feature rows', () => {
     expect(html).toContain('Flow redesign: project shell and navigation')
     expect(html).toContain('stroke-dasharray:50 100') // 2 of the 4 not cancelled
     expect(html).not.toContain('data-phase')
-    expect(html).toContain('>In progress<')
+    expect(html).toContain('>Idle<')
     expect(html).toContain('>Current<')
   })
 

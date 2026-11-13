@@ -1,9 +1,9 @@
-import type { FeatureNeed } from '@runcastle/core'
+import type { Need } from '@runcastle/core'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 
-/** A need as `feature.list` / `feature.get` carry it; its words are the server's. */
-export function need(kind: FeatureNeed['kind'], words: string, over: Partial<FeatureNeed> = {}): FeatureNeed {
-  return { kind, words, held: false, since: 1, ...over }
+/** A need as `feature.list` / `feature.get` carry it: the agent's line, in the lead's chat unless `over` says. */
+export function need(why: string, over: Partial<Need> = {}): Need {
+  return { why, since: 1, threadId: 'lead-chat', by: 'agent', ...over }
 }
 
 /**
@@ -37,10 +37,9 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     workerProgress: over.workerProgress ?? { counted: 0, landed: 0 },
     workersPage: over.workersPage ?? null,
     liveSession: over.liveSession ?? null,
-    leadAwaitsHuman: over.leadAwaitsHuman ?? false,
     leadInBackground: over.leadInBackground ?? false,
+    working: over.working ?? false,
     need: over.need ?? null,
-    waitingReason: over.waitingReason ?? null,
     lastActivityAt: over.lastActivityAt ?? 0,
     dependsOn: over.dependsOn ?? [],
     blocks: over.blocks ?? [],
@@ -60,6 +59,7 @@ export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
     gate: { next: null, satisfied: false },
     dependsOn: [],
     blocks: [],
+    working: false,
     need: null,
   } as unknown as FeatureFull
 }

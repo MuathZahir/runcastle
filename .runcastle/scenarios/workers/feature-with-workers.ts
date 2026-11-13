@@ -34,6 +34,7 @@ import type { AppCtx } from '../../../packages/server/src/db/types.ts'
 import { createSessionRow, markSessionEnded, setSessionTitle } from '../../../packages/server/src/launcher/sessions.ts'
 import { createFeature } from '../../../packages/server/src/services/features.ts'
 import { listProjects } from '../../../packages/server/src/services/projects.ts'
+import { setWait } from '../../../packages/server/src/services/waits.ts'
 import { appendThreadEvent } from '../../../packages/server/src/threads/log.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from '../../drive-dir.ts'
 
@@ -57,13 +58,15 @@ interface SeededWorker {
   /** How long ago it started, in minutes: the order inside its lane. */
   ago: number
   failure?: string
+  /** Its agent's `wait_for_you` line, for a worker that needs the human. */
+  why?: string
   handback?: { summary: string; commits: string[]; files: string[] }
   outcome?: { kind: 'landed' | 'sent-back' | 'dropped'; note?: string }
 }
 
 const ALL_WORKERS: SeededWorker[] = [
-  { label: 'Header', purpose: 'The sidebar header: back, title and "+"', kind: 'with-you', status: 'needs-you', ago: 40 },
-  { label: 'Thread list', purpose: 'Rows grouped by status, done folded', kind: 'with-you', status: 'needs-you', ago: 38 },
+  { label: 'Header', purpose: 'The sidebar header: back, title and "+"', kind: 'with-you', status: 'needs-you', ago: 40, why: 'Back arrow or chevron for the header?' },
+  { label: 'Thread list', purpose: 'Rows grouped by status, done folded', kind: 'with-you', status: 'needs-you', ago: 38, why: 'Should Done start folded or open?' },
   { label: 'Worker list data', purpose: 'Group and order workers by status', kind: 'on-its-own', status: 'working', ago: 36 },
   { label: 'Amber dot rule', purpose: 'Light the feature row while a worker needs you', kind: 'on-its-own', status: 'working', ago: 34 },
   { label: 'Empty states', purpose: 'What the page says with no workers', kind: 'on-its-own', status: 'queued', ago: 5 },
@@ -170,6 +173,8 @@ function seedWorker(ctx: AppCtx, feature: Feature, leadId: string, w: SeededWork
   setSessionTitle(ctx, session.id, w.label)
   markSessionEnded(ctx, session.id)
   exchange(session.id, 1, `Start your assignment: ${w.purpose}`, `On it: ${w.purpose.toLowerCase()}.`)
+  // Only its agent's own call makes a worker need the human (needs-you-is-the-agent-s-call decision 6).
+  if (w.why) setWait(ctx, session.id, w.why)
   const createdAt = now - w.ago * MINUTE
   ctx.db
     .insert(workers)

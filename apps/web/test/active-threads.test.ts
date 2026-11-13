@@ -10,7 +10,6 @@ import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
 import { Crumbs, type Crumb } from '../src/ui/page'
 import {
-  askingAboutLine,
   featureEpic,
   originFeatures,
   orchestratorLanding,
@@ -30,6 +29,7 @@ const thread = (id: string, over: Partial<ThreadEntry> = {}): ThreadEntry => ({
   createdAt: now - 10 * DAY,
   updatedAt: now - 10 * DAY,
   runtime: 'claude-code',
+  need: null,
   ...over,
 })
 
@@ -267,19 +267,10 @@ describe('the rows', () => {
   })
 })
 
-/** every-feature-has-one-owner decisions 8, 17, 30: the chat row names what it asks about, plainly. */
-describe('a chat asking about features it owns', () => {
-  const features = [held('Export notes', 'a'), held('Sync offline', 'a'), held('Not its own', 'b')]
-
-  it('reads Asking about the first, +N for the rest, only for features it owns', () => {
-    expect(askingAboutLine(thread('a', { askingAbout: ['Export notes'] }), features)).toBe('Asking about Export notes')
-    expect(askingAboutLine(thread('a', { askingAbout: ['Export notes', 'Not its own', 'Sync offline'] }), features)).toBe('Asking about Export notes +1')
-    expect(askingAboutLine(thread('a', { askingAbout: ['Not its own'] }), features)).toBeNull()
-    expect(askingAboutLine(thread('a'), features)).toBeNull()
-  })
-
-  it('shows the line under the title, with the amber dot the only mark of the question', () => {
-    const asking = thread('a', { state: 'waiting', askingAbout: ['Export notes'] })
+/** needs-you-is-the-agent-s-call decisions 3, 6: a chat row reads its own need, in its agent's line. */
+describe('a chat that needs you', () => {
+  it('shows Needs you · <why> under the title, with the amber dot the only mark of the question', () => {
+    const asking = thread('a', { need: { why: 'Which retry policy?', since: now, threadId: 'a', by: 'agent' } })
     const html = renderToStaticMarkup(
       createElement(SidebarThreadList, {
         threads: [asking, thread('b')],
@@ -287,12 +278,16 @@ describe('a chat asking about features it owns', () => {
         onOpen: () => {},
         actionsFor: () => [],
         keep: () => true,
-        aboutFor: (t) => askingAboutLine(t, features),
       }),
     )
-    expect(html).toContain('>Asking about Export notes<')
-    expect(html).toContain('title="a — Asking about Export notes"')
-    expect(html.match(/aria-label="Waiting for you"/g)).toHaveLength(1)
+    expect(html).toContain('>Needs you · Which retry policy?<')
+    expect(html).toContain('title="a — Needs you · Which retry policy?"')
+    expect(html.match(/aria-label="Needs you"/g)).toHaveLength(1)
     expect(html).toContain('title="b"')
+  })
+
+  it('keeps a chat that needs you listed', () => {
+    const asking = thread('a', { need: { why: 'Which?', since: now, threadId: 'a', by: 'agent' } })
+    expect(threadIsActive(asking, { current: null, features: [], now })).toBe(true)
   })
 })

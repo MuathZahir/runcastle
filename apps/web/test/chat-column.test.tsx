@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DriveScenario, FeatureNeed, ThreadEntry, ThreadEvent } from '@runcastle/core'
+import type { DriveScenario, Need, ThreadEntry, ThreadEvent } from '@runcastle/core'
 import type { FeatureFull, WorkerListRow } from '../src/lib/api'
 import { fakeTrpc, type FakeHandlers } from './fake-trpc'
 import { full as fixture, listItem } from './fixtures'
@@ -59,6 +59,7 @@ const thread = (id: string, title: string, role: ThreadEntry['role'], over: Part
   createdAt: at,
   updatedAt: at,
   runtime: 'claude-code',
+  need: null,
   ...over,
 })
 /** Each thread's log says which thread it is. */
@@ -100,6 +101,9 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   previewPath: null,
   passPort: 4514,
   heldBy: null,
+  // A worker needing you asked with its own line; a working one has a turn running.
+  need: (over.status ?? 'needs-you') === 'needs-you' ? { why: `${label} asks`, since: at, threadId: id, by: 'agent' } : null,
+  turnRunning: over.status === 'working',
   ...over,
 })
 
@@ -704,7 +708,7 @@ describe('the feature header’s status and its sidebar row (decision 15)', () =
    * thread state, the row's stale turn bit beside it, `feature.get`'s
    * `need`), above the feature's sidebar row from `feature.list`.
    */
-  function HeaderAndRow({ wokenAt }: { wokenAt?: number }) {
+  function HeaderAndRow() {
     const column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
     const full = trpc.feature.get.useQuery({ id: 'feat_1' }).data
     const row = trpc.feature.list.useQuery({ projectId: 'proj_1' }).data?.[0]
@@ -712,13 +716,12 @@ describe('the feature header’s status and its sidebar row (decision 15)', () =
     const status = featureStatus({
       feature: full.feature,
       need: full.need,
+      working: full.working,
       workersWorking: 0,
       agentWorking: mainChatWorking(column.mainState, { awaitingInput: false }),
-      agentStateKnown: column.mainState !== undefined,
       driving: false,
       selfPlanning: false,
-      ...(wokenAt !== undefined ? { leadWake: { pendingSince: wokenAt } } : {}),
-      now: at,
+      declared: false,
     })
     return (
       <>
@@ -735,16 +738,17 @@ describe('the feature header’s status and its sidebar row (decision 15)', () =
    * server says it needs. `move` changes it and refetches every read, as a live
    * signal's resync does (lib/live.ts).
    */
-  function feature(start: { state: ThreadEntry['state']; need: FeatureNeed | null }) {
+  function feature(start: { state: ThreadEntry['state']; need: Need | null }) {
     let now = start
     const api = server({
       extra: {
         'thread.list': () => [thread('th_main', 'Feature chat', 'main', { state: now.state })],
-        'feature.get': () => ({ ...fixture({ id: 'feat_1' }), need: now.need }),
+        'feature.get': () => ({ ...fixture({ id: 'feat_1' }), need: now.need, working: now.state === 'working' }),
         'feature.list': () => [
           listItem({
             id: 'feat_1',
             liveSession: { status: 'live', awaitingInput: now.state !== 'working' },
+            working: now.state === 'working',
             need: now.need,
           }),
         ],
@@ -759,60 +763,47 @@ describe('the feature header’s status and its sidebar row (decision 15)', () =
 
   const header = () => screen.getByRole('status').textContent ?? ''
   const row = () => document.querySelector('[data-row]') as HTMLElement
-  const answer: FeatureNeed = { kind: 'answer', words: 'Needs your answer', held: false, since: 1 }
-  /** Both places say the feature waits on the human's answer, the row with its amber dot. */
+  const answer: Need = { why: 'Which database?', since: 1, threadId: 'th_main', by: 'agent' }
+  /** Both places say the feature needs the human, in the agent's line, the row with its amber dot. */
   const bothWait = async () =>
     waitFor(() => {
-      expect(header()).toBe('Needs your answer')
-      expect(row().textContent).toContain('Needs your answer')
+      expect(header()).toBe('Needs you· Which database?')
+      expect(row().textContent).toContain('Needs you · Which database?')
       expect(row().innerHTML).toContain('bg-warning')
     })
   const bothWork = async () =>
     waitFor(() => {
-      expect(header()).toContain('Working')
-      expect(row().textContent).toContain('Agent working')
+      expect(header()).toBe('Working')
+      expect(row().textContent).toContain('Working')
       expect(row().innerHTML).not.toContain('bg-warning')
     })
 
-  it('waits on the human in both once a runcastle-sent wake’s turn ends, even inside the wake’s grace', async () => {
-    const { api, move } = feature({ state: 'working', need: null })
-    // The orchestrator's message went out five seconds ago, well inside its grace.
-    render(<HeaderAndRow wokenAt={at - 5_000} />, { wrapper: api.Wrapper })
-    await bothWork()
-
-    await move({ state: 'idle', need: answer })
-    await bothWait()
-  })
-
-  it('waits on the human in both after an ordinary lead reply, and a human message clears both', async () => {
+  it('needs the human in both only once the agent says so, and its need beats Working', async () => {
     const { api, move } = feature({ state: 'working', need: null })
     render(<HeaderAndRow />, { wrapper: api.Wrapper })
     await bothWork()
 
-    await move({ state: 'idle', need: answer })
+    await move({ state: 'working', need: answer })
     await bothWait()
+  })
 
-    // The message is logged while the idle-stopped agent comes back: nobody waits on anybody.
+  it('a turn that ends with no need reads Idle in both, and a need clears back to Idle', async () => {
+    const { api, move } = feature({ state: 'working', need: null })
+    render(<HeaderAndRow />, { wrapper: api.Wrapper })
+    await bothWork()
+
     await move({ state: 'idle', need: null })
     await waitFor(() => {
-      expect(header()).toBe('Talking with you')
-      expect(row().textContent).toContain('In progress')
+      expect(header()).toBe('Idle')
+      expect(row().textContent).toContain('Idle')
       expect(row().innerHTML).not.toContain('bg-warning')
     })
 
-    await move({ state: 'working', need: null })
-    await bothWork()
-  })
+    await move({ state: 'idle', need: answer })
+    await bothWait()
 
-  it('says the same need in both, with its own words', async () => {
-    const stopped: FeatureNeed = { kind: 'stopped', words: 'Stopped · you stopped it', why: 'you stopped it', held: false, since: 1 }
-    const { api } = feature({ state: 'idle', need: stopped })
-    render(<HeaderAndRow />, { wrapper: api.Wrapper })
-    await waitFor(() => {
-      expect(header()).toBe('Stopped· you stopped it')
-      expect(row().textContent).toContain('Stopped · you stopped it')
-      expect(row().innerHTML).toContain('bg-warning')
-    })
+    await move({ state: 'idle', need: null })
+    await waitFor(() => expect(header()).toBe('Idle'))
   })
 })
 

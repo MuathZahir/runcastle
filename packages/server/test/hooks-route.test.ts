@@ -21,6 +21,7 @@ import { getProjectById } from '../src/services/repo'
 import { storeTickets } from './helpers/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { setWait, waitOf } from '../src/services/waits'
 
 function mount(): Hono {
   const app = new Hono()
@@ -73,7 +74,7 @@ describe('hooks route', () => {
     // exact verified SessionStart shape (additionalContext nested in hookSpecificOutput)
     expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
     expect(json.hookSpecificOutput.additionalContext).toContain('[runcastle] Demo feature')
-    expect(json.hookSpecificOutput.additionalContext).toContain('status: Talking with you')
+    expect(json.hookSpecificOutput.additionalContext).toContain('status: Idle')
     expect(json.hookSpecificOutput.additionalContext).toContain('returns only what changed')
     // A Claude Code session ends with one line that loads every runcastle tool at once.
     const lastLine = json.hookSpecificOutput.additionalContext.split('\n').at(-1)
@@ -146,12 +147,11 @@ describe('hooks route', () => {
     expect(compacted).toBe(`Your context was just compacted. Before acting on the summary, call get_feature_context.\n${resumed}`)
   })
 
-  /** lead-chats-stay-small decision 14: runcastle's compaction command is no human message, so the feature's waiting reason stays. */
+  /** lead-chats-stay-small decision 14: runcastle's compaction command is no human message, so the lead's wait stays. */
   it('does not count the compaction command as the human writing to the lead', async () => {
-    ctx.db.update(features).set({ waitingReason: 'plan to approve', waitingKind: 'plan' }).where(eq(features.id, featureId)).run()
+    setWait(ctx, sessionId, 'Plan ready for your yes')
     await post(mount(), 'user-prompt', { sessionId, payload: { hook_event_name: 'UserPromptSubmit', prompt: '/compact Keep in the summary: what you wait on.' } })
-    const row = ctx.db.select().from(features).where(eq(features.id, featureId)).get()!
-    expect(row.waitingReason).toBe('plan to approve')
+    expect(waitOf(ctx, sessionId)?.why).toBe('Plan ready for your yes')
     expect(listAfter(ctx, featureId, 0).some((e) => e.type === 'lead.human_message')).toBe(false)
   })
 
@@ -165,9 +165,10 @@ describe('hooks route', () => {
       chatId = chat.id
       ctx.db
         .update(features)
-        .set({ heldBy: chatId, chatId, waitingReason: 'which model?', waitingKind: 'answer', handbackAt: 1_000, handbackSummary: 'Ready to merge.' })
+        .set({ heldBy: chatId, chatId })
         .where(eq(features.id, featureId))
         .run()
+      setWait(ctx, sessionId, 'which model?')
     })
 
     const prompt = (text: string) =>
@@ -175,21 +176,23 @@ describe('hooks route', () => {
     const row = () => ctx.db.select().from(features).where(eq(features.id, featureId)).get()!
     const humanMessages = () => listAfter(ctx, featureId, 0).filter((e) => e.type === 'lead.human_message')
 
-    it('leaves the owner, the waiting reason and the handback, and emits no human message', async () => {
+    it('leaves the owner and the lead’s wait, and emits no human message', async () => {
       await prompt(
         '<task-notification>\n<task-id>b7x2</task-id>\n<status>completed</status>\n' +
           '<summary>Agent "Explore the drive slot" finished</summary>\n<result>The slot lives in Sidebar.tsx.</result>\n</task-notification>',
       )
       await prompt('  <task-notification>\n<summary>Background command "bun test" completed (exit code 0)</summary>\n</task-notification>')
       await prompt('<cross-session-message from="Notes triage">carry on</cross-session-message>')
-      expect(row()).toMatchObject({ heldBy: chatId, waitingReason: 'which model?', handbackAt: 1_000, handbackSummary: 'Ready to merge.' })
+      expect(row()).toMatchObject({ heldBy: chatId })
+      expect(waitOf(ctx, sessionId)?.why).toBe('which model?')
       expect(row().lastHumanMessageAt).toBeNull()
       expect(humanMessages()).toHaveLength(0)
     })
 
     it('still lets a really typed prompt move the feature to the human and stamp the mark', async () => {
       await prompt('what does <task-notification> mean in the log?')
-      expect(row()).toMatchObject({ heldBy: null, waitingReason: null, handbackAt: null })
+      expect(row()).toMatchObject({ heldBy: null })
+      expect(waitOf(ctx, sessionId)).toBeNull()
       expect(row().lastHumanMessageAt).not.toBeNull()
       expect(humanMessages()).toHaveLength(1)
       expect(humanMessages()[0]?.data).toMatchObject({ typed: true })
@@ -300,7 +303,7 @@ describe('hooks route', () => {
 
     expect(json.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit')
     expect(json.hookSpecificOutput.additionalContext).toBe(
-      '[runcastle] feature=dark-mode status=Talking with you',
+      '[runcastle] feature=dark-mode status=Idle',
     )
   })
 
@@ -330,13 +333,13 @@ describe('hooks route', () => {
       for (const text of [prompt, start]) expect(text).not.toMatch(/phase/)
     }
 
-    it('says "Talking with you" with nothing running and nothing asked', async () => {
-      await expectStatus('Talking with you')
+    it('says "Idle" with nothing running and nothing asked', async () => {
+      await expectStatus('Idle')
     })
 
-    it('says "Waiting for you · <why>" while a waiting reason is set', async () => {
-      ctx.db.update(features).set({ waitingReason: 'ready to test' }).where(eq(features.id, featureId)).run()
-      await expectStatus('Waiting for you · ready to test')
+    it('says "Needs you · <why>" while the lead waits on the human', async () => {
+      setWait(ctx, sessionId, 'Ready to test · Checkout')
+      await expectStatus('Needs you · Ready to test · Checkout')
     })
 
     it('says "Merged" once the feature has shipped', async () => {
@@ -422,7 +425,7 @@ describe('hooks route', () => {
       payload: { session_id: 'cc-lap', hook_event_name: 'SessionStart', source: 'startup' },
     })
 
-    expect(json.hookSpecificOutput.additionalContext).toContain('status: Talking with you; branch:')
+    expect(json.hookSpecificOutput.additionalContext).toContain('status: Idle; branch:')
     expect(json.hookSpecificOutput.additionalContext).not.toMatch(/\blap\b/i)
   })
 

@@ -35,17 +35,26 @@ const tickets = (total: number, done: number, failed = 0) => ({
 })
 
 export const busyFeatures: FeatureListItem[] = [
-  f('Sidebar refresh', { liveSession: { status: 'live', awaitingInput: true } }),
+  f('Sidebar refresh', {
+    liveSession: { status: 'live', awaitingInput: true },
+    need: { why: 'Two-line rows or one line with a dot?', since: now - 4 * MIN, threadId: 'thread_lead', by: 'agent' },
+  }),
   f('Rounds see blockers outside the round', {
     ticketCounts: tickets(4, 3, 1),
-    waitingReason: 'which retry policy should rounds use?',
+    working: true,
+    // A worker's question: the row opens that worker's chat, while the lead still works.
+    need: { why: 'Retry policy: a fixed three tries, or back off for an hour?', since: now - 9 * MIN, threadId: 'worker_retry', by: 'agent' },
   }),
-  f('Changelog file per release', { ticketCounts: tickets(5, 5), waitingReason: 'ready to test' }),
+  f('Changelog file per release', {
+    ticketCounts: tickets(5, 5),
+    need: { why: 'Ready to test · changelog-release.ts', since: now - 30 * MIN, threadId: 'thread_changelog', by: 'agent' },
+  }),
   f('Prepare reruns stale checks', {
     workersWorking: 1,
+    working: true,
     ticketCounts: tickets(7, 3),
   }),
-  f('Note capture keeps drafts', { liveSession: { status: 'live', awaitingInput: false } }),
+  f('Note capture keeps drafts', { liveSession: { status: 'live', awaitingInput: false }, working: true }),
   f('Scenario fixtures for drives', { ticketCounts: tickets(6, 4) }),
   f('Dark terminal palette', { status: 'draft' }),
   f('Portfolio search', {

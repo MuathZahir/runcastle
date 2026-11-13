@@ -47,8 +47,8 @@ const titled = (title: string, over: Partial<FeatureListItem>): FeatureListItem 
   ...listItem({ id: title, slug: title.toLowerCase().replace(/ /g, '-'), ...over }),
   title,
 })
-const waits = (title: string, words = 'Plan to approve') => titled(title, { need: need('plan', words) })
-const runs = (title: string) => titled(title, { workersWorking: 1 })
+const waits = (title: string, words = 'Plan ready for your yes') => titled(title, { need: need(words) })
+const runs = (title: string) => titled(title, { working: true })
 
 const entryOf = (features: FeatureListItem[]) => portfolioEntries([project], [features])[0]!
 
@@ -84,7 +84,7 @@ describe('ProjectCard', () => {
     expect(face.textContent).toContain('RD')
     expect(face.textContent).toContain('runcastle-demo')
     expect(face.textContent).toContain('Voice notes')
-    expect(face.textContent).toContain('Plan to approve')
+    expect(face.textContent).toContain('Plan ready for your yes')
     expect(face.textContent).toContain('1running')
     expect(face.textContent).toContain('3features')
 

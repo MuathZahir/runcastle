@@ -97,19 +97,19 @@ describe("the workers card in a lead's chat", () => {
       ],
     },
   ]
-  const row = (id: string, status: WorkerRow['status']) => ({ id, status }) as WorkerRow
+  const row = (id: string, status: WorkerRow['status'], over: object = {}) => ({ id, status, ...over }) as WorkerRow
 
   it('reads each row’s live status in plain words and opens its worker’s chat', () => {
     const openWorker = vi.fn()
     render(
-      <WorkerLinksContext.Provider value={{ workers: [row('w1', 'handed-back'), row('w2', 'queued'), row('w3', 'needs-you')], openWorker }}>
+      <WorkerLinksContext.Provider value={{ workers: [row('w1', 'handed-back'), row('w2', 'queued'), row('w3', 'working', { need: { why: 'Which tab?', since: 1, threadId: 'w3', by: 'agent' } })], openWorker }}>
         <ChatThread items={items} state="idle" actions={{ onEdit: () => {}, onBranch: () => {}, canUndoFiles: true }} footer={null} />
       </WorkerLinksContext.Provider>,
     )
     expect(screen.getByText('Started 3 workers')).toBeTruthy()
     expect(screen.getByText('Handed back')).toBeTruthy()
     expect(screen.getByText('Waiting to start')).toBeTruthy()
-    expect(screen.getByText('Waiting on you')).toBeTruthy()
+    expect(screen.getByText('Needs you')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open Review' }))
     expect(openWorker).toHaveBeenCalledWith('w2')
   })

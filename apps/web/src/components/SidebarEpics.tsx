@@ -4,7 +4,7 @@ import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry } from '../lib/chat-thread'
 import { IconArrowRight, IconList, IconPlus } from '../icons'
 import { EpicIcon, epicStyle, type EpicColor, type EpicIconId } from '../lib/epic-look'
-import { epicIsIdle, epicOwnerJoin, idleEpicFacts, nestedFeatureWords, orderEpicList, type Epic } from '../lib/feature-ui/epics'
+import { epicIsIdle, epicOwnerJoin, idleEpicFacts, orderEpicList, type Epic } from '../lib/feature-ui/epics'
 import type { OwnerReading } from '../lib/feature-owner'
 import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
@@ -134,9 +134,9 @@ export function epicOwnerCrumbs(
   ]
 }
 
-/** What an epic's row says under its name (decision 11): what its chat asks, that it works, or nothing. */
-function epicWords(chat: ThreadEntry, asksAbout: string | null): string | null {
-  if (chat.state === 'waiting') return asksAbout ? `Asking about ${asksAbout}` : 'Asking you'
+/** What an epic's row says under its name: Needs you · <the agent's line>, Working, or nothing. */
+function epicWords(chat: ThreadEntry): string | null {
+  if (chat.need) return `Needs you · ${chat.need.why}`
   if (chat.state === 'working') return 'Working'
   return null
 }
@@ -149,19 +149,17 @@ function epicWords(chat: ThreadEntry, asksAbout: string | null): string | null {
  */
 export function SidebarEpicRow({
   chat,
-  asksAbout = null,
   active,
   onOpen,
   actions = [],
 }: {
   chat: ThreadEntry
-  asksAbout?: string | null
   active: boolean
   onOpen: (chatId: string) => void
   actions?: FeatureAction[]
 }) {
-  const words = epicWords(chat, asksAbout)
-  const asking = chat.state === 'waiting'
+  const words = epicWords(chat)
+  const asking = !!chat.need
   return (
     <div
       data-epic={chat.id}
@@ -273,7 +271,6 @@ function CardRows({ label, children }: { label: string; children: ReactNode[] })
  */
 export function SidebarEpicCard({
   chat,
-  asksAbout = null,
   count,
   active,
   onOpen,
@@ -287,7 +284,6 @@ export function SidebarEpicCard({
   color?: EpicColor | null | undefined
   /** Its icon (decision 1); the default chat bubble while unset. */
   icon?: EpicIconId | null | undefined
-  asksAbout?: string | null
   /** Its features in the card, for the resting line. */
   count: number
   active: boolean
@@ -296,9 +292,9 @@ export function SidebarEpicCard({
   /** Its feature rows. */
   children?: ReactNode[]
 }) {
-  const doing = epicWords(chat, asksAbout)
+  const doing = epicWords(chat)
   const words = doing ?? restWords(count)
-  const asking = chat.state === 'waiting'
+  const asking = !!chat.need
   const working = chat.state === 'working'
   const rows = children ?? []
   return (
@@ -602,7 +598,6 @@ export function SidebarEpics({
             ) : g.kind === 'epic' ? (
               <SidebarEpicCard
                 chat={g.epic.chat}
-                asksAbout={g.epic.asksAbout}
                 count={g.epic.features.length}
                 active={g.epic.chat.id === currentChat}
                 onOpen={onOpenEpic}
@@ -610,7 +605,7 @@ export function SidebarEpics({
                 color={g.epic.color}
                 icon={g.epic.icon}
               >
-                {g.epic.features.map((x) => row(x.feature, nestedFeatureWords(featureStateWords(x.feature), x.holder, g.epic.chat.title)))}
+                {g.epic.features.map((x) => row(x.feature, featureStateWords(x.feature)))}
               </SidebarEpicCard>
             ) : (
               <OtherFeaturesCard label="Other features">{g.features.map((f) => row(f, featureStateWords(f)))}</OtherFeaturesCard>

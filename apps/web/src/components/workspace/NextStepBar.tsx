@@ -5,20 +5,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { ButtonVariant, StatusTone } from '../../ui'
 import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feature-ui'
 import {
-  IconAlert,
   IconArchive,
   IconArrowRight,
   IconClock,
-  IconDoc,
-  IconEye,
   IconGitMerge,
   IconInbox,
   IconMessage,
   IconMore,
   IconPlay,
   IconPlus,
-  IconRefresh,
-  IconShield,
   IconSparkle,
   IconStop,
   IconTerminal,
@@ -33,17 +28,11 @@ export const ACTION_ICON: Record<ActionKind, ReactNode> = {
   selfPlan: <IconSparkle />,
   stopSelfPlan: <IconStop />,
   stopAgent: <IconStop />,
-  resumeProvider: <IconRefresh />,
   testDriveStart: <IconPlay />,
   testDriveStop: <IconStop />,
   fixDrive: <IconTerminal />,
   merge: <IconGitMerge />,
-  resolveConflict: <IconAlert />,
   unarchive: <IconArchive />,
-  reply: <IconMessage />,
-  openPlan: <IconDoc />,
-  openDesign: <IconEye />,
-  showRequest: <IconShield />,
   newThread: <IconPlus />,
 }
 

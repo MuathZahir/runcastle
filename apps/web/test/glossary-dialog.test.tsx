@@ -20,7 +20,7 @@ describe('GlossaryDialog', () => {
   it('lists every word under its group, with the words it replaced', () => {
     render(<GlossaryDialog open onClose={vi.fn()} />)
     expect(terms()).toEqual(expect.arrayContaining(GLOSSARY.map((e) => e.term)))
-    expect(terms()).toHaveLength(15)
+    expect(terms()).toHaveLength(14)
     for (const label of Object.values(GLOSSARY_GROUP_LABEL)) expect(screen.getByRole('heading', { name: label })).toBeTruthy()
     expect(screen.getByText('Once called: burn, AFK burn, run, lap')).toBeTruthy()
   })
@@ -32,9 +32,9 @@ describe('GlossaryDialog', () => {
   })
 
   it('marks the word it was opened at', () => {
-    render(<GlossaryDialog open focus="held-by" onClose={vi.fn()} />)
-    const row = screen.getByText('Held by').closest('[data-term]')
-    expect(row?.getAttribute('data-term')).toBe('held-by')
+    render(<GlossaryDialog open focus="orchestrator" onClose={vi.fn()} />)
+    const row = screen.getByText('Epic').closest('[data-term]')
+    expect(row?.getAttribute('data-term')).toBe('orchestrator')
     expect(row?.className).toContain('bg-surface-selected')
     expect(screen.getByText('Round').closest('[data-term]')?.className).not.toContain('bg-surface-selected')
   })

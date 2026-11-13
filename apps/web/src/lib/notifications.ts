@@ -1,5 +1,6 @@
 import { type EventRow, FEATURE_NEEDS_YOU, needPings } from '@runcastle/core'
 import { NOTIFY_OFFER } from './vocabulary'
+import { pathFor } from './routes'
 
 /**
  * Event → desktop-notification mapping (streamlining-ux ticket 10;
@@ -66,16 +67,32 @@ export function notifyButton(input: {
 
 
 /**
- * The notification a polled event should fire, or `null` to ignore it: a
- * `feature.needs_you` the shared {@link needPings} rule pings for, titled with
- * the need's words and naming the feature (looked up by the caller). A round
- * finishing or failing no longer pings: the agent handles both and asks when
- * it cannot.
+ * The notification a polled event should fire, or `null` to ignore it: every
+ * well-formed `feature.needs_you` pings (needs-you-is-the-agent-s-call decision
+ * 14, the shared {@link needPings} rule), titled with the agent's line and
+ * naming its feature, or an epic's chat when it has none.
  */
 export function eventToNotification(
   event: EventRow,
   featureTitle?: string,
 ): DesktopNotification | null {
   if (event.type !== FEATURE_NEEDS_YOU || !needPings(event.data)) return null
-  return { title: event.data.words, body: featureTitle ?? 'your feature' }
+  const where = event.data.featureId === null ? 'An epic’s chat' : (featureTitle ?? 'your feature')
+  return { title: `Needs you · ${event.data.why}`, body: where }
+}
+
+/**
+ * Where a ping's click lands (decision 12): the exact chat the need waits in,
+ * on its feature's page, or on the Orchestrator for an epic's own chat. Null
+ * for an event that does not ping, or a feature the server no longer lists.
+ */
+export function needPath(
+  event: Pick<EventRow, 'type' | 'projectId' | 'data'>,
+  feature: { projectId: string; slug: string } | null,
+): string | null {
+  if (event.type !== FEATURE_NEEDS_YOU || !needPings(event.data)) return null
+  const thread = `?thread=${encodeURIComponent(event.data.threadId)}`
+  if (event.data.featureId === null) return pathFor({ kind: 'chat', projectId: event.projectId }) + thread
+  if (!feature) return null
+  return pathFor({ kind: 'feature', projectId: feature.projectId, featureSlug: feature.slug }) + thread
 }

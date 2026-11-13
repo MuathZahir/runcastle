@@ -3,22 +3,18 @@ import { sidebarLanes, triage } from '../src/lib/feature-ui'
 import { listItem, need } from './fixtures'
 
 /**
- * The sidebar's grouping (the-map-of-stories-and-scenarios decisions 2, 3):
- * what needs you lifted out, then the lanes the sidebar draws as the stopped
- * rows, the Working shelf and the Backlog / Shipped shelves. The split is pure.
+ * The sidebar's grouping (the-map-of-stories-and-scenarios decisions 2, 3;
+ * needs-you-is-the-agent-s-call decisions 15, 18): what needs you lifted out,
+ * then Working, Idle and the shelves. The split is pure.
  */
 
-const ready = listItem({ id: 'ready', need: need('test', 'Ready to test · Checkout') })
-const asking = listItem({
-  id: 'asking',
-  liveSession: { status: 'live', awaitingInput: true },
-  need: need('answer', 'Needs your answer'),
-})
+const ready = listItem({ id: 'ready', need: need('Ready to test · Checkout') })
+const asking = listItem({ id: 'asking', need: need('Which retry policy?') })
 const failed = listItem({
   id: 'failed',
   ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
 })
-const burning = listItem({ id: 'burning', workersWorking: 1 })
+const burning = listItem({ id: 'burning', workersWorking: 1, working: true })
 const building = listItem({ id: 'building' })
 const draft = listItem({ id: 'draft', status: 'draft' })
 const shipped = listItem({ id: 'shipped', status: 'shipped' })
@@ -26,32 +22,16 @@ const archived = listItem({ id: 'archived', status: 'archived' })
 const all = [ready, burning, draft, failed, asking, shipped, building, archived]
 
 describe('a lead that replied with work left running', () => {
-  const session = { liveSession: { status: 'live' as const, awaitingInput: true } }
-
-  it('sits under Agent working, not Needs you', () => {
-    const f = listItem({ id: 'tests', ...session, leadInBackground: true })
+  it('sits under Working, not Needs you', () => {
+    const f = listItem({ id: 'tests', working: true })
     const { inbox, lanes } = sidebarLanes([f])
     expect(inbox).toEqual([])
-    expect(lanes.map((g) => g.key)).toEqual(['agentWorking'])
+    expect(lanes).toEqual([{ key: 'working', label: 'Working', features: [f] }])
   })
 
-  it('needs you once it said so, whatever still runs', () => {
-    const f = listItem({ id: 'tests', ...session, leadInBackground: true, need: need('plan', 'Plan to approve') })
+  it('needs you once it said so, whatever still runs (decision 18)', () => {
+    const f = listItem({ id: 'tests', working: true, workersWorking: 1, need: need('Plan ready for your yes') })
     expect(sidebarLanes([f]).inbox.map((x) => x.id)).toEqual(['tests'])
-  })
-})
-
-describe('a need its orchestrator holds (decision 18; the-status-tells-the-truth decision 5)', () => {
-  it('sits under Agent working until its hour passes, then needs you', () => {
-    const held = listItem({ id: 'held', need: need('handback', 'With the orchestrator · Ready to merge', { held: true }) })
-    expect(sidebarLanes([held])).toEqual({ inbox: [], lanes: [{ key: 'agentWorking', label: 'Agent working', features: [held] }] })
-    const due = listItem({ id: 'due', need: need('handback', 'Handed back · Ready to merge') })
-    expect(sidebarLanes([due]).inbox).toEqual([due])
-  })
-
-  it('a permission prompt during a round needs you, not Agent working', () => {
-    const f = listItem({ id: 'asks', workersWorking: 1, need: need('permission', 'Needs permission · Bash: git push') })
-    expect(sidebarLanes([f]).inbox).toEqual([f])
   })
 })
 
@@ -61,9 +41,10 @@ describe('sidebarLanes', () => {
     expect(inbox.map((f) => f.id)).toEqual(['ready', 'asking'])
   })
 
-  it('keeps every other lane in today’s order, with no Needs you lane among them', () => {
+  it('keeps every other lane in order, with no Needs you lane among them', () => {
     const { lanes } = sidebarLanes(all, { showArchived: true })
-    expect(lanes.map((g) => g.key)).toEqual(['agentWorking', 'inProgress', 'drafts', 'shipped', 'archived'])
+    expect(lanes.map((g) => g.key)).toEqual(['working', 'idle', 'drafts', 'shipped', 'archived'])
+    expect(lanes.map((g) => g.label)).toEqual(['Working', 'Idle', 'Backlog', 'Shipped', 'Archived'])
     expect(lanes.map((g) => g.features.map((f) => f.id))).toEqual([
       ['burning'],
       ['failed', 'building'],
@@ -83,6 +64,6 @@ describe('sidebarLanes', () => {
   it('gives an empty Inbox when nothing waits on the human', () => {
     const { inbox, lanes } = sidebarLanes([burning, draft])
     expect(inbox).toEqual([])
-    expect(lanes.map((g) => g.key)).toEqual(['agentWorking', 'drafts'])
+    expect(lanes.map((g) => g.key)).toEqual(['working', 'drafts'])
   })
 })

@@ -27,6 +27,7 @@ import { listThreads, threadEvents, threadRow, threadView } from '../../threads/
 import { agentHost, appendThreadEvent } from '../../threads/types'
 import { driveWorkerBetweenDrives } from '../../workers/drive'
 import { workerPrompted } from '../../workers/service'
+import { clearWait } from '../../services/waits'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -109,7 +110,10 @@ export const threadRouter = router({
 
   /** Stop the running turn (Stop, Esc). */
   stop: publicProcedure.input(threadId).mutation(async ({ ctx, input }): Promise<{ ok: true }> => {
-    threadRow(ctx, input.threadId)
+    const row = threadRow(ctx, input.threadId)
+    // The human's Stop answers what the chat waited on them for (needs-you decisions 7, 10).
+    clearWait(ctx, row.id, 'stopped')
+    if (row.kind === 'worker') workerPrompted(ctx, row.id)
     await agentHost(ctx).cancel(input.threadId)
     return { ok: true }
   }),

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { EventRow, FeatureNeed } from '@runcastle/core'
+import type { EventRow, Need } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { FeatureView } from '../src/lib/routes'
 import { FeatureCommandsProvider, useFeatureCommands, type FeatureCommands } from '../src/lib/feature-commands'
@@ -98,7 +98,7 @@ interface PageOptions {
   runs?: FeatureFull['runs']
   queries?: Record<string, unknown>
   /** What the server says the feature needs. */
-  need?: FeatureNeed
+  need?: Need
 }
 
 function setup({ status = 'active', preview = false, tickets = [], docs = [], runs = [], queries = {}, need }: PageOptions) {
@@ -147,7 +147,7 @@ const panelOf = (html: string) => html.slice(at(html, 'data-panel'))
 
 const READY = { 'feature.readyDeclarations': [{ id: 'r1', featureId: 'f1', runId: null, scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 5 }] }
 /** The need that declaration leaves on the feature. */
-const READY_TO_TEST: FeatureNeed = { kind: 'test', words: 'Ready to test · Checkout', why: 'Checkout', scenario: 'Checkout', held: false, since: 5 }
+const READY_NEED: Need = { why: 'Ready to test · Checkout', since: 5, threadId: 'lead-chat', by: 'agent' }
 
 describe('the chat-first feature page', () => {
   it('shows exactly one header row, then the chat — no strip, no chat header, no tabs', () => {
@@ -169,9 +169,9 @@ describe('the chat-first feature page', () => {
     expect(html).not.toContain('data-panel')
   })
 
-  it('reads Talking with you with nothing running and nothing asked, and carries only Merge & ship, no Go and no "+" (the sidebar page has it)', () => {
+  it('reads Idle with nothing running and nothing asked, and carries only Merge & ship, no Go and no "+" (the sidebar page has it)', () => {
     const header = headerOf(page({ tickets: [ticket(1)] }))
-    expect(header).toContain('Talking with you')
+    expect(header).toContain('Idle')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])
     const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar)"/.test(b))
     expect(buttons.length - chrome.length).toBe(1)
@@ -181,7 +181,7 @@ describe('the chat-first feature page', () => {
   })
 
   it('offers Start test drive once the agent declared ready, with no What-to-test notice', () => {
-    const html = page({ queries: READY, need: READY_TO_TEST })
+    const html = page({ queries: READY, need: READY_NEED })
     expect(headerOf(html)).toContain('Ready to test')
     expect(headerOf(html)).toContain('Start test drive')
     expect(html).not.toContain('What to test')
@@ -280,7 +280,7 @@ describe('the panel’s views', () => {
 describe('what opens the panel', () => {
   it('opens the drive on the Test drive click, before the server answers', () => {
     const onViewChange = vi.fn()
-    setup({ queries: READY, need: READY_TO_TEST })
+    setup({ queries: READY, need: READY_NEED })
     render(workspace({ onViewChange }))
     fireEvent.click(screen.getByRole('button', { name: 'Start test drive' }))
     expect(onViewChange).toHaveBeenCalledWith('drive')
@@ -359,8 +359,7 @@ describe('the drive page', () => {
 
 /** you-always-know-what-s-waiting decisions 1, 6, 7, 8: the need's button, Merge & ship, New chat. */
 describe('the header’s need, its button and New chat', () => {
-  const PLAN: FeatureNeed = { kind: 'plan', words: 'Plan to approve', held: false, since: 1 }
-  const MERGE: FeatureNeed = { kind: 'merge', words: 'Ready to merge', held: false, since: 1 }
+  const PLAN: Need = { why: 'Plan ready for your yes', since: 1, threadId: 'lead-chat', by: 'agent' }
   const header = () => document.querySelector('header') as HTMLElement
   const labels = () => [...header().querySelectorAll('button')].map((b) => b.textContent?.trim() ?? '').filter(Boolean)
 
@@ -376,21 +375,11 @@ describe('the header’s need, its button and New chat', () => {
     render(createElement(FeatureCommandsProvider, null, workspace(options), createElement(Peek)))
   }
 
-  it('names the need and puts its button first, Merge & ship quiet beside it', () => {
-    const onViewChange = vi.fn()
-    mount({ need: PLAN, docs: [doc('decisions.md')], onViewChange })
-    expect(screen.getByRole('status').textContent).toContain('Plan to approve')
-    expect(labels()).toEqual(['Open plan', 'Merge & ship'])
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
-    expect(onViewChange).toHaveBeenCalledWith('plan')
-  })
-
-  it('shows Merge & ship once, as the primary, when the feature is ready to merge', () => {
-    mount({ need: MERGE })
-    const merges = screen.getAllByRole('button', { name: 'Merge & ship' })
-    expect(merges).toHaveLength(1)
-    expect(merges[0]!.className).toMatch(/\bbg-primary\b/)
+  it('names the need in the agent’s own line, with Merge & ship quiet beside it and no need button', () => {
+    mount({ need: PLAN, docs: [doc('decisions.md')] })
+    expect(screen.getByRole('status').textContent).toContain('Needs you· Plan ready for your yes')
+    expect(labels()).toContain('Merge & ship')
+    expect(labels()).not.toContain('Open plan')
   })
 
   it('starts a worker with no assignment from Ctrl+Shift+O, the composer included; never a side thread', () => {
@@ -416,12 +405,11 @@ describe('the header’s need, its button and New chat', () => {
     mount({ need: PLAN })
     expect(published?.title).toBe('Demo')
     expect(published?.commands.map((c) => [c.label, c.disabled ?? null])).toEqual([
-      ['Open plan', null],
       ['New worker', null],
       ['Merge & ship', null],
       ['Start test drive', 'Nothing declared ready yet'],
     ])
-    act(() => published!.commands[1]!.run())
+    act(() => published!.commands[0]!.run())
     expect(store.fired).toEqual([['worker.startUnassigned', { featureId: 'f1' }]])
   })
 })

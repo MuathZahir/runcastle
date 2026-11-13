@@ -54,9 +54,9 @@ const nav: ProjectNavApi = {
   cancelOpen: vi.fn(),
 }
 
-const running = (title: string, slug = title): FeatureListItem => ({ ...listItem({ id: slug, slug, workersWorking: 1 }), title })
+const running = (title: string, slug = title): FeatureListItem => ({ ...listItem({ id: slug, slug, working: true }), title })
 const waiting = (title: string, words: string, slug = title): FeatureListItem => ({
-  ...listItem({ id: slug, slug, need: need('test', words) }),
+  ...listItem({ id: slug, slug, need: need(words) }),
   title,
 })
 
@@ -115,8 +115,8 @@ describe('PortfolioHome', () => {
 
     const cards = within(busy())
     const lighthouse = cards.getByTitle('Open Lesson streaks').closest('.card') as HTMLElement
-    expect(lighthouse.textContent).toContain('Ready to test')
-    expect(lighthouse.textContent).not.toContain('Streak resets')
+    // The agent's own line, whole (needs-you decision 3).
+    expect(lighthouse.textContent).toContain('Ready to test · Streak resets at midnight')
     // Running stays a count in the foot where something waits.
     expect(lighthouse.textContent).not.toContain('Quiz timer')
     expect(lighthouse.textContent).toContain('1running')

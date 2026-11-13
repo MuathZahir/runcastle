@@ -530,6 +530,7 @@ const entry = (id: string, title: string, updatedAt = 1_000): ThreadEntry => ({
   // Written in just now, so it is active: the Orchestrator lists it and lands on it.
   lastHumanAt: Date.now(),
   runtime: 'claude-code',
+  need: null,
 })
 
 /** The chat in front of the column: its region, and which thread it shows. */
@@ -710,20 +711,20 @@ describe('New chat with a chat running', () => {
   it('lists the same chats, names and states on the Epics page as in the sidebar', () => {
     threads = [
       { ...entry('sess_1', 'Audit the journal', 3_000), state: 'working' },
-      { ...entry('sess_2', 'Cut the export idea', 2_000), state: 'waiting' },
+      { ...entry('sess_2', 'Cut the export idea', 2_000), state: 'waiting', need: { why: 'Which export first?', since: 2_000, threadId: 'sess_2', by: 'agent' } },
       entry('sess_old', 'An older idea'),
     ]
     mountWithSidebar(talk({ session: liveChat }), { conversations: true })
-    // The asking epic first, then newest started first (epics decision 8).
+    // The epic that needs you first, then newest started first (epics decision 8).
     expect(orchestratorChats()).toEqual(['Cut the export idea', 'Audit the journal', 'An older idea'])
     expect(chatRow('Audit the journal').textContent).toContain('Working')
-    expect(chatRow('Cut the export idea').textContent).toContain('Asking you')
+    expect(chatRow('Cut the export idea').textContent).toContain('Needs you · Which export first?')
     const groups = ['Active', 'Earlier'].flatMap((name) => screen.queryAllByRole('region', { name }))
     const rows = groups.flatMap((g) => within(g).getAllByRole('button')).map((b) => b.textContent ?? '')
 
     expect(rows).toHaveLength(3)
     const expected = [
-      ['Cut the export idea', 'waiting for you'],
+      ['Cut the export idea', 'needs you'],
       ['Audit the journal', 'working'],
       ['An older idea', 'd'],
     ]
@@ -1007,6 +1008,8 @@ describe('the project drive’s Scenarios worker (drive-chats-become-workers dec
         previewPath: null,
         passPort: 4514,
         heldBy: null,
+        need: null,
+        turnRunning: false,
       },
     ]
   })

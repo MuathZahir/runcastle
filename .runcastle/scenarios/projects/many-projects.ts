@@ -35,7 +35,7 @@ import { createDb } from '../../../packages/server/src/db/client.ts'
 import { runMigrations } from '../../../packages/server/src/db/migrate.ts'
 import type { AppCtx } from '../../../packages/server/src/db/types.ts'
 import { createFeature, list as listFeatures } from '../../../packages/server/src/services/features.ts'
-import { setWaiting } from '../../../packages/server/src/services/lead-status.ts'
+import { setWait } from '../../../packages/server/src/services/waits.ts'
 import { closeProject, listProjects, openProject } from '../../../packages/server/src/services/projects.ts'
 import { createSessionRow, markSessionEnded, setSessionTitle } from '../../../packages/server/src/launcher/sessions.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from '../../drive-dir.ts'
@@ -145,7 +145,11 @@ async function main(): Promise<void> {
       ['JanaLearn_Updated', 'Lesson streaks', 'Should a missed day reset the streak?'],
     ] as const) {
       const f = await featureIn(ctx, opened[name]!, title)
-      if (f.fresh) setWaiting(ctx, f.id, ask, 'answer')
+      if (f.fresh) {
+        const lead = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: opened[name]!.repoPath })
+        markSessionEnded(ctx, lead.id)
+        setWait(ctx, lead.id, ask)
+      }
     }
 
     // Running: a feature with a worker at work, as a row only.

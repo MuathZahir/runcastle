@@ -274,10 +274,14 @@ export function listByProject(ctx: AppCtx, projectId: string, afterId = 0): Even
   return rows.map(rowToEvent)
 }
 
-/** A `feature.needs_you` event with what a ping needs to name and open its feature. */
+/**
+ * A `feature.needs_you` event with what a ping needs to name and open its
+ * feature; `feature` is null for an orchestrator chat's own need, which the
+ * event's `projectId` and `data.threadId` open.
+ */
 export interface NeedsYouEvent {
   event: EventRow
-  feature: { id: string; projectId: string; slug: string; title: string }
+  feature: { id: string; projectId: string; slug: string; title: string } | null
 }
 
 /**
@@ -291,7 +295,7 @@ export function needsYouAfter(ctx: AppCtx, afterId?: number): NeedsYouEvent[] {
   const query = ctx.db
     .select({ event: events, feature: { id: features.id, projectId: features.projectId, slug: features.slug, title: features.title } })
     .from(events)
-    .innerJoin(features, eq(features.id, events.featureId))
+    .leftJoin(features, eq(features.id, events.featureId))
   const rows =
     afterId === undefined
       ? query.where(eq(events.type, FEATURE_NEEDS_YOU)).orderBy(desc(events.id)).limit(1).all()

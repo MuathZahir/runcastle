@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { RefObject } from 'react'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
@@ -73,6 +73,7 @@ import { unsentNotes } from './review/SendToAgent'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
 import { useFeatureWorkers, useWorkerHeader, workerInFront } from './workers/WorkerChat'
+import { workersAtWork } from '../lib/workers'
 import { useStandingNotices } from './workspace/use-standing-notices'
 import { ScenarioChatContext } from './chat/ScenarioChat'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
@@ -88,14 +89,7 @@ import { useSetOwner } from '../lib/use-set-owner'
 import { ACTION_ICON, NextStepBar } from './workspace/NextStepBar'
 import { FeatureStatusLine, StopAgentDialog } from './workspace/FeatureStatusLine'
 import { DrivePrerequisitesNotice } from './review/DrivePrerequisitesNotice'
-import {
-  featureStatus,
-  LEAD_WAKE_GRACE_MS,
-  headerActions,
-  leadWakeOf,
-  mainChatWorking,
-  type HeaderActions,
-} from '../lib/feature-ui/status-line'
+import { featureStatus, headerActions, mainChatWorking, type HeaderActions } from '../lib/feature-ui/status-line'
 import { ScenarioPickerContent } from './review/ScenarioPicker'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
@@ -109,19 +103,6 @@ export { FeatureCrash } from './workspace/FeaturePanes'
 
 /** The page's root: a column filling the content panel. */
 const FRAME = 'flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface'
-
-/** The wall clock, re-read once `deadline` passes so what it decides catches up. */
-function useNowPast(deadline: number | undefined): number {
-  const [, tick] = useReducer((n: number) => n + 1, 0)
-  useEffect(() => {
-    if (deadline === undefined) return
-    const wait = deadline - Date.now()
-    if (wait <= 0) return
-    const timer = setTimeout(tick, wait)
-    return () => clearTimeout(timer)
-  }, [deadline])
-  return Date.now()
-}
 
 /**
  * The feature page — the page every feature lives on (DESIGN.md §Frame, §Page
@@ -195,10 +176,6 @@ export function Workspace({
   const events = useEventLog(featureId)
   const conflict = unresolvedMergeConflict(events)
   const drivenAt = lastTestDriveAt(events)
-  // The status line reads Working on a pending wake only inside its grace, so
-  // the clock is re-read once that grace runs out.
-  const leadWake = leadWakeOf(events)
-  const now = useNowPast(leadWake.pendingSince === undefined ? undefined : leadWake.pendingSince + LEAD_WAKE_GRACE_MS)
   const poll = useLivePoll()
   // What the merge confirmation reports, read only while it is open: commit
   // and file scale from git for its "what lands" row (decision 31a), the
@@ -242,7 +219,7 @@ export function Workspace({
   // The status line's inputs (`the-feature-lead-runs-rounds` decision 21): the
   // agent's ready declarations, and the workers at work (Stop cancels their turns).
   const workers = useFeatureWorkers(featureId)
-  const workersWorking = workers.filter((w) => w.status === 'working' || w.status === 'queued').length
+  const workersWorking = workersAtWork(workers)
   const declarationsQ = trpc.feature.readyDeclarations.useQuery({ featureId }, { refetchInterval: poll })
   const declared = (declarationsQ.data?.length ?? 0) > 0
   // What a drive of this feature can land on (drive-scenarios decision 7), for
@@ -422,14 +399,6 @@ export function Workspace({
       invalidate()
       void utils.worker.list.invalidate({ featureId })
       toast.push('stopped — nothing new starts until you reply to the agent', 'info')
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // Resume, the status row's primary after a provider halt: one message to the lead.
-  const resumeAgent = trpc.feature.resume.useMutation({
-    onSuccess: () => {
-      invalidate()
-      toast.push('resumed — the agent picks up where it stopped', 'info')
     },
     onError: (e) => toast.push(e.message),
   })
@@ -779,9 +748,6 @@ export function Workspace({
       case 'stopAgent':
         setConfirmStop(true)
         break
-      case 'resumeProvider':
-        resumeAgent.mutate({ featureId })
-        break
       case 'unarchive':
         unarchive.mutate({ featureId })
         break
@@ -804,37 +770,6 @@ export function Workspace({
       // confirmation at all).
       case 'merge':
         setConfirmMerge(true)
-        break
-      // Resolve a recorded merge conflict: a revisit session briefed to merge the
-      // base into this branch in the talk worktree — the same launch the conflict
-      // card offers, promoted to the bar's primary while the conflict stands.
-      // With a terminal already live this is the compound the bar's label
-      // promises: end that one first, because only one runs per feature.
-      case 'resolveConflict':
-        if (conflict) void resolveConflict.resolve(conflict, liveSession?.id)
-        break
-      // An answer is needed: the main chat in front, the cursor in its message box.
-      case 'reply':
-        // A question asked in a worker's chat is answered there, not in the lead's.
-        bringForward(full.need?.kind === 'answer' && full.need.threadId ? full.need.threadId : (column.main ?? column.current))
-        requestAnimationFrame(() =>
-          frame.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus(),
-        )
-        break
-      case 'openPlan':
-        panel.dispatch({ type: 'open', view: 'plan', origin: 'human' })
-        break
-      // "Design to approve" opens the Design list, which leads with what waits
-      // (decision 12); the phone has no list, so it opens the design that has
-      // waited longest (decision 22).
-      case 'openDesign': {
-        const oldest = phone ? oldestWaiting(record.designs ?? []) : null
-        panel.dispatch(oldest ? { type: 'open', view: 'design', path: oldest.path, origin: 'human' } : { type: 'designList' })
-        break
-      }
-      // A permission prompt: the asking thread in front, its answer box in the ask dock.
-      case 'showRequest':
-        if (full.need?.threadId) bringForward(full.need.threadId)
         break
       case 'newThread':
         column.newThread()
@@ -931,18 +866,17 @@ export function Workspace({
     : featureStatus({
         feature,
         need: full.need,
+        working: full.working,
         workersWorking,
         agentWorking: mainChatWorking(column.mainState, liveSession),
-        agentStateKnown: column.mainState !== undefined,
         driving: isDriving,
         // A draft's start turns it into a planning feature before the run is
         // even launched, so the start counts as planning by itself too.
         selfPlanning:
           (!!liveSession && isSelfPlanRun(liveSession)) || startSelfPlan.isPending || launchSelfPlan.isPending,
-        leadWake,
-        now,
+        declared,
       })
-  const actionsBusy = busy || stopAgent.isPending || resumeAgent.isPending
+  const actionsBusy = busy || stopAgent.isPending
   // Stop waits for the start: a second mutate would drop the first's callbacks.
   const driveStopping = driveStarting || (testDrive.isPending && testDrive.variables?.action === 'stop')
   const testDriveSplit = {
@@ -1239,7 +1173,7 @@ export function Workspace({
         ]}
         // With the epic and the owner first, a feature with no thread after it is still the page.
         trail={!!threadCrumb}
-        status={workerHeader ? workerHeader.status : status && <FeatureStatusLine status={status} />}
+        status={workerHeader ? workerHeader.status : status && <FeatureStatusLine status={status} onOpenThread={bringForward} />}
         actions={
           workerHeader ? (
             <>
@@ -1331,7 +1265,7 @@ export function Workspace({
                   }}
                   ownedBy={
                     owner.holderId && owner.chatName
-                      ? { chat: owner.chatName, asking: owner.asking, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
+                      ? { chat: owner.chatName, onOpenChat: () => owner.holderId && onOpenThread?.(owner.holderId) }
                       : null
                   }
                 />

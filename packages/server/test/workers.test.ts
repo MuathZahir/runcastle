@@ -94,7 +94,7 @@ async function handBack(id: string, summary = 'Built the header; the human wants
 }
 
 describe('a worker, start to land', () => {
-  it('starts working, needs the human after a turn, works again on a message, hands back once and lands', async () => {
+  it('starts working, stays working after a turn and a message, hands back once and lands', async () => {
     const id = await startHeader()
     const started = getWorker(ctx, id)!
     expect(started).toMatchObject({ status: 'working', kind: 'with-you', startedBy: 'lead', label: 'Header', container: expect.any(String) })
@@ -102,17 +102,15 @@ describe('a worker, start to land', () => {
     expect(host.sent.filter((s) => s.threadId === id).map((s) => s.text)).toEqual(['Start your assignment: Build the header\n\nDone when: The human likes it'])
     expect(workerEvents()).toEqual([{ type: 'worker.started', status: 'working' }])
 
+    // A turn that ends without a handback needs nobody (needs-you decision 6).
     await workerTurnEnded(ctx, { id })
-    expect(getWorker(ctx, id)?.status).toBe('needs-you')
-    expect(workerEvents().at(-1)).toEqual({ type: 'worker.status', status: 'needs-you' })
+    expect(getWorker(ctx, id)?.status).toBe('working')
+    expect(workerEvents()).toEqual([{ type: 'worker.started', status: 'working' }])
 
     await toolMessageWorker(ctx, leadSession(), { workerId: id, text: 'Make it taller' })
     expect(getWorker(ctx, id)?.status).toBe('working')
     expect(host.sent.at(-1)).toEqual({ threadId: id, text: 'Make it taller' })
-    expect(workerEvents().slice(-2)).toEqual([
-      { type: 'worker.status', status: 'working' },
-      { type: 'worker.messaged', status: 'working' },
-    ])
+    expect(workerEvents().at(-1)).toEqual({ type: 'worker.messaged', status: 'working' })
 
     await handBack(id)
     const handed = getWorker(ctx, id)!

@@ -10,7 +10,8 @@ import { resetAgentSlotsForTests } from '../src/services/agent-slots'
 import { listAfter } from '../src/services/events'
 import { createAgentHost, setAgentHostForTests, type StallBounds } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
-import type { AgentHost } from '../src/threads/types'
+import { readThreadEvents, type AgentHost } from '../src/threads/types'
+import { waitOf } from '../src/services/waits'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import {
   getWorker,
@@ -77,6 +78,8 @@ let host: AgentHost | undefined
 
 const leadSession = () => getSessionRow(ctx, lead)!
 const status = (id: string) => getWorker(ctx, id)?.status
+/** A turn of the worker ended as the agent meant it to: no failure, no cancel. */
+const turnDone = (id: string) => readThreadEvents(id).some((e) => e.type === 'turn_ended' && e.reason === 'end_turn')
 
 async function startWorker(label = 'Header', kind: 'with-you' | 'on-its-own' = 'on-its-own'): Promise<string> {
   const { workerId } = await toolStartWorker(ctx, leadSession(), { label, purpose: `The ${label}`, kind, goal: `Build the ${label}` })
@@ -132,11 +135,11 @@ describe('a transient error', () => {
     const fake = failing('API Error: 529 overloaded_error')
     realHost(fake)
     const id = await startWorker()
-    await until(() => status(id) === 'needs-you')
+    await until(() => turnDone(id))
 
     expect(workerPrompts(id)).toEqual(['Start your assignment: Build the Header', expect.stringContaining('[runcastle] The last turn stopped on a transient error (')])
     expect(eventsOf('worker.retrying', id).map((e) => (e.data as { attempt: number }).attempt)).toEqual([1])
-    expect(eventsOf('worker.status', id).map((e) => (e.data as { status: string }).status)).toEqual(['needs-you'])
+    expect(eventsOf('worker.status', id)).toEqual([])
     // One process, one conversation.
     expect(fake.processes).toHaveLength(1)
     expect(fake.last().received.filter((r) => r.method === 'session/new')).toHaveLength(1)
@@ -171,7 +174,9 @@ describe('the usage limit', () => {
   it('is not retried here: the worker waits on the human, as the carry-on setting (off) says', async () => {
     realHost(failing("You've hit your usage limit · resets 3pm"))
     const id = await startWorker()
-    await until(() => status(id) === 'needs-you')
+    // Only the human can start it again: runcastle's own line (needs-you decision 9).
+    await until(() => waitOf(ctx, id)?.why === 'Usage limit reached')
+    expect(waitOf(ctx, id)?.by).toBe('runcastle')
     await new Promise((r) => setTimeout(r, 50))
     expect(eventsOf('worker.retrying', id)).toHaveLength(0)
     expect(workerPrompts(id)).toHaveLength(1)
@@ -209,7 +214,7 @@ describe('an account error', () => {
     expect(list.find((w) => w.id === a)?.heldBy).toBeNull()
 
     await host!.prompt(lead, { text: 'I fixed the login' }, { source: 'human' })
-    await until(() => status(b) === 'needs-you')
+    await until(() => turnDone(b))
     expect(leadWakes()).toHaveLength(1)
   })
 })
@@ -228,7 +233,7 @@ describe('a stalled turn', () => {
     })
     realHost(fake, { silenceMs: 60, commandMs: 60_000 })
     const id = await startWorker()
-    await until(() => status(id) === 'needs-you')
+    await until(() => turnDone(id))
     expect(eventsOf('worker.retrying', id).map((e) => (e.data as { error: string }).error)).toEqual(['stalled: no progress for 0s'])
     expect(workerPrompts(id)[1]).toContain('transient error (stalled')
   })
@@ -251,7 +256,7 @@ describe('a stalled turn', () => {
     })
     realHost(fake, { silenceMs: 40, commandMs: 150 })
     const id = await startWorker()
-    await until(() => status(id) === 'needs-you')
+    await until(() => turnDone(id))
     expect(eventsOf('worker.retrying', id).map((e) => (e.data as { error: string }).error)).toEqual([expect.stringMatching(/^stalled: one command ran past/)])
   })
 
@@ -267,7 +272,7 @@ describe('a stalled turn', () => {
     })
     realHost(fake, { silenceMs: 40, commandMs: 60_000, killGraceMs: 60 })
     const id = await startWorker()
-    await until(() => status(id) === 'needs-you')
+    await until(() => turnDone(id))
 
     const [first, second] = fake.processes
     expect(first?.received.some((r) => r.method === 'session/cancel')).toBe(true)

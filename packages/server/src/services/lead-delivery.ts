@@ -4,6 +4,7 @@ import {
   type LeadWakeFailedData,
   type PromptDisplay,
   type SessionRow,
+  wakeFailedWhy,
 } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { launchSession } from '../launcher/launcher'
@@ -14,6 +15,7 @@ import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { tagRuncastlePrompt } from './lead-prompt'
 import { markHumanMessage } from './lead-status'
+import { setWait } from './waits'
 import { wakes, type WakeReason } from './wake-rule'
 
 /**
@@ -116,6 +118,9 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     delete data.reason
     delete data.display
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
+    // The lead cannot run, so only the human can start it again: runcastle says so on its chat (needs-you decision 9).
+    const lead = newestThread(ctx, { featureId: feature.id }, 'chat')
+    if (lead) setWait(ctx, lead.id, wakeFailedWhy(data.exitCode), 'runcastle')
   }
 }
 

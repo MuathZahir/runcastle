@@ -7,10 +7,8 @@ import { recordFeatureAction, toolTakeFeature } from '../src/mcp/orchestrator-to
 import { takenByHumanNews, toolHandBack, toolWaitForYou } from '../src/mcp/server'
 import { readThreadEvents } from '../src/threads/log'
 import { listAfter } from '../src/services/events'
-import { needOf } from '../src/services/feature-need'
 import { OWNER_CHANGED } from '../src/services/holding'
 import { handbackStateLine, LEAD_HANDED_BACK } from '../src/services/lead-handback'
-import { HANDBACK_CLEARED, markHumanMessage, setHandback } from '../src/services/lead-status'
 import { getFeatureRow } from '../src/services/repo'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import type { AgentHost } from '../src/threads/types'
@@ -94,7 +92,7 @@ describe('hand_back from a lead', () => {
     expect(promptsOf(origin)).toHaveLength(0)
   })
 
-  it('on a human-owned feature asks its chat: the handback mark is set, the owner stays the human', async () => {
+  it('on a human-owned feature asks its chat, and the owner stays the human', async () => {
     const chat = orchestrator()
     const f = seedFeature(ctx, projectId, { slug: 'asking', chatId: chat, finish: 'show' })
 
@@ -104,7 +102,7 @@ describe('hand_back from a lead', () => {
     const [prompt] = promptsOf(chat)
     expect(prompt.text).toContain('The human owns this feature')
     expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, chatId: chat, finish: 'show' })
-    expect(getFeatureRow(ctx, f.id).handback?.summary).toBe('Does this touch the sidebar feature?')
+    expect(listAfter(ctx, f.id, 0).find((e) => e.type === LEAD_HANDED_BACK)?.data).toMatchObject({ summary: 'Does this touch the sidebar feature?' })
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === OWNER_CHANGED)).toBe(false)
   })
 
@@ -137,21 +135,19 @@ describe('wait_for_you under an epic owner', () => {
     return id
   }
 
-  it('releases the feature to the human (finish you, one needs-you event, handback cleared), records the wait, and wakes the epic once with the line', async () => {
+  it('releases the feature to the human (finish you, one needs-you event), records the wait, and wakes the epic once with the line', async () => {
     const owner = epic()
     const f = seedFeature(ctx, projectId, { slug: 'fx-rates', title: 'FX rates', heldBy: owner, chatId: owner, finish: 'merge' })
-    setHandback(ctx, f.id, 'Plan is ready.')
     const lead = leadOf(f.id)
 
     const result = await toolWaitForYou(ctx, lead, { why: 'which currency for mixed teams?' })
 
-    expect(result).toMatchObject({ ok: true, waitingReason: 'which currency for mixed teams?', nowYours: true })
-    expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, chatId: owner, finish: 'you', handback: null })
+    expect(result).toMatchObject({ ok: true, need: { why: 'which currency for mixed teams?', threadId: lead.id }, nowYours: true })
+    expect(getFeatureRow(ctx, f.id)).toMatchObject({ heldBy: undefined, chatId: owner, finish: 'you' })
     const changes = listAfter(ctx, f.id, 0).filter((e) => e.type === OWNER_CHANGED)
     expect(changes.map((e) => e.data)).toEqual([
       expect.objectContaining({ owner: null, chatId: owner, finish: 'you', cause: 'needs-you', from: owner }),
     ])
-    expect(listAfter(ctx, f.id, 0).filter((e) => e.type === HANDBACK_CLEARED)).toHaveLength(1)
 
     const prompts = promptsOf(owner)
     expect(prompts).toHaveLength(1)
@@ -177,7 +173,7 @@ describe('wait_for_you under an epic owner', () => {
     const result = await toolWaitForYou(ctx, lead, { why: 'pick a theme' })
 
     expect(result).not.toHaveProperty('nowYours')
-    expect(result.waitingReason).toBe('pick a theme')
+    expect(result.need?.why).toBe('pick a theme')
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === OWNER_CHANGED)).toBe(false)
     expect(promptsOf(chat)).toHaveLength(0)
     expect(readThreadEvents(lead.id).some((e) => e.type === 'notice')).toBe(false)
@@ -191,71 +187,11 @@ describe('wait_for_you under an epic owner', () => {
   })
 })
 
-/**
- * The handback is recorded on the feature until something answers it
- * (the-status-tells-the-truth-about-who-and-what decisions 5, 7).
- */
-describe('the handback mark', () => {
-  const cleared = (featureId: string) => listAfter(ctx, featureId, 0).filter((e) => e.type === HANDBACK_CLEARED)
-
-  it('is written by hand_back, reads With <its chat>, and a second handback replaces it', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'marked', heldBy: orchestrator() })
-    const before = Date.now()
-    await toolHandBack(ctx, leadOf(f.id), { summary: 'Blocked on a conflict in api.ts. Details follow.' })
-
-    const first = getFeatureRow(ctx, f.id).handback
-    expect(first).toEqual({ at: expect.any(Number), summary: 'Blocked on a conflict in api.ts. Details follow.' })
-    expect(first!.at).toBeGreaterThanOrEqual(before)
-    expect(needOf(ctx, getFeatureRow(ctx, f.id))).toMatchObject({
-      kind: 'handback',
-      held: true,
-      words: 'With Working by itself · Blocked on a conflict in api.ts',
-    })
-
-    await toolHandBack(ctx, leadOf(f.id), { summary: 'Ready to merge.' })
-    expect(getFeatureRow(ctx, f.id).handback?.summary).toBe('Ready to merge.')
-    expect(listAfter(ctx, f.id, 0).filter((e) => e.type === LEAD_HANDED_BACK)).toHaveLength(2)
-    expect(cleared(f.id)).toHaveLength(0)
-  })
-
-  it('is cleared by a human message to the lead, with an event', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'human', heldBy: orchestrator() })
-    await toolHandBack(ctx, leadOf(f.id), { summary: 'Ready.' })
-    markHumanMessage(ctx, f.id, { typed: true })
-    expect(getFeatureRow(ctx, f.id).handback).toBeNull()
-    expect(cleared(f.id).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'message' })])
-    // Nothing stands any more: a second message emits nothing.
-    markHumanMessage(ctx, f.id)
-    expect(cleared(f.id)).toHaveLength(1)
-  })
-
-  it('is cleared when another thread takes the feature, with an event', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'taken', heldBy: orchestrator() })
-    await toolHandBack(ctx, leadOf(f.id), { summary: 'Ready.' })
-    const live = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
-    markSessionLive(ctx, live.id, { ccSessionId: `cc-${live.id}` })
-    const other = getSessionRow(ctx, live.id)!
-    toolTakeFeature(ctx, other, { slug: 'taken' })
-    expect(getFeatureRow(ctx, f.id).heldBy).toBe(other.id)
-    expect(getFeatureRow(ctx, f.id).handback).toBeNull()
-    expect(cleared(f.id).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'hold' })])
-  })
-
-  it('is cleared by an orchestrator action recorded on the feature, with an event', async () => {
-    const holder = orchestrator()
-    const f = seedFeature(ctx, projectId, { slug: 'acted', heldBy: holder })
-    await toolHandBack(ctx, leadOf(f.id), { summary: 'Ready.' })
-    recordFeatureAction(ctx, getSessionRow(ctx, holder)!, f.id, 'brief')
-    expect(getFeatureRow(ctx, f.id).handback).toBeNull()
-    expect(cleared(f.id).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'orchestrator' })])
-  })
-})
-
 describe('the state line runcastle adds', () => {
   it('says ready, what it waits on, and how many workers are at work', () => {
     const w = (status: WorkerStatus) => ({ status })
-    expect(handbackStateLine({ waitingReason: 'ready to test' }, [w('landed'), w('handed-back')])).toBe('Ready to test · no workers at work')
-    expect(handbackStateLine({ waitingReason: 'pick a theme' }, [w('working')])).toBe('Not declared ready · waits on the human: pick a theme · 1 worker at work')
-    expect(handbackStateLine({ waitingReason: null }, [w('working'), w('queued'), w('failed')])).toBe('Not declared ready · 2 workers at work')
+    expect(handbackStateLine({ why: 'Ready to test · Checkout' }, [w('landed'), w('handed-back')])).toBe('Ready to test · no workers at work')
+    expect(handbackStateLine({ why: 'pick a theme' }, [w('working')])).toBe('Not declared ready · waits on the human: pick a theme · 1 worker at work')
+    expect(handbackStateLine(null, [w('working'), w('queued'), w('failed')])).toBe('Not declared ready · 2 workers at work')
   })
 })

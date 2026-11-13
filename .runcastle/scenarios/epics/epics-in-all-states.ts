@@ -41,7 +41,7 @@ import { createDb } from '../../../packages/server/src/db/client.ts'
 import { runMigrations } from '../../../packages/server/src/db/migrate.ts'
 import type { AppCtx } from '../../../packages/server/src/db/types.ts'
 import { createFeature } from '../../../packages/server/src/services/features.ts'
-import { setWaiting } from '../../../packages/server/src/services/lead-status.ts'
+import { setWait } from '../../../packages/server/src/services/waits.ts'
 import { listProjects, openProject } from '../../../packages/server/src/services/projects.ts'
 import { createSessionRow, markSessionEnded, projectSessions } from '../../../packages/server/src/launcher/sessions.ts'
 import { seedThreadLog } from '../../../packages/server/src/threads/log.ts'
@@ -101,6 +101,8 @@ interface EpicSeed {
   answered: string
   /** The feature whose plan the last turn showed, by title, so the chat asks about it. */
   asksAbout?: string
+  /** The chat's own `wait_for_you` line: only its agent's call makes the epic need the human. */
+  asks?: string
   features: FeatureSeed[]
 }
 
@@ -114,6 +116,7 @@ const EPICS: EpicSeed[] = [
     said: 'People should be able to save a card and pay with one tap next time.',
     answered: 'Here is the plan for Saved cards. Should a saved card expire after a year of no use, or never?',
     asksAbout: 'Saved cards',
+    asks: 'Should a saved card expire after a year of no use, or never?',
     features: [{ title: 'Saved cards', as: 'active', waiting: { why: 'Should a saved card expire after a year of no use?', kind: 'answer' } }],
   },
   {
@@ -126,7 +129,7 @@ const EPICS: EpicSeed[] = [
     answered: 'Cut into three: the sync engine is being built, conflict handling waits on its plan, and offline edits come next.',
     features: [
       { title: 'Sync engine', as: 'active' },
-      { title: 'Conflict handling', as: 'active', waiting: { why: 'Plan to read', kind: 'plan' } },
+      { title: 'Conflict handling', as: 'active', waiting: { why: 'Plan ready for your yes', kind: 'plan' } },
       { title: 'Offline edits', as: 'up-next' },
     ],
   },
@@ -230,9 +233,14 @@ async function seedEpic(ctx: AppCtx, project: Project, epic: EpicSeed, now: numb
       now - epic.startedAgo + MINUTE,
       feature.id,
     )
-    if (seed.as === 'active' && seed.waiting) setWaiting(ctx, feature.id, seed.waiting.why, seed.waiting.kind)
+    if (seed.as === 'active' && seed.waiting) {
+      const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: project.repoPath, model: MODEL })
+      markSessionEnded(ctx, lead.id)
+      setWait(ctx, lead.id, seed.waiting.why)
+    }
   }
   seedThreadLog(row.id, conversation(epic, now - epic.wroteAgo, ids))
+  if (epic.asks) setWait(ctx, row.id, epic.asks)
 }
 
 async function main(): Promise<void> {

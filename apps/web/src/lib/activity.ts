@@ -123,22 +123,20 @@ function text(value: unknown): string | null {
 }
 
 /**
- * How a self-planning run ended (a finished plan, a question, or short), or null for any other
+ * How a self-planning run ended (a finished plan, or short), or null for any other
  * event (and for a payload without the flag). The server's own message is a
- * bare "planning finished", which says nothing about whose planning it was.
+ * bare "planning finished", which says nothing about whose planning it was. A
+ * run that stopped to ask says so with its own need, not here.
  */
-function selfPlanEnd(event: Pick<EventRow, 'type' | 'data'>): 'complete' | 'asked' | 'stopped' | null {
+function selfPlanEnd(event: Pick<EventRow, 'type' | 'data'>): 'complete' | 'stopped' | null {
   if (event.type !== 'session.self_plan_ended') return null
   const d = fields(event.data)
   if (typeof d?.complete !== 'boolean') return null
-  if (d.complete) return 'complete'
-  // A run that stopped to ask what, where or who (agents-never-guess decision 13).
-  return d.asked === true ? 'asked' : 'stopped'
+  return d.complete ? 'complete' : 'stopped'
 }
 
 const SELF_PLAN_END = {
   complete: 'Planned automatically — the plan is finished',
-  asked: 'Automatic planning stopped to ask you something first',
   stopped: 'Automatic planning stopped before the plan was complete',
 } as const
 
@@ -256,10 +254,9 @@ function runFinishedStatus(event: Pick<EventRow, 'type' | 'data'>): RunStatus | 
 export function eventLevel(event: Pick<EventRow, 'type' | 'data'>): EventLevel {
   const status = runFinishedStatus(event)
   if (status) return status === 'succeeded' ? 'ok' : 'error'
-  // `ended` says nothing either way; a plan that stopped short is the one to notice,
-  // and a run that stopped to ask the human is an ordinary question.
+  // `ended` says nothing either way; a plan that stopped short is the one to notice.
   const planned = selfPlanEnd(event)
-  if (planned !== null) return planned === 'complete' ? 'ok' : planned === 'asked' ? 'info' : 'error'
+  if (planned !== null) return planned === 'complete' ? 'ok' : 'error'
 
   const type = event.type
   // In-loop conflict resolution is progress, not failure — checked before the
