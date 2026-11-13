@@ -89,7 +89,6 @@ describe('phase and lap columns drop (0053)', () => {
         branch: 'feature/grain',
         status: 'active',
         created_at: 10,
-        waiting_reason: 'ready to test',
       }),
     )
     expect(row(db, "SELECT * FROM tickets WHERE id = 'tkt_1'")).toEqual(

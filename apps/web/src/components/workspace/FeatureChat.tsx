@@ -4,7 +4,7 @@ import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { ChatNoticeTarget, StandingNotice } from '../../lib/chat-notices'
 import { mainChatInbox } from '../../lib/composer-inbox'
-import { READY_TO_TEST } from '../../lib/feature-ui'
+import { readyToTestWhy } from '@runcastle/core'
 import type { ModelPick } from '../../lib/use-thread'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { OwnerStrip } from '../chat/OwnerStrip'
@@ -84,7 +84,7 @@ export function FeatureChat({
    * strip on the lead's composer, never a worker's or a side chat's
    * (every-feature-has-one-owner decisions 23, 28).
    */
-  ownedBy?: { chat: string; asking: boolean; onOpenChat: () => void } | null
+  ownedBy?: { chat: string; onOpenChat: () => void } | null
 }) {
   const { inFront, main, scenario } = column
   const isMain = inFront === main
@@ -171,7 +171,7 @@ export function FeatureChat({
         notices={alerts}
         // Sending here takes the feature from its chat; the server releases the hold and its event drops the strip.
         {...(isMain && ownedBy
-          ? { composerStrip: <OwnerStrip chat={ownedBy.chat} asking={ownedBy.asking} onOpenChat={ownedBy.onOpenChat} /> }
+          ? { composerStrip: <OwnerStrip chat={ownedBy.chat} onOpenChat={ownedBy.onOpenChat} /> }
           : {})}
       >
         <FeatureNoticeDeck
@@ -179,7 +179,7 @@ export function FeatureChat({
           standing={standing}
           active
           onView={onView}
-          readyToTest={full.feature.waitingReason === READY_TO_TEST}
+          readyToTest={!!full.need?.why.startsWith(readyToTestWhy(''))}
         />
       </ThreadColumn>
     </WorkerLinksContext.Provider>

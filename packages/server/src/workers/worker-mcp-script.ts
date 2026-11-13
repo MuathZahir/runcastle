@@ -4,7 +4,7 @@
  * out to runcastle. `hand_back` writes the worker's summary to a file the
  * server reads through `docker exec` when the turn ends; `start_dev_server`
  * runs the dev server detached inside the container, on the one port the
- * container publishes. `read_feature`, `show_file` and `park_feature` are
+ * container publishes. `read_feature`, `show_file`, `park_feature` and `wait_for_you` are
  * answered by runcastle through the tool relay ({@link WORKER_RELAY_SCRIPT}),
  * a socket inside the container that runcastle's own `docker exec` serves.
  *
@@ -36,6 +36,19 @@ const TOOLS = [
       'what is left, and any direction the human gave you directly, since your lead never reads this conversation. ' +
       'Commit your work first: your lead receives your commits with the summary. You can still be talked to after.',
     inputSchema: { type: 'object', properties: { summary: { type: 'string', description: 'A short summary for your lead.' } }, required: ['summary'] },
+  },
+  {
+    name: 'wait_for_you',
+    description:
+      'Tell the human you need them, in one short line saying what you need. It stays until the human ' +
+      'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        why: { type: 'string', description: 'One short line: what you need from the human.' },
+        withdraw: { type: 'boolean', enum: [true], description: 'Take back your wait: you no longer need the human.' },
+      },
+    },
   },
   {
     name: 'start_dev_server',
@@ -171,6 +184,7 @@ async function call(name, args) {
   if (name === 'start_dev_server') return startDev(args && args.command)
   if (name === 'read_feature') return relay('read_feature', {})
   if (name === 'park_feature') return relay('park_feature', args || {})
+  if (name === 'wait_for_you') return relay('wait_for_you', args || {})
   if (name === 'report_finding' && process.env.RUNCASTLE_WORKER_REVIEW === '1') return relay('report_finding', args || {})
   if (name === 'show_file') {
     const given = String((args && args.path) || '')

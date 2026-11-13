@@ -67,7 +67,7 @@ export function FeatureSidebarPage({
   className,
 }: {
   feature: FeatureListItem
-  /** The Lead card's second line: the feature's status as the lead holds it ("Talking with you"). */
+  /** The Lead card's second line: the lead's need, else Working or Idle. */
   leadStatus: string
   onBack: () => void
   onNewWorker: () => void
@@ -94,7 +94,7 @@ export function FeatureSidebarPage({
           name="Lead"
           tile={<IconMessage size={18} />}
           status={leadStatus}
-          state={lead.state}
+          state={lead.need ? 'waiting' : lead.state}
           active={lead.id === current}
           onOpen={() => onOpen(lead.id)}
           actions={leadActions}

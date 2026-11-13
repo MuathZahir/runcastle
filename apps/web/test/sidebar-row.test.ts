@@ -38,47 +38,31 @@ const blocker = (slug: string) => ({
   satisfied: false,
 })
 
-const waiting = listItem({ need: need('answer', 'Needs your answer') })
-const ready = listItem({ need: need('test', 'Ready to test · Checkout') })
-const stopped = listItem({ need: need('stopped', 'Stopped · you stopped it') })
-const asked = listItem({ need: need('answer', 'Needs your answer · which retry policy?') })
-const plan = listItem({ need: need('plan', 'Plan to approve') })
-const merge = listItem({ need: need('merge', 'Ready to merge') })
-const permission = listItem({ workersWorking: 1, need: need('permission', 'Needs permission · Bash: git push') })
-const held = listItem({ need: need('test', 'With the orchestrator · Ready to test · Checkout', { held: true }) })
+const waiting = listItem({ need: need('Which retry policy?') })
+const ready = listItem({ need: need('Ready to test · Checkout') })
+const asksWhileWorking = listItem({ working: true, workersWorking: 1, need: need('May I push?') })
 const failed = listItem({ ticketCounts: tickets(2, 1, 0, 1) })
-const building = listItem({ workersWorking: 2, ticketCounts: tickets(8, 3, 1) })
-const midTurn = listItem({ liveSession: { status: 'live', awaitingInput: false } as never })
+const building = listItem({ working: true, workersWorking: 2, ticketCounts: tickets(8, 3, 1) })
 const idle = listItem({ ticketCounts: tickets(6, 4) })
 
-describe('featureStateWords', () => {
-  it('says what a feature waiting on you waits for, in the need’s own words', () => {
-    expect(featureStateWords(waiting)).toBe('Needs your answer')
-    expect(featureStateWords(ready)).toBe('Ready to test · Checkout')
-    expect(featureStateWords(stopped)).toBe('Stopped · you stopped it')
-    expect(featureStateWords(asked)).toBe('Needs your answer · which retry policy?')
-    expect(featureStateWords(plan)).toBe('Plan to approve')
-    expect(featureStateWords(merge)).toBe('Ready to merge')
+describe('featureStateWords (needs-you-is-the-agent-s-call decision 15)', () => {
+  it('says Needs you with the agent’s own line', () => {
+    expect(featureStateWords(waiting)).toBe('Needs you · Which retry policy?')
+    expect(featureStateWords(ready)).toBe('Needs you · Ready to test · Checkout')
   })
 
-  it('says a permission prompt even while a round runs', () => {
-    expect(featureStateWords(permission)).toBe('Needs permission · Bash: git push')
+  it('says Needs you over Working (decision 18)', () => {
+    expect(featureStateWords(asksWhileWorking)).toBe('Needs you · May I push?')
   })
 
-  it('says a held need among the working, with the orchestrator', () => {
-    expect(featureStateWords(held)).toBe('With the orchestrator · Ready to test · Checkout')
+  it('says Working while the server says an agent works', () => {
+    expect(featureStateWords(building)).toBe('Working')
   })
 
-  it('says how many workers are at work, or that the lead is', () => {
-    expect(featureStateWords(building)).toBe('Working · 2 workers')
-    expect(featureStateWords(listItem({ workersWorking: 1 }))).toBe('Working · 1 worker')
-    expect(featureStateWords(midTurn)).toBe('Agent working')
-  })
-
-  it('says a started feature with nothing at work and nothing asked is in progress — a failed ticket included', () => {
-    expect(featureStateWords(idle)).toBe('In progress')
-    expect(featureStateWords(listItem({}))).toBe('In progress')
-    expect(featureStateWords(failed)).toBe('In progress')
+  it('says Idle when nothing works and nothing is asked — a failed ticket included', () => {
+    expect(featureStateWords(idle)).toBe('Idle')
+    expect(featureStateWords(listItem({}))).toBe('Idle')
+    expect(featureStateWords(failed)).toBe('Idle')
   })
 
   it('puts a parked idea in the backlog, or says what it waits on', () => {
@@ -90,11 +74,16 @@ describe('featureStateWords', () => {
     expect(featureStateWords(listItem({ status: 'draft', upNext: true, dependsOn: [blocker('auth')] }))).toBe(
       'After auth',
     )
-    expect(featureStateWords(listItem({ status: 'draft', upNext: true }))).toBe("Won't start by itself")
   })
 
-  it('says shipped and archived plainly', () => {
-    expect(featureStateWords(listItem({ status: 'shipped' }))).toBe('Shipped')
+  it('says an Up next feature’s problem when it cannot start by itself (decision 16)', () => {
+    expect(featureStateWords(listItem({ status: 'draft', upNext: true, upNextProblem: 'auth was dropped' }))).toBe(
+      'auth was dropped',
+    )
+  })
+
+  it('says merged and archived plainly', () => {
+    expect(featureStateWords(listItem({ status: 'shipped' }))).toBe('Merged')
     expect(featureStateWords(listItem({ status: 'archived' }))).toBe('Archived')
   })
 })
@@ -117,7 +106,7 @@ describe('the sidebar feature row', () => {
     const html = row(idle)
     expect(html).toContain('Flow redesign: project shell')
     expect(html).toContain('aria-label="67% landed"')
-    expect(html).toContain('In progress')
+    expect(html).toContain('Idle')
     expect(html).not.toContain('data-phase')
     expect(html).not.toContain('flow-redesign-project-shell')
   })
@@ -141,8 +130,7 @@ describe('the sidebar feature row', () => {
   it('dots amber when it needs you, and carries no dot otherwise — not even for a failed ticket', () => {
     expect(row(waiting)).toContain('bg-warning')
     expect(row(ready)).toContain('bg-warning')
-    // A need its orchestrator handles is not the human's: no dot.
-    for (const f of [failed, idle, held]) {
+    for (const f of [failed, idle]) {
       const html = row(f)
       expect(html).not.toContain('bg-warning')
       expect(html).not.toContain('bg-danger')
@@ -156,6 +144,13 @@ describe('the sidebar feature row', () => {
     expect(html).toContain('text-shimmer')
     expect(html).not.toContain('bg-warning')
     expect(row(idle)).not.toContain('text-shimmer')
+  })
+
+  it('says an Up next draft’s problem in red, with no amber dot (decision 16)', () => {
+    const html = row(listItem({ status: 'draft', upNext: true, upNextProblem: 'auth was dropped' }))
+    expect(html).toContain('auth was dropped')
+    expect(html).toContain('text-danger-text')
+    expect(html).not.toContain('bg-warning')
   })
 
   it('becomes a card when selected', () => {

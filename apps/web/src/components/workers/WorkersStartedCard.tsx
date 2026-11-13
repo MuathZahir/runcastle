@@ -31,7 +31,8 @@ export interface WorkerStartedRow {
 export const WORKER_STATUS_PLAIN: Record<WorkerStatus, string> = {
   queued: 'Waiting to start',
   working: 'Working',
-  'needs-you': 'Waiting on you',
+  idle: 'Idle',
+  'needs-you': 'Needs you',
   'handed-back': 'Handed back',
   landed: 'Landed',
   dropped: 'Dropped',

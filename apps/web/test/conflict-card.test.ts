@@ -118,7 +118,7 @@ describe('the next-step bar beside the conflict card', () => {
         kick: 'NEXT STEP',
         title: 'Resolve the merge conflict',
         desc: 'The last merge attempt hit conflicts.',
-        primary: { label: 'Resolve the merge conflict', kind: 'resolveConflict' as const },
+        primary: { label: 'Resolve the merge conflict', kind: 'chat' as const },
         secondary: [
           { label: 'Retry Merge & ship', kind: 'merge' as const },
           { label: 'Start test drive', kind: 'testDriveStart' as const },

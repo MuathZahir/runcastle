@@ -192,6 +192,7 @@ describe('the sidebar thread list', () => {
     createdAt: at,
     updatedAt: at,
     runtime: 'claude-code',
+    need: null,
     ...over,
   })
   const row = (title: string) => screen.getByTitle(title).parentElement as HTMLElement

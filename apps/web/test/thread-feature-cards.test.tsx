@@ -22,7 +22,7 @@ const feature = (id: string, title: string, over: Partial<FeatureListItem> = {})
 
 const FEATURES = [
   feature('f1', 'Dark mode'),
-  feature('f2', 'Offline sync', { need: need('plan', 'Plan to approve · the plan is ready') }),
+  feature('f2', 'Offline sync', { need: need('Plan ready for your yes') }),
   feature('f3', 'Export to PDF'),
   feature('f4', 'Team invites'),
 ]
@@ -54,8 +54,9 @@ describe('the features card in a thread', () => {
     expect(screen.getByText('4 features created')).toBeTruthy()
     const rows = screen.getAllByRole('button', { name: /^Open / })
     expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['Open Dark mode', 'Open Offline sync', 'Open Export to PDF', 'Open Team invites'])
-    expect(rows[0]!.textContent).toContain('In progress')
-    expect(rows[1]!.textContent).toContain('Plan to approve')
+    expect(rows[0]!.textContent).toContain('Idle')
+    expect(rows[1]!.textContent).toContain('Needs you')
+    expect(rows[1]!.querySelector('[title="Needs you · Plan ready for your yes"]')).toBeTruthy()
     fireEvent.click(rows[1]!)
     expect(l.openFeature).toHaveBeenCalledWith('f2')
   })
@@ -72,7 +73,7 @@ describe('the features card in a thread', () => {
     render(thread([CARD], null))
     expect(screen.getByText('Dark mode')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Open / })).toBeNull()
-    expect(screen.queryByText('In progress')).toBeNull()
+    expect(screen.queryByText('Idle')).toBeNull()
     // Nothing is gone here: the rows are not dimmed like a feature the list dropped.
     expect(screen.getByText('Dark mode').closest('.opacity-70')).toBeNull()
   })

@@ -7,21 +7,21 @@ import { GLOSSARY, GLOSSARY_GROUP_ORDER, filterGlossary, glossaryEntry } from '.
  * new one (decision 20).
  */
 describe('the glossary list', () => {
-  it('holds fifteen words, one entry per id, in the four groups', () => {
-    expect(GLOSSARY).toHaveLength(15)
-    expect(new Set(GLOSSARY.map((e) => e.id)).size).toBe(15)
+  it('holds fourteen words, one entry per id, in the four groups', () => {
+    expect(GLOSSARY).toHaveLength(14)
+    expect(new Set(GLOSSARY.map((e) => e.id)).size).toBe(14)
     expect(new Set(GLOSSARY.map((e) => e.group))).toEqual(new Set(GLOSSARY_GROUP_ORDER))
   })
 
   it('finds an entry by its id', () => {
-    expect(glossaryEntry('held-by').term).toBe('Held by')
+    expect(glossaryEntry('orchestrator').term).toBe('Epic')
   })
 })
 
 describe('filterGlossary', () => {
   it('returns every word for an empty query', () => {
-    expect(filterGlossary('')).toHaveLength(15)
-    expect(filterGlossary('   ')).toHaveLength(15)
+    expect(filterGlossary('')).toHaveLength(14)
+    expect(filterGlossary('   ')).toHaveLength(14)
   })
 
   it('finds Round by the word it replaced', () => {

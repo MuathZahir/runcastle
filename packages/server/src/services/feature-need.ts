@@ -1,233 +1,41 @@
-import {
-  type EventRow,
-  type Feature,
-  type FeatureNeed,
-  LEAD_WAKE_FAILED,
-  LeadWakeFailedData,
-  type NeedFacts,
-  featureNeed,
-  lastHumanAt,
-  unresolvedMergeConflict,
-} from '@runcastle/core'
-import { and, asc, desc, eq, inArray } from 'drizzle-orm'
+import { type Feature, type Need, newestNeed } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
-import { events, readyDeclarations, workers } from '../db/schema'
-import { chatActivity, leadState, NO_LEAD, openAskOf, type ChatActivity, type LeadState } from '../threads/read'
-import { hasThreadLog, readThreadEvents } from '../threads/log'
-import { designsWaiting } from './designs'
-import { HANDBACK_CLEARED } from './lead-status'
-import { getProjectById, hasActiveRun } from './repo'
-import { latestBurn } from './runs'
+import { featureSessions } from '../launcher/sessions'
+import { leadState, openAskNeed, type LeadState } from '../threads/read'
+import { agentHost } from '../threads/types'
+import { hasActiveRun } from './repo'
+import { waitsByFeature } from './waits'
 
 /**
- * What each feature needs from the human (you-always-know-what-s-waiting
- * decision 14), worked out once here from facts the server already has and
- * decided by core's {@link featureNeed}. `feature.list` and `feature.get` carry
- * the answer, and the needs watcher (`need-watch.ts`) pings off its changes.
+ * What a feature needs from the human (needs-you-is-the-agent-s-call decision
+ * 12): the newest of its lead's wait, its workers' waits, and an open
+ * permission prompt or question box in any of its threads. `feature.list` and
+ * `feature.get` carry it; the needs watcher (`need-watch.ts`) pings per chat.
  */
 
-/** The timeline events a need is read from. */
-const NEED_EVENT_TYPES = [
-  // when the waiting reason was set
-  'feature.waiting',
-  'feature.stopped',
-  'feature.ready_declared',
-  // the human's drives
-  'testdrive.stopped',
-  // a standing conflict and what clears it (`unresolvedMergeConflict`)
-  'merge.conflict',
-  'merge.resolved',
-  'burn.started',
-  'feature.shipped',
-  // the lead's wakes
-  'lead.message_queued',
-  LEAD_WAKE_FAILED,
-  // the handback mark on the row, and what sets or clears it (the-status-tells-the-truth decision 7)
-  'lead.handed_back',
-  HANDBACK_CLEARED,
-]
-
-/** A feature's need events, oldest first. */
-export type NeedEvents = Pick<EventRow, 'type' | 'ts' | 'data'>[]
-
-type EventPick = { featureId: string | null; type: string; ts: number; data: unknown }
+/** The threads whose asks count toward a feature's need. */
+const ASK_KINDS = ['chat', 'side', 'worker'] as const
 
 /**
- * Every need event of a project's features in one read, keyed by feature: the
- * list is polled, so it must not cost a timeline scan per feature.
+ * The feature's one need, or null. Only a started feature can need anything.
+ * `waits` is the feature's standing session waits when the caller already read
+ * them (a list reads every feature's at once); read here when absent.
  */
-export function needEventsByProject(ctx: AppCtx, projectId: string): Map<string, NeedEvents> {
-  const rows = ctx.db
-    .select({ featureId: events.featureId, type: events.type, ts: events.ts, data: events.data })
-    .from(events)
-    .where(and(eq(events.projectId, projectId), inArray(events.type, NEED_EVENT_TYPES)))
-    .orderBy(asc(events.id))
-    .all() as EventPick[]
-  const out = new Map<string, NeedEvents>()
-  for (const row of rows) {
-    if (row.featureId === null) continue
-    const list = out.get(row.featureId) ?? []
-    list.push(row)
-    out.set(row.featureId, list)
-  }
-  return out
-}
-
-function needEventsOf(ctx: AppCtx, featureId: string): NeedEvents {
-  return ctx.db
-    .select({ type: events.type, ts: events.ts, data: events.data })
-    .from(events)
-    .where(and(eq(events.featureId, featureId), inArray(events.type, NEED_EVENT_TYPES)))
-    .orderBy(asc(events.id))
-    .all()
-}
-
-function record(data: unknown): Record<string, unknown> {
-  return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {}
-}
-
-/** The facts the timeline holds, folded oldest first. */
-function timelineFacts(list: NeedEvents): Pick<NeedFacts, 'conflictSince' | 'humanDriveEndedAt' | 'wakeFailed' | 'wakeQueuedAt'> & {
-  waitingSetAt: number | null
-} {
-  let waitingSetAt: number | null = null
-  let humanDriveEndedAt: number | null = null
-  let wakeFailed: NeedFacts['wakeFailed'] = null
-  let wakeQueuedAt: number | null = null
-  for (const e of list) {
-    if (e.type === 'feature.waiting' || e.type === 'feature.stopped' || e.type === 'feature.ready_declared') {
-      waitingSetAt = e.ts
-    } else if (e.type === 'testdrive.stopped') {
-      // A review agent's drive is not the human trying the work (decision 5).
-      if (record(e.data).purpose !== 'review') humanDriveEndedAt = e.ts
-    } else if (e.type === 'lead.message_queued') {
-      wakeQueuedAt = e.ts
-    } else if (e.type === LEAD_WAKE_FAILED) {
-      const data = LeadWakeFailedData.safeParse(e.data)
-      wakeFailed = { at: e.ts, exitCode: data.success ? data.data.exitCode : null }
-    }
-  }
-  const conflict = unresolvedMergeConflict(list)
-  return { waitingSetAt, humanDriveEndedAt, wakeFailed, wakeQueuedAt, conflictSince: conflict?.at ?? null }
-}
-
-/** What a feature's need is read from beyond its row; the list passes what it already read. */
-export interface NeedInputs {
-  /** The feature's need events, oldest first; read per feature when absent. */
-  events?: NeedEvents
-  /** The lead's state; read when absent. */
-  lead?: LeadState
-  /** The project has a test drive set up (a dev command); read when absent. */
-  driveConfigured?: boolean
-  /** What an orchestrator chat is doing, by thread id; a list passes one that reads each chat once. */
-  chat?: (threadId: string) => ChatActivity
-}
-
-/** A {@link NeedInputs.chat} that reads each chat once, for a list of features. */
-export function chatReader(ctx: AppCtx): (threadId: string) => ChatActivity {
-  const read = new Map<string, ChatActivity>()
-  return (threadId) => {
-    let activity = read.get(threadId)
-    if (!activity) read.set(threadId, (activity = chatActivity(ctx, threadId)))
-    return activity
-  }
-}
-
 /**
- * Who has the feature's next move beyond its lead (every-feature-has-one-owner
- * decisions 15–17, 20): the owner chat, its name and what it is doing; or, for a
- * human-owned feature with a handback out to its chat, that chat's name.
+ * Whether something works on the feature (needs-you decision 15): its lead is
+ * mid-turn or its background work runs, a round runs, or a worker of it has a
+ * turn running. A worker that is only `working` by status, with no turn, does
+ * not count: it reads idle.
  */
-function ownerFacts(feature: Feature, chat: (threadId: string) => ChatActivity): Pick<NeedFacts, 'owner' | 'askingChat'> {
-  if (feature.heldBy) {
-    const c = chat(feature.heldBy)
-    return { owner: { chat: c.name, asking: c.askingAbout.includes(feature.id), working: c.working }, askingChat: null }
-  }
-  return { owner: null, askingChat: feature.handback && feature.chatId ? chat(feature.chatId).name : null }
+export function featureWorking(ctx: AppCtx, featureId: string, lead: LeadState = leadState(ctx, featureId)): boolean {
+  if (lead.working || hasActiveRun(ctx, featureId)) return true
+  const host = agentHost(ctx)
+  return featureSessions(ctx, featureId, ['worker']).some((row) => host.isRunning(row.id) && !row.awaitingInput)
 }
 
-/** Gather {@link NeedFacts} for one feature. */
-export function needFacts(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}): NeedFacts {
-  const lead = inputs.lead ?? (feature.status === 'active' ? leadState(ctx, feature.id) : NO_LEAD)
-  const timeline = timelineFacts(inputs.events ?? needEventsOf(ctx, feature.id))
-  const declaration = ctx.db
-    .select({ scenario: readyDeclarations.scenario, at: readyDeclarations.createdAt })
-    .from(readyDeclarations)
-    .where(eq(readyDeclarations.featureId, feature.id))
-    .orderBy(desc(readyDeclarations.createdAt), desc(readyDeclarations.id))
-    .limit(1)
-    .get()
-  const driveConfigured = inputs.driveConfigured ?? !!getProjectById(ctx, feature.projectId)?.devCommand
-  const designs = designsWaiting(ctx, feature.id)
-  return {
-    status: feature.status,
-    ...ownerFacts(feature, inputs.chat ?? ((id) => chatActivity(ctx, id))),
-    agentWorking: hasActiveRun(ctx, feature.id) || lead.working,
-    workersAtWork: workersAtWork(ctx, feature.id),
-    waiting: feature.waitingReason
-      ? { reason: feature.waitingReason, kind: feature.waitingKind, since: timeline.waitingSetAt ?? 0 }
-      : null,
-    leadAwaitsHuman: lead.awaitsHuman ? { since: lead.since } : null,
-    openAsk: openAskOf(ctx, feature.id),
-    conflictSince: timeline.conflictSince,
-    declaration: declaration ?? null,
-    latestRoundStartedAt: latestBurn(ctx, feature.id)?.startedAt ?? null,
-    humanDriveEndedAt: timeline.humanDriveEndedAt,
-    humanMessageAt: feature.lastHumanMessageAt,
-    driveConfigured,
-    wakeFailed: timeline.wakeFailed,
-    wakeQueuedAt: timeline.wakeQueuedAt,
-    designsWaiting: designs.count,
-    oldestDesignWaitingSince: designs.since,
-    workerNeedsYou: workerNeedsYou(ctx, feature.id),
-    handback: feature.handback,
-  }
-}
-
-/**
- * Any worker of the feature working or queued (triage-batch decision 13): the
- * same count the header's "N workers at work" reads.
- */
-function workersAtWork(ctx: AppCtx, featureId: string): boolean {
-  return !!ctx.db
-    .select({ id: workers.id })
-    .from(workers)
-    .where(and(eq(workers.featureId, featureId), inArray(workers.status, ['working', 'queued'])))
-    .limit(1)
-    .get()
-}
-
-/**
- * The worker that came to need the human last: one showing "needs you" or one
- * that failed (interactive-workers decisions 6, 16). The newest, so each worker
- * entering the need is news to the watcher, and one leaving it is not.
- */
-function workerNeedsYou(ctx: AppCtx, featureId: string): NeedFacts['workerNeedsYou'] {
-  const w = ctx.db
-    .select({ id: workers.id, label: workers.label, updatedAt: workers.updatedAt, status: workers.status, kind: workers.kind })
-    .from(workers)
-    .where(and(eq(workers.featureId, featureId), inArray(workers.status, ['needs-you', 'failed'])))
-    .orderBy(desc(workers.updatedAt))
-    .all()
-    .find((row) => !justGreeted(row))
-  return w ? { label: w.label, threadId: w.id, since: w.updatedAt } : null
-}
-
-/**
- * A "+" worker that has only said hello: the human started it a moment ago and
- * is looking at it, so its first "needs you" is no news (interactive-workers
- * decision 25). Once they have written to it, it needs them like any worker.
- */
-function justGreeted(w: { id: string; status: string; kind: string }): boolean {
-  if (w.kind !== 'unassigned' || w.status !== 'needs-you') return false
-  return !hasThreadLog(w.id) || lastHumanAt(readThreadEvents(w.id)) === undefined
-}
-
-/**
- * The feature's one need, or null. Only a started feature can need anything, so
- * every other one is answered without reading a thing.
- */
-export function needOf(ctx: AppCtx, feature: Feature, inputs: NeedInputs = {}, now = Date.now()): FeatureNeed | null {
+export function needOf(ctx: AppCtx, feature: Feature, waits?: readonly Need[]): Need | null {
   if (feature.status !== 'active') return null
-  return featureNeed(needFacts(ctx, feature, inputs), now)
+  const own = waits ?? waitsByFeature(ctx, [feature.id]).get(feature.id) ?? []
+  const asks = featureSessions(ctx, feature.id, [...ASK_KINDS]).map((row) => openAskNeed(ctx, row.id))
+  return newestNeed([...own, ...asks])
 }

@@ -2,9 +2,8 @@ import { createContext, createElement, useCallback, useContext, useEffect, useRe
 import type { FeatureListItem, Project } from './api'
 import { trpc } from '../trpc'
 import { useLivePoll } from './live'
-import { eventToNotification, type DesktopNotification } from './notifications'
+import { eventToNotification, needPath, type DesktopNotification } from './notifications'
 import { tabTitle } from './projects'
-import { pathFor } from './routes'
 import { goToPath } from './use-history-sync'
 
 /**
@@ -105,9 +104,9 @@ function useNotificationsDriver(): NotificationsControl {
     const away = document.hidden || !document.hasFocus()
     if (initialized.current && Notification.permission === 'granted' && away) {
       for (const { event, feature } of batch) {
-        const notification = eventToNotification(event, feature.title)
-        const path = pathFor({ kind: 'feature', projectId: feature.projectId, featureSlug: feature.slug })
-        if (notification) fire(notification, () => goToPath(path))
+        const notification = eventToNotification(event, feature?.title)
+        const path = needPath(event, feature)
+        if (notification && path) fire(notification, () => goToPath(path))
       }
     }
     initialized.current = true

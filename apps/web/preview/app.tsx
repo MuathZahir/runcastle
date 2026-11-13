@@ -37,10 +37,10 @@ const fakes = withShell({
   feature: { list: () => busyFeatures, driveInfo: () => null },
   thread: {
     list: () => [
-      { id: 'c1', title: 'Cut the UI work into seven features', role: 'project', state: 'waiting', updatedAt: now - 600_000, runtime: 'claude-code' },
-      { id: 'c2', title: 'Why did the burn of #14 stall overnight?', role: 'project', state: 'idle', updatedAt: now - 80_000_000, runtime: 'claude-code' },
-      { id: 'c3', title: 'Plan the changelog release flow', role: 'project', state: 'idle', updatedAt: now - 2 * 86_400_000, runtime: 'claude-code' },
-      { id: 'c4', title: 'Triage the notes from Tuesday’s drive', role: 'project', state: 'idle', updatedAt: now - 6 * 86_400_000, runtime: 'codex' },
+      { id: 'c1', title: 'Cut the UI work into seven features', role: 'project', state: 'idle', need: { why: 'Ship the seven features as one epic, or two?', since: now - 600_000, threadId: 'c1', by: 'agent' }, createdAt: now - 3_600_000, updatedAt: now - 600_000, runtime: 'claude-code' },
+      { id: 'c2', title: 'Why did the burn of #14 stall overnight?', role: 'project', state: 'idle', need: null, createdAt: now - 80_000_000, updatedAt: now - 80_000_000, runtime: 'claude-code' },
+      { id: 'c3', title: 'Plan the changelog release flow', role: 'project', state: 'idle', need: null, createdAt: now - 2 * 86_400_000, updatedAt: now - 2 * 86_400_000, runtime: 'claude-code' },
+      { id: 'c4', title: 'Triage the notes from Tuesday’s drive', role: 'project', state: 'idle', need: null, createdAt: now - 6 * 86_400_000, updatedAt: now - 6 * 86_400_000, runtime: 'codex' },
     ],
   },
   projectNotes: { openCount: () => 2, list: () => [] },

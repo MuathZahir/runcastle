@@ -2,39 +2,57 @@ import { Button, Dialog, DialogFooter, DialogHeader, StatusDot } from '../../ui'
 import type { StatusTone } from '../../ui'
 import { IconStop } from '../../icons'
 import type { FeatureStatus, FeatureStatusKind } from '../../lib/feature-ui/status-line'
-import { Term } from '../Term'
 
 /** Shape first, hue confirms (DESIGN.md principle 3) — one tone per status. */
 const STATUS_TONE: Record<FeatureStatusKind, StatusTone> = {
-  talking: 'neutral',
+  needsYou: 'warning',
   working: 'live',
-  waiting: 'warning',
-  ready: 'accent',
+  idle: 'neutral',
   merged: 'success',
+  shelf: 'neutral',
 }
 
 /**
- * The feature's one status line (`the-feature-lead-runs-rounds` decision 21),
- * quiet, beside the title in the page's one header row (design-mode decision
- * 12): a dot and the line — "Talking with you", "Working · 2 workers at work",
- * "Plan to approve", "Needs permission · Bash: git push", "Ready to test ·
- * <scenario>" (you-always-know-what-s-waiting decision 1). It
- * replaces the stepper and the next-step sentence on the page; the header's
- * buttons are the header's.
+ * The feature's one status line, quiet, beside the title in the page's one
+ * header row: a dot and "Needs you · <the agent's line>", "Working", "Idle"
+ * or "Merged" (needs-you-is-the-agent-s-call decision 15). The line is one
+ * line, clipped (decision 3); clicking Needs you opens the chat the question
+ * waits in (decision 12).
  *
  * Facts are text (DESIGN.md principle 2): no pill, no box.
  */
-export function FeatureStatusLine({ status }: { status: FeatureStatus }) {
-  return (
-    <p className="m-0 flex min-w-0 items-center gap-2 text-sm text-text-tertiary" role="status">
-      {/* A need its orchestrator handles is not the human's yet: a quiet dot. */}
-      <StatusDot tone={status.held ? 'neutral' : STATUS_TONE[status.kind]} />
+export function FeatureStatusLine({
+  status,
+  onOpenThread,
+}: {
+  status: FeatureStatus
+  onOpenThread?: (threadId: string) => void
+}) {
+  const threadId = status.threadId
+  const words = (
+    <>
+      <StatusDot tone={STATUS_TONE[status.kind]} />
       {/* Squeezed, the reason gives way first, then the label truncates: the line never draws past its box. */}
-      {/* Held, the label ("With the orchestrator") explains the crumb beside it, whose title only a tooltip holds. */}
-      <span className="min-w-0 truncate text-text-secondary">
-        {status.held ? <Term id="held-by">{status.label}</Term> : status.label}
-      </span>
+      <span className="min-w-0 truncate text-text-secondary">{status.label}</span>
       {status.why && <span className="min-w-0 shrink-[100] truncate">· {status.why}</span>}
+    </>
+  )
+  return (
+    <p className="m-0 flex min-w-0 items-center text-sm text-text-tertiary" role="status">
+      {threadId && onOpenThread ? (
+        <button
+          type="button"
+          className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md hover:text-text-secondary"
+          title={status.why ? `Open the chat: ${status.why}` : 'Open the chat'}
+          onClick={() => onOpenThread(threadId)}
+        >
+          {words}
+        </button>
+      ) : (
+        <span className="flex min-w-0 items-center gap-2" {...(status.why ? { title: status.why } : {})}>
+          {words}
+        </span>
+      )}
     </p>
   )
 }

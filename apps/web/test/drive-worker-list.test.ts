@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ThreadEntry, WorkerRow } from '@runcastle/core'
 import { FeatureSidebarPage } from '../src/components/workers/FeatureSidebarPage'
 import { workerColumnProps } from '../src/components/workers/WorkerChat'
-import { featureWorkerEntries, workerGroups } from '../src/lib/workers'
+import { featureWorkerEntries, shownWorkerStatus, workerGroups, workerStatusWhy, workersAtWork } from '../src/lib/workers'
 import { listItem } from './fixtures'
 
 /**
@@ -41,11 +41,15 @@ const thread = (id: string, title: string, role: ThreadEntry['role']): ThreadEnt
   createdAt: 1,
   updatedAt: 0,
   runtime: 'claude-code',
+  need: null,
 })
 
-const rows = [
-  wire('w_head', 'Header', { status: 'working', createdAt: 3 }),
-  wire('w_scen', 'Scenarios', { kind: 'scenario', startedBy: 'human', status: 'needs-you', createdAt: 2 }),
+const rows: Wire[] = [
+  { ...wire('w_head', 'Header', { status: 'working', createdAt: 3 }), turnRunning: true },
+  {
+    ...wire('w_scen', 'Scenarios', { kind: 'scenario', startedBy: 'human', status: 'needs-you', createdAt: 2 }),
+    need: { why: 'Which seed?', since: 2, threadId: 'w_scen', by: 'agent' as const },
+  },
   wire('w_fix', 'Fix drive', { kind: 'fix-drive', startedBy: 'human', status: 'handed-back', createdAt: 1 }),
 ]
 const lead = thread('th_main', 'Coupon expiry', 'main')
@@ -83,6 +87,64 @@ describe('drive workers in the feature’s worker groups', () => {
     expect(needsYou.indexOf('Scenarios')).toBeLessThan(needsYou.indexOf('Header'))
     expect(html).toContain('Old drive chat')
     expect(html).not.toContain('aria-label="Chats"')
+  })
+})
+
+/** needs-you-is-the-agent-s-call decision 6: its own need, else Working while a turn runs, else Idle. */
+describe('a worker’s shown status', () => {
+  const need = { why: 'Which header?', since: 1, threadId: 'w', by: 'agent' as const }
+
+  it('needs you only on its own need, whatever its status or turn', () => {
+    expect(shownWorkerStatus({ status: 'working', need, turnRunning: true })).toBe('needs-you')
+    expect(shownWorkerStatus({ status: 'needs-you', need: null, turnRunning: false })).toBe('idle')
+  })
+
+  it('reads Working while a turn runs, else Idle', () => {
+    expect(shownWorkerStatus({ status: 'working', need: null, turnRunning: true })).toBe('working')
+    expect(shownWorkerStatus({ status: 'working', need: null, turnRunning: false })).toBe('idle')
+  })
+
+  it('counts for the status line only the workers whose turn runs, as their cards read', () => {
+    // The feature header read Working while every card read Idle (review finding_9GbzXIHZSuVg).
+    const rows = [
+      { status: 'working' as const, need: null, turnRunning: false },
+      { status: 'needs-you' as const, need: null, turnRunning: false },
+      { status: 'working' as const, need: null, turnRunning: true },
+    ]
+    expect(workersAtWork(rows)).toBe(1)
+    expect(workersAtWork(rows.slice(0, 2))).toBe(0)
+  })
+
+  it('keeps a settled, queued or failed worker’s own word', () => {
+    for (const status of ['queued', 'handed-back', 'landed', 'dropped', 'failed'] as const)
+      expect(shownWorkerStatus({ status, need: null, turnRunning: false })).toBe(status)
+  })
+
+  it('draws an idle worker in the in-play group, reading Idle', () => {
+    const idle = featureWorkerEntries([wire('w_i', 'Idle one', { status: 'working' })], [])
+    expect(workerGroups(idle).working.map((w) => w.status)).toEqual(['idle'])
+    const html = renderToStaticMarkup(
+      createElement(FeatureSidebarPage, {
+        feature: listItem(),
+        leadStatus: 'Idle',
+        onBack: () => {},
+        onNewWorker: () => {},
+        lead,
+        workers: idle,
+        current: null,
+        onOpen: () => {},
+        leadActions: [],
+        actionsFor: () => [],
+      }) as ReactElement,
+    )
+    expect(html).toContain('>Idle<')
+    expect(html).not.toContain('text-shimmer">Idle')
+  })
+
+  it('says a worker that needs you in its agent’s line', () => {
+    const [entry] = featureWorkerEntries([{ ...wire('w_n', 'Asks', { status: 'working' }), need }], [])
+    expect(entry).toMatchObject({ status: 'needs-you', need })
+    expect(workerStatusWhy(entry!)).toBe('Which header?')
   })
 })
 

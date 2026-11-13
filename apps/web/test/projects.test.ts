@@ -42,6 +42,8 @@ const feat = (over: Partial<FeatureListItem>): FeatureListItem =>
     createdAt: 0,
     ticketCounts: { total: 0, pending: 0, burning: 0, done: 0, failed: 0 },
     workersWorking: 0,
+    working: false,
+    need: null,
     ...over,
   }) as FeatureListItem
 
@@ -292,9 +294,9 @@ describe('projectStats', () => {
     })
   })
 
-  it('counts active runs and marks health working when a run is in flight', () => {
+  it('counts what an agent works on and marks health working', () => {
     const s = projectStats([
-      feat({ id: 'a', workersWorking: 1 }),
+      feat({ id: 'a', working: true }),
       feat({ id: 'b', status: 'shipped' }),
     ])
     expect(s.working).toBe(1)
@@ -305,11 +307,9 @@ describe('projectStats', () => {
 
   it('counts needs-you features and prefers attention over working', () => {
     const s = projectStats([
-      feat({ id: 'a', need: need('test', 'Ready to test · Checkout') }),
-      feat({ id: 'b', workersWorking: 1 }),
-      feat({ id: 'c' }), // nothing asked: in progress, not needs-you
-      // Its orchestrator handles it: not counted until its hour passes (decision 18).
-      feat({ id: 'd', need: need('handback', 'With the orchestrator · Ready to merge', { held: true }) }),
+      feat({ id: 'a', need: need('Ready to test · Checkout') }),
+      feat({ id: 'b', working: true }),
+      feat({ id: 'c' }), // nothing asked: idle, not needs-you
     ])
     expect(s.needsYou).toBe(1)
     expect(s.working).toBe(1)

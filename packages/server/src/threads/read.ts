@@ -1,9 +1,10 @@
 import { statSync } from 'node:fs'
 import {
   DEFAULT_RUNTIME,
-  featuresAskedAbout,
   foldThread,
   lastHumanAt,
+  newestNeed,
+  type Need,
   outsideCompactions,
   threadActivity,
   type SessionKind,
@@ -17,11 +18,11 @@ import { GateError } from '../errors'
 import { featureSessions, getSessionRow, projectSessions, setSessionTitle } from '../launcher/sessions'
 import { conversationTranscript, deriveTitle } from '../services/conversations'
 import { isRuncastlePrompt, runcastleLines } from '../services/lead-prompt'
-import { tryGetFeature } from '../services/repo'
 import { withRelativePaths } from './acp-map'
 import { appendThreadEvent, hasThreadLog, readThreadEvents, seedThreadLog, threadLogPath } from './log'
 import { givenNames, NEW_CHAT_NAME, threadAbout, threadName, type ThreadAbout } from './naming'
 import { agentHost } from './types'
+import { waitOf } from '../services/waits'
 
 /**
  * The thread router's reads (chat-as-web-components; ADR-0015): the thread
@@ -170,13 +171,11 @@ function titleFrom(row: SessionRow, said: string[]): string | null {
   )
 }
 
-function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout, leadWaiting: boolean): ThreadEntry {
+function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout): ThreadEntry {
   const { view, events } = foldedLog(row.id)
   const running = agentHost(ctx).isRunning(row.id)
-  // A lead that said it waits on the human (`wait_for_you`, declared ready) has handed over, whatever still runs.
-  const background = running && !(leadWaiting && row.kind === 'chat') && threadActivity(events, true, Date.now()) === 'background'
+  const background = running && threadActivity(events, true, Date.now()) === 'background'
   const given = givenNames(events)
-  const askingAbout = row.kind === 'project' ? featuresAskedAbout(events, running, Date.now()) : []
   return {
     id: row.id,
     title: threadName(row, events, about),
@@ -184,9 +183,8 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout, leadWaiti
     humanNamed: given.renamed !== undefined,
     role: ROLE[row.kind],
     // No process survives a restart: a log cut off mid-turn is not working.
-    // A chat asking about a feature waits on the human, its process up or not (decision 17).
-    state: askingAbout.length ? 'waiting' : background ? 'working' : running ? view.state : 'idle',
-    ...(askingAbout.length ? { askingAbout } : {}),
+    state: background ? 'working' : running ? view.state : 'idle',
+    need: threadNeed(ctx, row),
     createdAt: row.createdAt ?? 0,
     updatedAt: events.at(-1)?.at ?? row.createdAt ?? 0,
     lastHumanAt: lastHumanAt(events),
@@ -195,35 +193,29 @@ function loggedEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout, leadWaiti
   }
 }
 
-/** What a feature's lead is doing, as {@link leadState} reads it. */
+/** What a feature's lead is doing, as {@link leadState} reads it: its turn, never a need. */
 export interface LeadState {
-  /** It replied or asks, and the human has not answered. */
-  awaitsHuman: boolean
-  /** It replied and its background work still runs, so nobody is being waited on yet. */
+  /** It ended its turn and its background work still runs. */
   inBackground: boolean
   /** Its process runs and it is mid-turn or its background work still runs. */
   working: boolean
-  /** Its process runs and its turn waits on the human's answer to a permission or a question. */
-  asking: boolean
-  /** When its main chat last logged anything: when a reply it awaits an answer to ended. */
-  since: number
 }
 
 /** What a feature with no lead at work reads as. */
-export const NO_LEAD: LeadState = { awaitsHuman: false, inBackground: false, working: false, asking: false, since: 0 }
+export const NO_LEAD: LeadState = { inBackground: false, working: false }
 
 /**
  * What the feature's lead is doing (decision 15): {@link threadActivity} over its
  * main chat — the newest one with a log, as the thread list's newest main entry
  * — so the header and the sidebar read one answer. A conversation from the
- * terminal era has no log, and waits on nobody.
+ * terminal era has no log, and does nothing.
  */
 export function leadState(ctx: AppCtx, featureId: string): LeadState {
   let newest: { at: number; state: LeadState } | null = null
   for (const row of featureSessions(ctx, featureId, ['chat'])) {
     if (!hasThreadLog(row.id)) continue
     const { events } = foldedLog(row.id)
-    // A compaction at a quiet moment is not the lead moving: a reply waits on the human from when it was made.
+    // A compaction at a quiet moment is not the lead moving.
     const at = outsideCompactions(events).at(-1)?.at ?? row.createdAt ?? 0
     if (newest && newest.at >= at) continue
     const running = agentHost(ctx).isRunning(row.id)
@@ -231,80 +223,35 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
     newest = {
       at,
       state: {
-        awaitsHuman: activity === 'asking' || activity === 'replied',
         inBackground: activity === 'background',
         // No process survives a restart: a log cut off mid-turn is not working.
         working: running && (activity === 'turn' || activity === 'background'),
-        asking: running && activity === 'asking',
-        since: at,
       },
     }
   }
   return newest?.state ?? NO_LEAD
 }
 
-/** What an orchestrator chat is doing, as a feature it owns reads it (every-feature-has-one-owner decision 17). */
-export interface ChatActivity {
-  /** The name the thread list shows for it. */
-  name: string
-  /** The features it is asking the human about now ({@link featuresAskedAbout}). */
-  askingAbout: string[]
-  /** Its process runs and it is mid-turn or its background work still runs. */
-  working: boolean
-}
-
 /**
- * What the orchestrator chat `threadId` is doing, and its name. A chat with no
- * log asks nothing and does nothing; an unknown one is named by its id.
+ * The open approval or question ask in the thread, as a need: the call's title
+ * or the first question is its line (needs-you decision 2). Read from the
+ * thread's log, folded as the chat folds it; only a thread whose process runs
+ * can hold one open, since no ask outlives its process. Forms and links an MCP
+ * server asks are the agent's own errand, not a need.
  */
-export function chatActivity(ctx: AppCtx, threadId: string): ChatActivity {
-  const row = getSessionRow(ctx, threadId)
-  if (!row || !hasThreadLog(threadId)) return { name: row ? threadName(row, []) : threadId, askingAbout: [], working: false }
-  const { events } = foldedLog(threadId)
-  const running = agentHost(ctx).isRunning(threadId)
-  const now = Date.now()
-  const activity = threadActivity(events, running, now)
-  return {
-    name: threadName(row, events),
-    askingAbout: featuresAskedAbout(events, running, now),
-    working: running && (activity === 'turn' || activity === 'background'),
-  }
+export function openAskNeed(ctx: AppCtx, threadId: string): Need | null {
+  if (!agentHost(ctx).isRunning(threadId) || !hasThreadLog(threadId)) return null
+  const { view, events } = foldedLog(threadId)
+  const ask = view.ask
+  if (ask?.kind !== 'approval' && ask?.kind !== 'question') return null
+  const since = [...events].reverse().find((e) => e.type === 'ask' && e.ask.id === ask.id)?.at ?? 0
+  const why = ask.kind === 'approval' ? (ask.call.title || 'a tool call') : (ask.questions[0]?.question ?? '')
+  return { why, since, threadId, by: 'agent' }
 }
 
-/** An ask the human has not answered, in the thread it waits in. */
-export interface OpenAsk {
-  kind: 'approval' | 'question'
-  /** The approval's call title, or the question's first question. */
-  title: string
-  threadId: string
-  /** When the ask was logged. */
-  since: number
-}
-
-/**
- * The open approval or question ask in any of the feature's main, side and
- * worker threads, an approval first (a permission prompt halts its agent
- * mid-turn). A worker waiting on one needs the human like any other need
- * (interactive-workers decision 10).
- * Read from each thread's log, folded as the chat folds it; only a thread whose
- * process runs can hold one open, since no ask outlives its process. Forms and
- * links an MCP server asks are the agent's own errand, not a need.
- */
-export function openAskOf(ctx: AppCtx, featureId: string): OpenAsk | null {
-  const host = agentHost(ctx)
-  let found: OpenAsk | null = null
-  for (const row of featureSessions(ctx, featureId, ['chat', 'side', 'worker'])) {
-    if (!host.isRunning(row.id) || !hasThreadLog(row.id)) continue
-    const { view, events } = foldedLog(row.id)
-    const ask = view.ask
-    if (ask?.kind !== 'approval' && ask?.kind !== 'question') continue
-    const since = [...events].reverse().find((e) => e.type === 'ask' && e.ask.id === ask.id)?.at ?? 0
-    const title = ask.kind === 'approval' ? (ask.call.title || 'a tool call') : (ask.questions[0]?.question ?? '')
-    const open: OpenAsk = { kind: ask.kind, title, threadId: row.id, since }
-    if (ask.kind === 'approval') return open
-    found ??= open
-  }
-  return found
+/** What the thread needs from the human: the newest of its agent's wait and its open ask; null when nothing. */
+export function threadNeed(ctx: AppCtx, row: Pick<SessionRow, 'id'>): Need | null {
+  return newestNeed([waitOf(ctx, row.id), openAskNeed(ctx, row.id)])
 }
 
 /** A project chat's epic look, as its row stores it (epics-that-look-alive decisions 1–3); nothing for other kinds. */
@@ -318,12 +265,13 @@ export function epicLookOf(row: SessionRow): Pick<ThreadEntry, 'color' | 'icon' 
 }
 
 /** A thread nothing has been said in yet. */
-function freshEntry(row: SessionRow, about: ThreadAbout): ThreadEntry {
+function freshEntry(ctx: AppCtx, row: SessionRow, about: ThreadAbout): ThreadEntry {
   return {
     id: row.id,
     title: threadName(row, [], about),
     role: ROLE[row.kind],
     state: 'idle',
+    need: waitOf(ctx, row.id),
     createdAt: row.createdAt ?? 0,
     updatedAt: row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
@@ -345,6 +293,7 @@ function transcriptEntry(ctx: AppCtx, row: SessionRow, source: SessionRow): Thre
     title: title ?? NEW_CHAT_NAME,
     role: ROLE[row.kind],
     state: 'idle',
+    need: waitOf(ctx, row.id),
     createdAt: row.createdAt ?? 0,
     updatedAt: row.endedAt ?? row.createdAt ?? 0,
     runtime: row.runtime ?? DEFAULT_RUNTIME,
@@ -366,19 +315,18 @@ export function listThreads(ctx: AppCtx, scope: { featureId: string } | { projec
       ? featureSessions(ctx, scope.featureId, FEATURE_THREAD_KINDS)
       : PROJECT_THREAD_KINDS.flatMap((kind) => projectSessions(ctx, scope.projectId, kind))
   const about = threadAbout(ctx, 'featureId' in scope ? scope.featureId : null)
-  const leadWaiting = 'featureId' in scope && !!tryGetFeature(ctx, scope.featureId)?.waitingReason
   const conversations = new Set<string>()
   const entries: ThreadEntry[] = []
   for (const row of rows) {
     if (row.ccSessionId && conversations.has(row.ccSessionId)) continue
     if (row.ccSessionId) conversations.add(row.ccSessionId)
     if (hasThreadLog(row.id)) {
-      entries.push(loggedEntry(ctx, row, about, leadWaiting))
+      entries.push(loggedEntry(ctx, row, about))
       continue
     }
     const source = transcriptRow(ctx, row)
     if (source) entries.push(transcriptEntry(ctx, row, source))
-    else if (row.status !== 'ended') entries.push(freshEntry(row, about))
+    else if (row.status !== 'ended') entries.push(freshEntry(ctx, row, about))
   }
   return entries.sort((a, b) => b.updatedAt - a.updatedAt)
 }

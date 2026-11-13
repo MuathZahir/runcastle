@@ -107,7 +107,7 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
 
     const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
     const feature = ctx.db.select().from(features).where(eq(features.slug, 'scenario-feature-abc123')).get()
-    expect(feature).toMatchObject({ projectId, status: 'active', waitingReason: 'ready to test' })
+    expect(feature).toMatchObject({ projectId, status: 'active' })
     expect(ctx.db.select().from(tickets).where(eq(tickets.featureId, feature!.id)).all()).toEqual([])
     const [review] = ctx.db.select().from(workers).where(eq(workers.featureId, feature!.id)).all()
     expect(review).toMatchObject({ kind: 'review', label: 'Review', status: 'handed-back', reviewMode: 'drive' })

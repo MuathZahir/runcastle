@@ -115,7 +115,7 @@ describe('OwnerStrip', () => {
 
   it('opens the chat that owns the feature from its link', () => {
     const onOpenChat = vi.fn()
-    render(<OwnerStrip chat={CHAT} asking={false} onOpenChat={onOpenChat} />)
+    render(<OwnerStrip chat={CHAT} onOpenChat={onOpenChat} />)
     expect(screen.getByRole('note', { name: 'Who runs this feature' }).textContent).toContain(
       `${CHAT} runs this feature. Sending makes it yours.`,
     )

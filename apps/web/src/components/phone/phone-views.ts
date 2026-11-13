@@ -1,3 +1,4 @@
+import type { Need } from '@runcastle/core'
 import { PANEL_VIEW_LABEL, type PanelView } from '../../lib/feature-ui/panel'
 import type { FeatureStatus } from '../../lib/feature-ui/status-line'
 import { ticketCount, ticketCountText } from '../../lib/feature-ui/tickets'
@@ -41,16 +42,18 @@ export function phoneViewChoices(
     .map((view) => ({ view, label: PANEL_VIEW_LABEL[view], ...(hint[view] ? { hint: hint[view] } : {}) }))
 }
 
-/** A feature's status line in the chat bar's terms: Ready waits on you as Waiting does (the preview's amber dot). */
+/** A feature's status line in the chat bar's terms: "Needs you · <why>" wears the amber dot. */
 export function featurePhoneStatus(status: FeatureStatus | undefined): PhoneChatStatus | undefined {
   if (!status) return undefined
-  const tone = status.held ? 'quiet' : status.kind === 'waiting' || status.kind === 'ready' ? 'waiting' : status.kind === 'working' ? 'working' : 'quiet'
-  return { words: status.label, tone }
+  const tone = status.kind === 'needsYou' ? 'waiting' : status.kind === 'working' ? 'working' : 'quiet'
+  return { words: status.why ? `${status.label} · ${status.why}` : status.label, tone }
 }
 
-/** A thread's state in the chat bar's terms, in the words every thread list uses. */
-export function threadPhoneStatus(state: ThreadState | undefined): PhoneChatStatus | undefined {
-  if (state === 'waiting') return { words: 'Waiting for you', tone: 'waiting' }
-  if (state === 'working') return { words: 'Working', tone: 'working' }
+/** A thread's need or state in the chat bar's terms, in the words every thread list uses. */
+export function threadPhoneStatus(
+  thread: { state: ThreadState; need: Need | null } | undefined,
+): PhoneChatStatus | undefined {
+  if (thread?.need) return { words: `Needs you · ${thread.need.why}`, tone: 'waiting' }
+  if (thread?.state === 'working') return { words: 'Working', tone: 'working' }
   return undefined
 }

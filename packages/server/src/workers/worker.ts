@@ -384,16 +384,16 @@ function howItHandsBack(kind: Exclude<WorkerKind, 'review' | DriveWorkerKind>): 
   switch (kind) {
     case 'with-you':
       return (
-        '- This is work the human judges by eye. Make a first pass, show it (start_dev_server), then end your turn and wait for the human. ' +
+        '- This is work the human judges by eye. Make a first pass, show it (start_dev_server), then call wait_for_you({ why }) with one short line and end your turn. ' +
         'Iterate with them; hand back only once they say they are happy, or they ask you to hand back.'
       )
     case 'on-its-own':
       return (
         '- Work on your own. When the done-when is met (or you cannot meet it), hand back. ' +
-        'End your turn without handing back only to ask the human a real question.'
+        'Bring any question to your lead by handing back; never end your turn on a question.'
       )
     case 'unassigned':
-      return '- The human started you without an assignment: wait for what they ask. Hand back when they ask you to, or when the work they asked for is done.'
+      return '- The human started you without an assignment: wait for what they ask. Hand back when they ask you to, or when the work they asked for is done. When you ask them anything, call wait_for_you({ why }) before you end your turn.'
   }
 }
 
@@ -406,7 +406,7 @@ function whenFixesFail(kind: Exclude<WorkerKind, 'review' | DriveWorkerKind>): s
   const stop =
     kind === 'on-its-own'
       ? 'stop and hand back with what you tried and what each check showed'
-      : 'stop and tell the human here what you tried, what each check showed and what you recommend, then end your turn'
+      : 'stop and tell the human here what you tried, what each check showed and what you recommend, then call wait_for_you({ why }) and end your turn'
   return (
     '- When a fix fails its check (a drive, a test, the typecheck, a build), count the tries on that problem. ' +
     'After the second, step back before a third: ask whether the approach is wrong, not just this bug, and change it if so. ' +
@@ -453,8 +453,8 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
     '## How you work',
     `- Work in ${IN.repo}, on branch ${sb.branch}. Commit as you go with conventional messages: every commit is copied back to runcastle automatically. Uncommitted work is not handed back.`,
     `- To show the human a screen, call start_dev_server. Your dev server must accept connections from outside the container: listen on 0.0.0.0 (not localhost), port ${sb.port}. The human opens it at ${sb.previewUrl}.`,
-    "- Runcastle's tools for you: hand_back, start_dev_server, read_feature (the feature's state, decisions and the lead's latest turns), show_file (a file or screenshot, into this chat) and park_feature (work for another feature, parked in the backlog). You have no others, and no route to runcastle.",
-    '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then end your turn so the human can decide.',
+    "- Runcastle's tools for you: hand_back, wait_for_you (one short line telling the human you need them; only this call does, ending your turn never does), start_dev_server, read_feature (the feature's state, decisions and the lead's latest turns), show_file (a file or screenshot, into this chat) and park_feature (work for another feature, parked in the backlog). You have no others, and no route to runcastle.",
+    '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then call wait_for_you({ why }) and end your turn so the human can decide.',
     "- Checks: while you work, run only the tests that cover each slice before you commit it. Run the project-wide static check (typecheck or its equivalent) once at the end, and once more only after fixing what it found. Never run the full test suite or the project's verify commands whole: your lead runs those. Keep your hand-back summary short.",
     whenFixesFail(brief.kind),
     howItHandsBack(brief.kind),

@@ -6,7 +6,7 @@ import { workerPreviewAddress } from '../../lib/design-address'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { useThreadActions } from '../../lib/use-thread'
-import { OLD_CHAT_WORDS, oldChatOf, workerAssignment, workerCanHandBack, workerStatusWhy, type OldChat } from '../../lib/workers'
+import { OLD_CHAT_WORDS, oldChatOf, shownWorkerStatus, workerAssignment, workerCanHandBack, workerStatusWhy, type OldChat } from '../../lib/workers'
 import { trpc } from '../../trpc'
 import { IconAlert, IconBranch, IconDoc, IconGitMerge, IconPlay, IconX } from '../../icons'
 import { copyText } from '../workspace/copy-text'
@@ -146,9 +146,10 @@ export function useWorkerHeader(w: WorkerInFront): { status: ReactNode; actions:
   ]
   const previewPath = row.previewPath
   const previews = previewPath !== null && !settled && row.status !== 'failed'
-  const why = workerStatusWhy(row)
+  const status = shownWorkerStatus(row)
+  const why = workerStatusWhy({ ...row, status })
   return {
-    status: <WorkerStatusLine status={row.status} {...(why ? { why } : {})} />,
+    status: <WorkerStatusLine status={status} {...(why ? { why } : {})} />,
     actions: (
       <WorkerHeaderActions
         {...(previews ? { onOpenPreview: () => window.open(workerPreviewAddress(window.location, row.passPort, previewPath), '_blank', 'noopener') } : {})}

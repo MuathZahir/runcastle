@@ -67,7 +67,7 @@ describe('how each place applies it', () => {
   it('a lone planning run checks the three first and stops on an open one', () => {
     const alone = read('feature', 'references', 'planning-alone.md')
     expect(alone).toContain('**The three come first.**')
-    expect(alone).toMatch(/wait_for_you\(\{ why: "what, where or who is open", kind:\s+"answer" \}\)/)
+    expect(alone).toMatch(/wait_for_you\(\{ why: "what, where or who is open" \}\)/)
   })
 
   it('a lead offers a design only once the three are settled', () => {

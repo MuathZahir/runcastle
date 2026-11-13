@@ -59,6 +59,7 @@ const thread = (state: ThreadEntry['state'], updatedAt = 0): ThreadEntry => ({
   createdAt: updatedAt,
   updatedAt,
   runtime: 'claude-code',
+  need: null,
 })
 
 const { Sidebar } = await import('../src/components/Sidebar')
@@ -85,6 +86,7 @@ function rail(
     onOpenCmdk?: () => void
     onOpenChat?: (threadId: string) => void
     onOpenConversations?: () => void
+    onOpenWorkerChat?: (featureId: string, threadId: string) => void
   } = {},
 ) {
   return render(
@@ -102,6 +104,7 @@ function rail(
         driving={over.driving ?? null}
         {...(over.onOpenChat ? { onOpenChat: over.onOpenChat } : {})}
         {...(over.onOpenConversations ? { onOpenConversations: over.onOpenConversations } : {})}
+        {...(over.onOpenWorkerChat ? { onOpenWorkerChat: over.onOpenWorkerChat } : {})}
       />
     </ToastProvider>,
   )
@@ -173,26 +176,30 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
     expect(onOpenChat).toHaveBeenCalledWith('pay')
   })
 
-  it('names another chat that runs a nested feature, in its own words, and keeps a permission prompt yellow', () => {
+  it('reads each nested feature in the four words, with no owner prefix, and puts Needs you first', () => {
     data.threads = [epic('pay', 'Payment System', { state: 'working' }), epic('notes', 'Notes triage', { state: 'working' })]
     data.features = [
-      titled('Billing emails', {
-        chatId: 'pay',
-        heldBy: 'notes',
-        need: need('test', 'With Notes triage · Ready to test · Invoices', { held: true }),
-      }),
-      titled('Export to CSV', { chatId: 'pay', heldBy: 'pay', need: need('permission', 'Needs permission · Bash: git push') }),
+      titled('Billing emails', { chatId: 'pay', heldBy: 'notes', working: true }),
+      titled('Export to CSV', { chatId: 'pay', heldBy: 'pay', need: need('May I run git push?') }),
     ]
     rail()
     const nested = screen.getByRole('group', { name: 'Payment System' })
-    expect(within(nested).getByText('With Notes triage · Ready to test · Invoices')).toBeTruthy()
-    expect(within(nested).getByText('Needs permission · Bash: git push')).toBeTruthy()
+    expect(within(nested).getByText('Working')).toBeTruthy()
+    expect(within(nested).getByText('Needs you · May I run git push?')).toBeTruthy()
     // Needs you first inside the epic (decision 8).
     expect(nested.textContent!.indexOf('Export to CSV')).toBeLessThan(nested.textContent!.indexOf('Billing emails'))
   })
 
+  it('opens the exact chat a needs-you row waits in, a worker’s included (needs-you decision 12)', () => {
+    const onOpenWorkerChat = vi.fn()
+    data.features = [titled('Loose', { need: need('Which header?', { threadId: 'worker-7' }) })]
+    rail({ onOpenWorkerChat })
+    fireEvent.click(within(screen.getByRole('group', { name: 'Other features' })).getByText('Loose'))
+    expect(onOpenWorkerChat).toHaveBeenCalledWith('Loose', 'worker-7')
+  })
+
   it('puts a feature with no epic under Other features', () => {
-    data.features = [titled('Loose', { need: need('test', 'Ready to test') })]
+    data.features = [titled('Loose', { need: need('Ready to test') })]
     rail()
     expect(within(screen.getByRole('group', { name: 'Other features' })).getByText('Loose')).toBeTruthy()
   })
@@ -224,8 +231,8 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
 
   it('keeps no lane headings, Project or Preparation rows, or runs elsewhere', () => {
     data.features = [
-      titled('Coupons', { need: need('test', 'Ready to test') }),
-      titled('Order history', { need: need('stopped', 'Stopped · you stopped it') }),
+      titled('Coupons', { need: need('Ready to test') }),
+      titled('Order history', { need: need('Which retry policy?') }),
     ]
     rail()
     for (const gone of ['Inbox', 'Agent working', 'Drafts', 'Show archived'])

@@ -637,16 +637,15 @@ describe('conflict kickoffs verify without dependencies', () => {
  * pipeline next-step action — only a way back (Unarchive).
  */
 
-/** A feature whose terminal is open, with its agent mid-turn or waiting. */
+/** A feature whose terminal is open: its agent mid-turn (working), or at rest with its agent's own need. */
 function withSession(
   awaitingInput: boolean,
   over: Partial<FeatureListItem> = {},
 ): FeatureListItem {
   return listItem({
     liveSession: { status: 'live', awaitingInput },
-    leadAwaitsHuman: awaitingInput,
-    // The server reads a lead waiting on the human as an answer it needs.
-    need: awaitingInput ? need('answer', 'Needs your answer') : null,
+    working: !awaitingInput,
+    need: awaitingInput ? need('Which retry policy?') : null,
     ...over,
   })
 }
@@ -705,7 +704,7 @@ describe.skip('draft derivations', () => {
 
   it('needsMe is null for a draft, whatever its phase would claim', () => {
     expect(needsMe(draft())).toBeNull()
-    expect(needsMe(listItem({}))?.kind).toBe('grill')
+    expect(needsMe(listItem({}))).toBeNull()
   })
 
   it('chips a draft as "In the backlog" instead of its age', () => {
@@ -724,14 +723,14 @@ describe.skip('draft derivations', () => {
     expect(sorted.map((f) => f.id)).toEqual(['needsMe', 'active', 'draft', 'shipped'])
   })
 
-  it('gives drafts their own rail band between In progress and Shipped', () => {
+  it('gives drafts their own rail band between Idle and Shipped', () => {
     expect(triageOf(draft())).toBe('drafts')
     const groups = triage([
       listItem({ id: 'shipped', status: 'shipped' }),
       draft({ id: 'draft' }),
       listItem({ id: 'active' }),
     ])
-    expect(groups.map((g) => g.key)).toEqual(['inProgress', 'drafts', 'shipped'])
+    expect(groups.map((g) => g.key)).toEqual(['idle', 'drafts', 'shipped'])
     expect(groups.find((g) => g.key === 'drafts')?.label).toBe('Backlog')
   })
 
@@ -838,12 +837,11 @@ describe('shippedAt', () => {
 describe('rowChip', () => {
   const NOW = 1_000_000_000_000
 
-  it('shows Needs you, carrying the need’s words as its title', () => {
-    const chip = rowChip(listItem({ need: need('test', 'Ready to test · Checkout') }), NOW)
+  it('shows Needs you, carrying the agent’s line as its title', () => {
+    const chip = rowChip(listItem({ need: need('Ready to test · Checkout') }), NOW)
     expect(chip.kind).toBe('needsMe')
     expect(chip.text).toBe('Needs you')
     expect(chip.title).toBe('Ready to test · Checkout')
-    expect(chip.needs).toBe('test')
   })
 
   it('reads a failed ticket as its age — a failure is not a needs-you reason', () => {
@@ -852,8 +850,8 @@ describe('rowChip', () => {
     expect(chip.kind).toBe('age')
   })
 
-  it('shows Working while a run is active, outranking the age stamp', () => {
-    const chip = rowChip(listItem({ workersWorking: 1, lastActivityAt: NOW - 600_000 }), NOW)
+  it('shows Working while the server says an agent works, outranking the age stamp', () => {
+    const chip = rowChip(listItem({ working: true, lastActivityAt: NOW - 600_000 }), NOW)
     expect(chip.kind).toBe('working')
     expect(chip.text).toBe('Working')
   })
@@ -878,114 +876,54 @@ describe('rowChip', () => {
     expect(chip.text).toBe('10m')
   })
 
-  /**
-   * Ticket 4 — the chip reads the same turn state the lanes do: a spinner while
-   * the agent works, the needs-you dot once it stops and waits.
-   */
-  it('spins while the agent is mid-turn in a live session', () => {
-    const chip = rowChip(withSession(false), NOW)
-    expect(chip.kind).toBe('working')
-    expect(chip.text).toBe('Working')
-  })
-
-  it('shows Needs you the moment that agent stops and waits', () => {
-    const chip = rowChip(withSession(true), NOW)
+  it('shows Needs you over Working (needs-you decision 18)', () => {
+    const chip = rowChip(listItem({ working: true, need: need('Which retry policy?') }), NOW)
     expect(chip.kind).toBe('needsMe')
     expect(chip.text).toBe('Needs you')
   })
 })
 
 /**
- * improve-features-section ticket 4 — turn-aware feature states (decisions §3).
- *
- * The rail's whole claim is triage, and it was lying: `feature.list` carried no
- * session at all, so `needsMe` fired on the PHASE alone and every active
- * ideation feature showed the grilling dot — including one whose agent was
- * mid-answer. Now a live session outranks the phase in both directions: while
- * its agent works the feature is "Agent working", and when it stops for an
- * answer that IS "Needs you", whatever phase the feature is on.
+ * needs-you-is-the-agent-s-call decisions 15, 18: a started feature reads
+ * Needs you (the server's `need`, the agent's own line), else Working (the
+ * server's `working`), else Idle. Nothing is read off a session's turn bit.
  */
-describe('turn-aware feature states', () => {
-  it('keeps a mid-turn chat out of Needs you', () => {
+describe('a feature’s state', () => {
+  it('reads Working while the server says an agent works, never Needs you', () => {
     const f = withSession(false)
     expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('agentWorking')
+    expect(triageOf(f)).toBe('working')
   })
 
-  it('moves it to Needs you once the agent stops and waits for an answer', () => {
-    const f = withSession(true)
-    expect(needsMe(f)?.kind).toBe('answer')
+  it('reads Needs you with the agent’s own line and its chat', () => {
+    const f = listItem({ need: need('Which retry policy?', { threadId: 'worker-1' }) })
+    expect(needsMe(f)).toEqual(need('Which retry policy?', { threadId: 'worker-1' }))
     expect(triageOf(f)).toBe('needsYou')
   })
 
-  it('keeps a feature whose lead replied in Needs you after its process stopped idle', () => {
-    const f = listItem({ liveSession: null, leadAwaitsHuman: true, need: need('answer', 'Needs your answer') })
-    expect(needsMe(f)).toEqual({ kind: 'answer', label: 'Needs your answer' })
-    expect(triageOf(f)).toBe('needsYou')
+  it('lets Needs you beat Working', () => {
+    expect(triageOf(listItem({ working: true, workersWorking: 2, need: need('Plan ready for your yes') }))).toBe('needsYou')
   })
 
-  it('reads a turn-end bit the main chat’s log does not back (a turn the human stopped) as in progress', () => {
-    const f = listItem({ liveSession: { status: 'live', awaitingInput: true }, leadAwaitsHuman: false })
+  it('reads a turn that ended with no call as idle, whatever the session bit says', () => {
+    const f = listItem({ liveSession: { status: 'live', awaitingInput: true } })
     expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('inProgress')
-  })
-
-  it('reads a terminal that is still launching as working, not waiting', () => {
-    const f = listItem({ liveSession: { status: 'launching', awaitingInput: false } })
-    expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('agentWorking')
-  })
-
-  it('holds a working session out of Needs you even with a waiting reason left over', () => {
-    const f = withSession(false, { waitingReason: 'stopped' })
-    expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('agentWorking')
-  })
-
-  it('puts a feature with a need in Needs you with that need’s words, whatever its stored phase', () => {
-    const f = listItem({ need: need('test', 'Ready to test · Checkout') })
-    expect(needsMe(f)).toEqual({ kind: 'test', label: 'Ready to test · Checkout' })
-    expect(triageOf(f)).toBe('needsYou')
-    expect(needsMe(listItem({ need: need('stopped', 'Stopped · you stopped it') }))?.label).toBe('Stopped · you stopped it')
-  })
-
-  it('files a need its orchestrator holds with the work in motion, not Needs you', () => {
-    const f = listItem({ need: need('handback', 'With the orchestrator · Ready to merge', { held: true }) })
-    expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('agentWorking')
-    // Once its hour passes it is the human's, with its own words.
-    const due = listItem({ need: need('handback', 'Handed back · Ready to merge') })
-    expect(needsMe(due)).toEqual({ kind: 'handback', label: 'Handed back · Ready to merge' })
-    expect(triageOf(due)).toBe('needsYou')
-  })
-
-  it('leaves a feature with pending tickets and nothing running or asked in progress, whatever its phase', () => {
-    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
-    const f = listItem({ ticketCounts: counts })
-    expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('inProgress')
-    expect(needsMe(listItem({}))).toBeNull()
+    expect(triageOf(f)).toBe('idle')
   })
 
   it('does not ask for attention over a failed ticket — the agent handles it after the round', () => {
     const counts = { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 }
     const f = listItem({ ticketCounts: counts })
     expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('inProgress')
+    expect(triageOf(f)).toBe('idle')
   })
 
   it('leaves drafts, shipped and archived features out of Needs you either way', () => {
-    expect(needsMe(listItem({ status: 'draft', need: need('stopped', 'Stopped · you stopped it') }))).toBeNull()
-    expect(needsMe(withSession(true, { status: 'shipped', need: need('merge', 'Ready to merge') }))).toBeNull()
+    expect(needsMe(listItem({ status: 'draft', need: need('stale') }))).toBeNull()
+    expect(needsMe(withSession(true, { status: 'shipped' }))).toBeNull()
     expect(triageOf(withSession(true, { status: 'shipped' }))).toBe('shipped')
     expect(needsMe(withSession(true, { status: 'archived' }))).toBeNull()
     expect(triageOf(withSession(true, { status: 'archived' }))).toBe('archived')
-  })
-
-  it('lets an active run outrank the session and a stale waiting reason — the server needs nothing while a round runs', () => {
-    const f = withSession(true, { workersWorking: 1, waitingReason: 'stopped', need: null })
-    expect(needsMe(f)).toBeNull()
-    expect(triageOf(f)).toBe('agentWorking')
   })
 
   it('sorts a waiting session to the top of the rail and a working one below it', () => {
@@ -1057,7 +995,7 @@ describe('landedShare', () => {
  * the row the eye lands on.
  */
 describe.skip('landingFeature', () => {
-  const working = listItem({ id: 'working', workersWorking: 1 })
+  const working = listItem({ id: 'working', working: true })
   const needsYou = listItem({ id: 'needs' })
   const inProgress = listItem({ id: 'planning' })
   const draft = listItem({ id: 'draft', status: 'draft' })
@@ -1068,11 +1006,11 @@ describe.skip('landingFeature', () => {
     expect(landingFeature([shipped, inProgress, working, needsYou])?.id).toBe('needs')
   })
 
-  it('falls to Agent working when nothing needs you', () => {
+  it('falls to Working when nothing needs you', () => {
     expect(landingFeature([draft, inProgress, working])?.id).toBe('working')
   })
 
-  it('falls to In progress when no agent is working either', () => {
+  it('falls to Idle when no agent is working either', () => {
     expect(landingFeature([shipped, draft, inProgress])?.id).toBe('planning')
   })
 

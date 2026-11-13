@@ -1,4 +1,5 @@
 import type {
+  Need,
   ThreadEntry,
   WorkerKind as CoreWorkerKind,
   WorkerRow as CoreWorkerRow,
@@ -15,11 +16,28 @@ import type { StatusTone } from '../ui'
  */
 
 /**
- * Where a worker is (decisions 3, 14, 16): at a turn, waiting in line for a
- * slot, waiting on the human, handed back to the lead, landed on the feature
- * branch, failed, or dropped.
+ * Where a worker is, as the human reads it (decisions 3, 14, 16; needs-you-is-
+ * the-agent-s-call decision 6): needing you, at a turn, idle between turns,
+ * waiting in line for a slot, handed back to the lead, landed on the feature
+ * branch, failed, or dropped. `idle` is the web's own word for a worker in
+ * play with no turn running.
  */
-export type WorkerStatus = CoreWorkerStatus
+export type WorkerStatus = CoreWorkerStatus | 'idle'
+
+/**
+ * A worker's status as it shows (decision 6): its own need, else Working while
+ * a turn of it runs, else Idle; a settled, queued or failed worker its own word.
+ */
+export function shownWorkerStatus(w: { status: CoreWorkerStatus; need?: Need | null; turnRunning?: boolean }): WorkerStatus {
+  if (w.need) return 'needs-you'
+  if (w.status === 'working' || w.status === 'needs-you') return w.turnRunning ? 'working' : 'idle'
+  return w.status
+}
+
+/** How many workers are at work, counted as their cards read them: a turn running, not a stored status (needs-you decision 6). */
+export function workersAtWork(rows: readonly { status: CoreWorkerStatus; need?: Need | null; turnRunning?: boolean }[]): number {
+  return rows.filter((w) => shownWorkerStatus(w) === 'working').length
+}
 
 /**
  * Taste work the human iterates on, or work that runs in the background
@@ -50,6 +68,8 @@ export interface WorkerEntry {
   failure?: string
   /** Why it waits, while `status` is queued behind an account error's hold (burns-become-workers decision 21). */
   heldBy?: string
+  /** What it needs from the human, in its agent's own line (needs-you decision 6). */
+  need?: Need
 }
 
 /**
@@ -84,7 +104,7 @@ export interface WorkerAssignment {
 export interface WorkerGroups {
   /** Waiting on the human, or failed: someone must act. */
   needsYou: WorkerEntry[]
-  /** At a turn, or queued for a slot. */
+  /** At a turn, idle between turns, or queued for a slot. */
   working: WorkerEntry[]
   /** Handed back, landed, dropped, and old side chats: folded. */
   done: WorkerEntry[]
@@ -94,6 +114,7 @@ const GROUP: Record<WorkerStatus, keyof WorkerGroups> = {
   'needs-you': 'needsYou',
   failed: 'needsYou',
   working: 'working',
+  idle: 'working',
   queued: 'working',
   'handed-back': 'done',
   landed: 'done',
@@ -124,6 +145,7 @@ export function workersNeedYou(workers: readonly WorkerEntry[]): boolean {
 /** A status in words, as the chat header and the row's hover say it. */
 export const WORKER_STATUS_WORDS: Record<WorkerStatus, string> = {
   working: 'Working',
+  idle: 'Idle',
   queued: 'Queued',
   'needs-you': 'Needs you',
   'handed-back': 'Handed back',
@@ -135,6 +157,7 @@ export const WORKER_STATUS_WORDS: Record<WorkerStatus, string> = {
 /** A status's dot in the chat header: shape first, the hue confirms. */
 export const WORKER_STATUS_TONE: Record<WorkerStatus, StatusTone> = {
   working: 'live',
+  idle: 'neutral',
   queued: 'neutral',
   'needs-you': 'warning',
   'handed-back': 'accent',
@@ -145,10 +168,17 @@ export const WORKER_STATUS_TONE: Record<WorkerStatus, StatusTone> = {
 
 /**
  * The few words after a worker's status, in its row and its chat's status
- * line: what failed, or why a queued worker is held (decision 21) — "Queued ·
- * held: <reason>". Undefined when its status says it all.
+ * line: the agent's line while it needs you, what failed, or why a queued
+ * worker is held (decision 21) — "Queued · held: <reason>". Undefined when its
+ * status says it all.
  */
-export function workerStatusWhy(w: { status: WorkerStatus; failure?: string | null; heldBy?: string | null }): string | undefined {
+export function workerStatusWhy(w: {
+  status: WorkerStatus
+  need?: Need | null
+  failure?: string | null
+  heldBy?: string | null
+}): string | undefined {
+  if (w.need) return w.need.why
   if (w.status === 'failed' && w.failure) return w.failure
   if (w.status === 'queued' && w.heldBy) return `held: ${w.heldBy}`
   return undefined
@@ -179,11 +209,15 @@ export function workerIsOpen(w: Pick<WorkerEntry, 'status' | 'old'>): boolean {
 // From the wire
 // ---------------------------------------------------------------------------
 
-/** What a worker row needs to be drawn: core's `WorkerRow`, as `worker.list` serves it, with the queue hold it may wait behind. */
+/**
+ * What a worker row needs to be drawn: core's `WorkerRow`, as `worker.list`
+ * serves it, with the queue hold it may wait behind, its need and whether a
+ * turn of it runs.
+ */
 type WireWorker = Pick<
   CoreWorkerRow,
   'id' | 'label' | 'purpose' | 'kind' | 'goal' | 'doneWhen' | 'model' | 'startedBy' | 'status' | 'failure' | 'createdAt' | 'updatedAt'
-> & { heldBy?: string | null }
+> & { heldBy?: string | null; need?: Need | null; turnRunning?: boolean }
 
 const STARTED_BY: Record<CoreWorkerRow['startedBy'], WorkerEntry['startedBy']> = { lead: 'lead', human: 'you' }
 
@@ -193,7 +227,8 @@ export function workerEntry(w: WireWorker): WorkerEntry {
     id: w.id,
     label: w.label,
     purpose: w.purpose,
-    status: w.status,
+    status: shownWorkerStatus(w),
+    ...(w.need ? { need: w.need } : {}),
     ...(w.kind !== 'unassigned' ? { kind: w.kind } : {}),
     startedBy: STARTED_BY[w.startedBy],
     createdAt: w.createdAt,
@@ -226,7 +261,7 @@ export function workerAssignment(w: WireWorker): WorkerAssignment {
 
 /** Whether the human can ask a worker to hand back (decision 5): while it works or waits, not once it has, landed, dropped or failed. */
 export function workerCanHandBack(status: WorkerStatus): boolean {
-  return status === 'needs-you' || status === 'working' || status === 'queued'
+  return status === 'needs-you' || status === 'working' || status === 'idle' || status === 'queued'
 }
 
 /**

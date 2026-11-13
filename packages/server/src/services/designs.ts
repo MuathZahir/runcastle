@@ -10,7 +10,6 @@ import { SHOWN_TYPES, storedExt } from '../threads/shown'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { deliverToLead } from './lead-delivery'
-import { setWaiting } from './lead-status'
 import { getFeatureRow, projectForFeature } from './repo'
 import { listByFeature } from './tickets'
 
@@ -261,10 +260,6 @@ export async function approveDesign(ctx: AppCtx, designId: string): Promise<{ ap
   const rows = designRows(ctx, row.featureId)
   if (!rows.some((r) => r.state === 'waiting')) {
     const approved = rows.filter((r) => r.state === 'approved')
-    // The lead's design wait is answered by this click; the runcastle line below
-    // is no human message, so it would not clear it (small-fixes decision 4).
-    const feature = getFeatureRow(ctx, row.featureId)
-    if (feature.waitingKind === 'design') setWaiting(ctx, row.featureId, null)
     await deliverToLead(ctx, getFeatureRow(ctx, row.featureId), { text: allApprovedLine(approved), source: 'runcastle' })
   }
   return { approved: true }
@@ -359,10 +354,4 @@ export function planFigures(ctx: AppCtx, featureId: string): PlanFigures {
     tickets: tickets > 0 ? tickets : null,
     designs: designRows(ctx, featureId).length,
   }
-}
-
-/** How many designs wait for the human, and since when the oldest of them was shown (decision 17). */
-export function designsWaiting(ctx: AppCtx, featureId: string): { count: number; since: number | null } {
-  const waiting = designRows(ctx, featureId).filter((r) => r.state === 'waiting')
-  return { count: waiting.length, since: waiting.length ? Math.min(...waiting.map((r) => r.shownAt)) : null }
 }

@@ -14,17 +14,11 @@ export const ACTION_KINDS = [
   'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
   'stopSelfPlan', // feature.endSession on the live self-planning run
   'stopAgent', // feature.stop — the status line's Stop: the lead's and every working worker's turn end, nothing starts until the human replies
-  'resumeProvider', // feature.resume — the status line's Resume after a provider halt: one message to the lead
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in
   'merge', // feature.merge — ships the feature, reachable from every state
-  'resolveConflict', // launchSession { kind: 'chat', kickoffLine: mergeConflictKickoff(…) }
   'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)
-  'reply', // an answer is needed: bring the main chat to the front and focus its composer
-  'openPlan', // a plan to approve: open the panel's plan view
-  'openDesign', // a design to approve: open the design view on the feature's design server
-  'showRequest', // a permission prompt: bring the asking thread to the front
   'newThread', // a new worker with no assignment, as the feature's sidebar page's "+"
 ] as const
 

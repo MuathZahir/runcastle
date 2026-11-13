@@ -87,7 +87,7 @@ describe('the feature skill', () => {
   it('stops itself when a round makes no progress, and leaves Merge and drafts alone', () => {
     const text = skill()
     expect(text).not.toContain('**Runaway guard.**')
-    expect(text).toContain('`wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`')
+    expect(text).toContain('`wait_for_you({ why: "stuck: <a few words>" })`')
     expect(text).toContain("Merge is the human's, and so is starting a backlog feature.")
     expect(text).toContain('**Never reword a `ticket(<seq>): …` or `runcastle: …` commit**')
   })
@@ -107,7 +107,7 @@ describe('the feature skill', () => {
     const ref = flat(read('references', 'checking-your-work.md'))
     expect(ref).toContain('**The helper never edits code**')
     expect(ref).toContain('the last screenshot of a drive you are about to call a pass')
-    expect(ref).toContain('`wait_for_you({ why: "stuck: <a few words>", kind: "stuck" })`, under an epic too')
+    expect(ref).toContain('`wait_for_you({ why: "stuck: <a few words>" })`, under an epic too')
     expect(flat(read('references', 'workers.md'))).toContain("Each send-back on the same problem is a round in that problem's count")
   })
 
@@ -164,7 +164,7 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
     expect(text).toContain('**Anything only the human can decide goes to `wait_for_you`, under an epic too**: what they get, where it lives or who sees it, a design to approve, a stop after three failed rounds, a For-the-human decision.')
     expect(text).toContain('It makes the feature the human\'s at once: the header then reads "Yours", runcastle tells the epic, and you carry on with the human in this chat. It never goes back by itself.')
     expect(text).toContain('**When the human types to you while an epic owns it**, it is theirs too')
-    expect(text).toContain('and a sub-agent for as long as it runs')
+    expect(text).not.toContain('and a sub-agent for as long as it runs')
     expect(text).not.toContain('With the orchestrator')
     expect(text).not.toContain('working agreement')
   })
@@ -248,7 +248,7 @@ describe('the feature skill, planning with no human present', () => {
   it("ends by asking for the human's yes with wait_for_you", () => {
     const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
     expect(close).toContain('asking the human for their yes to start the work')
-    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start the work?", kind: "plan" })`')
+    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start the work?" })`')
   })
 
   it('hands an epic-owned plan to its epic for its yes, and the human\'s decisions to the human (one-place-to-answer 9)', () => {
@@ -322,9 +322,12 @@ describe('the feature skill, planning with no human present', () => {
     expect(design).toContain('The chosen tweak values arrive in the approval line')
   })
 
-  it('keeps the "design" wait for designs recorded with show_design (small-fixes decision 5)', () => {
-    expect(skill()).toContain('`"design"` only for designs recorded with `show_design`')
-    expect(read('references', 'design.md')).toContain('anything else you show for a yes\n(a file, a picture) is an answer')
+  it('asks with the tool, with no kinds of wait (needs-you-is-the-agent-s-call 4, 11, 17)', () => {
+    const text = flat(skill())
+    expect(text).toContain('**Ask with the tool, every time.**')
+    expect(text).toContain('take it back with `wait_for_you({ withdraw: true })`')
+    expect(text).not.toMatch(/kind: "|`"design"`|Design to approve/)
+    expect(flat(read('references', 'design.md'))).toContain('A design waiting for approval does not tell the human by itself')
   })
 })
 

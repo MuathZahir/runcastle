@@ -21,6 +21,7 @@ const chat = (over: Partial<ThreadEntry> = {}): ThreadEntry => ({
   createdAt: NOW - 3 * HOUR,
   updatedAt: NOW - 3 * HOUR,
   runtime: 'claude-code',
+  need: null,
   ...over,
 })
 
@@ -73,14 +74,15 @@ describe('ConversationsPage', () => {
   })
 
   it('says what each chat is doing, and counts them under the title', () => {
-    mount([chat({ id: 'q', state: 'waiting' }), chat({ id: 'w', state: 'working' }), chat({ id: 'i' })])
+    mount([chat({ id: 'q', need: { why: 'Which provider?', since: NOW, threadId: 'q', by: 'agent' } }), chat({ id: 'w', state: 'working' }), chat({ id: 'i' })])
     const rows = groups()
     expect(rows).toHaveLength(2)
     const text = document.body.textContent ?? ''
     expect(text).toContain('3 epics')
-    expect(text).toContain('1 waiting for you')
+    expect(text).toContain('1 needs you')
     expect(text).toContain('1 working')
-    expect(screen.getByTitle('Waiting for you')).toBeTruthy()
+    expect(screen.getByTitle('Needs you')).toBeTruthy()
+    expect(screen.getByTitle('Read the audit handoff — Needs you · Which provider?')).toBeTruthy()
     expect(text).toContain('3h')
   })
 

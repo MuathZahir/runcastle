@@ -10,7 +10,7 @@ import { createSessionRow, markSessionEnded, markSessionLive } from '../src/laun
 import mcpApp, { featureContext } from '../src/mcp/server'
 import designsApp from '../src/routes/designs'
 import { allApprovedLine, recordDesign, reportDesign, setDesignState } from '../src/services/designs'
-import { setWaiting } from '../src/services/lead-status'
+import { setWait } from '../src/services/waits'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
 import { getFeatureRow } from '../src/services/repo'
@@ -208,13 +208,12 @@ describe('design.planFigures', () => {
 describe('the design need', () => {
   beforeEach(recordDesignCommand)
 
-  it('shows "Design to approve" from the record while a design waits, and clears once none does', async () => {
+  it('is no need by itself: only the lead’s own line makes one (needs-you decision 11)', async () => {
     const chat = session()
-    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toBeNull()
     await call(chat, 'show_design', { path: '/preview/a.html', title: 'A' })
-    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toMatchObject({ kind: 'design', words: 'Design to approve' })
-    await call(chat, 'set_design_state', { path: '/preview/a.html', state: 'dropped' })
     expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toBeNull()
+    await call(chat, 'wait_for_you', { why: 'Design A ready for a look' })
+    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toMatchObject({ why: 'Design A ready for a look' })
   })
 })
 
@@ -242,10 +241,11 @@ describe('design.approve', () => {
   beforeEach(recordDesignCommand)
 
   /** The feature's main chat, its conversation on record and no process running. */
-  function leadChat(): void {
+  function leadChat(): string {
     const row = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
     markSessionEnded(ctx, row.id)
+    return row.id
   }
   const delivered = () => events('lead.message_queued').map((e) => (e.data as { text: string }).text)
 
@@ -275,25 +275,12 @@ describe('design.approve', () => {
     expect(featureContext(ctx, { featureId: feature.id }).designs.map((d) => d.approvedBy)).toEqual(['human', 'human', null])
   })
 
-  it('clears the lead’s design wait with the click that leaves none waiting, and leaves any other wait alone (small-fixes decision 4)', async () => {
-    leadChat()
+  it('leaves the lead’s wait standing: an approve click is no message in its chat (needs-you decision 7)', async () => {
+    const chat = leadChat()
     const a = recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
-    const b = recordDesign(ctx, feature.id, { path: '/preview/b.html', title: 'B' })
-    setWaiting(ctx, feature.id, 'look at the designs', 'design')
-
+    setWait(ctx, chat, 'look at the designs')
     await caller().design.approve({ designId: a.id })
-    expect(getFeatureRow(ctx, feature.id)).toMatchObject({ waitingReason: 'look at the designs', waitingKind: 'design' })
-    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toMatchObject({ kind: 'design' })
-
-    await caller().design.approve({ designId: b.id })
-    expect(getFeatureRow(ctx, feature.id)).toMatchObject({ waitingReason: null, waitingKind: null })
-    expect(events('feature.waiting').at(-1)?.data).toEqual({ why: null, kind: null })
-
-    // An answer the lead waits on is the human's to give, approval or not.
-    const c = recordDesign(ctx, feature.id, { path: '/preview/c.html', title: 'C' })
-    setWaiting(ctx, feature.id, 'which font?', 'answer')
-    await caller().design.approve({ designId: c.id })
-    expect(getFeatureRow(ctx, feature.id)).toMatchObject({ waitingReason: 'which font?', waitingKind: 'answer' })
+    expect(needOf(ctx, getFeatureRow(ctx, feature.id))).toMatchObject({ why: 'look at the designs' })
   })
 
   it('is cleared by design.seen in the list and in the lead’s context, until the design is shown again', async () => {

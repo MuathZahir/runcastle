@@ -2,7 +2,7 @@ import type {
   BlockRef,
   DependencyRef,
   Feature,
-  FeatureNeed,
+  Need,
   FeatureStatus,
   Project,
   ReadyDeclaration,
@@ -11,7 +11,7 @@ import type {
   SessionStatus,
   Ticket,
 } from '@runcastle/core'
-import { type FeatureFinish, isProviderHaltReason, newId, PROVIDER_HALT_CLEARED, READY_TO_TEST, STOPPED } from '@runcastle/core'
+import { type FeatureFinish, newId, readyToTestWhy } from '@runcastle/core'
 import { scenarioDataDir, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -40,10 +40,10 @@ import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
-import { clearHandback } from './lead-status'
+import { clearFeatureWaits, setWait, waitsByFeature } from './waits'
 import { refreshFeatureTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
-import { chatReader, needEventsByProject, needOf } from './feature-need'
+import { featureWorking, needOf } from './feature-need'
 import {
   getFeatureRow,
   getProjectById,
@@ -53,7 +53,7 @@ import {
   requireProjectById,
   rowToFeature,
 } from './repo'
-import { activeSessionsForFeature, featureSessions } from '../launcher/sessions'
+import { activeSessionsForFeature, featureSessions, newestThread } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
 import { leadState, NO_LEAD } from '../threads/read'
 import { agentHost } from '../threads/types'
@@ -106,10 +106,14 @@ export interface FeatureListItem extends Feature {
    * anyone's attention.
    */
   liveSession: LiveSessionState | null
-  /** The lead replied, or asks, and the human has not answered (`leadState`, decision 15). */
-  leadAwaitsHuman: boolean
-  /** The lead replied and its background work still runs: Agent working, not Waiting on you. */
+  /** The lead ended its turn and its background work still runs. */
   leadInBackground: boolean
+  /**
+   * Something works on it (needs-you decision 15): the lead is mid-turn or its
+   * background work runs, a round runs, or one of its workers has a turn
+   * running. A need outranks it (decision 18).
+   */
+  working: boolean
   /**
    * When this feature last did anything — its newest event's `ts`, falling back
    * to `createdAt` when it has no events yet. The sidebar row's relative stamp
@@ -123,8 +127,8 @@ export interface FeatureListItem extends Feature {
   blocks: BlockRef[]
   /** Why an up-next draft did not start by itself (newest since the mark was set), else null. */
   upNextProblem: string | null
-  /** The one thing it waits on the human for, or null (`services/feature-need.ts`). */
-  need: FeatureNeed | null
+  /** What it needs from the human, or null (`services/feature-need.ts`). */
+  need: Need | null
 }
 
 export interface FeatureFull {
@@ -139,10 +143,10 @@ export interface FeatureFull {
   blocks: BlockRef[]
   /** See {@link FeatureListItem.upNextProblem}. */
   upNextProblem: string | null
-  /** See {@link FeatureListItem.leadAwaitsHuman}: the header reads the sidebar's answer. */
-  leadAwaitsHuman: boolean
+  /** See {@link FeatureListItem.working}: the header reads the sidebar's answer. */
+  working: boolean
   /** See {@link FeatureListItem.need}: the header, the sidebar and the pings read one answer. */
-  need: FeatureNeed | null
+  need: Need | null
 }
 
 export interface CreateFeatureInput {
@@ -454,8 +458,8 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     upNextProblem: feature.upNext && feature.status === 'draft'
       ? (upNextProblems(ctx, feature.projectId).get(id) ?? null)
       : null,
-    leadAwaitsHuman: lead.awaitsHuman,
-    need: needOf(ctx, feature, { lead }),
+    working: feature.status === 'active' && featureWorking(ctx, feature.id, lead),
+    need: needOf(ctx, feature),
   }
 }
 
@@ -475,9 +479,10 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const working = workersWorkingByFeature(ctx, projectId)
   const workerShares = workerProgressByFeature(ctx, projectId)
   const workerPages = workersPageByFeature(ctx, projectId)
-  const needEvents = needEventsByProject(ctx, projectId)
-  const driveConfigured = !!getProjectById(ctx, projectId)?.devCommand
-  const chat = chatReader(ctx)
+  const waits = waitsByFeature(
+    ctx,
+    projectFeatures.filter((f) => f.status === 'active').map((f) => f.id),
+  )
 
   return projectFeatures.map((feature) => {
     const byStatus = ticketStatuses.get(feature.id)
@@ -499,13 +504,13 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       workerProgress: workerShares.get(feature.id) ?? { counted: 0, landed: 0 },
       workersPage: workerPages.get(feature.id) ?? null,
       liveSession: liveSessionOf(ctx, feature.id),
-      leadAwaitsHuman: lead.awaitsHuman,
       leadInBackground: lead.inBackground,
+      working: feature.status === 'active' && featureWorking(ctx, feature.id, lead),
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
       dependsOn: deps.dependsOn.get(feature.id) ?? [],
       blocks: deps.blocks.get(feature.id) ?? [],
       upNextProblem: feature.upNext && feature.status === 'draft' ? (problems.get(feature.id) ?? null) : null,
-      need: needOf(ctx, feature, { events: needEvents.get(feature.id) ?? [], lead, driveConfigured, chat }),
+      need: needOf(ctx, feature, waits.get(feature.id) ?? []),
     }
   })
 }
@@ -529,7 +534,7 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
   return { status: session.status, awaitingInput: session.awaitingInput }
 }
 
-export { markHumanMessage, setWaiting } from './lead-status'
+export { markHumanMessage } from './lead-status'
 
 /** Refuse the lead's starts while the human's Stop stands: nothing starts until they reply (decision 15). */
 export function requireNotStopped(feature: Pick<Feature, 'stoppedAt' | 'lastHumanMessageAt'>): void {
@@ -543,7 +548,8 @@ export function requireNotStopped(feature: Pick<Feature, 'stoppedAt' | 'lastHuma
  * cancel the turn of every working or queued worker (they stay where they are,
  * enterable), set the stopped
  * mark so nothing new starts until the human replies, and tell the lead with
- * that reply. The status reads "Waiting for you · stopped".
+ * that reply. The feature reads idle: the human did it, so nothing needs them
+ * (needs-you decision 10), and the Stop clears what its chats waited on.
  *
  * The mark lands and emits first: cancelling turns and killing a round's
  * sandboxes can take seconds, and the status the human just pressed beside
@@ -552,15 +558,12 @@ export function requireNotStopped(feature: Pick<Feature, 'stoppedAt' | 'lastHuma
 export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
-  ctx.db
-    .update(features)
-    .set({ stoppedAt: Date.now(), waitingReason: STOPPED, waitingKind: null })
-    .where(eq(features.id, featureId))
-    .run()
+  ctx.db.update(features).set({ stoppedAt: Date.now() }).where(eq(features.id, featureId)).run()
   emit(ctx, featureId, {
     type: 'feature.stopped',
     message: 'stopped by the human',
   })
+  clearFeatureWaits(ctx, featureId, 'stopped')
   await stopFeatureWorkers(ctx, featureId)
   for (const chat of featureSessions(ctx, featureId, ['chat'])) {
     await agentHost(ctx)
@@ -579,27 +582,6 @@ export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Featu
   return updated
 }
 
-/**
- * Resume after a provider halt (small-fixes-before-publish decisions 10, 16):
- * the human says the limit, billing or sign-in problem is cleared, and the lead
- * gets one message from them — which, as a human message, clears the waiting
- * reason. The lead decides whether to dispatch again. Refused unless the feature
- * waits on a provider halt.
- */
-export async function resumeFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
-  const feature = getFeatureRow(ctx, featureId)
-  if (!isProviderHaltReason(feature.waitingReason)) {
-    throw new GateError('this feature is not waiting on the provider — there is nothing to resume')
-  }
-  emit(ctx, featureId, {
-    type: 'feature.resumed',
-    message: 'resumed by the human after a provider halt',
-    data: { was: feature.waitingReason },
-  })
-  await deliverToLead(ctx, feature, { text: PROVIDER_HALT_CLEARED, source: 'human' })
-  return getFeatureRow(ctx, featureId)
-}
-
 /** The feature's ready declarations, oldest first. */
 export function listReadyDeclarations(ctx: AppCtx, featureId: string): ReadyDeclaration[] {
   return ctx.db
@@ -612,15 +594,17 @@ export function listReadyDeclarations(ctx: AppCtx, featureId: string): ReadyDecl
 
 /**
  * The lead declares the feature ready for the human: the record goes on the
- * trail and the feature waits on the human ("ready to test"), which clears like
- * any waiting reason — on their next message or the next round. What to test
- * and how the work was checked the lead says in chat; the declaration carries
- * only the scenario the Test drive button starts. A declaration, never a gate.
+ * trail and the lead's chat (`leadSessionId`, its newest chat when absent)
+ * waits on the human with "Ready to test · <scenario>", which clears like any
+ * wait — on their next message in that chat. What to test and how the work was
+ * checked the lead says in chat; the declaration carries only the scenario the
+ * Test drive button starts. A declaration, never a gate.
  */
 export function declareReady(
   ctx: AppCtx,
   featureId: string,
   input: { scenario: string },
+  leadSessionId?: string,
 ): { declaration: ReadyDeclaration } {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
@@ -640,14 +624,14 @@ export function declareReady(
     })
     .returning()
     .get()
-  // Under Needs you until the human replies or a round runs; the event below speaks for it.
-  ctx.db.update(features).set({ waitingReason: READY_TO_TEST, waitingKind: null }).where(eq(features.id, featureId)).run()
-
   emit(ctx, featureId, {
     type: 'feature.ready_declared',
     message: `ready for you · test drive ▸ ${scenario}`,
     data: { declarationId: declaration.id, runId: null, scenario },
   })
+  // Needs you until the human writes in the lead's chat (needs-you decision 8).
+  const lead = leadSessionId ?? newestThread(ctx, { featureId }, 'chat')?.id
+  if (lead) setWait(ctx, lead, readyToTestWhy(scenario), 'agent')
   return { declaration }
 }
 
@@ -699,7 +683,7 @@ export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Fe
   endLiveSessions(ctx, featureId)
 
   ctx.db.update(features).set({ status: 'archived' }).where(eq(features.id, featureId)).run()
-  clearHandback(ctx, featureId, 'closed')
+  clearFeatureWaits(ctx, featureId)
   emit(ctx, featureId, {
     type: 'feature.archived',
     message: `feature ${feature.slug} archived`,

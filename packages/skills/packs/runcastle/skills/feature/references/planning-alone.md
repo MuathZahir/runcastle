@@ -24,8 +24,7 @@ decisions, spec, designs or plan. Your closing message says planning stopped
 because what the human gets, where it lives or who sees it is open, and asks
 each open one in full, numbered, with your recommendation and the real options
 the survey found ("the existing Activity page, or a new tab?"). Then call
-`mcp__runcastle__wait_for_you({ why: "what, where or who is open", kind:
-"answer" })` and end the turn. Do so when an epic owns the feature too: the
+`mcp__runcastle__wait_for_you({ why: "what, where or who is open" })` and end the turn. Do so when an epic owns the feature too: the
 questions are the human's, and the wait makes the feature theirs (SKILL.md,
 "Talk to your owner").
 **When the answers arrive**, record them in `decisions.md` as the human's
@@ -167,9 +166,8 @@ reach this part once the three are settled (**The three come first**).
    changed, and whether you saw the screens in screenshots or only checked that
    they compile, and say that only designs the human approves are committed. Close the message by asking
    the human for their yes to start the work.
-7. Call `mcp__runcastle__wait_for_you({ why: "start the work?", kind: "plan" })`.
-   (Waiting designs raise "Design to approve" by themselves; no design-kind wait
-   is needed.) Write nothing after step 6's question, so the turn ends on
+7. Call `mcp__runcastle__wait_for_you({ why: "start the work?" })`, naming
+   any designs waiting for approval in its line. Write nothing after step 6's question, so the turn ends on
    it, and then end the turn. The human answers in this chat when they
    are back; their yes is what starts the work, in a later turn.
    **When an epic owns the feature** (talk to your owner, SKILL.md), the

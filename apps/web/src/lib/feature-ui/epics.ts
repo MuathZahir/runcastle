@@ -1,7 +1,6 @@
 import type { FeatureListItem } from '../api'
 import type { ThreadEntry } from '../chat-thread'
 import { triageOf, type TriageKey } from './sidebar'
-import { askingAboutLine } from '../sidebar-threads'
 import type { EpicColor, EpicIconId } from '../epic-look'
 import { relTime } from '../format'
 
@@ -11,26 +10,14 @@ import { relTime } from '../format'
  * ordering and wording over wire data; the component is `SidebarEpics`.
  */
 
-/**
- * Who runs a feature nested under its epic (decision 10): its own epic's chat,
- * the human, or a different chat (named).
- */
-export type EpicHolder = { kind: 'epic' } | { kind: 'you' } | { kind: 'chat'; title: string }
-
-/** A feature in the epic list, with who runs it. */
+/** A feature in the epic list. */
 export interface EpicFeature {
   feature: FeatureListItem
-  holder: EpicHolder
 }
 
-/** One epic: its chat, what the chat asks about, and the features it cut that are in motion or up next. */
+/** One epic: its chat, and the features it cut that are in motion or up next. */
 export interface Epic {
   chat: ThreadEntry
-  /**
-   * The feature the chat asks the human about, while its state is `waiting`
-   * (decision 2); null when the question is about no one feature.
-   */
-  asksAbout: string | null
   features: EpicFeature[]
   /** Its colour (epics-that-look-alive decision 2); blue until the server stores one. */
   color?: EpicColor | null
@@ -46,7 +33,7 @@ export type EpicGroup =
   | { kind: 'other'; features: FeatureListItem[]; yellow: boolean }
 
 /** The lanes an epic nests, in the order it nests them (decision 8); the rest are the shelves' (decision 9). */
-const EPIC_LANES: readonly TriageKey[] = ['needsYou', 'agentWorking', 'inProgress', 'upNext']
+const EPIC_LANES: readonly TriageKey[] = ['needsYou', 'working', 'idle', 'upNext']
 
 /** Whether a feature sits under its epic: in motion or up next. Parked, shipped and archived ones are on the shelves. */
 export function inEpic(f: FeatureListItem): boolean {
@@ -58,12 +45,12 @@ export function featureIsYellow(f: FeatureListItem): boolean {
   return triageOf(f) === 'needsYou'
 }
 
-/** Something in the epic is yellow: its chat asks, or one of its features needs you (decision 8). */
+/** Something in the epic is yellow: its chat needs you, or one of its features does (decision 8). */
 export function epicIsYellow(epic: Pick<Epic, 'chat' | 'features'>): boolean {
-  return epic.chat.state === 'waiting' || epic.features.some((x) => featureIsYellow(x.feature))
+  return !!epic.chat.need || epic.features.some((x) => featureIsYellow(x.feature))
 }
 
-/** Inside an epic: needs you first, then agent working, in progress, up next; ties keep their order. */
+/** Inside an epic: needs you first, then working, idle, up next; ties keep their order. */
 export function orderInEpic<T>(items: readonly T[], featureOf: (x: T) => FeatureListItem): T[] {
   const rank = (x: T) => {
     const i = EPIC_LANES.indexOf(triageOf(featureOf(x)))
@@ -107,7 +94,7 @@ export function orderEpicList(epics: readonly Epic[], other: readonly FeatureLis
  * Pass the epic as `orderEpicList` returns it (its features already filtered).
  */
 export function epicIsIdle(epic: Pick<Epic, 'chat' | 'features'>): boolean {
-  return epic.chat.state !== 'working' && epic.chat.state !== 'waiting' && epic.features.length === 0
+  return epic.chat.state !== 'working' && !epic.chat.need && epic.features.length === 0
 }
 
 /**
@@ -118,29 +105,6 @@ export function epicIsIdle(epic: Pick<Epic, 'chat' | 'features'>): boolean {
 export function idleEpicFacts(epic: Pick<Epic, 'chat' | 'shipped'>, now: number = Date.now()): string {
   const ago = relTime(epic.chat.updatedAt, now)
   return epic.shipped && epic.shipped > 0 ? `${epic.shipped} shipped · ${ago}` : ago
-}
-
-/** "With <chat> · " at the head of a feature's words. */
-const WITH_PREFIX = /^With (.+?) · /
-
-/**
- * A nested feature row's words (decision 10). Run by its own epic's chat, its
- * chat's question reads "Question above": the epic row holds the one yellow
- * thing to click. Any other need its chat holds keeps "With <chat> ·", so
- * "Plan to approve" never reads as the human's to do. Run by the human,
- * "Yours · …", or "Asking above · <first line>" while it consults its epic's
- * chat; run by a different chat, "With <that chat> · …".
- */
-export function nestedFeatureWords(words: string, holder: EpicHolder, epic: string): string {
-  const rest = words.replace(WITH_PREFIX, '')
-  if (holder.kind === 'epic') return rest.trim().toLowerCase() === 'asking you' ? 'Question above' : words
-  if (holder.kind === 'you') {
-    const consulting = `Asking ${epic} · `
-    return words.toLowerCase().startsWith(consulting.toLowerCase())
-      ? `Asking above · ${words.slice(consulting.length)}`
-      : `Yours · ${rest}`
-  }
-  return `With ${holder.title} · ${rest}`
 }
 
 /**
@@ -155,36 +119,9 @@ export function shelfFeatureWords(f: FeatureListItem, words: string, epic: strin
 }
 
 /**
- * Who runs a feature, as its row under `epicId` says it (decision 10): the
- * epic's own chat, the human (no holding chat), or another chat, named.
- */
-export function epicHolder(
-  f: Pick<FeatureListItem, 'heldBy'>,
-  epicId: string | null,
-  chats: readonly ThreadEntry[],
-): EpicHolder {
-  if (!f.heldBy) return { kind: 'you' }
-  if (f.heldBy === epicId) return { kind: 'epic' }
-  return { kind: 'chat', title: chats.find((t) => t.id === f.heldBy)?.title ?? 'another chat' }
-}
-
-/**
- * What a waiting chat asks about, for its epic row's "Asking about <feature>"
- * (decision 11): the first feature it names, then "+N" for the rest. Null when
- * the chat is not waiting or its question names no feature it can find, and the
- * row reads "Asking you". The words and the "+N" rule are the owner feature's
- * (`askingAboutLine`, over the chat list's `askingAbout`), less its "Asking
- * about " head, which the epic row writes.
- */
-export function asksAboutOf(chat: ThreadEntry, features: readonly FeatureListItem[]): string | null {
-  if (chat.state !== 'waiting') return null
-  return askingAboutLine(chat, features)?.replace(/^Asking about /, '') ?? null
-}
-
-/**
  * The epic list's input from wire data (decisions 4–7, 16): every orchestrator
  * chat `listed` says is listed becomes an epic with the features it cut
- * (`chatId`) that are in motion or up next, each with who runs it. A feature
+ * (`chatId`) that are in motion or up next. A feature
  * with no origin chat, or one not listed as an epic, goes to "Other features".
  */
 export function epicsFrom(
@@ -197,10 +134,7 @@ export function epicsFrom(
   const moving = features.filter(inEpic)
   const epics = epicChats.map((chat) => ({
     chat,
-    asksAbout: asksAboutOf(chat, features),
-    features: moving
-      .filter((f) => f.chatId === chat.id)
-      .map((feature) => ({ feature, holder: epicHolder(feature, chat.id, chats) })),
+    features: moving.filter((f) => f.chatId === chat.id).map((feature) => ({ feature })),
     color: chat.color ?? null,
     icon: chat.icon ?? null,
     // The list carries shipped features for the Shipped shelf, so the count needs no server read.

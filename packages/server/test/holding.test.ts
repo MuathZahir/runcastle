@@ -9,7 +9,6 @@ import { events, features, sessions } from '../src/db/schema'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import hooksApp from '../src/routes/hooks'
 import { listDesigns, recordDesign } from '../src/services/designs'
-import { HANDBACK_CLEARED, setHandback } from '../src/services/lead-status'
 import { heldOpening } from '../src/launcher/launcher'
 import { tagRuncastlePrompt } from '../src/services/lead-prompt'
 import { readThreadEvents } from '../src/threads/log'
@@ -389,40 +388,34 @@ describe('threads hold features', () => {
   describe('changing the owner', () => {
     const caller = () => createCallerFactory(appRouter)(ctx)
     const changes = (feature: Feature) => listAfter(ctx, feature.id, 0).filter((e) => e.type === OWNER_CHANGED)
-    const cleared = (feature: Feature) => listAfter(ctx, feature.id, 0).filter((e) => e.type === HANDBACK_CLEARED)
-    const handedBack = (feature: Feature) => setHandback(ctx, feature.id, 'Ready to merge.')
 
     function lead(feature: Feature, kind: 'chat' | 'side' = 'chat'): SessionRow {
       return createSessionRow(ctx, { featureId: feature.id, kind, worktreePath: repoPath })
     }
 
-    it('the control’s "I’ll finish it" makes it the human’s, keeping its chat: one event, handback cleared', async () => {
+    it('the control’s "I’ll finish it" makes it the human’s, keeping its chat: one event', async () => {
       const a = thread('A')
       const feature = seedFeature(ctx, projectId, { slug: 'f', heldBy: a.id, chatId: a.id, finish: 'merge' })
-      handedBack(feature)
 
       const after = await caller().feature.setOwner({ featureId: feature.id, choice: 'you' })
 
-      expect(after).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you', handback: null })
+      expect(after).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you' })
       expect(changes(feature).map((e) => e.data)).toEqual([
         expect.objectContaining({ owner: null, chatId: a.id, finish: 'you', cause: 'control', from: a.id }),
       ])
-      expect(cleared(feature).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'hold' })])
     })
 
     for (const choice of ['show', 'merge'] as const) {
-      it(`the control’s "${choice}" gives a human-owned feature to its chat: one event, handback cleared`, async () => {
+      it(`the control’s "${choice}" gives a human-owned feature to its chat: one event`, async () => {
         const a = thread('A')
         const feature = seedFeature(ctx, projectId, { slug: `f-${choice}`, chatId: a.id })
-        handedBack(feature)
 
         const after = await caller().feature.setOwner({ featureId: feature.id, choice })
 
-        expect(after).toMatchObject({ heldBy: a.id, chatId: a.id, finish: choice, handback: null })
+        expect(after).toMatchObject({ heldBy: a.id, chatId: a.id, finish: choice })
         expect(changes(feature).map((e) => e.data)).toEqual([
           expect.objectContaining({ owner: a.id, chatId: a.id, finish: choice, cause: 'control', from: null }),
         ])
-        expect(cleared(feature)).toHaveLength(1)
       })
     }
 
@@ -446,17 +439,15 @@ describe('threads hold features', () => {
         })
       }
 
-      it('a typed message in the main chat makes a chat-owned feature the human’s: one event, handback cleared', async () => {
+      it('a typed message in the main chat makes a chat-owned feature the human’s: one event', async () => {
         const a = thread('A')
         const feature = seedFeature(ctx, projectId, { slug: 'typed', heldBy: a.id, chatId: a.id, finish: 'show' })
-        handedBack(feature)
 
         const typer = lead(feature)
         await prompt(typer, 'I will take it from here')
 
         expect(getFeatureRow(ctx, feature.id)).toMatchObject({ heldBy: undefined, chatId: a.id, finish: 'you' })
         expect(changes(feature).map((e) => e.data)).toEqual([expect.objectContaining({ owner: null, cause: 'typed', from: a.id })])
-        expect(cleared(feature).map((e) => e.data)).toEqual([expect.objectContaining({ cause: 'hold' })])
         // A typed take is the human's own move: no "it needed you" line in the chat (one-place-to-answer decision 13).
         expect(readThreadEvents(typer.id).some((e) => e.type === 'notice' && e.text.includes('This is yours now'))).toBe(false)
       })
@@ -498,10 +489,9 @@ describe('threads hold features', () => {
       })
     })
 
-    it('a lead’s wait on the human releases a chat-owned feature: finish you, one needs-you event, handback cleared', () => {
+    it('a lead’s wait on the human releases a chat-owned feature: finish you, one needs-you event', () => {
       const a = thread('A')
       const feature = seedFeature(ctx, projectId, { slug: 'needs', heldBy: a.id, chatId: a.id, finish: 'merge' })
-      handedBack(feature)
 
       expect(releaseNeedsYou(ctx, feature.id)).toBe(a.id)
 
@@ -509,7 +499,6 @@ describe('threads hold features', () => {
       expect(changes(feature).map((e) => e.data)).toEqual([
         expect.objectContaining({ owner: null, chatId: a.id, finish: 'you', cause: 'needs-you', from: a.id }),
       ])
-      expect(cleared(feature)).toHaveLength(1)
       // Already the human's: nothing changes.
       expect(releaseNeedsYou(ctx, feature.id)).toBeNull()
       expect(changes(feature)).toHaveLength(1)
@@ -520,7 +509,6 @@ describe('threads hold features', () => {
       const next = thread('Next')
       const owned = seedFeature(ctx, projectId, { slug: 'owned', heldBy: old.id, chatId: old.id, finish: 'show' })
       const human = seedFeature(ctx, projectId, { slug: 'human', chatId: old.id })
-      handedBack(owned)
 
       inheritHolds(ctx, old.id, next.id)
 
@@ -528,7 +516,6 @@ describe('threads hold features', () => {
       expect(getFeatureRow(ctx, human.id)).toMatchObject({ heldBy: undefined, chatId: next.id, finish: 'you' })
       expect(changes(owned).map((e) => e.data)).toEqual([expect.objectContaining({ owner: next.id, cause: 'replacement', from: old.id })])
       expect(changes(human)).toHaveLength(1)
-      expect(cleared(owned)).toHaveLength(1)
     })
   })
 
@@ -539,7 +526,7 @@ describe('threads hold features', () => {
       const mine = seedFeature(ctx, projectId, { slug: 'mine', chatId: a.id })
       const lead = createSessionRow(ctx, { featureId: mine.id, kind: 'chat', worktreePath: repoPath })
 
-      expect((await toolWaitForYou(ctx, lead, { why: 'pick a theme' })).waitingReason).toBe('pick a theme')
+      expect((await toolWaitForYou(ctx, lead, { why: 'pick a theme' })).need?.why).toBe('pick a theme')
     })
 
     it('posts a feature’s plan card in an orchestrator chat by slug, marked with its feature', () => {

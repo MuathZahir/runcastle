@@ -9,6 +9,8 @@ import { toolsForAudience } from '../src/mcp/server'
 import type { AppCtx } from '../src/db/types'
 import { chatKickoffHeader, launchSession } from '../src/launcher/launcher'
 import { workers } from '../src/db/schema'
+import { createSessionRow } from '../src/launcher/sessions'
+import { setWait } from '../src/services/waits'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { createFeatureBranch } from '../src/services/git'
 import { useDataDir } from './helpers/data-dir'
@@ -48,12 +50,12 @@ describe('chat contract', () => {
     const ctx = await makeTestCtx()
     const feature = seedFeature(ctx, seedProject(ctx).id, {})
     const line = chatKickoffHeader(ctx, feature)
-    expect(line).toContain('Feature status: Talking with you.')
+    expect(line).toContain('Feature status: Idle.')
     expect(line).not.toMatch(/\blap\b|phase|review|round/i)
     expect(line.endsWith('Call get_feature_context for the full picture.')).toBe(true)
   })
 
-  it('says "Working · N workers at work" in the kickoff while workers work', async () => {
+  it('says "Idle" while its workers only hold a working status with no turn running', async () => {
     const ctx = await makeTestCtx()
     const feature = seedFeature(ctx, seedProject(ctx).id)
     const now = Date.now()
@@ -63,15 +65,17 @@ describe('chat contract', () => {
         .values({ id: newId('wkr'), featureId: feature.id, projectId: feature.projectId, label: `w${i}`, purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code', startedBy: 'lead', status, engine: 'docker', featureBranch: feature.branch, createdAt: now, updatedAt: now })
         .run()
     }
-    expect(chatKickoffHeader(ctx, feature)).toContain('Feature status: Working · 2 workers at work.')
+    expect(chatKickoffHeader(ctx, feature)).toContain('Feature status: Idle.')
   })
 
-  it('says "Waiting for you · <why>" and "Merged" in the kickoff', async () => {
+  it('says "Needs you · <why>" and "Merged" in the kickoff', async () => {
     const ctx = await makeTestCtx()
     const projectId = seedProject(ctx).id
-    const waiting = { ...seedFeature(ctx, projectId, { slug: 'waiting' }), waitingReason: 'start round 1?' }
+    const waiting = seedFeature(ctx, projectId, { slug: 'waiting' })
+    const lead = createSessionRow(ctx, { featureId: waiting.id, kind: 'chat', worktreePath: '/wt' }).id
+    setWait(ctx, lead, 'Plan ready for your yes')
     const shipped = seedFeature(ctx, projectId, { slug: 'shipped', status: 'shipped' })
-    expect(chatKickoffHeader(ctx, waiting)).toContain('Feature status: Waiting for you · start round 1?.')
+    expect(chatKickoffHeader(ctx, waiting)).toContain('Feature status: Needs you · Plan ready for your yes.')
     expect(chatKickoffHeader(ctx, shipped)).toContain('Feature status: Merged.')
   })
 })
@@ -150,7 +154,7 @@ describe('every chat opens on the feature skill', () => {
       expect(prompt).toContain('Invoke the `/runcastle:feature` skill')
       expect(prompt).not.toMatch(/runcastle:(ideate|revisit|lead)/)
       expect(kickoff).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
-      expect(kickoff).toContain('Feature status: Talking with you.')
+      expect(kickoff).toContain('Feature status: Idle.')
       // every chat on a feature runs without permission prompts
       expect(launch.sessionMode).toBe('bypassPermissions')
     }

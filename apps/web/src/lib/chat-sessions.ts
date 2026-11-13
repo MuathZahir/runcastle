@@ -27,7 +27,7 @@ export function newestThread(threads: readonly ThreadEntry[], role: ThreadEntry[
  * names what is in front.
  */
 export function standIn(id: string, title: string, role: ThreadEntry['role'], now = Date.now()): ThreadEntry {
-  return { id, title, role, state: 'idle', createdAt: now, updatedAt: now, runtime: 'claude-code' }
+  return { id, title, role, state: 'idle', createdAt: now, updatedAt: now, runtime: 'claude-code', need: null }
 }
 
 /** The list with each stand-in whose thread it does not already hold. */
