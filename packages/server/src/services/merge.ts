@@ -1,5 +1,5 @@
 import { AUTOSTART_FAILED, unresolvedMergeConflict } from '@runcastle/core'
-import { scenarioDataDir } from '@runcastle/core/paths'
+import { featureDocsRel, scenarioDataDir } from '@runcastle/core/paths'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
 import { stopDesignServer } from './design'
@@ -9,6 +9,7 @@ import { requireNotDraft } from './features'
 import * as git from './git'
 import { promoteOutcomeDoc } from './outcome'
 import { clearHandback } from './lead-status'
+import { announceMerge, type ShippedData } from './orchestrator-notify'
 import { getFeatureRow, projectForFeature, setFeatureStatus } from './repo'
 import { startUpNextDependents } from './up-next'
 import { removeFeatureWorkers } from '../workers/service'
@@ -26,8 +27,17 @@ export interface MergeFlowResult {
  * orchestrator's `merge_feature` share this one flow, so either way the outcome
  * doc is promoted, the feature ships, its worktree is retired, and a conflict
  * lands on the timeline as `merge.conflict`.
+ *
+ * `opts.by` is the orchestrator thread whose `merge_feature` merged it (absent:
+ * the human). It rides on `feature.shipped`, with the merge commit, so the
+ * feature's epic hears who merged it (`the-epic-hears-when-its-features-merge`);
+ * that news goes once the up-next drafts this merge starts have started.
  */
-export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<MergeFlowResult> {
+export async function mergeFeatureFlow(
+  ctx: AppCtx,
+  featureId: string,
+  opts: { by?: string } = {},
+): Promise<MergeFlowResult> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
   const project = projectForFeature(ctx, feature)
@@ -54,8 +64,17 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
         message: 'conflict retired by the merge',
       })
     }
+    // The merge commit, read before the outcome doc commits on top of it.
+    const sha = (await git.headSha(project.repoPath, res.target)) ?? null
     await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
-    emit(ctx, featureId, { type: 'feature.shipped', message: `merged to ${res.target}` })
+    const outcomeRel = `${featureDocsRel(feature.slug)}/outcome.md`
+    const outcome = (await git.headSha(project.repoPath, `${res.target}:${outcomeRel}`)) ? outcomeRel : null
+    const shippedData: ShippedData = { base: res.target, sha, outcome, mergedBy: opts.by ?? null }
+    const shipped = emit(ctx, featureId, {
+      type: 'feature.shipped',
+      message: `merged to ${res.target}`,
+      data: shippedData,
+    })
     setFeatureStatus(ctx, featureId, 'shipped')
     clearHandback(ctx, featureId, 'closed')
     // Best-effort: the merge has landed, so a start that fails is an event on
@@ -68,6 +87,8 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
         message: `couldn't start up-next dependents: ${err instanceof Error ? err.message : String(err)}`,
       })
     }
+    // After the up-next starts, so the epic's wake test counts them (decision 5).
+    announceMerge(ctx, shipped.id)
     // Before the worktree goes: the design server runs inside it.
     await stopDesignServer(ctx, featureId, 'shipped')
     // A shipped feature's workers go: each keeps a whole copy of the repo (interactive-workers decision 18).

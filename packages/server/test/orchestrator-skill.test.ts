@@ -63,8 +63,9 @@ describe('the project skill, orchestrating', () => {
   it('keeps only what every turn needs, with a reference per job that exists', () => {
     const text = skill()
     // Raised from 25_000 for the epic icon ids name_epic picks from (epics-that-look-alive decision 1),
-    // then from 25_400 for the never-guess statement every agent carries word for word (agents-never-guess decision 12).
-    expect(text.length).toBeLessThanOrEqual(26_700)
+    // then from 25_400 for the never-guess statement every agent carries word for word (agents-never-guess decision 12),
+    // then from 26_700 for the merge line every epic acts on (the-epic-hears-when-its-features-merge decisions 3, 11).
+    expect(text.length).toBeLessThanOrEqual(27_300)
     expect(text).not.toContain('## Your tools')
     expect(text).toContain('**Load your runcastle tools once**')
     const pointers = [...text.matchAll(/\.\/references\/([a-z-]+\.md)/g)].map((m) => m[1])
@@ -341,6 +342,19 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('**Merge through runcastle**: `merge_feature`')
     expect(text).toContain("**Never work in a feature's worktree while that feature has a live session.**")
     expect(text).toContain('**`decisions.md` is the record**')
+  })
+
+  // the-epic-hears-when-its-features-merge decisions 3, 6, 9, 10, 11, 13.
+  it('checks a merged feature of its cut against the siblings in progress, and speaks only on a misfit', () => {
+    const text = section()
+    expect(text).toContain('each wakes you, except a merge line with nothing to check')
+    expect(text).toContain('**A feature you cut merged** (anyone\'s merge)')
+    expect(text).toContain('with no tests, drives or reviews')
+    expect(text).toContain('`send_to_feature` only those it touches')
+    expect(text).toContain('A clean fit ends silently.')
+    expect(text).toContain('`notify_human` once; create nothing and ask nothing in features you don\'t own')
+    expect(text).toContain('Your own `merge_feature` answer lists them instead.')
+    expect(text).toContain('it does not wake you and needs nothing')
   })
 })
 

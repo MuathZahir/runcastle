@@ -9,6 +9,7 @@ import {
   discoveredEntries,
   modelEntryFor,
   modelRoster,
+  stepDefaultModel,
 } from '@runcastle/core'
 import type { AgentRuntime, DiscoveredModel, DiscoverySnapshot, ModelStep } from '@runcastle/core'
 import type { SettingField, SettingsView } from './api'
@@ -201,7 +202,7 @@ const STEP_META: readonly {
   { step: 'project', label: 'Epic chat', group: 'sessions', description: 'The project-level chat' },
   // Unattended — burns and scripted runs.
   { step: 'implement', label: 'Implement', group: 'unattended', description: 'Works a ticket in the sandbox' },
-  { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
+  { step: 'review', label: 'Review', group: 'unattended', description: 'The Review worker’s model' },
   // The step keeps its `prepare` key; preparation itself runs on the Orchestrator's model.
   { step: 'prepare', label: 'Drive chats', group: 'unattended', description: 'Scenario and drive-fix chats' },
   { step: 'smoke', label: 'Smoke', group: 'unattended', description: 'Cheap scripted end-to-end check' },
@@ -1141,7 +1142,9 @@ export interface StepRow {
   group: StepGroup
   /** The model set for this step, or null when it follows the default. */
   value: string | null
-  /** What it will actually run — `value`, else the default model. */
+  /** What it runs when unset: the default model, or for Review the review model of the default model's runtime. */
+  defaultModel: string
+  /** What it will actually run — `value`, else `defaultModel`. */
   effectiveModel: string
   /** The runtime `effectiveModel` launches, never inferred from the id. */
   effectiveRuntime: AgentRuntime
@@ -1160,10 +1163,14 @@ export function stepRows(view: SettingsView): StepRow[] {
   const fallback = defaultModelOf(view)
   return STEP_META.map((meta) => {
     const value = ownStepModel(view, meta.step)
-    const effectiveModel = value ?? fallback
+    // Unset, a step runs on its default: the default model, or for Review the
+    // review model of the default model's runtime.
+    const defaultModel = stepDefaultModel(meta.step, { ...config, model: fallback })
+    const effectiveModel = value ?? defaultModel
     return {
       ...meta,
       value,
+      defaultModel,
       effectiveModel,
       effectiveRuntime: modelEntryFor(effectiveModel, config).runtime,
     }
