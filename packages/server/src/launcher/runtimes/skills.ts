@@ -101,14 +101,6 @@ export function chatKickoffFor(runtime: AgentRuntime, resumed = false): string {
 export const PLANNING_ALONE = 'references/planning-alone.md'
 
 /**
- * The heading of the project skill's section for the orchestrator
- * (`whole-cuts-plan-themselves`), read only when the project's Orchestrator
- * setting is on. Named verbatim by the orchestrating briefing, so the skill's
- * heading and the pointer to it agree.
- */
-export const ORCHESTRATING = 'Orchestrating'
-
-/**
  * The opening of a self-planning run's prompt, spelled for `runtime` — the
  * `self-plan` counterpart of {@link chatKickoffFor}. A headless run has no human
  * on the other end, so the line says so before anything else, plans (designing

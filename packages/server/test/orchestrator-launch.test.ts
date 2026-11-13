@@ -96,7 +96,7 @@ describe('the orchestrator launch is the orchestrator', () => {
     expect((await acpLaunchOf(ctx, sessionId)).sessionMode).toBe('bypassPermissions')
     expect(await settingsOf(sessionId)).not.toContain('wait-messages')
     const prompt = await briefOf(ctx, sessionId)
-    expect(prompt).toContain('## Orchestrating')
+    expect(prompt).toContain("You are this project's **orchestrator**")
     expect(prompt).toContain('/runcastle:project')
     expect(prompt).not.toContain('last live')
     expect(prompt).not.toContain('### Features you hold')
@@ -111,7 +111,7 @@ describe('the orchestrator launch is the orchestrator', () => {
     expect(toml).toContain('approval_policy = "never"')
     expect(toml).toContain('sandbox_mode = "danger-full-access"')
     const prompt = readFileSync(join(home, 'AGENTS.md'), 'utf8')
-    expect(prompt).toContain('## Orchestrating')
+    expect(prompt).toContain("You are this project's **orchestrator**")
     expect(prompt).toContain('$project')
   })
 
@@ -126,12 +126,12 @@ describe('the orchestrator launch is the orchestrator', () => {
     expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
     const home = (await acpLaunchOf(ctx, sessionId)).env.CODEX_HOME
     expect(readFileSync(join(home, 'config.toml'), 'utf8')).toContain('approval_policy = "never"')
-    expect(readFileSync(join(home, 'AGENTS.md'), 'utf8')).toContain('## Orchestrating')
+    expect(readFileSync(join(home, 'AGENTS.md'), 'utf8')).toContain("You are this project's **orchestrator**")
     expect(kickoffOf(sessionId)).toContain('list_project_notes')
   })
 })
 
-describe('the orchestrating section of the project prompt', () => {
+describe('the project prompt', () => {
   const brief: ProjectBrief = {
     project: { id: 'proj_1', name: 'acme', repoPath: '/repo' },
     branch: PROJECT_BRANCH,
@@ -140,20 +140,14 @@ describe('the orchestrating section of the project prompt', () => {
     openNotes: 0,
   }
 
-  it('is always there, just before the task, and mentions no setting', () => {
-    const out = renderProjectPrompt(brief)
-    const start = out.indexOf('## Orchestrating')
-    const end = out.indexOf('## Your task')
-    expect(start).toBeGreaterThan(0)
-    expect(end).toBeGreaterThan(start)
-    expect(out.slice(start, end)).not.toMatch(/setting|experimental/i)
-  })
-
-  it('names the skill section, the prompts-off posture and what autopilot allows', () => {
+  // How the orchestrator judges each step is the project skill's (skills-become-short-rules).
+  it('carries the session facts and no rule the skill carries', () => {
     const out = renderProjectPrompt(brief, 'codex')
-    expect(out).toContain("You are this project's orchestrator.")
-    expect(out).toContain('"Orchestrating" section of the `$project`\nskill')
+    expect(out).toContain("You are this project's **orchestrator**")
     expect(out).toMatch(/without permission prompts/)
-    expect(out).toMatch(/only while they are on autopilot in this epic/)
+    expect(out).toContain('A human is present')
+    expect(out).toContain('Invoke the `$project` skill')
+    expect(out).not.toMatch(/Orchestrating|\bsetting\b|experimental|autopilot/i)
+    expect(out).not.toMatch(/\bround|ticket|\bowner|\bbusy\b|Routing|five destinations|revisit/i)
   })
 })

@@ -413,21 +413,33 @@ describe('renderSystemPrompt', () => {
     { status: 'shipped' },
   ]
 
-  it('gives every feature chat, in any state, one brief naming the feature skill and no phase', () => {
+  it('gives every feature chat, in any state, one brief of session facts naming the feature skill', () => {
     for (const [name, purpose, headless] of CHAT_LAUNCHES) {
       for (const state of STATES) {
         const p = renderSystemPrompt(feature(state), 'chat', purpose as SessionPurpose | undefined, undefined, headless)
         expect(p, name).toContain("You are this feature's **lead**, from your first message")
         expect(p, name).toContain('Invoke the `/runcastle:feature` skill')
-        expect(p, name).toContain('docs/features/dark-mode/brief.md')
-        expect(p, name).toContain('docs/features/dark-mode/decisions.md')
-        expect(p, name).toContain('docs/features/dark-mode/spec.md')
+        expect(p, name).toContain('Feature: `dark-mode`, on branch `feature/dark-mode`')
+        expect(p, name).toContain("Working directory: the feature's own worktree")
+        expect(p, name).toContain('Docs folder: `docs/features/dark-mode/` (`brief.md`, `decisions.md`, `spec.md`)')
+        expect(p, name).toContain("Your commits land through the feature's landing queue")
+        expect(p, name).toContain('wait while the human is driving the feature')
+        expect(p, name).toContain('Never reword a `ticket(<seq>): …` or `runcastle: …` commit')
+        // How the lead works is the feature skill's (skills-become-short-rules): no rule restated here.
         expect(p, name).not.toMatch(/phase/i)
-        expect(p, name).not.toMatch(/\bGo\b|revisit|ideat|\(feature lead\)|runcastle:(lead|design)/i)
+        expect(p, name).not.toMatch(/\bround|ticket rows?|\bowner|\bbusy\b|waiting kind|dispatch|Routing|five destinations/i)
+        expect(p, name).not.toMatch(/\bGo\b|revisit|more rounds|ideat|\(feature lead\)|runcastle:(lead|design)/i)
         expect(p, name).not.toMatch(/Talk sessions do not write code/)
-        expect(p, name).toMatch(/You may change code yourself/)
-        expect(p, name).toMatch(/never merge/)
       }
+    }
+  })
+
+  it('says whether a human is present', () => {
+    expect(renderSystemPrompt(feature(), 'chat')).toContain('A human is present')
+    for (const [purpose, headless] of [[undefined, true], ['self-plan', false]] as const) {
+      const p = renderSystemPrompt(feature(), 'chat', purpose, undefined, headless)
+      expect(p).toContain('No human is present')
+      expect(p).not.toContain('A human is present')
     }
   })
 
@@ -796,53 +808,28 @@ describe('renderSessionPrompt', () => {
     ],
   ]
 
-  it.each(briefs)('ends a %s brief with how to talk to the human, exactly once', (_, brief) => {
+  // The lead's and the orchestrator's skills carry how to talk to the human
+  // (skills-become-short-rules), so their briefings end on their task instead.
+  it.each(briefs)('leaves the closing section off a %s brief', (_, brief) => {
     const prompt = renderSessionPrompt({ session: session(), project, config, ...brief })
 
-    expect(prompt.split('## How to talk to the human')).toHaveLength(2)
-    expect(prompt.endsWith(talkingToTheHumanSection())).toBe(true)
-    expect(prompt).toContain('senior advisor')
-    expect(prompt).toContain("Define the project's terms")
-    expect(prompt).toContain('Bring the context with the decision')
+    expect(prompt).not.toContain('## How to talk to the human')
+    expect(prompt).not.toContain('outranks')
+    expect(prompt).toContain('## Your task')
   })
 
-  const headlessBriefs: Array<[string, Partial<WriteArtifactsInput>]> = [
-    ['self-plan', { feature: feature(), purpose: 'self-plan' }],
-    [
-      'relay',
-      {
-        feature: feature({}),
-        purpose: 'relay',
-        session: session({ headless: true }),
-      },
-    ],
-  ]
-
-  it.each(headlessBriefs)(
-    'tells a headless %s run its no-human rule outranks the closing section',
-    (_, brief) => {
-      const prompt = renderSessionPrompt({ session: session(), project, config, ...brief })
-      const rule = prompt.slice(
-        prompt.indexOf('## No human is present'),
-        prompt.indexOf('## How to talk to the human'),
-      )
-
-      expect(rule).toContain(
-        'This section outranks "How to talk to the human" at the end of this brief',
-      )
-      expect(rule).toContain('put a question\n  to them only through `wait_for_you`')
-    },
-  )
-
-  it('leaves the closing section unqualified when a human is present', () => {
+  it('ends a host worker brief with how to talk to the human, exactly once', () => {
     const prompt = renderSessionPrompt({
-      session: session(),
+      session: session({ kind: 'worker' }),
       project,
       config,
       feature: feature(),
+      hostWorker: { briefing: '# a review worker\n\nReview the diff.\n', env: {} },
     })
 
-    expect(prompt).not.toContain('outranks "How to talk to the human"')
+    expect(prompt.startsWith('# a review worker\n\nReview the diff.')).toBe(true)
+    expect(prompt.split('## How to talk to the human')).toHaveLength(2)
+    expect(prompt.endsWith(talkingToTheHumanSection())).toBe(true)
   })
 })
 

@@ -1,6 +1,6 @@
 /**
  * Measures what a feature lead and an orchestrator start with: the briefing
- * (system prompt), the entry skill they open first, and the tools runcastle
+ * (the system-prompt file, as `renderSessionPrompt` writes it), the entry skill they open first, and the tools runcastle
  * offers that session kind (name, description and input schema, as listed to
  * the model). Prints bytes and an estimate of tokens (bytes / 4).
  *
@@ -14,12 +14,8 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import type { Feature } from '@runcastle/core'
-import {
-  renderProjectPrompt,
-  renderSystemPrompt,
-  talkingToTheHumanSection,
-} from '../src/launcher/artifacts'
+import { RuncastleConfig, type Feature, type Project, type SessionRow } from '@runcastle/core'
+import { renderSessionPrompt } from '../src/launcher/artifacts'
 import { buildMcpServer, type McpAudience } from '../src/mcp/server'
 
 const ROOT = resolve(import.meta.dir, '../../..')
@@ -41,9 +37,12 @@ const feature: Feature = {
   lastDispatchAt: null,
 }
 
-/** The session prompt file is the kind's brief plus the shared closing section (`renderSessionPrompt`). */
-function withClosing(brief: string): string {
-  return `${brief.trimEnd()}\n\n${talkingToTheHumanSection()}`
+const project: Project = { id: 'proj_measure', name: 'sample', repoPath: '/repo', position: 0 }
+const config = RuncastleConfig.parse({})
+
+/** A session row with only what the prompt reads. */
+function session(kind: SessionRow['kind'], headless = false): SessionRow {
+  return { id: 'sess_measure', kind, status: 'live', awaitingInput: false, worktreePath: '/wt', headless }
 }
 
 async function toolsFor(audience: McpAudience): Promise<{ count: number; bytes: number }> {
@@ -80,25 +79,22 @@ async function row(session: string, briefing: string, skill: string[], audience:
 }
 
 const rows: Row[] = [
-  await row('feature lead', withClosing(renderSystemPrompt(feature, 'chat')), ['feature/SKILL.md'], 'chat'),
+  await row('feature lead', renderSessionPrompt({ session: session('chat'), feature, project, config }), ['feature/SKILL.md'], 'chat'),
   // A headless planning run is sent to its planning page at once, so that page counts.
   await row(
     'feature lead, planning alone',
-    withClosing(renderSystemPrompt(feature, 'chat', 'self-plan', undefined, true)),
+    renderSessionPrompt({ session: session('chat', true), feature, project, config, purpose: 'self-plan' }),
     ['feature/SKILL.md', 'feature/references/planning-alone.md'],
     'chat',
   ),
   await row(
     'orchestrator',
-    withClosing(
-      renderProjectPrompt({
-        project: { id: 'proj_measure', name: 'sample', repoPath: '/repo', position: 0 },
-        branch: 'runcastle/project',
-        worktreePath: '/wt/__project',
-        base: 'main',
-        openNotes: 0,
-      }),
-    ),
+    renderSessionPrompt({
+      session: session('project'),
+      project,
+      config,
+      projectBrief: { project, branch: 'runcastle/project', worktreePath: '/wt/__project', base: 'main', openNotes: 0 },
+    }),
     ['project/SKILL.md'],
     'project',
   ),
