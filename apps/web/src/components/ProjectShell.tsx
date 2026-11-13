@@ -40,8 +40,8 @@ import { FeatureLinksContext, type FeatureLinks } from './chat/thread/FeatureCar
 import { ChatLinksContext, type ChatLinks, type WorkerPlace } from './chat/ChatLink'
 
 /** A worker's feature, for a `worker:` link: read once per id, since a worker never changes feature. */
-function useWorkerPlace(workerId: string): WorkerPlace | null {
-  return trpc.worker.locate.useQuery({ workerId }, { staleTime: Number.POSITIVE_INFINITY }).data ?? null
+function useWorkerPlace(projectId: string, workerId: string): WorkerPlace | null {
+  return trpc.worker.locate.useQuery({ projectId, workerId }, { staleTime: Number.POSITIVE_INFINITY }).data ?? null
 }
 
 /**

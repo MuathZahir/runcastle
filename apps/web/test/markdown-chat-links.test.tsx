@@ -22,7 +22,7 @@ function fakeLinks() {
     ],
     openFeature: vi.fn<ChatLinks['openFeature']>(),
     openWorker: vi.fn<ChatLinks['openWorker']>(),
-    useWorkerPlace: (id: string): WorkerPlace | null => PLACES[id] ?? null,
+    useWorkerPlace: (projectId: string, id: string): WorkerPlace | null => (projectId === 'p1' ? PLACES[id] ?? null : null),
   } satisfies ChatLinks
 }
 

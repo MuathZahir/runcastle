@@ -26,8 +26,8 @@ export interface ChatLinks {
   openFeature: (featureId: string, view?: 'plan' | 'design') => void
   /** Open a worker's chat in its feature. */
   openWorker: (featureId: string, workerId: string) => void
-  /** A hook: the worker's feature, or null while it loads and for an id that names no feature's worker. */
-  useWorkerPlace: (workerId: string) => WorkerPlace | null
+  /** A hook: the worker's feature in this project, or null while it loads and for an id that names no feature's worker here. */
+  useWorkerPlace: (projectId: string, workerId: string) => WorkerPlace | null
 }
 
 export const ChatLinksContext = createContext<ChatLinks | null>(null)
@@ -53,7 +53,7 @@ function Resolved({ href, open, children }: { href: string; open: () => void; ch
 }
 
 function WorkerLink({ links, id, children }: { links: ChatLinks; id: string; children: ReactNode }) {
-  const place = links.useWorkerPlace(id)
+  const place = links.useWorkerPlace(links.projectId, id)
   if (!place) return <>{children}</>
   const path = pathFor({ kind: 'feature', projectId: links.projectId, featureSlug: place.slug, view: 'chat' })
   return (

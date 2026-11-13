@@ -52,12 +52,12 @@ export const workerRouter = router({
 
   /**
    * A worker's feature (id and slug), so a `worker:<id>` link in a chat can
-   * open its chat (chats-link-to-what-they-name). Null for an unknown id or a
-   * worker owned by no feature.
+   * open its chat (chats-link-to-what-they-name). Null for an unknown id, a
+   * worker owned by no feature, and a worker of another project.
    */
   locate: publicProcedure
-    .input(z.object({ workerId: z.string() }))
-    .query(({ ctx, input }) => locateWorker(ctx, input.workerId)),
+    .input(z.object({ projectId: z.string(), workerId: z.string() }))
+    .query(({ ctx, input }) => locateWorker(ctx, input.projectId, input.workerId)),
 
   /** The "+": a worker the human starts, with no assignment, that waits for them. */
   startUnassigned: publicProcedure
