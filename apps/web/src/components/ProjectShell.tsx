@@ -37,6 +37,12 @@ import { SettingsDialog } from './settings/SettingsDialog'
 import { PHONE_LINK_FIELD } from './settings/PhoneLinkSection'
 import { useOpenGlossary } from './GlossaryDialog'
 import { FeatureLinksContext, type FeatureLinks } from './chat/thread/FeatureCardItems'
+import { ChatLinksContext, type ChatLinks, type WorkerPlace } from './chat/ChatLink'
+
+/** A worker's feature, for a `worker:` link: read once per id, since a worker never changes feature. */
+function useWorkerPlace(workerId: string): WorkerPlace | null {
+  return trpc.worker.locate.useQuery({ workerId }, { staleTime: Number.POSITIVE_INFINITY }).data ?? null
+}
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
@@ -167,6 +173,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const featureLinks = useMemo<FeatureLinks>(
     () => ({ features: features ?? [], openFeature: openChosen }),
     [features, openChosen],
+  )
+  // …and so do the links an agent writes in its own words (chats-link-to-what-they-name).
+  const chatLinks = useMemo<ChatLinks>(
+    () => ({ projectId, features: features ?? [], openFeature: openChosen, openWorker: openWorkerChat, useWorkerPlace }),
+    [projectId, features, openChosen, openWorkerChat],
   )
 
   // Every session launch under this shell lands on its feature's chat. On the
@@ -478,11 +489,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     <OpenSettingsProvider open={ws.openSettings}>
       <LandOnChatProvider value={landOnChat}>
         <FeatureLinksContext.Provider value={featureLinks}>
-          {/* The open page publishes its threads; the sidebar beside it lists them. */}
-          <SidebarThreadsProvider>
-            {/* …and its header's actions, for the palette's first group. */}
-            <FeatureCommandsProvider>{shell}</FeatureCommandsProvider>
-          </SidebarThreadsProvider>
+          <ChatLinksContext.Provider value={chatLinks}>
+            {/* The open page publishes its threads; the sidebar beside it lists them. */}
+            <SidebarThreadsProvider>
+              {/* …and its header's actions, for the palette's first group. */}
+              <FeatureCommandsProvider>{shell}</FeatureCommandsProvider>
+            </SidebarThreadsProvider>
+          </ChatLinksContext.Provider>
         </FeatureLinksContext.Provider>
       </LandOnChatProvider>
     </OpenSettingsProvider>

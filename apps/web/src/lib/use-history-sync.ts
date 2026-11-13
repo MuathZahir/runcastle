@@ -228,7 +228,7 @@ export function useBackStep(active: boolean, onBack: () => boolean): void {
 }
 
 /** The query key the open chat thread rides under (`/p/x/f/slug?thread=sess_…`). */
-const THREAD_PARAM = 'thread'
+export const THREAD_PARAM = 'thread'
 
 /** The chat thread the address names, so a reload reopens it; null where it names none. */
 export function threadInUrl(): string | null {
