@@ -1,71 +1,176 @@
+import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { eq } from 'drizzle-orm'
-import { features, projects, workers } from '../src/db/schema'
-import { needFacts } from '../src/services/feature-need'
+import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
+import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import mcpApp from '../src/mcp/server'
+import { toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
+import { listAfter } from '../src/services/events'
+import { deliverToLead } from '../src/services/lead-delivery'
+import { markHumanMessage } from '../src/services/lead-status'
 import { getFeatureRow } from '../src/services/repo'
-import { createSessionRow } from '../src/launcher/sessions'
-import { emit } from '../src/services/events'
-import { declareReady, markHumanMessage, setWaiting } from '../src/services/features'
-import { setHandback } from '../src/services/lead-status'
+import { setWait } from '../src/services/waits'
 import { setAgentHostForTests } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import { listThreads } from '../src/threads/read'
 import { appendThreadEvent, type AgentHost } from '../src/threads/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
- * you-always-know-what-s-waiting ticket 1: every feature carries its one
- * `need`, worked out on the server, through `feature.list` and `feature.get`.
+ * Needs you is the agent's call (spec "Seams"): a chat needs the human only
+ * when its agent says so, and only the human's word in that chat (or the
+ * agent's own withdraw) clears it. Driven through the real `/mcp` route the
+ * lead calls and the `feature.get` / `feature.list` queries the web reads.
  */
 
 let ctx: AppCtx
 let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
+let app: Hono
 let projectId: string
+let featureId: string
+let leadId: string
 /** Threads whose process the stand-in host says runs. */
 const running = new Set<string>()
+/** What the stand-in host was prompted with. */
+let prompted: { threadId: string; text: string; source: string }[]
+/** Set to make every prompt fail, as a lead that cannot be reached does. */
+let promptFails: Error | null
 
 beforeEach(async () => {
   ctx = await makeTestCtx()
   caller = createCallerFactory(appRouter)(ctx)
-  projectId = seedProject(ctx).id
-  ctx.db.update(projects).set({ devCommand: 'bun run dev' }).run()
+  const repo = tmpRepo()
+  projectId = seedProject(ctx, repo).id
+  featureId = seedFeature(ctx, projectId, { slug: 'coupons' }).id
+  leadId = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repo }).id
+  markSessionLive(ctx, leadId)
+  // A conversation on record: delivery prompts this thread rather than opening a new one.
+  appendThreadEvent(leadId, { type: 'prompt', id: 'p0', text: 'hello', source: 'human' })
   running.clear()
-  // Only `isRunning` is read on these paths; the rest of the host is never reached.
-  setAgentHostForTests({ isRunning: (id: string) => running.has(id) } as unknown as AgentHost)
+  prompted = []
+  promptFails = null
+  setAgentHostForTests({
+    isRunning: (id: string) => running.has(id),
+    prompt: async (threadId: string, input: { text: string }, opts: { source: string }) => {
+      if (promptFails) throw promptFails
+      prompted.push({ threadId, text: input.text, source: opts.source })
+      return { promptId: `prompt_${prompted.length}` }
+    },
+    cancel: async () => {},
+    stop: async () => {},
+  } as unknown as AgentHost)
+  setRuntimeCtx(ctx)
+  app = new Hono()
+  app.route('/mcp', mcpApp)
 })
 
 afterEach(() => {
   setAgentHostForTests(undefined)
+  clearRuntimeCtx()
   vi.useRealTimers()
 })
 
-async function needs(): Promise<Map<string, unknown>> {
-  return new Map((await caller.feature.list({ projectId })).map((f) => [f.slug, f.need]))
+/** Call an MCP tool as `sessionId`, as its agent does. */
+async function call(sessionId: string, name: string, args: Record<string, unknown>): Promise<{ isError: boolean; text: string }> {
+  const res = await app.request('/mcp', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      'X-Runcastle-Session': sessionId,
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+  })
+  expect(res.status).toBe(200)
+  const envelope = (await res.json()) as { result: { isError?: boolean; content: [{ text: string }] } }
+  return { isError: !!envelope.result.isError, text: envelope.result.content[0].text }
 }
 
-describe('feature.list and feature.get carry the need', () => {
-  it('is null for a feature that waits on nobody, and for a draft', async () => {
-    seedFeature(ctx, projectId, { slug: 'quiet' })
+const need = async () => (await caller.feature.get({ id: featureId })).need
+const listed = async () => (await caller.feature.list({ projectId })).find((f) => f.id === featureId)?.need
+
+describe('wait_for_you → feature.get().need', () => {
+  it('needs nothing until the agent says so, and nothing of a draft', async () => {
+    expect(await need()).toBeNull()
     const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', baseBranch: null })
-    setWaiting(ctx, draft.id, 'which model?')
-    const all = await needs()
-    expect(all.get('quiet')).toBeNull()
-    expect(all.get('parked')).toBeNull()
+    const chat = createSessionRow(ctx, { featureId: draft.id, kind: 'chat', worktreePath: '/wt' }).id
+    setWait(ctx, chat, 'which model?')
+    expect((await caller.feature.get({ id: draft.id })).need).toBeNull()
   })
 
-  it('reads the waiting reason and its kind, the same on the list and the feature', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'plan' })
-    setWaiting(ctx, f.id, 'start round 1?', 'plan')
-    expect((await needs()).get('plan')).toMatchObject({ kind: 'plan', words: 'Plan to approve', held: false })
-    expect((await caller.feature.get({ id: f.id })).need).toMatchObject({ kind: 'plan', words: 'Plan to approve' })
+  it('shows the lead’s line on the feature and the list, opening the lead’s chat', async () => {
+    const out = await call(leadId, 'wait_for_you', { why: 'Which coupon codes stack?' })
+    expect(out.isError).toBe(false)
+    const expected = { why: 'Which coupon codes stack?', threadId: leadId, by: 'agent' }
+    expect(await need()).toMatchObject(expected)
+    expect(await listed()).toMatchObject(expected)
   })
 
-  it('reads an open approval ask in a side thread as a permission need', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'asks' })
-    setWaiting(ctx, f.id, 'which model?')
-    const side = createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' }).id
+  it('folds the line to one line and takes no kind', async () => {
+    await call(leadId, 'wait_for_you', { why: '  Pick a theme:\n  light or dark?  ' })
+    expect((await need())?.why).toBe('Pick a theme: light or dark?')
+    expect((await call(leadId, 'wait_for_you', {})).isError).toBe(true)
+  })
+
+  it('is cleared by the human writing in that chat', async () => {
+    await call(leadId, 'wait_for_you', { why: 'Which coupon codes stack?' })
+    const row = (await caller.feature.get({ id: featureId })).sessions.find((s) => s.id === leadId)!
+    threadLifecycle(ctx).humanPrompted!(row)
+    expect(await need()).toBeNull()
+    expect(listAfter(ctx, featureId, 0).find((e) => e.type === 'session.wait_cleared')?.data).toMatchObject({ cause: 'human' })
+  })
+
+  it('is not cleared by a worker handback, send_to_feature, a runcastle notice or the after-Stop mark', async () => {
+    await call(leadId, 'wait_for_you', { why: 'Which coupon codes stack?' })
+    const feature = getFeatureRow(ctx, featureId)
+    // A worker's handback reaches the lead as a runcastle message.
+    await deliverToLead(ctx, feature, { text: 'Worker "api" handed back', source: 'runcastle', display: undefined })
+    // The orchestrator's send_to_feature.
+    const epic = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
+    await toolSendToFeature(ctx, epic, { slug: 'coupons', message: 'Go with stacking off.' })
+    markHumanMessage(ctx, featureId)
+    expect(prompted.length).toBeGreaterThanOrEqual(2)
+    expect(await need()).toMatchObject({ why: 'Which coupon codes stack?', threadId: leadId })
+  })
+
+  it('is cleared when the agent withdraws it', async () => {
+    await call(leadId, 'wait_for_you', { why: 'Which coupon codes stack?' })
+    expect((await call(leadId, 'wait_for_you', { withdraw: true })).isError).toBe(false)
+    expect(await need()).toBeNull()
+  })
+
+  it('is replaced by a newer wait', async () => {
+    await call(leadId, 'wait_for_you', { why: 'First question' })
+    await call(leadId, 'wait_for_you', { why: 'Second question' })
+    expect((await need())?.why).toBe('Second question')
+  })
+
+  it('is cleared by the human’s Stop and by archiving', async () => {
+    await call(leadId, 'wait_for_you', { why: 'Which coupon codes stack?' })
+    await caller.feature.stop({ featureId })
+    expect(await need()).toBeNull()
+    await call(leadId, 'wait_for_you', { why: 'Again?' })
+    await caller.feature.archive({ featureId })
+    expect((await caller.feature.get({ id: featureId })).need).toBeNull()
+  })
+})
+
+describe('declare_ready → need', () => {
+  it('reads Ready to test · <scenario> on the lead’s chat, until the human writes', async () => {
+    await call(leadId, 'declare_ready', { scenario: 'Apply a coupon at checkout' })
+    expect(await need()).toMatchObject({ why: 'Ready to test · Apply a coupon at checkout', threadId: leadId, by: 'agent' })
+    const row = (await caller.feature.get({ id: featureId })).sessions.find((s) => s.id === leadId)!
+    threadLifecycle(ctx).humanPrompted!(row)
+    expect(await need()).toBeNull()
+  })
+})
+
+describe('an open ask', () => {
+  it('reads an approval in a running side thread as its title, opening that thread', async () => {
+    const side = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt' }).id
     running.add(side)
     appendThreadEvent(side, { type: 'prompt', id: 'p1', text: 'push it', source: 'human' })
     appendThreadEvent(side, { type: 'turn_started', source: 'human' })
@@ -73,118 +178,34 @@ describe('feature.list and feature.get carry the need', () => {
       type: 'ask',
       ask: { kind: 'approval', id: 'ask_1', call: { id: 'c1', kind: 'execute', title: 'git push', status: 'pending' } },
     })
-    expect((await caller.feature.get({ id: f.id })).need).toMatchObject({
-      kind: 'permission', words: 'Needs permission · git push', threadId: side,
-    })
-    expect((await needs()).get('asks')).toMatchObject({ kind: 'permission' })
-
-    // An ask whose process is gone holds nothing open.
-    running.delete(side)
-    expect((await needs()).get('asks')).toMatchObject({ kind: 'answer', words: 'Needs your answer · which model?' })
-  })
-
-  it('reads a merge conflict until a landing clears it', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'conflicted' })
-    emit(ctx, f.id, { type: 'merge.conflict', message: 'conflict', data: { base: 'main', files: ['a.ts'] } })
-    expect((await needs()).get('conflicted')).toMatchObject({ kind: 'conflict', words: 'Merge conflict' })
-    emit(ctx, f.id, { type: 'merge.resolved', message: 'resolved' })
-    expect((await needs()).get('conflicted')).toBeNull()
-  })
-
-  it('reads a declared-ready feature as Ready to test, then Ready to merge once the human drove it', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(1_000_000)
-    const f = seedFeature(ctx, projectId, { slug: 'ready' })
-    declareReady(ctx, f.id, { scenario: 'checkout' })
-    expect((await needs()).get('ready')).toMatchObject({ kind: 'test', words: 'Ready to test · checkout' })
-
-    vi.setSystemTime(1_001_000)
-    emit(ctx, f.id, { type: 'testdrive.stopped', message: 'review drive stopped', data: { purpose: 'review' } })
-    expect((await needs()).get('ready')).toMatchObject({ kind: 'test' })
-
-    vi.setSystemTime(1_002_000)
-    emit(ctx, f.id, { type: 'testdrive.stopped', message: 'test drive stopped', data: { purpose: 'human' } })
-    expect((await needs()).get('ready')).toMatchObject({ kind: 'merge', words: 'Ready to merge' })
-    expect((await caller.feature.get({ id: f.id })).need).toMatchObject({ kind: 'merge' })
-
-    vi.setSystemTime(1_003_000)
-    markHumanMessage(ctx, f.id)
-    expect((await needs()).get('ready')).toMatchObject({ kind: 'test' })
-  })
-
-  it('goes straight to Ready to merge in a project with no drive set up', async () => {
-    ctx.db.update(projects).set({ devCommand: null }).run()
-    const f = seedFeature(ctx, projectId, { slug: 'nodrive' })
-    declareReady(ctx, f.id, { scenario: 'checkout' })
-    expect((await needs()).get('nodrive')).toMatchObject({ kind: 'merge' })
-  })
-
-  it('holds every need but the feature’s own questions for the chat that owns it (every-feature-has-one-owner decision 16)', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'held', heldBy: 'sess_orchestrator' })
-    setWaiting(ctx, f.id, 'start round 1?', 'plan')
-    expect((await needs()).get('held')).toMatchObject({ kind: 'plan', held: true, words: 'With sess_orchestrator · Plan to approve' })
-    setWaiting(ctx, f.id, null)
-    setHandback(ctx, f.id, 'Plan is ready for your yes.')
-    expect((await needs()).get('held')).toMatchObject({ kind: 'handback', held: true, words: 'With sess_orchestrator · Plan is ready for your yes' })
-  })
-
-  /** An orchestrator chat named "Notes triage" whose last turn showed `featureId`'s plan and ended on `words`. */
-  function chatThatShowed(featureId: string, words: string): string {
-    const id = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' }).id
-    appendThreadEvent(id, { type: 'title', title: 'Notes triage', renamed: true })
-    appendThreadEvent(id, { type: 'prompt', id: 'p', text: 'run it for me', source: 'human' })
-    appendThreadEvent(id, { type: 'turn_started' })
-    appendThreadEvent(id, { type: 'plan_shown', featureId })
-    appendThreadEvent(id, { type: 'agent_text', messageId: 'm', text: words })
-    appendThreadEvent(id, { type: 'turn_ended', reason: 'end_turn' })
-    return id
-  }
-
-  it('reads With <Chat> · asking you while the owner chat asks about it, and only that feature (decision 17)', async () => {
-    const asked = seedFeature(ctx, projectId, { slug: 'asked' })
-    const other = seedFeature(ctx, projectId, { slug: 'other' })
-    const chat = chatThatShowed(asked.id, 'Does this plan look right?')
-    for (const f of [asked, other]) {
-      ctx.db.update(features).set({ heldBy: chat, chatId: chat }).where(eq(features.id, f.id)).run()
-      setHandback(ctx, f.id, 'Plan is ready for your yes.')
-    }
-    const all = await needs()
-    expect(all.get('asked')).toMatchObject({ kind: 'handback', held: true, words: 'With Notes triage · asking you' })
-    expect(all.get('other')).toMatchObject({ kind: 'handback', held: true, words: 'With Notes triage · Plan is ready for your yes' })
-  })
-
-  it('reads a human-owned feature whose lead asks its chat as Asking <Chat> · its line, held (decision 20)', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'mine' })
-    const chat = chatThatShowed('elsewhere', 'Done.')
-    ctx.db.update(features).set({ chatId: chat }).where(eq(features.id, f.id)).run()
-    setHandback(ctx, f.id, 'Should the notes feature own the inbox?')
-    expect((await caller.feature.get({ id: f.id })).need).toMatchObject({
-      kind: 'handback', held: true, words: 'Asking Notes triage · Should the notes feature own the inbox?',
-    })
+    expect(await need()).toMatchObject({ why: 'git push', threadId: side, by: 'agent' })
+    expect(await listed()).toMatchObject({ threadId: side })
   })
 })
 
-/** triage-batch decision 13: workers working or queued count as work in the need's facts. */
-describe('needFacts reads workers at work', () => {
-  function seedWorker(featureId: string, status: 'working' | 'queued' | 'handed-back'): void {
-    const row = createSessionRow(ctx, { featureId, kind: 'worker', worktreePath: '/wt' })
-    const now = Date.now()
-    ctx.db
-      .insert(workers)
-      .values({
-        id: row.id, featureId, projectId, label: 'Add laps', purpose: 'p', kind: 'on-its-own', model: 'm', runtime: 'claude-code',
-        startedBy: 'lead', status, engine: 'docker', featureBranch: 'feature/x', createdAt: now, updatedAt: now,
-      })
-      .run()
-  }
+describe('a dead run', () => {
+  it('sets runcastle’s own line on the lead’s chat when its wake fails', async () => {
+    promptFails = new Error('the runtime cannot run')
+    await deliverToLead(ctx, getFeatureRow(ctx, featureId), { text: 'Round over', source: 'runcastle' })
+    expect(await need()).toMatchObject({ why: 'The agent’s run failed', threadId: leadId, by: 'runcastle' })
+  })
+})
 
-  it('is true while a worker works or waits to start, false once it handed back', () => {
-    const f = seedFeature(ctx, projectId, { slug: 'busy' })
-    const facts = () => needFacts(ctx, getFeatureRow(ctx, f.id))
-    expect(facts().workersAtWork).toBe(false)
-    seedWorker(f.id, 'handed-back')
-    expect(facts().workersAtWork).toBe(false)
-    seedWorker(f.id, 'queued')
-    expect(facts().workersAtWork).toBe(true)
+describe('an orchestrator chat', () => {
+  it('needs the human only when its own agent calls wait_for_you, on its thread entry', async () => {
+    const epic = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
+    appendThreadEvent(epic.id, { type: 'prompt', id: 'p1', text: 'plan the batch', source: 'human' })
+    appendThreadEvent(epic.id, { type: 'turn_started', source: 'human' })
+    appendThreadEvent(epic.id, { type: 'plan_shown', featureId, title: 'Coupons' } as never)
+    appendThreadEvent(epic.id, { type: 'agent_text', messageId: 'm1', text: 'Start it now?' })
+    appendThreadEvent(epic.id, { type: 'turn_ended', reason: 'end_turn' })
+    const entry = () => listThreads(ctx, { projectId }).find((t) => t.id === epic.id)
+    // A question mark after a plan card is no longer a need.
+    expect(entry()?.need).toBeNull()
+    expect(entry()?.state).not.toBe('waiting')
+    expect((await call(epic.id, 'wait_for_you', { why: 'Start Coupons now?' })).isError).toBe(false)
+    expect(entry()?.need).toMatchObject({ why: 'Start Coupons now?', threadId: epic.id, by: 'agent' })
+    // It is the chat's own need: the feature it asked about does not need the human.
+    expect(await need()).toBeNull()
   })
 })
