@@ -117,11 +117,11 @@ Check first: 14, 16, 17, 18, 23
 **Why:** The brief asks for it: a lead, and the human reading its chat, see at once which epic is talking.
 **Assumed.** Alternative: keep the generic line.
 
-## 23. Autopilot carries on after a usage limit, whatever the setting says
-**Decision:** While an epic is on autopilot, its chat and its locked features' leads and workers are woken once when a usage limit resets, even when the human's "carry on after a usage limit" setting is off. The summary says how long the run was paused. Off autopilot, the setting rules as today.
-**Why:** A usage limit is the most common overnight failure. Turning autopilot on is the human saying "run while I sleep"; an epic that stalls at 1 a.m. and waits for morning defeats it.
-**Assumed.** Alternative: autopilot follows the setting, and the run plan warns when it is off.
-**For the human.** This overrides a setting of the human's while autopilot is on.
+## 23. Autopilot follows the "carry on after a usage limit" setting
+**Decision:** On autopilot, a usage limit is handled by the human's own "carry on after a usage limit" setting, as everywhere else. When that setting is off, the orchestrator's run plan says so before the human's yes: "Carry on after a usage limit is off, so a limit overnight pauses the run until morning." Nothing overrides the setting.
+**Why:** The earlier draft woke autopilot chats whatever the setting said. That overrides a setting the human chose, and the brief never recommended it, so the build takes the version that respects it and warns in the run plan instead.
+**Assumed.** Alternative: autopilot carries on after a usage limit whatever the setting says, since "run while I sleep" implies it.
+**For the human.**
 
 ## 24. A question already waiting moves to the epic when its feature joins autopilot
 **Decision:** When a feature joins autopilot (autopilot turned on, or "also run X") while its lead waits on the human, the wait in its chat is closed and the lead is told to re-ask through the epic. It is the mirror of decision 20.

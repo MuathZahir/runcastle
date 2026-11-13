@@ -61,9 +61,10 @@ On waking they get one summary of what was decided for them, with links.
   that feature only. Nothing running stops. Turning on (or adding a feature) is the
   mirror: a wait already open in a joining feature's chat is closed and its lead is told
   to re-ask through the epic.
-- **Usage limits.** The existing wake after a usage limit resets treats every chat of an
-  epic on autopilot (the epic, its locked leads and their workers) as if "carry on after
-  a usage limit" were on. Off autopilot the setting rules.
+- **Usage limits.** No machinery: the human's "carry on after a usage limit" setting
+  rules on autopilot as everywhere else. The project skill tells the orchestrator to say
+  in the run plan when that setting is off, so a limit overnight pauses the run (decision
+  23).
 - **Several epics.** Any number of epics can be on autopilot at once. Moving a feature
   into another epic is refused while it is locked to its current one.
 - **The human's typing.** The hook that today takes a feature when the human types in its
