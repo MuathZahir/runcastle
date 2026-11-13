@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { and, count, eq, inArray, isNull, ne } from 'drizzle-orm'
 import {
+  BACKGROUND_WINDOW_MS,
   type Ask,
   type Feature,
   type ModelEntry,
@@ -782,6 +783,31 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
 
 // --- turns ----------------------------------------------------------------------
 
+/** A worker whose turn ended with background work still running, by id: when it stops waiting on that work. */
+const backgroundWaits = new Map<string, ReturnType<typeof setTimeout>>()
+
+function forgetBackgroundWait(id: string): void {
+  const timer = backgroundWaits.get(id)
+  if (timer) clearTimeout(timer)
+  backgroundWaits.delete(id)
+}
+
+/**
+ * A worker that ended its turn on background work (a test run) stays working:
+ * the agent starts a turn by itself when the work finishes, and that turn's end
+ * hands back or asks for the human. Past the window background work counts for
+ * (threads-open-fast decision 2) with no turn running, it needs the human.
+ */
+function waitOutBackground(ctx: AppCtx, id: string): void {
+  const timer = setTimeout(() => {
+    backgroundWaits.delete(id)
+    const w = getWorker(ctx, id)
+    if (w?.status === 'working' && getSessionRow(ctx, id)?.awaitingInput) setStatus(ctx, w, 'needs-you')
+  }, BACKGROUND_WINDOW_MS)
+  timer.unref?.()
+  backgroundWaits.set(id, timer)
+}
+
 /**
  * A worker's turn ended. A new handback records the worker branch's commits and
  * files, marks it handed back and wakes the lead once (decision 4). A turn that
@@ -790,8 +816,11 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
  * the human (decision 5).
  */
 export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
+  forgetBackgroundWait(row.id)
   let w = getWorker(ctx, row.id)
   if (!w) return
+  // The host marks a thread awaiting input before it says a turn ended, and the next turn clears it.
+  const awaitingAtEnd = getSessionRow(ctx, row.id)?.awaitingInput === true
   // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
   const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
   const failed = error !== undefined && w.status === 'working' ? { error, verdict: classifyAgentError(error, w.runtime) } : undefined
@@ -813,7 +842,13 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   if (!note || !sb) {
     // Read again: the awaits above let a drive's end hand this worker back, which `w` would undo.
     const now = getWorker(ctx, w.id)
-    if (now?.status === 'working') setStatus(ctx, now, 'needs-you')
+    if (now?.status !== 'working') return
+    // A newer turn began while this one's handback was read (a queued message, a send-back): it reports at its own end.
+    if (awaitingAtEnd && getSessionRow(ctx, w.id)?.awaitingInput === false) return
+    // Its background work still runs: the turn the agent starts when it finishes reports instead.
+    // Commands get the window the feature's own status gives them; subagents, like the host's count of them, none.
+    if (end?.reason === 'end_turn' && end.background) return end.subagents ? undefined : waitOutBackground(ctx, w.id)
+    setStatus(ctx, now, 'needs-you')
     return
   }
   await engine.fetchBranch(sb)
@@ -1385,6 +1420,25 @@ export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[]
   return listWorkers(ctx, featureId).filter(
     (w) => HOLDS_READY.has(w.status) && !isDriveWorkerKind(w.kind) && !(w.kind === 'review' && w.status === 'handed-back'),
   )
+}
+
+/**
+ * Server boot: a worker left working with no turn running was waiting out its
+ * background work, which died with the last server, and so did the window that
+ * would have said it needs the human. It needs them now. Workers whose turn the
+ * restart cut off (`cutOff`) are woken to carry on instead; a drive worker is
+ * handed back by the drive's own boot step; an agent still running (a `bun --hot`
+ * reload) is left alone.
+ */
+export function settleWorkersLeftWaiting(ctx: AppCtx, cutOff: ReadonlySet<string>): number {
+  const host = agentHost(ctx)
+  let settled = 0
+  for (const w of ctx.db.select().from(workers).all()) {
+    if (w.status !== 'working' || isDriveWorkerKind(w.kind) || cutOff.has(w.id) || host.isRunning(w.id)) continue
+    setStatus(ctx, w, 'needs-you')
+    settled++
+  }
+  return settled
 }
 
 /**
