@@ -27,6 +27,7 @@ import {
 } from '../src/services/autopilot'
 import { listByProject, listAfter } from '../src/services/events'
 import { list as listFeatures } from '../src/services/features'
+import { recordDesign, setDesignState } from '../src/services/designs'
 import { getFeatureRow } from '../src/services/repo'
 import { setWait, waitOf } from '../src/services/waits'
 import { workerTools } from '../src/workers/tools'
@@ -510,5 +511,21 @@ describe('the human side', () => {
       const f = seedFeature(ctx, projectId, { slug: 'cart', chatId: e.id })
       expect(await prompt(leadOf(f), 'hello')).not.toHaveProperty('decision')
     })
+  })
+})
+
+describe('designs approved on autopilot', () => {
+  it('a lead\'s approval on a locked feature is recorded as autopilot\'s; off autopilot it is the lead\'s', async () => {
+    const e = epic('Checkout')
+    const f = seedFeature(ctx, projectId, { slug: 'cart', chatId: e.id })
+    recordDesign(ctx, f.id, { path: '/preview/a.html', title: 'A' })
+    recordDesign(ctx, f.id, { path: '/preview/b.html', title: 'B' })
+    setDesignState(ctx, f.id, { path: '/preview/a.html', state: 'approved' })
+    await turnOn(ctx, e.id)
+    const b = setDesignState(ctx, f.id, { path: '/preview/b.html', state: 'approved' })
+    expect(b.approvedBy).toBe('autopilot')
+    await turnOff(ctx, e.id)
+    const a = setDesignState(ctx, f.id, { path: '/preview/a.html', state: 'approved' })
+    expect(a.approvedBy).toBe('lead')
   })
 })

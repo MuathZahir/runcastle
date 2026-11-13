@@ -205,7 +205,7 @@ export const designs = sqliteTable(
     width: integer('width'),
     picture: text('picture'),
     state: text('state', { enum: ['waiting', 'approved', 'dropped'] }).notNull(),
-    approvedBy: text('approved_by', { enum: ['human', 'lead'] }),
+    approvedBy: text('approved_by', { enum: ['human', 'lead', 'autopilot'] }),
     shownAt: integer('shown_at').notNull(),
     /** When the human last opened it; null until they have. */
     seenAt: integer('seen_at'),

@@ -43,6 +43,7 @@ function DesignRow({ design, now, index, onOpen }: { design: DesignEntry; now: n
         </span>
         <span className="truncate text-xs text-text-tertiary">
           {designWidthLabel(design.width)} · shown {relTimeAgo(design.shownAt, now)}
+          {design.state === 'approved' && design.approvedBy === 'autopilot' && ' · approved by autopilot'}
         </span>
       </span>
       {/* Its state is the group's heading, said once (DESIGN.md principle 5). */}

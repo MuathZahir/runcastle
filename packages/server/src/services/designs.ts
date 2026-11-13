@@ -7,6 +7,7 @@ import type { AppCtx } from '../db/types'
 import { designs, features } from '../db/schema'
 import { GateError, NotFoundError } from '../errors'
 import { SHOWN_TYPES, storedExt } from '../threads/shown'
+import { isLocked } from './autopilot'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { deliverToLead } from './lead-delivery'
@@ -93,6 +94,7 @@ function toEntry(row: DesignRow): DesignEntry {
     ...(row.width !== null ? { width: row.width } : {}),
     ...(row.picture !== null ? { picture: pictureUrl(row.featureId, row.picture) } : {}),
     state: row.state,
+    ...(row.approvedBy !== null ? { approvedBy: row.approvedBy } : {}),
     isNew: !opened(row),
     shownAt: row.shownAt,
     report: readReport(row.report),
@@ -162,7 +164,9 @@ function designAt(ctx: AppCtx, featureId: string, path: string): DesignRow {
 
 /**
  * The lead marks a yes or a rejection the human gave in words (decisions 8,
- * 20): approved by the lead, or dropped.
+ * 20): approved by the lead, or dropped. On a locked feature the yes is the
+ * epic's on autopilot, so it is recorded as autopilot's (epics-on-autopilot
+ * decision 11) and the Design tab says so.
  */
 export function setDesignState(
   ctx: AppCtx,
@@ -170,7 +174,8 @@ export function setDesignState(
   input: { path: string; state: 'approved' | 'dropped' },
 ): DesignEntry {
   const row = designAt(ctx, featureId, input.path)
-  const approvedBy: DesignApprover | null = input.state === 'approved' ? 'lead' : null
+  const approvedBy: DesignApprover | null =
+    input.state === 'approved' ? (isLocked(ctx, getFeatureRow(ctx, featureId)) ? 'autopilot' : 'lead') : null
   ctx.db.update(designs).set({ state: input.state, approvedBy }).where(eq(designs.id, row.id)).run()
   const updated = designRow(ctx, row.id)
   emit(ctx, featureId, {
