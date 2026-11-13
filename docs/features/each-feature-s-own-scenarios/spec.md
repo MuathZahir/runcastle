@@ -91,4 +91,4 @@ scenario receive `RUNCASTLE_SCENARIO_DATA`.
 
 ## Open questions
 
-- None blocking. Decisions 6, 7, 10 and 11 are the ones to confirm with the human.
+- None. The human confirmed every assumed decision on 2026-11-13.
