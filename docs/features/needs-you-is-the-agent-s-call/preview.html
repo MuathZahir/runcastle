@@ -274,33 +274,27 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['One bit: needs you, or not', 'The human: "I just want to know if the agent needs me or not."'],
     ['Only an agent\'s tool call sets it', 'wait_for_you, declare_ready, or a prompt waiting on a click; ending a turn never does.'],
     ['The reason is the agent\'s own short line', 'One line, one click to the chat it waits in.'],
-    ['The wait kinds go', 'wait_for_you takes only why; the agent\'s line replaces "Plan to approve" and the rest.', 'assumed'],
-    ['Every need kind runcastle derived is deleted', 'Delete the ten kinds rather than hide them behind one label.', 'assumed'],
-    ['Leads, orchestrator chats and workers all call it', 'The same guess lives in epic chats and workers; one rule for every agent.', 'assumed'],
-    ['What clears it', 'Only the human writing in that chat, or the agent replacing or withdrawing it; a worker handback or orchestrator message does not.', 'assumed'],
-    ['Ready to test is a "needs you"', 'declare_ready reads "Needs you · Ready to test"; "Ready to merge" goes.', 'assumed'],
-    ['Events with no agent behind them go to the agent; a dead run needs you', 'Conflicts and failed workers go to the lead; a crashed or limit-stopped run is the one need runcastle sets.', 'assumed'],
-    ['Stop reads idle', 'The human did it; nothing to tell them.', 'assumed'],
-    ['Waiting designs do not make a need by themselves', 'The lead\'s line says when to look; the design cards are unchanged.', 'assumed'],
-    ['A feature\'s row carries its workers\' needs', 'One place to look; the click opens the worker\'s chat.', 'assumed'],
-    ['No held needs, no owner prefixes, no hour\'s grace', 'Needs belong to the chat that asks; the owner switch stays for the sibling feature.', 'assumed'],
-    ['One ping per need, every time', 'With the guess gone, every need is real.', 'assumed'],
-    ['The status shows five things', 'Needs you, Working, Idle, Merged, or its shelf.', 'assumed'],
-    ['Up-next drafts with a problem leave the Needs you lane', 'No agent asked; a red row says it.', 'assumed'],
-    ['Agents are told to call the tool; there is no fallback', 'A fallback would be the guess again.', 'assumed'],
-    ['"Needs you" wins over "Working"', 'The agent said it needs you; that is what the row is for.', 'assumed'],
-    ['Closing clears needs', 'Merge, archive, shelf, or dropping a worker; nothing times out.', 'assumed']
+    ['The wait kinds go', 'wait_for_you takes only why; the agent\'s line replaces "Plan to approve" and the rest.'],
+    ['Every need kind runcastle derived is deleted', 'Delete the ten kinds rather than hide them behind one label.'],
+    ['Leads, orchestrator chats and workers all call it', 'The same guess lives in epic chats and workers; one rule for every agent.'],
+    ['What clears it', 'Only the human writing in that chat, or the agent replacing or withdrawing it; a worker handback or orchestrator message does not.'],
+    ['Ready to test is a "needs you"', 'declare_ready reads "Needs you · Ready to test"; "Ready to merge" goes.'],
+    ['Events with no agent behind them go to the agent; a dead run needs you', 'Conflicts and failed workers go to the lead; a crashed or limit-stopped run is the one need runcastle sets.'],
+    ['Stop reads idle', 'The human did it; nothing to tell them.'],
+    ['Waiting designs do not make a need by themselves', 'The lead\'s line says when to look; the design cards are unchanged.'],
+    ['A feature\'s row carries its workers\' needs', 'One place to look; the click opens the worker\'s chat.'],
+    ['No held needs, no owner prefixes, no hour\'s grace', 'Needs belong to the chat that asks; the owner switch stays for the sibling feature.'],
+    ['One ping per need, every time', 'With the guess gone, every need is real.'],
+    ['The status shows five things', 'Needs you, Working, Idle, Merged, or its shelf.'],
+    ['Up-next drafts with a problem leave the Needs you lane', 'No agent asked; a red row says it.'],
+    ['Agents are told to call the tool; there is no fallback', 'A fallback would be the guess again.'],
+    ['"Needs you" wins over "Working"', 'The agent said it needs you; that is what the row is for.'],
+    ['Closing clears needs', 'Merge, archive, shelf, or dropping a worker; nothing times out.']
   ]
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [6, 'Only the lead calls it; workers and epic chats keep their own states', 'Gives workers and epic chats a new tool; the challenger would keep "on its own" workers asking their lead'],
-    [7, 'Any new turn of the agent clears it; it asks again if it still waits', 'Changed on the orchestrator\'s view; the challenger preferred the alternative'],
-    [9, 'A dead run shows only in its chat and reads idle', 'The one need runcastle writes itself; changed after the challenger'],
-    [13, 'Keep "With <chat>" as a plain word on the row', 'Touches how epic-run features read, next to "Ownership is a label"'],
-    [17, 'Keep a quiet "it replied" hint, no ping', 'An agent that forgets the tool leaves nothing amber']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
