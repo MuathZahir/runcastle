@@ -1,5 +1,5 @@
 import type { FeatureListItem } from '../../lib/api'
-import type { ThreadEntry, ThreadState } from '../../lib/chat-thread'
+import type { ThreadEntry } from '../../lib/chat-thread'
 import { NEW_CHAT_NAME, UNSTARTED_CHAT, standIn } from '../../lib/chat-sessions'
 import { useLivePoll } from '../../lib/live'
 import type { SidebarThreads } from '../../lib/sidebar-threads'
@@ -9,13 +9,17 @@ import { trpc } from '../../trpc'
 import { IconBranch } from '../../icons'
 import { copyText } from '../workspace/copy-text'
 import type { FeatureAction } from '../FeatureActionsMenu'
-import { featureStateWords } from '../SidebarParts'
 import { FeatureSidebarPage } from './FeatureSidebarPage'
 
-/** The Lead card's second line: the lead's chat as every thread list says it, else where the feature is. */
-const LEAD_WORDS: Partial<Record<ThreadState, string>> = {
-  waiting: 'Waiting for you',
-  working: 'Working',
+/**
+ * The Lead card's second line: the lead's own need in its line, else Working
+ * or Idle; a merged feature's lead reads Merged (needs-you-is-the-agent-s-call
+ * decision 15). A worker's need is its own card's.
+ */
+export function leadStatusWords(lead: Pick<ThreadEntry, 'state' | 'need'>, feature: Pick<FeatureListItem, 'status'>): string {
+  if (lead.need) return `Needs you · ${lead.need.why}`
+  if (feature.status === 'shipped') return 'Merged'
+  return lead.state === 'working' ? 'Working' : 'Idle'
 }
 
 /**
@@ -60,7 +64,7 @@ export function FeatureSidebar({
   return (
     <FeatureSidebarPage
       feature={feature}
-      leadStatus={LEAD_WORDS[lead.state] ?? featureStateWords(feature)}
+      leadStatus={leadStatusWords(lead, feature)}
       onBack={onBack}
       onNewWorker={published.newThread}
       lead={lead}

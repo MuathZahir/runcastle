@@ -116,7 +116,7 @@ export function replacementLanding(landing: Landing, projects: Project[]): Landi
  * rule ({@link needsMe}), so a portfolio row and the project's rail can never
  * disagree about how many features are waiting.
  */
-function featureNeedsYou(f: FeatureListItem): boolean {
+function waitsOnYou(f: FeatureListItem): boolean {
   return needsMe(f) !== null
 }
 
@@ -125,7 +125,7 @@ function featureNeedsYou(f: FeatureListItem): boolean {
  * sidebar's rule, per project: the project rail's amber dot.
  */
 export function projectNeedsYou(features: readonly FeatureListItem[]): boolean {
-  return features.some(featureNeedsYou)
+  return features.some(waitsOnYou)
 }
 
 /** Coarse health lens for a portfolio card, most-urgent first. */
@@ -135,7 +135,7 @@ export interface ProjectStats {
   total: number
   /** Features waiting on a human (needs-me). */
   needsYou: number
-  /** Features with workers at work. */
+  /** Features an agent works on (the server's `working`). */
   working: number
   shipped: number
   health: ProjectHealth
@@ -147,8 +147,8 @@ export interface ProjectStats {
  * outranks a steady project; a project with no features reads empty.
  */
 export function projectStats(features: FeatureListItem[]): ProjectStats {
-  const working = features.filter((f) => f.workersWorking > 0).length
-  const needsYou = features.filter(featureNeedsYou).length
+  const working = features.filter((f) => f.working).length
+  const needsYou = features.filter(waitsOnYou).length
   const shipped = features.filter((f) => f.status === 'shipped').length
   const total = features.length
   const health: ProjectHealth =
@@ -171,7 +171,7 @@ export const APP_TITLE = 'runcastle'
  * counted, plain "runcastle" when none are — a pinned tab shows it unasked.
  */
 export function tabTitle(featureLists: FeatureListItem[][]): string {
-  const count = featureLists.reduce((n, features) => n + features.filter(featureNeedsYou).length, 0)
+  const count = featureLists.reduce((n, features) => n + features.filter(waitsOnYou).length, 0)
   return count > 0 ? `(${count}) ${APP_TITLE}` : APP_TITLE
 }
 

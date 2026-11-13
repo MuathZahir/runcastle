@@ -40,7 +40,7 @@ export function FeatureNoticeDeck({
   active: boolean
   /** Switch the feature to the tab a notice points at. */
   onView: (target: ChatNoticeTarget) => void
-  /** The agent declared the feature ready to test (`READY_TO_TEST`). */
+  /** The agent declared the feature ready to test: its need reads "Ready to test · …". */
   readyToTest?: boolean
 }) {
   const [deck, dispatch] = useReducer(deckReducer, [])

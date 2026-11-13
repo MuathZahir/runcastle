@@ -11,7 +11,7 @@ import { projectStats, type ProjectStats } from './projects'
  *
  * "Waiting" is the sidebar's own Needs-you rule ({@link needsMe}), the one the
  * tab-title count and the rail's dot use, so the page can never disagree with
- * them. "Running" is {@link projectStats}' rule: workers at work.
+ * them. "Running" is {@link projectStats}' rule: an agent works on it.
  *
  * Pure: no react, no trpc.
  */
@@ -19,7 +19,7 @@ import { projectStats, type ProjectStats } from './projects'
 /** A feature waiting on the human, with the short words that say why. */
 export interface WaitingFeature {
   feature: FeatureListItem
-  /** The need's first phrase ("Plan to approve", "Needs your answer"). */
+  /** The agent's line: why it needs the human. */
   words: string
 }
 
@@ -36,11 +36,6 @@ export interface PortfolioEntry {
   loading: boolean
 }
 
-/** A need's words up to its first " · " — the reason, without its detail. */
-export function needWords(label: string): string {
-  return label.split(' · ')[0]!
-}
-
 /**
  * One entry per project, in the given order. `lists[i]` is project i's
  * feature list, `undefined` while it loads (a loading project is a quiet line
@@ -54,9 +49,9 @@ export function portfolioEntries(
     const features = lists[i] ?? []
     const waiting = features.flatMap((feature) => {
       const n = needsMe(feature)
-      return n ? [{ feature, words: needWords(n.label) }] : []
+      return n ? [{ feature, words: n.why }] : []
     })
-    const running = features.filter((f) => f.workersWorking > 0)
+    const running = features.filter((f) => f.working)
     return {
       project,
       kind: waiting.length > 0 || running.length > 0 ? 'card' : 'line',

@@ -373,7 +373,7 @@ export function ProjectWorkspace({
       {phone ? (
         <PhoneChatBar
           title={allChats ? 'Epics' : (inFrontTitle ?? 'Epics')}
-          status={threadPhoneStatus(threads.find((t) => t.id === inFront)?.state)}
+          status={threadPhoneStatus(threads.find((t) => t.id === inFront))}
           onBack={() => backInApp(() => onBackToList?.())}
         />
       ) : (

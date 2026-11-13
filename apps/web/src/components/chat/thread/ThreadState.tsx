@@ -16,15 +16,15 @@ function ago(at: number, now = Date.now()): string {
 
 /**
  * A thread's state as its mark (decision 14), the same on every list of
- * threads: a spinner while it works, a dot while it waits on you, nothing idle.
+ * threads: a spinner while it works, a dot while it needs you, nothing idle.
  */
 export function ThreadStateMark({ state }: { state: ThreadState }) {
   if (state === 'working') return <Spinner size="sm" />
-  if (state === 'waiting') return <StatusDot tone="warning" label="Waiting for you" />
+  if (state === 'waiting') return <StatusDot tone="warning" label="Needs you" />
   return null
 }
 
-/** A thread's state in words: working, waiting for you, or how long it has been idle ('' when unknown). */
+/** A thread's state in words: working, needs you, or how long it has been idle ('' when unknown). */
 export function threadStateWords(state: ThreadState, updatedAt: number, now?: number): string {
-  return state === 'waiting' ? 'waiting for you' : state === 'working' ? 'working' : ago(updatedAt, now)
+  return state === 'waiting' ? 'needs you' : state === 'working' ? 'working' : ago(updatedAt, now)
 }

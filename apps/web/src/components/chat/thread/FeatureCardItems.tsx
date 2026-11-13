@@ -1,9 +1,10 @@
 import { createContext, useContext } from 'react'
-import { isDriveWorkerKind, type PromptDisplay, type WorkerRow } from '@runcastle/core'
+import { isDriveWorkerKind, type Need, type PromptDisplay, type WorkerRow } from '@runcastle/core'
 import type { ThreadItem } from '../../../lib/chat-thread'
 import { FeatureHandbackCard, HandbackCard, WorkerFailedCard, type HandbackOutcome } from '../../workers/WorkerParts'
 import type { FeatureListItem } from '../../../lib/api'
 import { relTimeAgo } from '../../../lib/format'
+import { shownWorkerStatus } from '../../../lib/workers'
 import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote } from './FeatureCards'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { WorkersStartedCard } from '../../workers/WorkersStartedCard'
@@ -42,7 +43,7 @@ function useLiveFeature(): { find: (featureId: string) => FeatureListItem | null
  * draw, with no outcome line and a link that does nothing.
  */
 export interface WorkerLinks {
-  workers: readonly WorkerRow[]
+  workers: readonly (WorkerRow & { need?: Need | null; turnRunning?: boolean })[]
   openWorker: (workerId: string) => void
 }
 
@@ -123,7 +124,8 @@ export function WorkersCardItem({ rows }: { rows: Extract<ThreadItem, { kind: 'w
       rows={rows.flatMap(({ kind, ...row }) => {
         // A lead never starts an unassigned worker (that is the human's "+").
         if (kind === 'unassigned') return []
-        const status = links?.workers.find((w) => w.id === row.workerId)?.status
+        const live = links?.workers.find((w) => w.id === row.workerId)
+        const status = live ? shownWorkerStatus(live) : undefined
         return [{ ...row, kind, ...(status ? { status } : {}) }]
       })}
       {...(links ? { onOpenWorker: links.openWorker } : {})}

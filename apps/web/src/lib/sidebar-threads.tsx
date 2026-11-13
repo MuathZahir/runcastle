@@ -95,19 +95,8 @@ export function originFeatures(threadId: string, features: readonly FeatureListI
 }
 
 /**
- * An Orchestrator chat's second line while it asks the human about features it
- * owns (every-feature-has-one-owner decisions 8, 17, 30): "Asking about <the
- * first one>", "+N" for the rest. Null when it asks about none it owns.
- */
-export function askingAboutLine(thread: Pick<ThreadEntry, 'id' | 'askingAbout'>, features: readonly FeatureListItem[]): string | null {
-  const owned = (thread.askingAbout ?? []).flatMap((id) => features.find((f) => f.id === id && f.heldBy === thread.id) ?? [])
-  if (!owned.length) return null
-  return `Asking about ${owned[0].title}${owned.length > 1 ? ` +${owned.length - 1}` : ''}`
-}
-
-/**
  * Whether the sidebar lists a chat (the-sidebar-shows-only-active-threads, with
- * orchestrator-chats-become-epics decision 16): it is working or asking, a
+ * orchestrator-chats-become-epics decision 16): it is working, needs you, or a
  * feature it cut is in flight or up next, it is in front, or the human wrote in
  * it lately, or left words unsent in it. Everything else lives on the Epics page.
  */
@@ -128,6 +117,7 @@ export function threadIsActive(
 ): boolean {
   return (
     thread.state !== 'idle' ||
+    !!thread.need ||
     thread.id === current ||
     originFeatures(thread.id, features).length > 0 ||
     // Words typed and not yet sent: leaving a new chat must not lose the place they wait in.

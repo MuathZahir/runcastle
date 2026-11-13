@@ -32,9 +32,9 @@ describe('GlossaryDialog', () => {
   })
 
   it('marks the word it was opened at', () => {
-    render(<GlossaryDialog open focus="held-by" onClose={vi.fn()} />)
-    const row = screen.getByText('Held by').closest('[data-term]')
-    expect(row?.getAttribute('data-term')).toBe('held-by')
+    render(<GlossaryDialog open focus="orchestrator" onClose={vi.fn()} />)
+    const row = screen.getByText('Epic').closest('[data-term]')
+    expect(row?.getAttribute('data-term')).toBe('orchestrator')
     expect(row?.className).toContain('bg-surface-selected')
     expect(screen.getByText('Round').closest('[data-term]')?.className).not.toContain('bg-surface-selected')
   })

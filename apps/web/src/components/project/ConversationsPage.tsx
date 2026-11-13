@@ -55,11 +55,12 @@ function ConversationRow({
   query: string
   onOpen: (threadId: string) => void
 }) {
-  const { state } = thread
+  // A chat its agent says needs you reads so, its line on hover (needs-you decision 6).
+  const state = thread.need ? 'waiting' : thread.state
   return (
     <button
       type="button"
-      title={thread.title}
+      title={thread.need ? `${thread.title} — Needs you · ${thread.need.why}` : thread.title}
       onClick={() => onOpen(thread.id)}
       className="group/row flex h-10 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover"
     >

@@ -32,7 +32,6 @@ export type GlossaryId =
   | 'test-drive'
   | 'scenario'
   | 'orchestrator'
-  | 'held-by'
 
 export interface GlossaryEntry {
   id: GlossaryId
@@ -133,12 +132,6 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: 'Epic',
     group: 'project',
     definition: 'A chat with the project’s own agent about one topic, named in a few words. Bring it a raw idea and it checks what exists, cuts the idea into features (listed under it in the sidebar), and can start, message and merge them when you ask.',
-  },
-  {
-    id: 'held-by',
-    term: 'Held by',
-    group: 'project',
-    definition: 'The epic looking after a feature. It hears when the feature needs you and can act on it for you.',
   },
 ]
 
