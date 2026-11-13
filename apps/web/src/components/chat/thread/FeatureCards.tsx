@@ -67,6 +67,10 @@ export function actionWords(action: FeatureAction, row: Pick<FeatureActionRow, '
       return 'Brief updated'
     case 'taken':
       return 'Taken into this chat'
+    case 'autopilotOn':
+      return 'On autopilot'
+    case 'autopilotOff':
+      return 'Off autopilot'
     case 'merged':
       return `Merged into ${row.into ?? 'its base'}`
     case 'driveStarted':
@@ -86,6 +90,8 @@ const ACTION_ICON: Record<FeatureAction, ReactNode> = {
   messaged: <IconSend size={14} />,
   brief: <IconDoc size={14} />,
   taken: <IconBranchFrom size={14} />,
+  autopilotOn: <IconPlay size={14} />,
+  autopilotOff: <IconStop size={14} />,
   merged: <IconGitMerge size={14} />,
   driveStarted: <IconPlay size={14} />,
   driveStopped: <IconStop size={14} />,

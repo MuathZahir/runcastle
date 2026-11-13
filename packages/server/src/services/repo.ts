@@ -40,9 +40,8 @@ export function rowToFeature(row: FeatureSelect): Feature {
     status: row.status,
     createdAt: row.createdAt,
     upNext: row.upNext,
-    heldBy: row.heldBy ?? undefined,
     chatId: row.chatId,
-    finish: row.finish,
+    inRun: row.inRun,
     stoppedAt: row.stoppedAt,
     lastHumanMessageAt: row.lastHumanMessageAt,
     lastDispatchAt: row.lastDispatchAt,
@@ -110,6 +109,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     epicColor: isEpicColor(row.epicColor) ? row.epicColor : undefined,
     epicIcon: isEpicIconId(row.epicIcon) ? row.epicIcon : undefined,
     epicIconByHuman: row.epicIconByHuman || undefined,
+    autopilot: row.autopilot || undefined,
   })
 }
 

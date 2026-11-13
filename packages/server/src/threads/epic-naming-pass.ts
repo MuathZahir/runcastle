@@ -40,13 +40,13 @@ export type NameModel = (prompt: string) => Promise<string | null>
 
 /**
  * Whether the sidebar lists a chat today (`threadIsActive` in the web's
- * `sidebar-threads.tsx`, minus the chat in front): working or asking, holding a
- * feature in motion or up next, or written in by the human in the last day.
+ * `sidebar-threads.tsx`, minus the chat in front): working or asking, with a
+ * feature of its own in motion or up next, or written in by the human in the last day.
  */
-export function chatIsListed(thread: ThreadEntry, features: readonly Pick<Feature, 'heldBy' | 'status' | 'upNext'>[], now: number): boolean {
+export function chatIsListed(thread: ThreadEntry, features: readonly Pick<Feature, 'chatId' | 'status' | 'upNext'>[], now: number): boolean {
   return (
     thread.state !== 'idle' ||
-    features.some((f) => f.heldBy === thread.id && (f.status === 'active' || (f.status === 'draft' && f.upNext))) ||
+    features.some((f) => f.chatId === thread.id && (f.status === 'active' || (f.status === 'draft' && f.upNext))) ||
     (thread.lastHumanAt !== undefined && now - thread.lastHumanAt < WRITTEN_KEEPS_LISTED_MS)
   )
 }

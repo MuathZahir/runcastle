@@ -2,7 +2,8 @@ import type { SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { emitForSession } from '../services/events'
-import { holderName, holderOf } from '../services/holding'
+import { autopilotOf } from '../services/autopilot'
+import { chatName } from '../threads/chat-name'
 import { type PushMessage, type PushSender, sendPushToAll } from '../services/push'
 import { getFeatureRow } from '../services/repo'
 import { requireOrchestratorSession } from './orchestrator-tools'
@@ -37,7 +38,7 @@ function sender(ctx: AppCtx, session: SessionRow): Pick<PushMessage, 'title' | '
   const thread = `?thread=${encodeURIComponent(session.id)}`
   if (session.kind === 'project') {
     const projectId = requireOrchestratorSession(session)
-    return { title: holderName(session), url: `${path('p', projectId, 'chat')}${thread}` }
+    return { title: chatName(session), url: `${path('p', projectId, 'chat')}${thread}` }
   }
   if (session.kind !== 'chat' || !session.featureId) {
     throw new GateError(
@@ -45,11 +46,11 @@ function sender(ctx: AppCtx, session: SessionRow): Pick<PushMessage, 'title' | '
     )
   }
   const feature = getFeatureRow(ctx, session.featureId)
-  const holder = holderOf(ctx, feature)
-  if (holder) {
+  const lock = autopilotOf(ctx, feature)
+  if (lock) {
     throw new GateError(
-      `the thread "${holderName(holder)}" holds this feature, so only it may notify the human. ` +
-        'Say in this chat that you cannot ping them and why; they can ask that thread.',
+      `this feature is on autopilot in the epic "${lock.epicName}", so only the epic may notify the human. ` +
+        'Tell the epic with hand_back instead.',
     )
   }
   return {

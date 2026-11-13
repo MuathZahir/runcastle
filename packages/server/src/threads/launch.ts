@@ -9,7 +9,6 @@ import { runtimeAdapterFor } from '../launcher/runtimes'
 import type { AcpLaunchSpec, RuntimeLaunchInput } from '../launcher/runtimes/types'
 import * as git from '../services/git'
 import { rosterConfig } from '../services/model-discovery'
-import { heldSlugs } from '../services/holding'
 import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../services/repo'
 import { listScenarioPaths } from '../services/scenarios'
@@ -176,8 +175,6 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
           worktreePath,
           base: branchBase,
           openNotes: openProjectNoteCount(ctx, project.id),
-          // A thread not yet started holds something only by replacing a capped one.
-          ...(row.ccSessionId ? {} : { held: heldSlugs(ctx, row.id) }),
         },
         // The orchestrator works while the human is away (`one-orchestrator-no-mode` decision 1).
         permissionMode: 'bypassPermissions',

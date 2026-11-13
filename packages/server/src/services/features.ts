@@ -11,7 +11,7 @@ import type {
   SessionStatus,
   Ticket,
 } from '@runcastle/core'
-import { type FeatureFinish, newId, readyToTestWhy } from '@runcastle/core'
+import { newId, readyToTestWhy } from '@runcastle/core'
 import { scenarioDataDir, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -35,6 +35,7 @@ import {
   describeBlocker,
   waitingOn,
 } from './dependencies'
+import { autopilotReader, epicOnAutopilot, type FeatureAutopilot, isLocked, tellEpicInstead } from './autopilot'
 import { emit, emitProject, latestEventTs, latestTsByFeature, upNextProblems } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
@@ -129,6 +130,8 @@ export interface FeatureListItem extends Feature {
   upNextProblem: string | null
   /** What it needs from the human, or null (`services/feature-need.ts`). */
   need: Need | null
+  /** Its epic when it is locked (in its epic's run, the epic on autopilot); null exactly when it is not. */
+  autopilot: FeatureAutopilot | null
 }
 
 export interface FeatureFull {
@@ -147,6 +150,8 @@ export interface FeatureFull {
   working: boolean
   /** See {@link FeatureListItem.need}: the header, the sidebar and the pings read one answer. */
   need: Need | null
+  /** See {@link FeatureListItem.autopilot}. */
+  autopilot: FeatureAutopilot | null
 }
 
 export interface CreateFeatureInput {
@@ -177,12 +182,12 @@ export interface CreateFeatureInput {
    */
   draft?: boolean
   /**
-   * The orchestrator chat creating it (`every-feature-has-one-owner` decision
-   * 21): it becomes the feature's chat, `finish` is recorded, and
-   * `feature.created` names it as `createdBy`. Absent for New feature and for a
-   * draft a feature's agent parks. Who owns it is the holding service's call.
+   * The orchestrator chat creating it: it becomes the feature's epic, and
+   * `feature.created` names it as `createdBy`. Created while that epic is on
+   * autopilot, the feature joins its run (`epics-on-autopilot` decision 13).
+   * Absent for New feature and for a draft a feature's agent parks.
    */
-  chat?: { threadId: string; finish: FeatureFinish }
+  chat?: { threadId: string }
 }
 
 export async function createFeature(
@@ -211,7 +216,7 @@ export async function createFeature(
     status,
     createdAt: Date.now(),
     chatId: input.chat?.threadId ?? null,
-    finish: input.chat?.finish ?? 'you',
+    inRun: epicOnAutopilot(ctx, input.chat?.threadId),
   }
   const inserted = ctx.db.insert(features).values(row).returning().get()
   const feature = rowToFeature(inserted)
@@ -460,6 +465,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
       : null,
     working: feature.status === 'active' && featureWorking(ctx, feature.id, lead),
     need: needOf(ctx, feature),
+    autopilot: autopilotReader(ctx, feature.projectId)(feature),
   }
 }
 
@@ -483,6 +489,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
     ctx,
     projectFeatures.filter((f) => f.status === 'active').map((f) => f.id),
   )
+  const autopilotOf = autopilotReader(ctx, projectId)
 
   return projectFeatures.map((feature) => {
     const byStatus = ticketStatuses.get(feature.id)
@@ -511,6 +518,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       blocks: deps.blocks.get(feature.id) ?? [],
       upNextProblem: feature.upNext && feature.status === 'draft' ? (problems.get(feature.id) ?? null) : null,
       need: needOf(ctx, feature, waits.get(feature.id) ?? []),
+      autopilot: autopilotOf(feature),
     }
   })
 }
@@ -629,6 +637,16 @@ export function declareReady(
     message: `ready for you · test drive ▸ ${scenario}`,
     data: { declarationId: declaration.id, runId: null, scenario },
   })
+  // On autopilot the epic hears it instead, and the feature needs nobody (epics-on-autopilot decision 17).
+  if (isLocked(ctx, feature)) {
+    void tellEpicInstead(
+      ctx,
+      feature,
+      `declared ready to test (scenario ${scenario}). Drive it with drive({ slug: "${feature.slug}", action: "start", scenario: "${scenario}" }) or tell the human, as the run plan says.`,
+      'Ready to test',
+    ).catch((err) => console.error(`telling the epic ${feature.slug} is ready failed`, err))
+    return { declaration }
+  }
   // Needs you until the human writes in the lead's chat (needs-you decision 8).
   const lead = leadSessionId ?? newestThread(ctx, { featureId }, 'chat')?.id
   if (lead) setWait(ctx, lead, readyToTestWhy(scenario), 'agent')

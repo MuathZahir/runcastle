@@ -3,7 +3,7 @@ import type { AppCtx } from '../db/types'
 import { getSessionRow } from '../launcher/sessions'
 import { subscribeLive } from './bus'
 import { emitScoped, getEventRow } from './events'
-import { holderName } from './holding'
+import { chatName } from '../threads/chat-name'
 import { type PushOutcome, type PushSender, sendPushToAll } from './push'
 import { tryGetFeature } from './repo'
 
@@ -44,7 +44,7 @@ export async function pushNeed(ctx: AppCtx, event: EventRow, send?: PushSender):
   } else {
     const chat = getSessionRow(ctx, need.threadId)
     if (!chat?.projectId) return null
-    message = { title: holderName(chat), url: `${path('p', chat.projectId, 'chat')}${thread}` }
+    message = { title: chatName(chat), url: `${path('p', chat.projectId, 'chat')}${thread}` }
   }
   const outcome = await sendPushToAll(ctx, { ...message, body: needPushBody(need.why) }, send)
   if (outcome.sent > 0) {

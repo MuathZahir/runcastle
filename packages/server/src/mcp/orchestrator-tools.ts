@@ -12,9 +12,9 @@ import {
 import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import * as z from 'zod'
-import { events, features } from '../db/schema'
+import { features } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
 import {
@@ -30,7 +30,8 @@ import { featureDocPath } from '../services/feature-docs'
 import { requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
-import { type ChatFinish, chatNameOf, holderName, requireHold, takeFeature } from '../services/holding'
+import * as autopilot from '../services/autopilot'
+import { type AutopilotAction, type AutopilotResult, requireMayAct } from '../services/autopilot'
 import { type EpicSibling, epicSiblingsInProgress } from '../services/epic-siblings'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
@@ -48,11 +49,11 @@ import type { HeaderCarrier } from './server'
 /**
  * The orchestrator's tools (`one-orchestrator-no-mode`): every orchestrator
  * is the orchestrator. What it may act on is drawn by its instructions (decision
- * 2), and by one server rule (`threads-hold-features`): every acting tool goes
- * through {@link requireHeldFeature}, so a chat acts only on features it owns
- * (`every-feature-has-one-owner` decision 19; `send_to_feature` alone also
- * reaches a human-owned one). Beyond that each tool refuses what its service already refuses,
- * with a sentence saying why, as the human's buttons do.
+ * 2), and by one server rule (`epics-on-autopilot`): every acting tool goes
+ * through {@link requireActableFeature}, so an epic creates, starts and plans
+ * its own features, and talks to, stops, drives and merges only the ones on
+ * autopilot in it. Beyond that each tool refuses what its service already
+ * refuses, with a sentence saying why, as the human's buttons do.
  */
 
 /** The caller of a session tool, or null when the request names no session. */
@@ -87,58 +88,14 @@ export function requireProjectFeature(ctx: AppCtx, session: SessionRow, slug: st
   return featureBySlug(ctx, requireOrchestratorSession(session), slug)
 }
 
-/** {@link requireProjectFeature}, for a tool that changes it: this thread must hold it. */
-export function requireHeldFeature(ctx: AppCtx, session: SessionRow, slug: string): Feature {
-  return requireHold(ctx, session, requireProjectFeature(ctx, session, slug))
-}
-
-/** The brief line a "Plan automatically" cut carries (create_feature's planning line). */
-const AUTOMATIC_PLANNING = /^Planning mode:\s*automatic\s*$/im
-
 /**
- * {@link requireHeldFeature} for `start_feature` and `plan_feature`, with one
- * allowance (one-place-to-answer decision 16): a feature of the human's that
- * this chat cut as "Plan automatically" and that has never had an automatic
- * planning run may be started, and its planning run started, by this chat.
- * The owner stays the human. Everything else is refused as before.
+ * {@link requireProjectFeature}, for a tool that does `action` to it: the
+ * calling epic must be allowed to ({@link mayAct}). Creating, starting,
+ * planning and a draft's brief pass on the epic's own features; messaging,
+ * stopping, driving and merging only when the feature is on autopilot in it.
  */
-export function requireStartableFeature(ctx: AppCtx, session: SessionRow, slug: string): Feature {
-  const feature = requireProjectFeature(ctx, session, slug)
-  if (
-    !feature.heldBy &&
-    feature.chatId === session.id &&
-    feature.status !== 'shipped' &&
-    AUTOMATIC_PLANNING.test(briefText(ctx, feature)) &&
-    !hadPlanningRun(ctx, feature.id)
-  ) {
-    return feature
-  }
-  return requireHold(ctx, session, feature)
-}
-
-/** The feature's brief: the parked one on a draft, else its `brief.md` (or the parked one when that is missing). */
-function briefText(ctx: AppCtx, feature: Feature): string {
-  if (feature.status === 'draft') return feature.brief ?? ''
-  const path = featureDocPath(projectForFeature(ctx, feature), feature, 'brief.md')
-  return existsSync(path) ? readFileSync(path, 'utf8') : (feature.brief ?? '')
-}
-
-/** Whether the feature ever launched an automatic planning run (its `session.launching` says `purpose: 'self-plan'`). */
-function hadPlanningRun(ctx: AppCtx, featureId: string): boolean {
-  return (
-    ctx.db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          eq(events.featureId, featureId),
-          eq(events.type, 'session.launching'),
-          sql`json_extract(${events.data}, '$.purpose') = 'self-plan'`,
-        ),
-      )
-      .limit(1)
-      .all().length > 0
-  )
+export function requireActableFeature(ctx: AppCtx, session: SessionRow, slug: string, action: AutopilotAction): Feature {
+  return requireMayAct(ctx, session.id, requireProjectFeature(ctx, session, slug), action)
 }
 
 /**
@@ -177,27 +134,37 @@ export function recordFeatureAction(
   })
 }
 
+/** What `set_autopilot` takes. */
+export interface SetAutopilotInput {
+  action: 'on' | 'add' | 'remove' | 'off'
+  features?: string[]
+}
+
 /**
- * On the human's words ("run X for me"), make this chat the feature's owner and
- * its chat, taking it as far as `finish` says (default: shows the human before
- * merging), whoever owned it. Wakes nothing on it.
+ * Turn this epic's autopilot on with the features of the run plan the human
+ * agreed, add or remove features, or turn it off (`epics-on-autopilot`
+ * decisions 1, 8, 13, 14). Only ever on the human's own words.
  */
-export const toolTakeFeature = orchestratorTool(
-  (
-    ctx: AppCtx,
-    session: SessionRow,
-    input: { slug: string; finish?: ChatFinish },
-  ): { slug: string; heldBy: string; takenFrom: string | null; finish: ChatFinish } => {
-    const feature = requireProjectFeature(ctx, session, input.slug)
-    const finish = input.finish ?? 'show'
-    const { from } = takeFeature(ctx, session, feature, finish)
-    recordFeatureAction(ctx, session, feature.id, 'taken')
-    return {
-      slug: input.slug,
-      heldBy: holderName(session),
-      takenFrom: from && from !== session.id ? chatNameOf(ctx, from) : null,
-      finish,
+export const toolSetAutopilot = orchestratorTool(
+  async (ctx: AppCtx, session: SessionRow, input: SetAutopilotInput): Promise<AutopilotResult> => {
+    requireOrchestratorSession(session)
+    const slugs = input.features ?? []
+    if (input.action !== 'off' && slugs.length === 0) {
+      throw new InvalidInputError(`set_autopilot ${input.action} needs \`features\`: the slugs of the run plan.`)
     }
+    const done =
+      input.action === 'on'
+        ? await autopilot.turnOn(ctx, session.id, slugs)
+        : input.action === 'add'
+          ? await autopilot.add(ctx, session.id, slugs)
+          : input.action === 'remove'
+            ? await autopilot.remove(ctx, session.id, slugs)
+            : await autopilot.turnOff(ctx, session.id)
+    for (const slug of done.changed) {
+      const feature = requireProjectFeature(ctx, session, slug)
+      recordFeatureAction(ctx, session, feature.id, input.action === 'on' || input.action === 'add' ? 'autopilotOn' : 'autopilotOff')
+    }
+    return done
   },
 )
 
@@ -258,7 +225,7 @@ export const toolStartFeature = orchestratorTool(
     session: SessionRow,
     input: { slug: string; baseBranch?: string },
   ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
-    const feature = requireStartableFeature(ctx, session, input.slug)
+    const feature = requireActableFeature(ctx, session, input.slug, 'start')
     const landing = await landProjectBranchNow(ctx, projectForFeature(ctx, feature), session.id)
     if (!landing.ok) {
       throw new GateError(
@@ -279,7 +246,7 @@ export const toolPlanFeature = orchestratorTool(
     input: { slug: string },
     launch: LaunchSessionOptions = {},
   ): Promise<{ slug: string; sessionId: string }> => {
-    const feature = requireStartableFeature(ctx, session, input.slug)
+    const feature = requireActableFeature(ctx, session, input.slug, 'plan')
     const { sessionId } = await launchSession(
       ctx,
       { featureId: feature.id, kind: 'chat', purpose: 'self-plan' },
@@ -293,7 +260,7 @@ export const toolPlanFeature = orchestratorTool(
 /** End the feature's running self-planning run, as its Stop button does. */
 export const toolStopFeatureRun = orchestratorTool(
   (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
-    const feature = requireHeldFeature(ctx, session, input.slug)
+    const feature = requireActableFeature(ctx, session, input.slug, 'stop')
     // The run plan_feature starts is always one this can stop; the feature's
     // lead never is — ending it would drop the conversation it is having.
     const run = activeSessionsForFeature(ctx, feature.id).find(isStoppableHeadlessRun)
@@ -320,7 +287,7 @@ export const toolDrive = orchestratorTool(
       const project = requireProjectById(ctx, requireOrchestratorSession(session))
       return git.projectDrive(ctx, project, input.action, opts)
     }
-    const feature = requireHeldFeature(ctx, session, input.slug)
+    const feature = requireActableFeature(ctx, session, input.slug, 'drive')
     requireNotDraft(feature)
     const result = await git.testDrive(
       ctx,
@@ -353,12 +320,11 @@ export const toolMergeFeature = orchestratorTool(
     session: SessionRow,
     input: { slug: string },
   ): Promise<MergeFlowResult & { inProgress?: EpicSibling[] }> => {
-    const feature = requireHeldFeature(ctx, session, input.slug)
+    const feature = requireActableFeature(ctx, session, input.slug, 'merge')
     const merged = await mergeFeatureFlow(ctx, feature.id, { by: session.id })
     if (!merged.ok || merged.conflict) return merged
     recordFeatureAction(ctx, session, feature.id, 'merged', { into: merged.base })
-    // Only the epic checks fit: a chat that took the feature from another epic gets no list, and that epic is woken instead.
-    if (feature.chatId !== session.id) return merged
+    // Only a feature locked to this epic merges here, so the epic checks fit with its own list.
     return { ...merged, inProgress: epicSiblingsInProgress(ctx, getFeatureRow(ctx, feature.id)) }
   },
 )
@@ -384,7 +350,7 @@ export const toolAddToBrief = orchestratorTool(
     session: SessionRow,
     input: { slug: string; text: string },
   ): Promise<{ slug: string; relPath: string }> => {
-    const feature = requireHeldFeature(ctx, session, input.slug)
+    const feature = requireActableFeature(ctx, session, input.slug, 'brief')
     const text = input.text.trim()
     if (!text) throw new InvalidInputError('there is nothing to add: the text is empty.')
     if (feature.status === 'draft') {
@@ -475,21 +441,23 @@ export function registerOrchestratorTools(
   )
 
   acting(
-    'take_feature',
+    'set_autopilot',
     {
-      title: 'Take a feature',
+      title: 'Turn autopilot on or off',
       description:
-        'Make this chat the owner of a feature and its chat: you hear its news and may act on it. Use it only ' +
-        'on the human’s words ("run X for me"), never on your own judgement.',
+        'Call it only on the human’s own words, after the human agreed your run plan: never on your own judgement. ' +
+        '`on` locks the run plan’s features to this epic: their leads report to you, and you message, drive and merge them. ' +
+        '`add` ("also run X", moving it from another epic) and `remove` ("I’ll do X myself") change the run; ' +
+        '`off` gives every feature back to the human. Nothing running stops.',
       inputSchema: {
-        slug: SlugInput,
-        finish: z
-          .enum(['show', 'merge'])
+        action: z.enum(['on', 'add', 'remove', 'off']).describe('`on`, `add`, `remove` or `off`.'),
+        features: z
+          .array(z.string().min(1))
           .optional()
-          .describe('`show` (default): build it and show the human before merging. `merge`: build and merge it.'),
+          .describe('The slugs: the run plan’s for `on`, the ones to add or remove. Omit for `off`.'),
       },
     },
-    toolTakeFeature,
+    toolSetAutopilot,
   )
 
   acting(
@@ -565,7 +533,7 @@ export function registerOrchestratorTools(
       description:
         'Merge a feature into its base, as Merge does. On a conflict it returns `conflict` and the ' +
         '`files` to resolve in the worktree. A clean merge of a feature you cut returns `inProgress`: ' +
-        'the other features you cut still in progress (slug, title, owner), to check the merge fits with.',
+        'the other features you cut still in progress (slug, title, who runs it), to check the merge fits with.',
       inputSchema: { slug: SlugInput },
     },
     toolMergeFeature,
