@@ -1,8 +1,7 @@
 # The charter (`CONTEXT.md`) — and project-scope ADRs
 
-Load this when you are actually about to write, amend, or advise on `CONTEXT.md`
-or an ADR under `docs/adr/`. `/runcastle:project` §5 carries the one-line rule;
-this file carries the procedure and the format.
+Read this when you are about to write, amend, or advise on `CONTEXT.md` or an
+ADR under `docs/adr/`.
 
 ## Who may write it
 
@@ -51,7 +50,7 @@ always describes the present, never the history.>
 
 - **`## Deferred / open threads` is the charter's home for an idea that is
   not yet a feature** — once it has resolved into one, put it in the backlog
-  (`create_feature({ draft: true })`, §1c) instead. There is no backlog table in the charter and
+  (`create_feature({ draft: true })`) instead. There is no backlog table in the charter and
   no `docs/backlog.md`, and you must not create one.
 - Because the charter is **rewritten in place**, a chat that gets done is
   *deleted* — which is exactly what stops it decaying into a graveyard.
@@ -74,6 +73,6 @@ an empty ADR.
 
 ## Before you finish
 
-Anything you wrote here is subject to the closing move (§7): commit it, with a
-real message (`docs(project): …`), or delete it. Write-without-commit leaves a
+Commit what you wrote here with a real message (`docs(project): …`), or delete
+it. Write-without-commit leaves a
 dirty tree, and a dirty tree blocks the next test drive and jams the next merge.
