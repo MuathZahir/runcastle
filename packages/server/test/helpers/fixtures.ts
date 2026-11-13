@@ -45,7 +45,7 @@ export function seedProject(ctx: AppCtx, repoPath: string = tmpRepo()): Project 
  * cut one, so it records a base (`main`) like every real feature does; pass
  * `baseBranch: null` for the two rows that genuinely have none — a parked draft,
  * or a legacy row from before the column existed. `lockedTo` seeds a feature
- * on autopilot in that epic: its chat, in the run, and the epic's switch on.
+ * on autopilot in that epic: its chat, and the epic's switch on.
  */
 export function seedFeature(
   ctx: AppCtx,
@@ -63,7 +63,6 @@ export function seedFeature(
       title: overrides.title ?? 'Demo feature',
       oneLiner: overrides.oneLiner ?? 'a demo feature',
       chatId: overrides.lockedTo ?? overrides.chatId ?? null,
-      inRun: overrides.lockedTo ? true : (overrides.inRun ?? false),
       brief: overrides.brief ?? null,
       branch: overrides.branch ?? `feature/${slug}`,
       baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,

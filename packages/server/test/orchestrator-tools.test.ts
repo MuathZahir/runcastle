@@ -102,7 +102,8 @@ describe('the orchestrator’s gate', () => {
     const made = await toolCreateFeature(ctx, session, { title: 'Login form', oneLiner: 'log in' })
     const parked = await toolCreateFeature(ctx, session, { title: 'Later thing', oneLiner: 'parked', draft: true })
     const other = seedFeature(ctx, projectId, { slug: 'humans' })
-    await toolSetAutopilot(ctx, session, { action: 'on', features: ['humans'] })
+    await toolSetAutopilot(ctx, session, { action: 'on' })
+    await toolSetAutopilot(ctx, session, { action: 'add', features: ['humans'] })
     await expect(toolCreateFeature(ctx, session, { title: 'No line', oneLiner: ' ' })).rejects.toThrow()
     await expect(toolSetAutopilot(ctx, session, { action: 'add', features: ['nope'] })).rejects.toThrow(GateError)
 
@@ -110,6 +111,8 @@ describe('the orchestrator’s gate', () => {
     expect(acted.map((e) => e.type === 'feature_acted' && [e.featureId, e.title, e.action])).toEqual([
       [made.id, 'Login form', 'created'],
       [parked.id, 'Later thing', 'parked'],
+      [made.id, 'Login form', 'autopilotOn'],
+      [parked.id, 'Later thing', 'autopilotOn'],
       [other.id, other.title, 'autopilotOn'],
     ])
   })

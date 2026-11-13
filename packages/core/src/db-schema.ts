@@ -174,11 +174,6 @@ export const features = sqliteTable('features', {
    */
   chatId: text('chat_id'),
   /**
-   * In its epic's run (`epics-on-autopilot` decision 14). The feature is locked
-   * exactly when this is set and its epic's `sessions.autopilot` is on.
-   */
-  inRun: integer('in_run', { mode: 'boolean' }).notNull().default(false),
-  /**
    * When the human pressed Stop (`the-feature-lead-runs-rounds` decision 23);
    * null when not stopped. Dispatch is refused while it is set and no human
    * message has arrived since; that message clears it.
@@ -397,8 +392,9 @@ export const sessions = sqliteTable('sessions', {
   /** The human picked the icon (decision 3): `name_epic` never changes it again. */
   epicIconByHuman: integer('epic_icon_by_human', { mode: 'boolean' }).notNull().default(false),
   /**
-   * An epic on autopilot (`epics-on-autopilot` decision 1): its features in the
-   * run are locked to it. Only a project chat sets it; off at upgrade (decision 21).
+   * An epic on autopilot (`epics-on-autopilot` decisions 1, 14): every feature
+   * of it (`features.chat_id`) not shipped or archived is locked to it. Only a
+   * project chat sets it; off at upgrade (decision 21).
    */
   autopilot: integer('autopilot', { mode: 'boolean' }).notNull().default(false),
   /**

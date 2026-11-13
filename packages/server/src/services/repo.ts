@@ -41,7 +41,6 @@ export function rowToFeature(row: FeatureSelect): Feature {
     createdAt: row.createdAt,
     upNext: row.upNext,
     chatId: row.chatId,
-    inRun: row.inRun,
     stoppedAt: row.stoppedAt,
     lastHumanMessageAt: row.lastHumanMessageAt,
     lastDispatchAt: row.lastDispatchAt,

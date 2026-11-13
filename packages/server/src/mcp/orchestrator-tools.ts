@@ -136,30 +136,33 @@ export function recordFeatureAction(
 
 /** What `set_autopilot` takes. */
 export interface SetAutopilotInput {
-  action: 'on' | 'add' | 'remove' | 'off'
+  action: 'on' | 'add' | 'off'
+  /** `add` only: the features to move into this epic. */
   features?: string[]
 }
 
 /**
- * Turn this epic's autopilot on with the features of the run plan the human
- * agreed, add or remove features, or turn it off (`epics-on-autopilot`
+ * Turn this epic's autopilot on (every open feature of it locks), move
+ * features into it ("also run X"), or turn it off (`epics-on-autopilot`
  * decisions 1, 8, 13, 14). Only ever on the human's own words.
  */
 export const toolSetAutopilot = orchestratorTool(
   async (ctx: AppCtx, session: SessionRow, input: SetAutopilotInput): Promise<AutopilotResult> => {
     requireOrchestratorSession(session)
     const slugs = input.features ?? []
-    if (input.action !== 'off' && slugs.length === 0) {
-      throw new InvalidInputError(`set_autopilot ${input.action} needs \`features\`: the slugs of the run plan.`)
+    if (input.action === 'add' && slugs.length === 0) {
+      throw new InvalidInputError('set_autopilot add needs `features`: the slugs to move into this epic.')
+    }
+    // Only these three: there is no taking one feature back (decision 14).
+    if (input.action !== 'on' && input.action !== 'add' && input.action !== 'off') {
+      throw new InvalidInputError(`set_autopilot takes \`on\`, \`add\` or \`off\`, not \`${String(input.action)}\`: to work on one feature, the human ends autopilot.`)
     }
     const done =
       input.action === 'on'
-        ? await autopilot.turnOn(ctx, session.id, slugs)
+        ? await autopilot.turnOn(ctx, session.id)
         : input.action === 'add'
           ? await autopilot.add(ctx, session.id, slugs)
-          : input.action === 'remove'
-            ? await autopilot.remove(ctx, session.id, slugs)
-            : await autopilot.turnOff(ctx, session.id)
+          : await autopilot.turnOff(ctx, session.id)
     for (const slug of done.changed) {
       const feature = requireProjectFeature(ctx, session, slug)
       recordFeatureAction(ctx, session, feature.id, input.action === 'on' || input.action === 'add' ? 'autopilotOn' : 'autopilotOff')
@@ -445,16 +448,16 @@ export function registerOrchestratorTools(
     {
       title: 'Turn autopilot on or off',
       description:
-        'Call it only on the human’s own words, after the human agreed your run plan: never on your own judgement. ' +
-        '`on` locks the run plan’s features to this epic: their leads report to you, and you message, drive and merge them. ' +
-        '`add` ("also run X", moving it from another epic) and `remove` ("I’ll do X myself") change the run; ' +
+        'Only on the human’s own words, after they agreed your run plan. ' +
+        '`on` locks every open feature of this epic: their leads report to you, and you run them as far as the run plan goes. ' +
+        '`add` ("also run X") moves features into this epic, refused while one is locked to another epic. ' +
         '`off` gives every feature back to the human. Nothing running stops.',
       inputSchema: {
-        action: z.enum(['on', 'add', 'remove', 'off']).describe('`on`, `add`, `remove` or `off`.'),
+        action: z.enum(['on', 'add', 'off']).describe('`on`, `add` or `off`.'),
         features: z
           .array(z.string().min(1))
           .optional()
-          .describe('The slugs: the run plan’s for `on`, the ones to add or remove. Omit for `off`.'),
+          .describe('`add` only: the slugs to move into this epic. Omit for `on` and `off`.'),
       },
     },
     toolSetAutopilot,

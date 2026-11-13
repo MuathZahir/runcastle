@@ -372,14 +372,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "in_run": {
-          "name": "in_run",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
         "stopped_at": {
           "name": "stopped_at",
           "type": "integer",

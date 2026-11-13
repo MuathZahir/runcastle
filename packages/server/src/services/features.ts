@@ -35,7 +35,7 @@ import {
   describeBlocker,
   waitingOn,
 } from './dependencies'
-import { autopilotReader, epicOnAutopilot, type FeatureAutopilot, isLocked, tellEpicInstead } from './autopilot'
+import { autopilotReader, type FeatureAutopilot, isLocked, tellEpicInstead } from './autopilot'
 import { emit, emitProject, latestEventTs, latestTsByFeature, upNextProblems } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
@@ -130,7 +130,7 @@ export interface FeatureListItem extends Feature {
   upNextProblem: string | null
   /** What it needs from the human, or null (`services/feature-need.ts`). */
   need: Need | null
-  /** Its epic when it is locked (in its epic's run, the epic on autopilot); null exactly when it is not. */
+  /** Its epic when it is locked (its epic on autopilot, the feature neither shipped nor archived); null exactly when it is not. */
   autopilot: FeatureAutopilot | null
 }
 
@@ -184,7 +184,8 @@ export interface CreateFeatureInput {
   /**
    * The orchestrator chat creating it: it becomes the feature's epic, and
    * `feature.created` names it as `createdBy`. Created while that epic is on
-   * autopilot, the feature joins its run (`epics-on-autopilot` decision 13).
+   * autopilot, the feature is locked to it at once (`epics-on-autopilot`
+   * decisions 13, 14).
    * Absent for New feature and for a draft a feature's agent parks.
    */
   chat?: { threadId: string }
@@ -216,7 +217,6 @@ export async function createFeature(
     status,
     createdAt: Date.now(),
     chatId: input.chat?.threadId ?? null,
-    inRun: epicOnAutopilot(ctx, input.chat?.threadId),
   }
   const inserted = ctx.db.insert(features).values(row).returning().get()
   const feature = rowToFeature(inserted)

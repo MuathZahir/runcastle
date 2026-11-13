@@ -293,16 +293,9 @@ function one<T>(ctx: AppCtx, sql: string, ...params: (string | number | null)[])
   return client.query(sql).get(...params)
 }
 
-/**
- * Turn the epic's autopilot on, locking every open feature it cut. The switch
- * is on the epic's session; a per-feature run mark (`in_run`), where the
- * schema still has one, is set too, so the scenario seeds the same lock
- * whichever way the server reads it.
- */
+/** Turn the epic's autopilot on: the switch on its session locks every open feature it cut (decision 14). */
 function autopilotOn(ctx: AppCtx, epicId: string): void {
   exec(ctx, 'UPDATE sessions SET autopilot = 1 WHERE id = ?', epicId)
-  const inRun = one<{ n: number }>(ctx, "SELECT COUNT(*) AS n FROM pragma_table_info('features') WHERE name = 'in_run'")
-  if (inRun && inRun.n > 0) exec(ctx, "UPDATE features SET in_run = 1 WHERE chat_id = ? AND status IN ('draft', 'active')", epicId)
 }
 
 async function seedEpic(ctx: AppCtx, project: Project, epic: EpicSeed, now: number): Promise<void> {

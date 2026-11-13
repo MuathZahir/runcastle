@@ -5,7 +5,7 @@ import { agentHost } from '../threads/types'
 import { autopilotOf } from './autopilot'
 import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
-import { getSessionRow } from '../launcher/sessions'
+import { getSessionRow, newestThread } from '../launcher/sessions'
 import { waitOf } from './waits'
 import { listWorkers } from '../workers/service'
 
@@ -37,8 +37,9 @@ export const NOT_ON_AUTOPILOT =
  * runcastle prompt into the epic's chat, shown as a feature handback card,
  * waking it once. Only on autopilot: off it the feature is the human's, and the
  * handback is refused with a pointer to `wait_for_you`. `asks` is a
- * `wait_for_you` the lead called anyway, delivered the same way, with no need
- * set on the feature. In a test drive's copied database it never starts a chat
+ * `wait_for_you` the lead, or one of its workers (`worker`, the worker's
+ * label), called anyway, delivered the same way, with no need set on the
+ * feature or the worker. In a test drive's copied database it never starts a chat
  * the drive has not started (drives-never-touch-real-conversations decision 9),
  * and says so to the lead.
  */
@@ -47,9 +48,9 @@ export async function handBackToOrchestrator(
   feature: Feature,
   summary: string,
   leadSessionId?: string,
-  opts: { asks?: boolean } = {},
+  opts: { asks?: boolean; worker?: string } = {},
 ): Promise<{ deliveredTo: string; state: string }> {
-  const lock = feature.status !== 'shipped' ? autopilotOf(ctx, feature) : null
+  const lock = autopilotOf(ctx, feature)
   const epic = lock ? getSessionRow(ctx, lock.epicId) : null
   if (!lock || !epic || epic.kind !== 'project') throw new GateError(NOT_ON_AUTOPILOT)
   if (!mayStartInBackground(epic)) {
@@ -57,13 +58,14 @@ export async function handBackToOrchestrator(
   }
   const said = summary.trim()
   const state = handbackStateLine(leadSessionId ? waitOf(ctx, leadSessionId) : null, listWorkers(ctx, feature.id))
+  const who = opts.worker ? `its worker "${opts.worker}"` : 'its lead'
   const head = opts.asks
-    ? `[runcastle] ${feature.slug} asks for the human (its lead called wait_for_you; it is on autopilot, so it comes to you):\n${said}\n`
+    ? `[runcastle] ${feature.slug} asks for the human (${who} called wait_for_you; it is on autopilot, so it comes to you):\n${said}\n`
     : `[runcastle] ${feature.slug} handed back:\n${said}\n`
-  const text =
-    head +
-    `State: ${state}. ` +
-    `Answer its lead with send_to_feature({ slug: "${feature.slug}" }) when you can; ask the human here only what you cannot decide for them.`
+  const answer = opts.worker
+    ? `Answer through its lead with send_to_feature({ slug: "${feature.slug}" }), naming the worker, when you can`
+    : `Answer its lead with send_to_feature({ slug: "${feature.slug}" }) when you can`
+  const text = head + `State: ${state}. ` + `${answer}; ask the human here only what you cannot decide for them.`
   await agentHost(ctx).prompt(
     epic.id,
     { text },
@@ -71,8 +73,18 @@ export async function handBackToOrchestrator(
   )
   emit(ctx, feature.id, {
     type: LEAD_HANDED_BACK,
-    message: `${opts.asks ? 'asked' : 'handed back to'} the epic "${lock.epicName}"`,
-    data: { holderId: epic.id, summary: said, state, ...(opts.asks ? { asks: true } : {}) },
+    message: `${opts.asks ? `${opts.worker ? `the worker "${opts.worker}" ` : ''}asked` : 'handed back to'} the epic "${lock.epicName}"`,
+    data: { holderId: epic.id, summary: said, state, ...(opts.asks ? { asks: true } : {}), ...(opts.worker ? { worker: opts.worker } : {}) },
   })
   return { deliveredTo: lock.epicName, state }
+}
+
+/**
+ * A worker of a locked feature called `wait_for_you` (`epics-on-autopilot`
+ * decision 17): its question goes to the epic as its lead's does, and the
+ * worker reads no "needs you". The state line reads the lead's own wait.
+ */
+export function workerAsksEpic(ctx: AppCtx, feature: Feature, workerLabel: string, why: string): Promise<{ deliveredTo: string; state: string }> {
+  const lead = newestThread(ctx, { featureId: feature.id }, 'chat')
+  return handBackToOrchestrator(ctx, feature, why, lead?.id, { asks: true, worker: workerLabel })
 }

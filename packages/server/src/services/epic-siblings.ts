@@ -69,7 +69,6 @@ export function epicSiblingsInProgress(ctx: AppCtx, merged: Pick<Feature, 'id' |
       title: features.title,
       status: features.status,
       chatId: features.chatId,
-      inRun: features.inRun,
     })
     .from(features)
     .where(and(eq(features.projectId, merged.projectId), eq(features.chatId, epicId)))
@@ -79,6 +78,6 @@ export function epicSiblingsInProgress(ctx: AppCtx, merged: Pick<Feature, 'id' |
   return inProgressSiblings(rows, merged).map((r) => ({
     slug: r.slug,
     title: r.title,
-    owner: on && r.inRun ? 'this epic, on autopilot' : 'the human',
+    owner: on ? 'this epic, on autopilot' : 'the human',
   }))
 }

@@ -109,7 +109,7 @@ import {
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
 import { autopilotOf, epicOnAutopilot, isLocked, requireMayAct } from '../services/autopilot'
-import { handBackToOrchestrator } from '../services/lead-handback'
+import { handBackToOrchestrator, workerAsksEpic } from '../services/lead-handback'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   closeAsAddressed,
@@ -879,9 +879,9 @@ export type WaitForYouInput = { why: string; withdraw?: undefined } | { withdraw
  * decisions 2, 6, 7): its chat — the lead's, an orchestrator chat's, a
  * worker's — needs them with `why` until the human writes in it, or the agent
  * withdraws it (`withdraw: true`) or replaces it. A worker reads "needs you"
- * meanwhile. A lead on autopilot (epics-on-autopilot decision 17) asks its
- * epic instead, delivered as a handback is, and the feature needs nobody:
- * `toEpic` names the epic it went to.
+ * meanwhile. A lead or a worker of a locked feature (epics-on-autopilot
+ * decision 17) asks its epic instead, delivered as a handback is, and neither
+ * the feature nor the worker needs anybody: `toEpic` names the epic it went to.
  */
 export async function toolWaitForYou(
   ctx: AppCtx,
@@ -895,9 +895,12 @@ export async function toolWaitForYou(
   }
   const why = input.why.trim()
   if (!why) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
-  const lead = session.kind === 'chat' && session.featureId ? getFeatureRow(ctx, session.featureId) : null
-  if (lead && lead.status !== 'shipped' && isLocked(ctx, lead)) {
-    const { deliveredTo } = await handBackToOrchestrator(ctx, lead, why, session.id, { asks: true })
+  const asker = (session.kind === 'chat' || session.kind === 'worker') && session.featureId ? getFeatureRow(ctx, session.featureId) : null
+  if (asker && isLocked(ctx, asker)) {
+    const { deliveredTo } =
+      session.kind === 'worker'
+        ? await workerAsksEpic(ctx, asker, getWorker(ctx, session.id)?.label ?? 'a worker', why)
+        : await handBackToOrchestrator(ctx, asker, why, session.id, { asks: true })
     return { ok: true, need: null, toEpic: deliveredTo }
   }
   const need = setWait(ctx, session.id, why, 'agent')

@@ -351,8 +351,8 @@ describe('the orchestrator’s acting tools', () => {
     const session = orchestrator()
     const other = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     const f = await started('fits', { chatId: session.id })
-    seedFeature(ctx, projectId, { slug: 'mine', title: 'Mine', lockedTo: session.id })
-    seedFeature(ctx, projectId, { slug: 'humans', title: 'Humans', chatId: session.id })
+    seedFeature(ctx, projectId, { slug: 'mine', title: 'Mine', chatId: session.id })
+    seedFeature(ctx, projectId, { slug: 'theirs', title: 'Theirs', chatId: session.id })
     seedFeature(ctx, projectId, { slug: 'later', chatId: session.id, status: 'draft' })
     seedFeature(ctx, projectId, { slug: 'done', chatId: session.id, status: 'shipped' })
     seedFeature(ctx, projectId, { slug: 'dropped', chatId: session.id, status: 'archived' })
@@ -370,8 +370,9 @@ describe('the orchestrator’s acting tools', () => {
     expect(inProgress).toHaveLength(2)
     expect(inProgress).toEqual(
       expect.arrayContaining([
+        // On autopilot the whole epic is locked, so every sibling is the epic's.
         { slug: 'mine', title: 'Mine', owner: 'this epic, on autopilot' },
-        { slug: 'humans', title: 'Humans', owner: 'the human' },
+        { slug: 'theirs', title: 'Theirs', owner: 'this epic, on autopilot' },
       ]),
     )
     const shipped = listAfter(ctx, f.id).find((e) => e.type === 'feature.shipped')

@@ -583,8 +583,6 @@ export const Feature = z.object({
   upNext: z.boolean().default(false),
   /** The feature's epic (an orchestrator thread id) — see the db schema. Null when it has none. */
   chatId: z.string().nullable().default(null),
-  /** In its epic's autopilot run — see the db schema. Locked only while the epic is on autopilot too. */
-  inRun: z.boolean().default(false),
   /**
    * When the human pressed Stop (ms); null when the feature is not stopped. No
    * round dispatches while it is set, and the next human message clears it.

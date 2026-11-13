@@ -46,7 +46,7 @@ describe('membership (decisions 6, 7)', () => {
     const features = [
       feature('mine', 'pay'),
       feature('taken', 'pay'),
-      feature('lent', 'pay', { inRun: true }),
+      feature('lent', 'pay', { autopilot: { epicId: 'pay', epicName: 'Payment System' } }),
     ]
     const { epics, other } = epicsFrom([pay, ship], features, everyone)
     expect(epics.find((e) => e.chat.id === 'pay')?.features.map((x) => x.feature.id)).toEqual(['mine', 'taken', 'lent'])

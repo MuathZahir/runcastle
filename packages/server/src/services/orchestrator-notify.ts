@@ -8,7 +8,7 @@ import type { EpicSibling } from './epic-siblings'
 import { epicSiblingsInProgress, mergeWakesEpic, ownerWords } from './epic-siblings'
 import { emit, getEventRow } from './events'
 import { chatNameOf } from '../threads/chat-name'
-import { isLocked } from './autopilot'
+import { epicOnAutopilot, isLocked } from './autopilot'
 import { getFeatureRow } from './repo'
 
 /**
@@ -259,7 +259,9 @@ function stateFor(ctx: AppCtx, event: EventRow, afterMerge = false): NotifyState
       slug: feature.slug,
       title: feature.title,
       // Only an epic running the feature on autopilot hears its news (merges aside).
-      holderId: over || !isLocked(ctx, feature) ? null : feature.chatId,
+      // A shipped feature is no longer locked, yet its epic still hears that its
+      // drafts could not start.
+      holderId: over || !(feature.status === 'shipped' ? epicOnAutopilot(ctx, feature.chatId) : isLocked(ctx, feature)) ? null : feature.chatId,
       ...(merge ? { merge } : {}),
     },
   }

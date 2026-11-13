@@ -4,7 +4,9 @@ import { ReviewFindingInput, type WorkerRow, workerFeatureId } from '@runcastle/
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
+import { isLocked } from '../services/autopilot'
 import { createFeature } from '../services/features'
+import { workerAsksEpic } from '../services/lead-handback'
 import { mainChatExcerpt } from '../services/main-chat-excerpt'
 import { getFeatureRow } from '../services/repo'
 import { showFetchedFile } from '../threads/shown'
@@ -106,6 +108,12 @@ export function workerTools(ctx: AppCtx, w: WorkerRow, sb: WorkerSandbox, engine
           return 'Withdrawn: you no longer need the human.'
         }
         if (!why?.trim()) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+        // A locked feature's worker asks the epic, as its lead does (epics-on-autopilot decision 17).
+        const feature = w.featureId ? getFeatureRow(ctx, w.featureId) : null
+        if (feature && isLocked(ctx, feature)) {
+          const { deliveredTo } = await workerAsksEpic(ctx, feature, w.label, why.trim())
+          return `This feature is on autopilot, so your question went to the epic "${deliveredTo}", not the human; the answer reaches you through your lead. End your turn now.`
+        }
         workerWaitsFor(ctx, w.id, why)
         return 'The human sees that you need them, with your line, until they write in this chat. End your turn now.'
       }
