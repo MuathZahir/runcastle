@@ -103,7 +103,7 @@ describe('the feature skill', () => {
     expect(text).toContain('**Change how freely; ask before changing what.**')
     expect(text).toContain('A worker the plan did not name still needs their yes.')
     expect(text).toContain('**Name what is broken nearby** and offer to park it in the backlog')
-    expect(text).toContain('a stop after three failed rounds, a For-the-human decision')
+    expect(text).toContain('then `wait_for_you({ why: "stuck: <a few words>" })`.')
     const ref = flat(read('references', 'checking-your-work.md'))
     expect(ref).toContain('**The helper never edits code**')
     expect(ref).toContain('the last screenshot of a drive you are about to call a pass')
@@ -151,20 +151,19 @@ describe('the feature skill, keeping the lead chat small (lead-chats-stay-small)
     expect(s).toContain('no patch scripts in /tmp, no long heredocs. A script is for one change across many files.')
   })
 
-  it('talks to its owner, in one rule (every-feature-has-one-owner 18, 20, 14)', () => {
+  it('talks to the human, or to its epic only while on autopilot (epics-on-autopilot decisions 1, 14)', () => {
     const text = flat(skill())
-    expect(text).toContain('## Talk to your owner')
-    expect(text).toContain('Bring everything to your owner, and to nobody else.')
+    expect(text).toContain('## The human, or the epic on autopilot')
+    expect(text).not.toContain('## Talk to your owner')
+    expect(text).toContain("A feature is the human's unless its epic (the orchestrator chat that created it) is on autopilot and runs it.")
+    expect(text).toContain('`autopilot` is null, or names the epic')
+    expect(text).toContain('- **Off autopilot** (the usual case), talk to the human here and ask with `wait_for_you`, as below.')
+    expect(text).toContain('`hand_back` to it is refused')
+    expect(text).toContain('- **On autopilot**, the human cannot type in this chat: the epic is the only place they talk. Bring everything to the epic with `hand_back({ summary })`: questions, the plan\'s yes, "ready", a merge conflict.')
+    expect(text).toContain('A `wait_for_you` you call anyway goes to the epic the same way.')
+    expect(text).toContain("- **When autopilot ends**, runcastle tells you the feature is the human's again. Re-ask any open question here with `wait_for_you`.")
+    expect(text).not.toMatch(/planAgreed|Yours to plan|take_feature/)
     expect(text).not.toContain('`wait_for_you` is refused')
-    expect(text).toContain('goes first to the chat it came from with `hand_back({ summary })`')
-    expect(text).not.toMatch(/planAgreed|Yours to plan/)
-    // one-place-to-answer 9: what the epic answers goes by hand_back; what only the human
-    // decides goes to wait_for_you, which makes the feature theirs.
-    expect(text).toContain('**Under an epic**, what the epic can answer goes to it with `hand_back({ summary })`: the plan\'s yes under automatic planning, "ready", a merge conflict.')
-    expect(text).toContain('**Anything only the human can decide goes to `wait_for_you`, under an epic too**: what they get, where it lives or who sees it, a design to approve, a stop after three failed rounds, a For-the-human decision.')
-    expect(text).toContain('It makes the feature the human\'s at once: the header then reads "Yours", runcastle tells the epic, and you carry on with the human in this chat. It never goes back by itself.')
-    expect(text).toContain('**When the human types to you while an epic owns it**, it is theirs too')
-    expect(text).not.toContain('and a sub-agent for as long as it runs')
     expect(text).not.toContain('With the orchestrator')
     expect(text).not.toContain('working agreement')
   })
@@ -251,12 +250,12 @@ describe('the feature skill, planning with no human present', () => {
     expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start the work?" })`')
   })
 
-  it('hands an epic-owned plan to its epic for its yes, and the human\'s decisions to the human (one-place-to-answer 9)', () => {
+  it("hands the plan to its epic for its yes on autopilot, and the open three to the epic's wait too (epics-on-autopilot)", () => {
     const close = flat(text().slice(text().indexOf('## Straight through, then ask')))
-    expect(close).toContain('**When an epic owns the feature** (talk to your owner, SKILL.md), the plan\'s yes is that epic\'s to give: call `hand_back({ summary })` in place of `wait_for_you`')
-    expect(close).toContain('**But when the plan holds a For the human decision or a design waiting for approval**, those are the human\'s, not the epic\'s: ask them in this chat and call `wait_for_you` as above, which makes the feature theirs.')
+    expect(close).toContain('**On autopilot** (SKILL.md, "The human, or the epic on autopilot"), the plan\'s yes is the epic\'s to give: call `hand_back({ summary })` in place of `wait_for_you`')
+    expect(close).toContain('every For the human decision and any design waiting')
     const three = flat(text().slice(text().indexOf('**The three come first.**')))
-    expect(three).toContain('Do so when an epic owns the feature too: the questions are the human\'s, and the wait makes the feature theirs')
+    expect(three).toContain('On autopilot that wait goes to the epic, which answers or asks the human')
   })
 
   it('plans the workers it would offer and starts none', () => {
@@ -306,7 +305,10 @@ describe('the feature skill, planning with no human present', () => {
     expect(design).toContain('`set_design_state({ path, state: \'approved\' })`')
     expect(design).toContain('**They say yes to the plan**: that yes does **not** approve designs')
     expect(design).not.toContain('also approves every design')
-    expect(read('SKILL.md')).toContain('It never approves a design')
+    expect(flat(read('SKILL.md'))).toContain('Off autopilot it never counts as the human: it confirms no decision of theirs and never approves a design')
+    const orchestratorYes = flat(design.slice(design.indexOf('- **The orchestrator says yes to start the work**')))
+    expect(orchestratorYes).toContain('off autopilot, do not start; the designs wait for the human\'s own yes in this chat.')
+    expect(orchestratorYes).toContain('On autopilot, its approval counts when the human handed their decisions to the epic or it relays the human\'s own answer')
   })
 
   it('has every design page report its state and tweaks, kept by path, for Approve (agents-see-the-tweaks-you-picked)', () => {
