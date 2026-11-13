@@ -378,6 +378,8 @@ describe('Models page', () => {
     }
     // An unset step reads out what it will actually run.
     expect(screen.getByLabelText('Model for Chat').textContent).toBe('Default (claude-opus-5)')
+    // Review's default is its own (the runtime's review model), not the global one.
+    expect(screen.getByLabelText('Model for Review').textContent).toBe('Default (claude-sonnet-5-5)')
     expect(screen.getByLabelText('Model for Implement').textContent).toContain('gpt-5.6-sol')
   })
 

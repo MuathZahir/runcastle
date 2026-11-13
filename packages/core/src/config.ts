@@ -13,12 +13,11 @@ import * as z from 'zod'
  * session kind (`chat`, `project`) and each AFK agent
  * (`implement`, `review`) plus the scripted `smoke` maps to one step.
  *
- * `review` is the burn's review pass — the agent that runs host-side once every
- * implementation ticket is terminal. It is a step of its own rather than a share
- * of `implement` because the model that reads a finished branch is usually not
- * the model that wrote it: a reviewer is chosen for judgement, an implementer
- * for throughput, and forcing them onto one setting meant paying the reviewer's
- * price on every ticket or the implementer's on the review.
+ * `review` is the Review worker's model: the worker a feature lead starts with
+ * `start_review` (first reviews and verify reviews alike) when the lead names no
+ * model. It is a step of its own because a review is chosen for judgement at a
+ * price, not for the chat's flagship: unset, it falls to the runtime's
+ * {@link RUNTIME_DEFAULT_MODELS} review default, never to the global model.
  */
 export const MODEL_STEPS = [
   'chat',
@@ -63,10 +62,12 @@ export const ModelEntry = z.object({
 })
 export type ModelEntry = z.infer<typeof ModelEntry>
 
-/** A runtime's curated flagship + cheap/smoke pair. */
+/** A runtime's curated flagship, cheap/smoke and review defaults. */
 export interface ModelDefaultPair {
   flagship: string
   smoke: string
+  /** The Review worker's model when the `review` step is unset. */
+  review: string
 }
 
 /**
@@ -76,8 +77,8 @@ export interface ModelDefaultPair {
  * they are ordinary settings values, not magic that keeps re-deciding.
  */
 export const RUNTIME_DEFAULT_MODELS: Record<AgentRuntime, ModelDefaultPair> = {
-  'claude-code': { flagship: 'claude-opus-5', smoke: 'claude-haiku-4-5' },
-  codex: { flagship: 'gpt-5.6-sol', smoke: 'gpt-5.6-luna' },
+  'claude-code': { flagship: 'claude-opus-5', smoke: 'claude-haiku-4-5', review: 'claude-sonnet-5-5' },
+  codex: { flagship: 'gpt-5.6-sol', smoke: 'gpt-5.6-luna', review: 'gpt-5.6-terra' },
 }
 
 /**
@@ -101,6 +102,7 @@ export const CURATED_MODELS: readonly ModelEntry[] = [
   { id: 'claude-opus-5', runtime: 'claude-code' },
   { id: 'claude-opus-5[1m]', runtime: 'claude-code' },
   { id: 'claude-sonnet-5', runtime: 'claude-code' },
+  { id: 'claude-sonnet-5-5', runtime: 'claude-code' },
   { id: 'claude-sonnet-5[1m]', runtime: 'claude-code' },
   { id: 'claude-fable-5', runtime: 'claude-code' },
   { id: 'claude-fable-5[1m]', runtime: 'claude-code' },
@@ -443,9 +445,10 @@ export function resolvePreparedSettings(
 
 /**
  * Resolve the model for one pipeline step (issue #48). Pure: the chain is
- * `runOverride ?? project.model ?? stepModels[step] ?? global.model`, so a
- * scripted/smoke run override wins over a per-project override, which wins over
- * a global per-step override, which wins over the global default.
+ * `runOverride ?? project.model ?? stepModels[step] ?? stepDefaultModel(step)`,
+ * so a scripted/smoke run override wins over a per-project override, which wins
+ * over a global per-step override, which wins over the step's default: the
+ * global model for every step but `review`, whose default is per runtime.
  *
  * The global values — `model` and the `stepModels` matrix — are the machine-wide
  * default setup; a project's own `model` is an explicit "this repo runs on that
@@ -554,6 +557,23 @@ export function resolveModelEntry(
   project?: { model?: string | null } | null,
   runOverride?: string | null,
 ): ModelEntry {
-  const id = runOverride ?? project?.model ?? config.stepModels[step] ?? config.model
+  const id =
+    runOverride ?? project?.model ?? config.stepModels[step] ?? stepDefaultModel(step, config)
   return modelEntryFor(id, config)
+}
+
+/**
+ * The model a step falls to when nothing in its chain is set. Pure. Every step
+ * but `review` inherits the global `model`; `review` takes the
+ * {@link RUNTIME_DEFAULT_MODELS} review default of the runtime the global model
+ * runs on, so a Codex-only install never gets a Claude reviewer. Computed at
+ * resolve time rather than as a zod default, so a config file whose `stepModels`
+ * object has no `review` key still gets it.
+ */
+export function stepDefaultModel(
+  step: ModelStep,
+  config: Pick<RuncastleConfig, 'model'> & ModelRosterConfig,
+): string {
+  if (step !== 'review') return config.model
+  return RUNTIME_DEFAULT_MODELS[modelEntryFor(config.model, config).runtime].review
 }

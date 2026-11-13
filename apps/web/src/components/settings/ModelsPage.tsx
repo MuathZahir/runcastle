@@ -181,7 +181,6 @@ export function ModelsPage({ globals, scoped, filter, highlightField }: Settings
           <StepTable
             rows={steps}
             groups={groups}
-            defaultModel={defaultModel}
             projectModel={projectModelWarning(scoped.data)}
             filter={filter}
             writes={writes}

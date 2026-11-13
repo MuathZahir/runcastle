@@ -27,15 +27,12 @@ const COLUMNS = 'grid grid-cols-[minmax(0,1fr)_260px_24px] items-center gap-3'
 export function StepTable({
   rows,
   groups,
-  defaultModel,
   projectModel,
   filter,
   writes,
 }: {
   rows: StepRow[]
   groups: ModelOptionGroup[]
-  /** What an unset step runs, named in its select's first option. */
-  defaultModel: string
   /** The model the open project runs everything on, when it sets one. */
   projectModel: string | null
   filter: FilterState
@@ -72,7 +69,6 @@ export function StepTable({
                 key={row.step}
                 row={row}
                 groups={groups}
-                defaultModel={defaultModel}
                 writes={writes}
               />
             ))}
@@ -86,12 +82,10 @@ export function StepTable({
 function StepModelRow({
   row,
   groups,
-  defaultModel,
   writes,
 }: {
   row: StepRow
   groups: ModelOptionGroup[]
-  defaultModel: string
   writes: SettingWrites
 }) {
   const key = stepModelKey(row.step)
@@ -127,7 +121,8 @@ function StepModelRow({
             </span>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Default ({defaultModel})</SelectItem>
+            {/* Each step's own default: Review's differs from the global model. */}
+            <SelectItem value="">Default ({row.defaultModel})</SelectItem>
             <ModelOptions groups={groups} />
           </SelectContent>
         </Select>
