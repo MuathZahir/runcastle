@@ -5,7 +5,7 @@ in the brief; the rest are the planner's, marked **Assumed.** A separate
 challenger agent read the brief and these decisions once; its objections are on
 the decisions they concern.
 
-Check first: 4, 5, 6, 8
+The human agreed 4, 5, 6 and 8 on 2026-11-13 ("Looks good") and asked to merge.
 
 ## 1. Reviews default to Sonnet, and the Review setting works
 **Decision:** A Review worker runs on the `review` model step (the "Review" row
@@ -37,7 +37,7 @@ would stay on Opus. The plan asks them to switch that row to Sonnet in Settings
 (or clear it to take the new default) when they want the saving.
 **Why:** A value they typed is theirs; silently rewriting it would be overriding
 their setting. A Sonnet default only helps installs where the row is unset.
-**Assumed.** Alternative: a one-time migration that clears a Review value equal to
+**Agreed by the human** (2026-11-13). Alternative not taken: a one-time migration that clears a Review value equal to
 the chat model, so it falls to the Sonnet default.
 **For the human.** Your Review row reads Opus 1M today; after this lands it is
 what your reviews use until you change it.
@@ -50,7 +50,7 @@ that default on the Review row, marked as the default.
 **Why:** A Claude-only default is a dead value for a Codex-only user, the same
 reason the smoke default is already chosen per runtime. Sonnet is the bare id,
 not 1M, like every other default.
-**Assumed.** Alternative: Sonnet for everyone, Codex users set it by hand.
+**Agreed by the human** (2026-11-13). Alternative not taken: Sonnet for everyone, Codex users set it by hand.
 **Changed by the orchestrator:** the default was `claude-sonnet-5`; it named the
 newest Sonnet, `claude-sonnet-5-5`, the current one in this machine's discovered list.
 **For the human.** A new install's reviews run on Sonnet without anyone touching
@@ -63,7 +63,7 @@ says an omitted model means the Review setting, not the chat's model.
 **Why:** The lead names a model for every worker from the human's model notes,
 and those notes send screen work to Opus. Left as is, a lead would override the
 Settings row on most UI features and the human could never compare models.
-**Assumed.** Alternative: the lead keeps choosing per review, with the Settings row
+**Agreed by the human** (2026-11-13). Alternative not taken: the lead keeps choosing per review, with the Settings row
 as its fallback only.
 **For the human.** The Review row in Settings is the one place that decides a
 review's model.
@@ -95,7 +95,7 @@ checkpoints); with an exact-commit rule nearly every review would rerun the suit
 A fixed path filter is a yes/no command, not a judgement about a diff. Uncommitted
 edits during the lead's run are the real hole, since the commit id would still
 match, so the clean tree is required there.
-**Assumed.** Alternative: only the exact commit counts.
+**Agreed by the human** (2026-11-13). Alternative not taken: only the exact commit counts.
 **For the human.** A review after a docs-only commit to this feature's folder
 still skips the suite; a change anywhere else reruns it.
 
