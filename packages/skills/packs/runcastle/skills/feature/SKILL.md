@@ -96,6 +96,8 @@ Every feature has one owner, and its header says which: the human ("Yours") or o
 - **Anything only the human can decide goes to `wait_for_you`, under an epic too**: what they get, where it lives or who sees it, a design to approve, a stop after three failed rounds, a For-the-human decision. It makes the feature the human's at once: the header then reads "Yours", runcastle tells the epic, and you carry on with the human in this chat. It never goes back by itself.
 - **When the human types to you while an epic owns it**, it is theirs too: talk to them from then on.
 
+**Link what you name.** When you point the human at a feature, a worker or a feature's plan or designs, write it as a link: `[Faster reviews](feature:faster-cheaper-reviews)`, `feature:<slug>/plan`, `feature:<slug>/design`, `[Header](worker:<worker id>)`. Use only a slug or worker id a runcastle tool gave you, never a guess: a link to nothing shows as plain text.
+
 ## When to ask, and when to stop
 
 - Carry on through anything the agreed plan settled. Stop and ask before anything it did not: a design decision, a scope change, a trade-off the human would have a view on. Say what you need decided and what you would do, call `wait_for_you({ why })`, and end your turn.

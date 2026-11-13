@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Chats link to what they name preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.ba h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.msg{padding:14px 16px;font-size:14px;line-height:22px;color:var(--color-text)}
+.msg .who{font-size:12px;color:var(--color-text-tertiary);margin-bottom:4px}
+.msg a.l{color:var(--color-accent-text);text-decoration:none;cursor:pointer}
+.msg a.l:hover{text-decoration:underline}
+.forms{display:grid;grid-template-columns:auto 1fr auto;gap:6px 16px;align-items:center;margin-top:12px}
+.forms code{font-family:var(--font-mono);font-size:12px;background:var(--color-surface-inset);padding:2px 6px;border-radius:var(--radius-sm)}
+.forms span{color:var(--color-text-secondary)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.flow .st{padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.flow .ar{color:var(--color-text-tertiary)}
+.who-builds{margin-top:12px;display:grid;gap:8px}
+.who-builds .w{display:grid;grid-template-columns:150px 1fr auto;gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.who-builds .w p{color:var(--color-text-secondary)}
+#landed{margin-top:8px;min-height:20px}
+@media (max-width:760px){.ba{grid-template-columns:1fr}.who-builds .w{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Chats link to what they name</h1>
+  <p class="lede">When an agent points you at a feature or a worker, its name is a link in the chat. One click lands you on it, on desktop and phone.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/chats-link-to-what-they-name/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+  <div class="sub" style="margin-top:12px">
+    <h3>Before and after <a class="pin" data-d="1">1</a> <a class="pin" data-d="4">4</a></h3>
+    <p class="hint">The same orchestrator reply. Click a link on the right.</p>
+<!-- screen:chat-reply -->
+    <div class="ba">
+      <div><h3>Today</h3><div class="screen"><div class="msg"><div class="who">Orchestrator</div>
+        Faster reviews is waiting on your design approval, and the Header worker in Chat as web components has a question for you.</div></div></div>
+      <div><h3>With this feature</h3><div class="screen"><div class="msg"><div class="who">Orchestrator</div>
+        <a class="l" data-go="Faster reviews · Design tab opens">Faster reviews</a> is waiting on your <a class="l" data-go="Faster reviews · Design tab opens">design approval</a>, and the <a class="l" data-go="Chat as web components · Header worker's chat opens">Header worker</a> in <a class="l" data-go="Chat as web components · its chat opens (phone) or its last view beside the lead's chat (desktop)">Chat as web components</a> has a question for you.</div></div>
+        <p class="hint" id="landed">&nbsp;</p></div>
+    </div>
+<!-- /screen:chat-reply -->
+  </div>
+
+  <div class="sub">
+    <h3>What an agent writes <a class="pin" data-d="2">2</a></h3>
+    <p class="hint">An ordinary markdown link, with a runcastle target.</p>
+    <div class="forms">
+      <code>[Faster reviews](feature:faster-cheaper-reviews)</code><span>opens the feature, as a sidebar click does</span><a class="pin" data-d="3">3</a>
+      <code>[its plan](feature:faster-cheaper-reviews/plan)</code><span>opens its Plan tab</span><span></span>
+      <code>[the designs](feature:faster-cheaper-reviews/design)</code><span>opens its Design tab</span><span></span>
+      <code>[the Header worker](worker:&lt;worker id&gt;)</code><span>opens that worker's chat in its feature</span><span></span>
+      <code>[Typo](feature:no-such-thing)</code><span>reads as plain text: Typo</span><a class="pin" data-d="11">11</a>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>A click, and back</h3>
+    <div class="flow">
+      <span class="st">Any agent chat <a class="pin" data-d="5">5</a></span><span class="ar">→</span>
+      <span class="st">Click the link</span><span class="ar">→</span>
+      <span class="st">Lands on the feature or worker, even a merged or dropped one <a class="pin" data-d="7">7</a></span><span class="ar">→</span>
+      <span class="st">Back returns to the chat <a class="pin" data-d="8">8</a></span>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Who builds what</h3>
+    <div class="who-builds">
+      <div class="w"><b>Chat links</b><p>The link rendering, its click and Back behaviour, the worker lookup, and their tests.</p><span class="tag">on its own</span></div>
+      <div class="w"><b>Lead (me)</b><p>The one linking rule in the orchestrator, lead and Q&amp;A skills and in the worker and Review briefings <a class="pin" data-d="6">6</a>; landing the worker; the checks.</p><span class="tag">myself</span></div>
+      <div class="w"><b>Review</b><p>Runs the checks and drives the app: links in a lead's and a worker's chat, on desktop and phone widths.</p><span class="tag">at the end</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>A status dot or "needs you" mark on links: "Needs you is the agent's call"</li>
+      <li><i class="dot"></i>Rewriting the skills beyond one rule: "Skills become short rules"</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Links in feature docs, notifications and Review findings <a class="pin" data-d="9">9</a></li>
+      <li><i class="dot"></i>Links to one exact design, a shown file, or the orchestrator's chat <a class="pin" data-d="10">10</a></li>
+      <li><i class="dot"></i>Names turning into links by themselves <a class="pin" data-d="1">1</a></li>
+      <li><i class="dot"></i>Links across projects; logging links that miss</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <div class="flow">
+        <span class="st">Agent text</span><span class="ar">→</span>
+        <span class="st">Markdown component<br><span class="hint">keeps feature: and worker: targets</span></span><span class="ar">→</span>
+        <span class="st">Link renderer asks the links context</span><span class="ar">→</span>
+        <span class="st">Feature: slug in the shell's feature list<br>Worker: new read, worker id → its feature</span><span class="ar">→</span>
+        <span class="st">&lt;a href = real app address&gt;<br><span class="hint">plain click opens in place; Ctrl/middle click opens a tab</span></span>
+      </div>
+      <p class="hint" style="margin-top:12px">Unresolved, loading, or outside a project shell: the link's words as plain text. The skills reach live sessions once runcastle is published and reinstalled.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Agents write ordinary markdown links with a runcastle target', 'The habit is free, and only what the agent chose becomes a link; names linking themselves would catch common words.', 'assumed'],
+    ['Three things can be linked: a feature, its Plan or Design tab, and a worker\'s chat', 'Features and workers are what the brief asks for; the two tabs cost one word each because the app already opens a feature on a tab.', 'assumed'],
+    ['A feature link lands where a sidebar click lands', 'One feature opens one way, whichever door you use; on a desktop the lead\'s chat sits beside the open panel anyway.', 'assumed'],
+    ['A link looks like any other link in chat text', 'A plain link keeps the sentence reading as a sentence; status marks belong to another feature. Unknown targets read as plain text.', 'assumed'],
+    ['Every agent chat renders them, on desktop and phone', 'All agent text already goes through one markdown renderer, so covering every chat is the same work as one.', 'assumed'],
+    ['One linking rule, in every briefing that talks to the human', 'The brief asks for one line per skill; workers are briefed by the server, so the line goes there too.', 'assumed'],
+    ['Finished things still open', 'A link that stops working once its feature merges would teach you not to trust links; the app still lists finished features and workers.', 'assumed'],
+    ['Back returns you, and a feature link is a real address', 'On a phone a link with no way back is worse than none; the app already keeps its address in step.', 'assumed'],
+    ['Chat text only', 'The brief is about chats; docs render in a sealed frame, and a notification\'s tap already lands on the chat.', 'assumed'],
+    ['No link to the orchestrator\'s chat', 'A project can hold several orchestrator conversations, so "the orchestrator" names no one chat.', 'assumed'],
+    ['Agents link only names a tool gave them; a miss stays quiet', 'Agents already read slugs and worker ids from their tools; a miss shows the words they would have written anyway.', 'assumed']
+  ]
+  // <!-- FILL:C -->
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var l = e.target.closest('a.l[data-go]')
+    if (l) { e.preventDefault(); $('#landed').textContent = '→ ' + l.dataset.go; return }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

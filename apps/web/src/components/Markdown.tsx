@@ -1,8 +1,20 @@
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
+import { isChatLinkHref } from '../lib/chat-links'
 import { LINK } from '../ui/button'
+import { ChatLink } from './chat/ChatLink'
+
+/**
+ * The library's URL filter, except that it keeps our `feature:` and `worker:`
+ * targets (chats-link-to-what-they-name), which it would blank. Those never
+ * reach the browser as they are: {@link ChatLink} turns them into the app's
+ * address or plain text.
+ */
+export function markdownUrlTransform(url: string): string {
+  return isChatLinkHref(url) ? url : defaultUrlTransform(url)
+}
 
 /**
  * What we hand the renderer, as plain data. The component itself has no unit
@@ -105,7 +117,12 @@ const COMPONENTS: Components = {
   input: ({ node: _n, ...p }) => <input className={MARKDOWN_CLASSES.checkbox} {...p} />,
   strong: ({ node: _n, ...p }) => <strong className={MARKDOWN_CLASSES.strong} {...p} />,
   em: ({ node: _n, ...p }) => <em className={MARKDOWN_CLASSES.em} {...p} />,
-  a: ({ node: _n, ...p }) => <a className={MARKDOWN_CLASSES.a} {...p} />,
+  a: ({ node: _n, ...p }) =>
+    p.href !== undefined && isChatLinkHref(p.href) ? (
+      <ChatLink href={p.href}>{p.children}</ChatLink>
+    ) : (
+      <a className={MARKDOWN_CLASSES.a} {...p} />
+    ),
   // The language class upstream puts here is not styling we use, and dropping
   // it is what lets one class list cover inline and fenced code alike.
   code: ({ node: _n, className: _c, ...p }) => <code className={MARKDOWN_CLASSES.code} {...p} />,
@@ -149,7 +166,9 @@ export function Markdown({
   const root = `${MARKDOWN_CLASSES.root} ${MARKDOWN_SIZE[size]} ${MARKDOWN_TONE[tone]}`
   return (
     <div className={className ? `${root} ${className}` : root}>
-      <ReactMarkdown remarkPlugins={breaks ? [remarkGfm, remarkBreaks] : [remarkGfm]} components={COMPONENTS}>
+      <ReactMarkdown remarkPlugins={breaks ? [remarkGfm, remarkBreaks] : [remarkGfm]} components={COMPONENTS}
+        urlTransform={markdownUrlTransform}
+      >
         {source}
       </ReactMarkdown>
     </div>
