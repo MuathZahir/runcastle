@@ -114,7 +114,8 @@ commits over the summary. Then do one of three things:
   Then run the project's checks yourself, and fix small slips yourself rather
   than sending it back.
 - **Send it back**: `send_back_worker({ workerId, note })`, saying concretely
-  what is wrong. It returns to working.
+  what is wrong. It returns to working. Each send-back on the same problem is a
+  round in that problem's count (`./checking-your-work.md`).
 - **Drop it**: `drop_worker({ workerId })` removes its sandbox and branch.
 
 Where the human's direction to a worker changes a decision, amend
