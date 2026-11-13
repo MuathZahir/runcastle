@@ -86,7 +86,7 @@ interface State {
   later?: boolean
 }
 
-const quiet = heldFeatures.map((f) => ({ ...f, heldBy: undefined }))
+const quiet = heldFeatures.map((f) => ({ ...f, chatId: null }))
 const allIdle = allThreads.map((t) => ({ ...t, state: 'idle' as const, updatedAt: t.updatedAt - 2 * 86_400_000 }))
 const onlyNotes = allIdle.map((t) => (t.id === NOTES ? { ...t, updatedAt: Date.now() - 20 * 60_000 } : t))
 

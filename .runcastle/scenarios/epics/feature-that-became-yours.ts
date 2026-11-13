@@ -1,21 +1,17 @@
 /**
- * Scenario: one epic running two features, one of which became the human's
- * because it needed them (docs/features/one-place-to-answer, decisions 9, 13).
+ * Scenario: features returned to the human when autopilot ended
+ * (docs/features/epics-on-autopilot, decisions 6, 8, 20).
  *
  * The project, became-yours-demo, holds one orchestrator chat, **Notes
- * Export** (blue, package), which the human told "run these for me". It cut two
- * features and ran both:
+ * Export** (blue, package). The human agreed its run plan and put it on
+ * autopilot with two features, then ended autopilot from a lock note:
  *
- * - **Export as PDF** needed the human: its lead called `wait_for_you`, so it
- *   became theirs (an owner change with the `needs-you` cause, finish "you").
- *   Its chat shows runcastle's line "This is yours now: it needed you. Notes
- *   Export carries on with the rest of the batch." above the lead's question,
- *   which waits for an answer — the row reads "Needs you · …", yellow.
- * - **Export as Markdown** is still the epic's, shown before merging: its
- *   header reads "Notes Export · you merge".
+ * - **Export as PDF** is the human's again. Its lead was told so, and re-asked
+ *   its open question with `wait_for_you`: the row reads "Needs you · …",
+ *   yellow, and its chat takes messages again.
+ * - **Export as Markdown** is the human's again too, idle.
  *
- * The epic's chat ends on its one line: "Export as PDF needs you, so it's yours
- * now. Open its chat to answer."
+ * The epic's chat ends on runcastle's line that the human ended autopilot.
  *
  * Run by the project's scenario runner (`bun {file}`) inside a test drive of
  * runcastle, with the drive identity, the `.runcastle/drive.env` overlay and a
@@ -38,8 +34,6 @@ import { createDb } from '../../../packages/server/src/db/client.ts'
 import { runMigrations } from '../../../packages/server/src/db/migrate.ts'
 import type { AppCtx } from '../../../packages/server/src/db/types.ts'
 import { createFeature } from '../../../packages/server/src/services/features.ts'
-import { giveToChat, releaseNeedsYou } from '../../../packages/server/src/services/holding.ts'
-import { handOverLine, needsYouLine } from '../../../packages/server/src/services/lead-handback.ts'
 import { setWait } from '../../../packages/server/src/services/waits.ts'
 import { listProjects, openProject } from '../../../packages/server/src/services/projects.ts'
 import { createSessionRow, markSessionEnded, projectSessions } from '../../../packages/server/src/launcher/sessions.ts'
@@ -109,15 +103,12 @@ async function seed(ctx: AppCtx, project: Project, now: number): Promise<string>
   exec(ctx, 'UPDATE sessions SET created_at = ?, epic_color = ?, epic_icon = ? WHERE id = ?', now - 90 * MINUTE, 'blue', 'package', epic.id)
   markSessionEnded(ctx, epic.id)
 
-  // "Run these for me": the epic owns both from the cut.
-  const pdf = await createFeature(ctx, { projectId: project.id, title: YOURS, oneLiner: 'Download a note as a PDF.' })
-  const md = await createFeature(ctx, { projectId: project.id, title: EPICS, oneLiner: 'Download a note as Markdown.' })
-  giveToChat(ctx, pdf.id, epic.id, 'merge', 'create')
-  giveToChat(ctx, md.id, epic.id, 'show', 'create')
+  // The epic cut both; autopilot is over, so neither is in a run and the epic's switch is off.
+  const pdf = await createFeature(ctx, { projectId: project.id, title: YOURS, oneLiner: 'Download a note as a PDF.', chat: { threadId: epic.id } })
+  const md = await createFeature(ctx, { projectId: project.id, title: EPICS, oneLiner: 'Download a note as Markdown.', chat: { threadId: epic.id } })
   for (const f of [pdf, md]) exec(ctx, 'UPDATE features SET created_at = ? WHERE id = ?', now - 85 * MINUTE, f.id)
 
-  // The PDF lead hit a "who" question only the human can answer: wait_for_you made it theirs.
-  releaseNeedsYou(ctx, pdf.id)
+  // The PDF lead was told it is the human's again, and re-asked its open question with wait_for_you.
   const lead = createSessionRow(ctx, { featureId: pdf.id, kind: 'chat', worktreePath: worktreeDir(project.id, pdf.slug), model: MODEL })
   markSessionEnded(ctx, lead.id)
   setWait(ctx, lead.id, 'Who gets the PDF export?')
@@ -126,34 +117,48 @@ async function seed(ctx: AppCtx, project: Project, now: number): Promise<string>
     log(now - 20 * MINUTE, [
       [0, { type: 'prompt', id: 'p_1', text: '[runcastle] Plan this feature by yourself.', source: 'runcastle', display: { summary: 'Started automatic planning for this feature' } }],
       [1, { type: 'turn_started' }],
-      [40, { type: 'agent_text', messageId: 'm_1', text: 'I read the brief and the notes screen. The export itself is clear; one thing is not mine to decide.' }],
-      // Runcastle's line, written by the release, above the lead's question.
-      [41, { type: 'notice', text: handOverLine(EPIC) }],
-      [42, { type: 'agent_text', messageId: 'm_2', text: QUESTION }],
-      [43, { type: 'turn_ended', reason: 'end_turn' }],
+      [40, { type: 'agent_text', messageId: 'm_1', text: 'I read the brief and the notes screen. The export itself is clear; one thing is not mine to decide, so I asked the epic.' }],
+      [41, { type: 'turn_ended', reason: 'end_turn' }],
+      [600, {
+        type: 'prompt',
+        id: 'p_2',
+        text: "[runcastle] This feature is the human's again: autopilot is off for it. Re-ask any open question with wait_for_you.",
+        source: 'runcastle',
+      }],
+      [601, { type: 'turn_started' }],
+      [620, { type: 'agent_text', messageId: 'm_2', text: QUESTION }],
+      [621, { type: 'turn_ended', reason: 'end_turn' }],
     ]),
   )
 
-  // The epic: the human's "run these for me", the cut, then its one line when the PDF needed them.
+  // The epic: the run plan and the human's yes, autopilot on, then the human ending it from a lock note.
   seedThreadLog(
     epic.id,
     log(now - 90 * MINUTE, [
-      [0, { type: 'prompt', id: 'p_1', text: 'Notes should export as PDF and as Markdown. Run both for me; show me Markdown before it merges.', source: 'human' }],
+      [0, { type: 'prompt', id: 'p_1', text: 'Notes should export as PDF and as Markdown. Take both to ready to merge while I sleep.', source: 'human' }],
       [1, { type: 'turn_started' }],
       [2, { type: 'title', title: EPIC, by: 'orchestrator' }],
       [20, { type: 'feature_acted', featureId: pdf.id, title: YOURS, action: 'created' }],
       [21, { type: 'feature_acted', featureId: md.id, title: EPICS, action: 'created' }],
-      [30, { type: 'agent_text', messageId: 'm_1', text: 'Cut into two and running both: PDF merges when it is done, Markdown waits for you to try it first.' }],
+      [30, { type: 'agent_text', messageId: 'm_1', text: 'Run plan: I plan both myself and take them to ready to merge, one at a time. Say yes and I go on autopilot.' }],
       [31, { type: 'turn_ended', reason: 'end_turn' }],
+      [60, { type: 'prompt', id: 'p_2', text: 'Yes, go on autopilot.', source: 'human' }],
+      [61, { type: 'turn_started' }],
+      [62, { type: 'feature_acted', featureId: pdf.id, title: YOURS, action: 'autopilotOn' }],
+      [63, { type: 'feature_acted', featureId: md.id, title: EPICS, action: 'autopilotOn' }],
+      [70, { type: 'agent_text', messageId: 'm_2', text: 'On autopilot with both. I will post one summary when the run plan is done.' }],
+      [71, { type: 'turn_ended', reason: 'end_turn' }],
       [70 * 60, {
         type: 'prompt',
-        id: 'p_2',
-        text: `[runcastle] ${YOURS} needed the human, so it is theirs now. Tell them in one line: "${needsYouLine(YOURS)}" and nothing more about it; carry on with the rest of the batch.`,
+        id: 'p_3',
+        text:
+          `[runcastle] The human ended autopilot for this epic from a feature's lock note. ${pdf.slug}, ${md.slug} are the human's again; ` +
+          'stop answering for them, and do not message, drive or merge them. Their leads re-ask what is open in their own chats.',
         source: 'runcastle',
-        display: { news: [{ featureId: pdf.id, title: YOURS, events: [{ tone: 'needsYou', words: 'Needs you, so it is yours now' }] }] },
+        display: { summary: 'You ended autopilot' },
       }],
       [70 * 60 + 1, { type: 'turn_started' }],
-      [70 * 60 + 10, { type: 'agent_text', messageId: 'm_2', text: needsYouLine(YOURS) }],
+      [70 * 60 + 10, { type: 'agent_text', messageId: 'm_3', text: `Autopilot is off. ${YOURS} asks you who gets the PDF: answer in its chat.` }],
       [70 * 60 + 11, { type: 'turn_ended', reason: 'end_turn' }],
     ]),
   )

@@ -257,7 +257,7 @@ const FeatureActionName = z.enum([
   'planningStopped',
   'messaged',
   'brief',
-  /** An older log's: the retired `take_feature` (epics-on-autopilot decision 1); still read. */
+  /** An older log's: the retired tool that took a feature into a chat (epics-on-autopilot decision 1); still read. */
   'taken',
   'autopilotOn',
   'autopilotOff',

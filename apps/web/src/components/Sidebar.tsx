@@ -24,9 +24,6 @@ import { epicNameOf, epicsFrom, shelfFeatureWords } from '../lib/feature-ui/epic
 import { FeatureSidebar } from './workers/FeatureSidebar'
 import { hasDraft, useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT, standIn, withStandIns } from '../lib/chat-sessions'
-import { ownerReading } from '../lib/feature-owner'
-import { useSetOwner } from '../lib/use-set-owner'
-import { OwnerChoices } from './workspace/OwnerControl'
 import {
   IconArchive,
   IconDoc,
@@ -175,19 +172,6 @@ export function Sidebar(props: SidebarProps) {
   // published threads (orchestrator-chats-become-epics decision 18). Same query
   // key the chat page polls.
   const threadList = trpc.thread.list.useQuery({ projectId }, { refetchInterval: poll }).data
-  const setOwner = useSetOwner()
-  // The row menu's owner choices (every-feature-has-one-owner decisions 11, 21): none for a feature with no chat.
-  const ownerChoicesFor = (f: FeatureListItem): ReactNode => {
-    const reading = ownerReading(f, threadList ?? [])
-    if (!reading.chatName || f.status === 'shipped') return undefined
-    return (
-      <OwnerChoices
-        current={reading.owner.kind === 'chat' ? reading.owner.finish : 'you'}
-        chat={reading.chatName}
-        onChoose={(choice) => setOwner(f.id, choice)}
-      />
-    )
-  }
   const features = list.data ?? []
   const { lanes } = sidebarLanes(features)
   const lane = (key: string) => lanes.find((g) => g.key === key)?.features ?? []
@@ -392,7 +376,6 @@ export function Sidebar(props: SidebarProps) {
         actions={featureActions(f)}
         words={shelfFeatureWords(f, featureStateWords(f), epicName(f))}
         {...(workers ? { workers } : {})}
-        ownerChoices={ownerChoicesFor(f)}
       />
     )
   }
@@ -470,7 +453,6 @@ export function Sidebar(props: SidebarProps) {
               onAllEpics={allConversations ?? onSelectProject}
               featureActions={featureActions}
               workersFor={workersFor}
-              ownerChoicesFor={ownerChoicesFor}
               {...(phone ? {} : { epicActions: threadActionsFor })}
               onNewEpic={newEpic}
               newEpicOpen={!phone && !!projectThreads?.newEpicOpen}
