@@ -5,7 +5,7 @@ human's own, from the brief ("What the human agreed" and the two orchestrator ad
 that quote them). Decisions marked **Assumed.** were made in this run and wait for the
 human's check.
 
-Check first: 
+Check first: 14, 16, 17, 18, 23
 
 ## 1. Autopilot is one switch per epic
 **Decision:** An epic is an orchestrator chat plus the features it created. Autopilot is switched on and off for an epic, never for a single feature. Per-feature ownership (`held_by`), the tool that takes a feature (`take_feature`), the "who finishes it" choice and the "Run it for me" planning answer are deleted, not wrapped.
@@ -65,6 +65,7 @@ Check first:
 **Decision:** Turning autopilot on names the features it runs, from the agreed run plan. Only those lock. A feature the run plan leaves for the human's grill stays the human's and unlocked, so they can grill it in its own chat while the others carry on. The human can add one later ("also run C") or take one back ("I'll do C myself") in the epic. Ending autopilot still returns them all at once.
 **Why:** The run plan already leaves some features for the human's grill (decision 10). If those locked too, the human could only grill them through the epic, with the orchestrator relaying each question: the relay ADR-0021 removed because the human answered twice.
 **Assumed.** Alternative: autopilot locks every feature in the epic, and a feature left for the human's grill is grilled through the epic chat.
+**Challenged:** A per-feature "in the run" mark, with "also run C" and "I'll do C myself", is per-feature ownership and `take_feature` under new names, the thing this feature exists to delete. Keep it only if the human accepts that knowingly; otherwise lock the whole epic and grill C after ending autopilot.
 **For the human.**
 
 ## 15. With autopilot off, the orchestrator creates and starts, and nothing more
@@ -77,6 +78,7 @@ Check first:
 **Decision:** On autopilot, a feature's chat and its workers' chats have no message box, and its acting buttons (Stop, Test drive, Merge, Approve on designs) are hidden. Everything stays readable: the chat, the plan, designs, the review, the diff. The lock note's links (to the epic, and "End autopilot") are the only actions. To drive or merge in the morning, the human tells the epic, or ends autopilot and works in each feature's chat as usual.
 **Why:** One place to act per feature is what makes it obvious. A Stop or Merge clicked in a locked feature would act behind the orchestrator's back.
 **Assumed.** Alternative: lock only the message box, and keep Stop, Test drive and Merge working.
+**Challenged:** Keep Stop working in a locked feature and tell the epic when it is used. Stop is a safety brake, not a decision; without it, halting one runaway lead means ending autopilot for the whole epic.
 **For the human.**
 
 ## 17. What a locked feature needs goes to the orchestrator, and only the orchestrator pings you
@@ -86,8 +88,8 @@ Check first:
 **For the human.**
 
 ## 18. Hard limits stay, even with decisions handed over
-**Decision:** Even when the human handed over their decisions, the orchestrator stops and waits for the human on anything that costs money, adds an account or a setup step for the human, risks losing data, publishes something outside the project (a deploy, a package release, a post), or cannot be undone. It also waits on anything the human named as theirs. The feature carries on around the wait where it can. Merging goes only as far as the human's words said.
-**Why:** These are the decisions a human would be upset to find made for them overnight, and none of them can be reversed before merge.
+**Decision:** Even when the human handed over their decisions, the orchestrator stops and waits for the human on: a new paid service, account, purchase or setup step for the human; anything outside git that cannot be undone, such as deleting data or sending something out (a deploy, a package release, a post, an email); and anything the human named as theirs. Ordinary agent usage is never a hard limit. Merging goes only as far as the human's words said. The feature carries on around the wait where it can.
+**Why:** These are the decisions a human would be upset to find made for them overnight, and none of them can be reversed before merge. Everything inside git can be.
 **Assumed.** Alternative: no fixed limits; the orchestrator judges each case from the run plan.
 **For the human.**
 
@@ -95,6 +97,7 @@ Check first:
 **Decision:** A decision the orchestrator makes in the human's place is marked **Decided by autopilot** in its feature's `decisions.md`, and a design it approves is shown as approved by autopilot. When the run plan's work is done, or when the human next writes in the epic, the orchestrator posts one summary: per feature, what it decided for them and what waits for them, each with a link. The human reverses anything before merging, by telling the epic or by ending autopilot and telling the feature.
 **Why:** Handing decisions over is only safe if nothing decided for the human is hidden from them.
 **Assumed.** Alternative: a running log the orchestrator posts after each decision.
+**Challenged:** Also post the summary each time the run stalls on something only the human can answer, since the human may check in mid-run and the summary is the one place the decisions made for them are gathered.
 **For the human.**
 
 ## 20. Ending autopilot: work carries on, and each lead re-asks what is still open
@@ -113,3 +116,21 @@ Check first:
 **Decision:** A message from an orchestrator to a lead opens with the epic's name ("From the epic "Checkout flow", not the human"), not only "From the project's orchestrator".
 **Why:** The brief asks for it: a lead, and the human reading its chat, see at once which epic is talking.
 **Assumed.** Alternative: keep the generic line.
+
+## 23. Autopilot carries on after a usage limit, whatever the setting says
+**Decision:** While an epic is on autopilot, its chat and its locked features' leads and workers are woken once when a usage limit resets, even when the human's "carry on after a usage limit" setting is off. The summary says how long the run was paused. Off autopilot, the setting rules as today.
+**Why:** A usage limit is the most common overnight failure. Turning autopilot on is the human saying "run while I sleep"; an epic that stalls at 1 a.m. and waits for morning defeats it.
+**Assumed.** Alternative: autopilot follows the setting, and the run plan warns when it is off.
+**For the human.** This overrides a setting of the human's while autopilot is on.
+
+## 24. A question already waiting moves to the epic when its feature joins autopilot
+**Decision:** When a feature joins autopilot (autopilot turned on, or "also run X") while its lead waits on the human, the wait in its chat is closed and the lead is told to re-ask through the epic. It is the mirror of decision 20.
+**Why:** A locked chat cannot be answered; a question left there would sit unseen.
+**Assumed.** Alternative: the orchestrator reads open waits when autopilot starts and answers or raises them itself.
+**For the human.**
+
+## 25. On autopilot without handed-over decisions, the human approves in the epic
+**Decision:** When the human did not hand over their decisions, a locked feature's plan, designs and other questions still come to the epic. The orchestrator links to the plan or design (still readable in the locked feature), the human answers in the epic, and the orchestrator relays the answer to the lead marked as the human's own words, which the lead accepts as the human's.
+**Why:** The lock hides the Approve button (decision 16), so the approval needs one place to happen; the epic is it (decision 3). Relaying the human's own words counts as the human, so nothing is answered twice.
+**Assumed.** Alternative: keep the Approve button working on a locked feature's designs.
+**For the human.**
