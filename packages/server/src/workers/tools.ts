@@ -10,6 +10,7 @@ import { getFeatureRow } from '../services/repo'
 import { showFetchedFile } from '../threads/shown'
 import type { SandboxEngine } from './engine'
 import { reportReviewFinding } from './review'
+import { workerWaitsFor, workerWithdraws } from './service'
 import { IN } from './sandbox'
 import type { WorkerToolHandler } from './tool-relay'
 import { type WorkerSandbox, workersDir } from './worker'
@@ -17,12 +18,13 @@ import { type WorkerSandbox, workersDir } from './worker'
 /**
  * Runcastle's answers to the tools a worker calls through its relay
  * (interactive-workers decision 9): read the feature, show a file in its own
- * chat, park a backlog feature, and a Review worker's findings. Each reuses what the lead's own tools run on;
+ * chat, park a backlog feature, wait on the human, and a Review worker's findings. Each reuses what the lead's own tools run on;
  * none can change the feature the worker works on.
  */
 
 const ShowFileArgs = z.object({ path: z.string().min(1), caption: z.string().max(200).optional() })
 const ParkFeatureArgs = z.object({ title: z.string().min(1), oneLiner: z.string().min(1), brief: z.string().min(1) })
+const WaitForYouArgs = z.object({ why: z.string().optional(), withdraw: z.boolean().optional() })
 
 function parsed<T>(schema: z.ZodType<T>, tool: string, args: unknown): T {
   const r = schema.safeParse(args)
@@ -96,6 +98,16 @@ export function workerTools(ctx: AppCtx, w: WorkerRow, sb: WorkerSandbox, engine
       case 'park_feature': {
         const { slug } = await parkFeatureForWorker(ctx, w, parsed(ParkFeatureArgs, tool, args))
         return `Parked as a draft in the backlog: ${slug}. Tell the human in a line; it starts only when they start it.`
+      }
+      case 'wait_for_you': {
+        const { why, withdraw } = parsed(WaitForYouArgs, tool, args)
+        if (withdraw) {
+          workerWithdraws(ctx, w.id)
+          return 'Withdrawn: you no longer need the human.'
+        }
+        if (!why?.trim()) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+        workerWaitsFor(ctx, w.id, why)
+        return 'The human sees that you need them, with your line, until they write in this chat. End your turn now.'
       }
       case 'report_finding': {
         const { finding } = reportReviewFinding(ctx, w.id, parsed(ReviewFindingInput, tool, args))

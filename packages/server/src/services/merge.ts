@@ -8,7 +8,8 @@ import { retireShippedWorktree } from './feature-worktrees'
 import { requireNotDraft } from './features'
 import * as git from './git'
 import { promoteOutcomeDoc } from './outcome'
-import { clearHandback } from './lead-status'
+import { clearFeatureWaits } from './waits'
+import { deliverToLead } from './lead-delivery'
 import { announceMerge, type ShippedData } from './orchestrator-notify'
 import { getFeatureRow, projectForFeature, setFeatureStatus } from './repo'
 import { startUpNextDependents } from './up-next'
@@ -76,7 +77,7 @@ export async function mergeFeatureFlow(
       data: shippedData,
     })
     setFeatureStatus(ctx, featureId, 'shipped')
-    clearHandback(ctx, featureId, 'closed')
+    clearFeatureWaits(ctx, featureId)
     // Best-effort: the merge has landed, so a start that fails is an event on
     // the dependent (startUpNextDependents records them), never a failed ship.
     try {
@@ -112,6 +113,15 @@ export async function mergeFeatureFlow(
       message: 'merge conflict — resolve and retry',
       data: { conflict: res.conflict, base: res.target, files: res.files ?? [] },
     })
+    // No agent stands behind a conflict, so its lead hears it and decides whether the human does (needs-you decision 9).
+    const files = res.files ?? []
+    await deliverToLead(ctx, getFeatureRow(ctx, featureId), {
+      text:
+        `[runcastle] Merging ${feature.branch} into ${res.target} stopped on a conflict` +
+        (files.length ? ` in: ${files.join(', ')}` : '') +
+        `. Bring ${res.target} into the feature branch and resolve it, or call wait_for_you if the human must decide.`,
+      source: 'runcastle',
+    }).catch((err) => console.error(`feature ${featureId}: conflict delivery`, err))
   }
   return { ok: res.ok, conflict: res.conflict, base: res.target, files: res.files ?? [] }
 }

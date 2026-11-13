@@ -14,6 +14,7 @@ import {
   modelRoster,
   newId,
   TurnEnd,
+  USAGE_LIMIT_WHY,
   type AgentRuntime,
   type Ask,
   type AskAnswer,
@@ -48,6 +49,7 @@ import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
 import { clearSentMemory } from '../mcp/sent-memory'
 import { tryGetFeature } from '../services/repo'
+import { setWait } from '../services/waits'
 import { envInt } from '../util/env-int'
 import { runcastleVersion } from '../version'
 import {
@@ -338,11 +340,11 @@ const USAGE_FRESH_MS = 60_000
 const LOST_CONVERSATION = 'Started a new conversation — the earlier one could not be found'
 
 /** What the lead hears ahead of its next prompt after the human stopped its self-planning run. */
-const PLANNING_STOPPED =
+const PLANNING_HALTED_PREFACE =
   '[runcastle] The human stopped your automatic planning run before it finished: planning was stopped by the human, so the plan may be incomplete.'
 
 /** What the thread says after the human stopped its self-planning run, and how it goes on. */
-const PLANNING_STOPPED_NOTICE = 'Planning stopped. Send a message to pick it up with the lead.'
+const PLANNING_HALTED_NOTICE = 'Planning stopped. Send a message to pick it up with the lead.'
 
 /** What the thread says when its agent process dies with nothing human-readable on its stderr. */
 const CRASHED = 'The agent stopped unexpectedly. Your next message restarts it.'
@@ -880,9 +882,9 @@ class Host implements AgentHost {
       appendThreadEvent(t.id, { type: 'turn_ended', reason: 'cancelled', ...(files.length ? { files } : {}) })
     }
     if (planning && reason === 'archived') {
-      appendThreadEvent(t.id, { type: 'notice', text: PLANNING_STOPPED_NOTICE })
+      appendThreadEvent(t.id, { type: 'notice', text: PLANNING_HALTED_NOTICE })
       const pending = readPendingFork(t.id)
-      writePendingFork(t.id, { ...pending, preface: pending.preface !== undefined ? `${PLANNING_STOPPED}\n\n${pending.preface}` : PLANNING_STOPPED })
+      writePendingFork(t.id, { ...pending, preface: pending.preface !== undefined ? `${PLANNING_HALTED_PREFACE}\n\n${pending.preface}` : PLANNING_HALTED_PREFACE })
     }
     appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
     this.ended(t, reason)
@@ -1412,15 +1414,15 @@ class Host implements AgentHost {
       ...(item.compaction ? { compaction: item.compaction } : {}),
     })
     item.logged = true
-    // A message answers the lead's reply (`leadAwaitsHuman`): the header and the
-    // sidebar read that off the log, so they drop it now, not at the turn's start.
+    // A message moves the turn the header and the sidebar read off the log:
+    // they move now, not at the turn's start.
     publishLive({ kind: 'turn', sessionId: threadId })
   }
 
   /**
    * Log an event that moves whether the thread waits on the human (a turn's end,
    * an ask and its answer) and push `turn` whatever the awaiting bit did: the
-   * header and the sidebar read `leadAwaitsHuman` off the log, and Claude Code's
+   * header and the sidebar read the turn off the log, and Claude Code's
    * Stop hook sets the bit before ACP says the turn ended, so a flip of the bit
    * may come before the log says anything.
    */
@@ -1485,6 +1487,8 @@ class Host implements AgentHost {
         text: `The usage limit stopped this turn. Runcastle can ${CARRY_ON_SETTING.phrase} when the limit resets.`,
         setting: CARRY_ON_SETTING,
       })
+      // Only the human can start it again: the one need runcastle sets itself (needs-you decision 9).
+      setWait(this.ctx, t.id, USAGE_LIMIT_WHY, 'runcastle')
       return
     }
     if (at === undefined) {
