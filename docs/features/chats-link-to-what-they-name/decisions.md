@@ -2,7 +2,7 @@
 
 Planned without the human (a headless planning run, 2026-11-13). The brief settles what the human wants: an agent can link what it names, a feature and a worker's chat first; one click opens it; it works the same on a phone; a link to something that does not exist reads as plain text. Every decision below is the lead's assumption, to be checked.
 
-Check first: 1, 2, 3, 4, 6
+**Accepted (2026-11-13):** the human said yes to the plan as written ("JUST MERGE WHATS LEFT AND START!", relayed by the orchestrator). They did not answer the decisions one by one, so the assumed marks stay as the record of who chose.
 
 An independent challenger read the brief and decisions 1–6. Its unasked branches became decisions 7–11; where it disagreed, the decision carries a **Challenged:** line and the lead's answer stands.
 

@@ -279,13 +279,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // <!-- FILL:C -->
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [1, 'Known feature names and slugs become links by themselves', 'The brief offered both; a guess about which reads more naturally to you', 'for you'],
-    [2, 'Features and workers only; or exact designs and shown files too', 'Decides where an agent can send you in one click', 'for you'],
-    [3, 'A feature link always opens the lead\'s chat, even on a desktop', 'The challenger disagreed: a link carries the agent\'s intent to talk to that lead', 'challenged'],
-    [4, 'A chip with the feature\'s status dot, or a link icon', 'How every link looks; the challenger also wanted misses logged', 'challenged'],
-    [6, 'The rule only in the orchestrator\'s and the lead\'s skills', 'The challenger thought workers rarely talk to you directly', 'challenged']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
