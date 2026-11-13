@@ -32,7 +32,7 @@ describe('railTiles', () => {
     project('p2', 'clawflow'),
     project('p3', 'JanaLearn_Updated'),
   ]
-  const waiting = listItem({ need: need('plan', 'Plan to approve') })
+  const waiting = listItem({ need: need('Plan ready for your yes') })
   const quiet = listItem({ id: 'feat_2' })
 
   it('keeps the given order and names each tile', () => {

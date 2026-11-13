@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardLines, needWords, portfolioEntries, portfolioTotals } from '../src/lib/portfolio'
+import { cardLines, portfolioEntries, portfolioTotals } from '../src/lib/portfolio'
 import { listItem, need } from './fixtures'
 
 /**
@@ -9,8 +9,8 @@ import { listItem, need } from './fixtures'
 
 const project = (id: string, name = id) => ({ id, name, repoPath: `/code/${name}`, position: 0 })
 
-const waits = (id: string, words = 'Plan to approve') => listItem({ id, need: need('plan', words) })
-const runs = (id: string) => listItem({ id, workersWorking: 1 })
+const waits = (id: string, why = 'Plan ready for your yes') => listItem({ id, need: need(why) })
+const runs = (id: string) => listItem({ id, working: true })
 const idle = (id: string) => listItem({ id })
 
 describe('portfolioEntries', () => {
@@ -35,20 +35,16 @@ describe('portfolioEntries', () => {
     expect(entries.map((e) => e.project.id)).toEqual(['quiet', 'runs', 'waits'])
   })
 
-  it('uses the sidebar’s Needs-you rule: a held need, or a parked draft, does not wait', () => {
-    const held = listItem({ id: 'h', need: need('plan', 'Plan to approve', { held: true }) })
-    const draft = listItem({ id: 'd', status: 'draft', need: need('plan', 'Plan to approve') })
-    const [entry] = portfolioEntries([project('a')], [[held, draft]])
+  it('uses the sidebar’s Needs-you rule: a parked draft does not wait', () => {
+    const draft = listItem({ id: 'd', status: 'draft', need: need('stale') })
+    const [entry] = portfolioEntries([project('a')], [[draft]])
     expect(entry!.kind).toBe('line')
     expect(entry!.waiting).toEqual([])
   })
 
-  it('lists what waits with its short words, and what runs', () => {
-    const [entry] = portfolioEntries(
-      [project('a')],
-      [[waits('w1', 'Needs your answer · Which sound plays?'), runs('r1'), idle('i1')]],
-    )
-    expect(entry!.waiting.map((w) => [w.feature.id, w.words])).toEqual([['w1', 'Needs your answer']])
+  it('lists what waits with the agent’s own line, and what runs', () => {
+    const [entry] = portfolioEntries([project('a')], [[waits('w1', 'Which sound plays?'), runs('r1'), idle('i1')]])
+    expect(entry!.waiting.map((w) => [w.feature.id, w.words])).toEqual([['w1', 'Which sound plays?']])
     expect(entry!.running.map((f) => f.id)).toEqual(['r1'])
     expect(entry!.stats).toMatchObject({ needsYou: 1, working: 1, total: 3 })
   })
@@ -81,12 +77,5 @@ describe('portfolioTotals', () => {
   it('counts projects, running and waiting features across every project', () => {
     const entries = portfolioEntries([project('a'), project('b')], [[waits('w'), runs('r')], [runs('r2')]])
     expect(portfolioTotals(entries)).toEqual({ projects: 2, running: 2, waiting: 1 })
-  })
-})
-
-describe('needWords', () => {
-  it('keeps the reason and drops its detail', () => {
-    expect(needWords('Ready to test · Streak resets at midnight')).toBe('Ready to test')
-    expect(needWords('Plan to approve')).toBe('Plan to approve')
   })
 })

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { FeatureNeed } from '@runcastle/core'
+import type { Need } from '@runcastle/core'
 import type { NextStep } from '../src/lib/feature-ui'
 import { featureStatus, headerActions } from '../src/lib/feature-ui/status-line'
 import { ToastProvider } from '../src/lib/toast'
@@ -11,7 +11,7 @@ import { FeatureHeader } from '../src/components/workspace/FeatureHeader'
 import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
 import { HeaderAction } from '../src/components/workspace/HeaderAction'
 import { PageTopbar } from '../src/ui'
-import { full } from './fixtures'
+import { full, need } from './fixtures'
 
 /**
  * The feature page's header as `Workspace` composes it (`the-feature-lead-runs-
@@ -34,19 +34,12 @@ const ns: NextStep = {
   secondary: [
     { label: 'Chat', kind: 'chat' },
     { label: 'Merge & ship', kind: 'merge' },
-    { label: 'Resolve conflict', kind: 'resolveConflict' },
+    { label: 'Fix the drive', kind: 'fixDrive' },
   ],
 }
 
 /** The server's need once the agent declared ready on the Checkout drive. */
-const readyToTest: FeatureNeed = {
-  kind: 'test',
-  words: 'Ready to test · Checkout',
-  why: 'Checkout',
-  scenario: 'Checkout',
-  held: false,
-  since: 20,
-}
+const readyToTest: Need = need('Ready to test · Checkout', { since: 20 })
 
 function header(over: { driving?: boolean; running?: boolean } = {}): string {
   const status = featureStatus({
@@ -56,7 +49,8 @@ function header(over: { driving?: boolean; running?: boolean } = {}): string {
     agentWorking: false,
     driving: over.driving ?? false,
     selfPlanning: false,
-    now: 0,
+    working: false,
+    declared: true,
   })
   const row = headerActions(ns, status)
   const onAction = () => undefined
@@ -92,7 +86,8 @@ describe('the feature page header', () => {
     expect(html).toContain(review.title)
     expect(html).toContain('Started 15m ago')
     expect(html).toContain('Ready to test')
-    expect(html).toContain('· Checkout')
+    expect(html).toContain('Needs you')
+    expect(html).toContain('· Ready to test · Checkout')
     expect(html).not.toContain('aria-label="Pipeline"')
     expect(html).not.toContain('Autonomy')
     expect(html).not.toMatch(/Run until ready|Ask before each round/)
@@ -107,17 +102,17 @@ describe('the feature page header', () => {
     const labels = buttons(html)
     // The row's two, then the meta line's branch.
     expect(labels.slice(0, 2)).toEqual(['Start test drive', 'Merge &amp; ship'])
-    expect(html).toContain('data-overflow="Resolve conflict"')
+    expect(html).toContain('data-overflow="Fix the drive"')
     expect(labels.some((l) => /burn/i.test(l))).toBe(false)
   })
 
   it('swaps the primary for Stop drive while driving, and Stop while a round runs', () => {
     expect(buttons(header({ driving: true }))).toContain('Stop drive')
     expect(buttons(header({ driving: true }))).not.toContain('Start test drive')
-    // Ready to test is the human's own need, so it keeps its button over workers
-    // at work, as the sidebar row does (triage-batch decision 13); Stop waits in ⋯.
+    // Declared ready, Start test drive keeps its button over workers
+    // at work; Stop waits in ⋯.
     expect(buttons(header({ running: true }))).toContain('Start test drive')
-    expect(header({ running: true })).toContain('data-overflow="Stop|Resolve conflict"')
+    expect(header({ running: true })).toContain('data-overflow="Stop|Fix the drive"')
   })
 
   it('says nothing of what to test — the agent says it in the chat', () => {
@@ -125,7 +120,7 @@ describe('the feature page header', () => {
   })
 
   // The round-10 review, at ~900px: a thread named by its long first message
-  // drew over the status ("Talking with yThis is a test…"). There is no layout
+  // drew over the status ("Needs you · ReThis is a test…"). There is no layout
   // engine here, so the test pins what keeps the row from overlapping: the
   // thread is named as the breadcrumb's last item (threads-in-the-sidebar
   // decision 6), which the breadcrumb truncates first and caps beside a status,
@@ -144,7 +139,8 @@ describe('the feature page header', () => {
           agentWorking: false,
           driving: false,
           selfPlanning: false,
-          now: 0,
+          working: false,
+          declared: true,
         }),
       }),
     )

@@ -20,8 +20,8 @@ describe('the glossary list', () => {
 
 describe('filterGlossary', () => {
   it('returns every word for an empty query', () => {
-    expect(filterGlossary('')).toHaveLength(15)
-    expect(filterGlossary('   ')).toHaveLength(15)
+    expect(filterGlossary('')).toHaveLength(14)
+    expect(filterGlossary('   ')).toHaveLength(14)
   })
 
   it('finds Round by the word it replaced', () => {

@@ -31,11 +31,12 @@ function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
   const status = featureStatus({
     feature: { status: 'active' },
     need: null,
+    working: false,
     workersWorking: 0,
     agentWorking: false,
     driving: false,
     selfPlanning,
-    now: 0,
+    declared: false,
   })
   // The header row as the feature page composes it (design-mode decision 12).
   const row = headerActions(selfPlanning ? selfPlanBar : plainBar, status)
@@ -49,20 +50,19 @@ function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
 }
 
 describe('the header while the feature plans itself', () => {
-  it('says Planning automatically and offers the run’s Stop', () => {
+  it('says Working and offers the run’s Stop', () => {
     const { onAction } = headerRow(true)
 
-    expect(screen.getByRole('status').textContent).toContain('Planning automatically')
+    expect(screen.getByRole('status').textContent).toContain('Working')
 
     fireEvent.click(screen.getByRole('button', { name: /^Stop$/ }))
     expect(onAction).toHaveBeenCalledWith('stopSelfPlan')
   })
 
-  it('reads Talking with you once the run has ended, with no Go and only Merge & ship', () => {
+  it('reads Idle once the run has ended, with no Go and only Merge & ship', () => {
     const { row } = headerRow(false)
 
-    expect(screen.getByRole('status').textContent).toContain('Talking with you')
-    expect(screen.queryByText('Planning automatically')).toBeNull()
+    expect(screen.getByRole('status').textContent).toContain('Idle')
     expect(screen.queryByRole('button')).toBeNull()
     expect(row.action).toBeUndefined()
     expect(row.merge?.label).toBe('Merge & ship')

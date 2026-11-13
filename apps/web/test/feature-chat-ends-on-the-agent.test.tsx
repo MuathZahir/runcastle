@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { FeatureNeed } from '@runcastle/core'
+import type { Need } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import { fakeTrpc } from './fake-trpc'
 import { full as fixture, need } from './fixtures'
@@ -39,7 +39,7 @@ function server() {
 
 let column: ReturnType<typeof useFeatureChatColumn> | undefined
 
-function Chat({ waits }: { waits: FeatureNeed | null }) {
+function Chat({ waits }: { waits: Need | null }) {
   const full = { ...fixture({ id: 'feat_1' }), sessions: [], need: waits } as FeatureFull
   column = useFeatureChatColumn({ featureId: 'feat_1', sessions: [], driveSessionId: undefined })
   return <FeatureChat full={full} column={column} events={[]} hidden={false} holdStart start={async () => 'th_main'} onPlanItYourself={async () => undefined} onView={() => {}} />
@@ -54,9 +54,9 @@ afterEach(() => {
 describe('the main chat while the feature needs the human', () => {
   it('ends on the agent’s words, with no waiting line or button under them', async () => {
     const api = server()
-    render(<Chat waits={need('plan', 'Plan to approve')} />, { wrapper: api.Wrapper })
+    render(<Chat waits={need('Plan ready for your yes')} />, { wrapper: api.Wrapper })
     await waitFor(() => expect(screen.getByText('Can I start round 1?')).toBeTruthy())
-    expect(screen.queryByText(/Plan to approve/)).toBeNull()
+    expect(screen.queryByText(/Plan ready for your yes/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Open plan' })).toBeNull()
   })
 })

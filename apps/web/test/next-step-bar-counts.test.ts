@@ -87,7 +87,7 @@ describe('the next-step bar’s count line', () => {
 
   it('keeps two secondaries beside the primary and the rest behind More', () => {
     const html = bar({
-      primary: { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
+      primary: { label: 'Resolve the merge conflict', kind: 'chat' },
       secondary: [
         { label: 'Merge & ship', kind: 'merge' },
         { label: 'Start test drive', kind: 'testDriveStart' },

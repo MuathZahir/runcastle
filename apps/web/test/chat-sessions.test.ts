@@ -15,6 +15,7 @@ const entry = (id: string, role: ThreadEntry['role'], updatedAt: number): Thread
   createdAt: updatedAt,
   updatedAt,
   runtime: 'claude-code',
+  need: null,
 })
 
 describe('the threads a page lists', () => {

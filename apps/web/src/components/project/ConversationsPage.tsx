@@ -135,7 +135,7 @@ export function ConversationsPage({
               ? undefined
               : [
                   { text: `${threads.length} ${threads.length === 1 ? 'epic' : 'epics'}` },
-                  waiting > 0 ? { tone: 'warning', text: `${waiting} waiting for you` } : null,
+                  waiting > 0 ? { tone: 'warning', text: `${waiting} ${waiting === 1 ? 'needs' : 'need'} you` } : null,
                   working > 0 ? { tone: 'live', text: `${working} working` } : null,
                 ]
           }

@@ -13,7 +13,7 @@ const draftState = (f: FeatureListItem): UnstartedState | null => unstartedState
  * needs anyone.
  */
 export function needsMe(f: Pick<FeatureListItem, 'status' | 'need'>): Need | null {
-  return f.status === 'active' ? f.need : null
+  return f.status === 'active' ? (f.need ?? null) : null
 }
 
 /**
@@ -112,7 +112,7 @@ export function sortForSidebar(features: FeatureListItem[]): FeatureListItem[] {
     // (decision 9) — more alive than a merged branch, not in the pipeline.
     // Up next is between the two: wanted, but not moving yet.
     const state = draftState(f)
-    if (state === 'upNext') return 2
+    if (state === 'upNext' || state === 'stuck') return 2
     if (state) return 3 + draftRank(f)
     return 1
   })

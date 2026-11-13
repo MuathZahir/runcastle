@@ -1,5 +1,5 @@
 import type { FeatureListItem } from '../src/lib/api'
-import type { FeatureNeed } from '@runcastle/core'
+import type { Need } from '@runcastle/core'
 import type { WorkStep } from '../src/lib/chat-thread'
 import type { FeatureActionRow, NewsRow } from '../src/components/chat/thread/FeatureCards'
 import { listItem } from '../test/fixtures'
@@ -14,7 +14,7 @@ const now = Date.now()
 const MIN = 60_000
 
 const tickets = (total: number, done: number) => ({ total, pending: total - done, burning: 0, done, failed: 0, cancelled: 0 })
-const need = (kind: FeatureNeed['kind'], words: string): FeatureNeed => ({ kind, words, held: false, since: now - 5 * MIN })
+const need = (why: string): Need => ({ why, threadId: 'lead', by: 'agent', since: now - 5 * MIN })
 
 let n = 0
 function feature(title: string, over: Partial<FeatureListItem> = {}): FeatureListItem {
@@ -23,18 +23,18 @@ function feature(title: string, over: Partial<FeatureListItem> = {}): FeatureLis
   return { ...listItem({ id: `feat_${n}`, slug, ...over }), branch: `feature/${slug}`, title, ...over } as FeatureListItem
 }
 
-export const CARDS = feature('Orchestrator actions show as cards', { need: need('plan', 'Plan to approve') })
+export const CARDS = feature('Orchestrator actions show as cards', { need: need('Plan ready for your yes') })
 export const COMPOSER = feature('Composer remembers the last model', { liveSession: { status: 'live', awaitingInput: false } } as Partial<FeatureListItem>)
 export const EMPTY = feature('Empty states speak plainly', { status: 'draft' })
 export const KEYS = feature('A keyboard map for the chat', { status: 'draft' })
 export const CHANGELOG = feature('Changelog file per release', { status: 'shipped', ticketCounts: tickets(5, 5) })
 export const PREPARE = feature('Prepare reruns stale checks', {
   ticketCounts: tickets(7, 7),
-  need: need('test', 'Ready to test · Stale checks rerun'),
+  need: need('Ready to test · Stale checks rerun'),
 })
 export const BLOCKERS = feature('Rounds see blockers outside the round', {
   ticketCounts: tickets(4, 3),
-  need: need('answer', 'Needs your answer · retry the ticket or split it?'),
+  need: need('Retry the ticket or split it?'),
 })
 export const PER_PROJECT = feature('Model menu per project', { status: 'draft' })
 

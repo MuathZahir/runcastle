@@ -13,8 +13,9 @@ import {
   triage,
   triageOf,
   upNextBasesDiffer,
+  upNextProblem,
 } from '../src/lib/feature-ui'
-import { full, listItem } from './fixtures'
+import { full, listItem, need } from './fixtures'
 
 /**
  * Merge-order dependencies on the web (ADR-0013 decisions 4 and 6): what a
@@ -104,26 +105,29 @@ describe('an Up next feature in the rail', () => {
   })
 })
 
+/** needs-you-is-the-agent-s-call decision 16: its problem on its own row, never in Needs you. */
 describe('a stuck Up next feature', () => {
-  it('needs you when nothing is left to wait on', () => {
+  it('says nothing is left to wait on, in Up next, not Needs you', () => {
     const f = upNext('s', [MERGED])
-    expect(triageOf(f)).toBe('needsYou')
-    expect(needsMe(f)).toEqual({
-      kind: 'stuck',
-      label: 'nothing left to wait on — start it or move it to the backlog',
-    })
-    expect(rowChip(f).text).toBe('Needs you')
+    expect(triageOf(f)).toBe('upNext')
+    expect(needsMe(f)).toBeNull()
+    expect(upNextProblem(f)).toBe('nothing left to wait on — start it or move it to the backlog')
+    expect(rowChip(f).text).toBe('nothing left to wait on — start it or move it to the backlog')
   })
 
-  it('needs you when a dependency it waits on was archived', () => {
+  it('says a dependency it waits on was archived', () => {
     const f = upNext('s', [dep('auth'), ARCHIVED])
-    expect(triageOf(f)).toBe('needsYou')
-    expect(needsMe(f)?.label).toBe('old was archived — remove it or move this to the backlog')
+    expect(triageOf(f)).toBe('upNext')
+    expect(upNextProblem(f)).toBe('old was archived — remove it or move this to the backlog')
   })
 
   it("says why its automatic start didn't happen when the server recorded it", () => {
     const problem = "couldn't start by itself: its dependencies merged into different branches (main, develop)"
-    expect(needsMe(upNext('s', [MERGED], problem))).toEqual({ kind: 'stuck', label: problem })
+    expect(upNextProblem(upNext('s', [MERGED], problem))).toBe(problem)
+  })
+
+  it('has no problem while it can still start by itself', () => {
+    expect(upNextProblem(upNext('u', [dep('auth')]))).toBeNull()
   })
 })
 
@@ -145,30 +149,33 @@ describe('the lanes and order around Up next', () => {
     const groups = triage([
       ...list,
       upNext('stuck', [MERGED]),
-      listItem({ id: 'working', workersWorking: 1 }),
+      listItem({ id: 'asks', need: need('Which?') }),
+      listItem({ id: 'working', working: true }),
       listItem({ id: 'stopped' }),
       listItem({ id: 'shipped', status: 'shipped' }),
     ])
     expect(groups.map((g) => [g.key, g.label])).toEqual([
       ['needsYou', 'Needs you'],
-      ['agentWorking', 'Agent working'],
-      ['inProgress', 'In progress'],
+      ['working', 'Working'],
+      ['idle', 'Idle'],
       ['upNext', 'Up next'],
       ['drafts', 'Backlog'],
       ['shipped', 'Shipped'],
     ])
-    expect(groups[0]!.features.map((f) => f.id)).toEqual(['stuck'])
-    expect(groups[3]!.features.map((f) => f.id)).toEqual(['u1'])
+    expect(groups[0]!.features.map((f) => f.id)).toEqual(['asks'])
+    expect(groups[3]!.features.map((f) => f.id)).toEqual(['u1', 'stuck'])
   })
 
-  it('sorts the same way in the flat sidebar order, still between active and shipped', () => {
+  it('sorts the same way in the flat sidebar order, a stuck draft never first', () => {
     const sorted = sortForSidebar([
       listItem({ id: 'shipped', status: 'shipped' }),
       ...list,
       upNext('stuck', [MERGED]),
       listItem({ id: 'active' }),
     ])
-    expect(sorted.map((f) => f.id)).toEqual(['stuck', 'active', 'u1', 'r1', 'p1', 'b1', 'b2', 'shipped'])
+    expect(sorted[0]!.id).toBe('active')
+    expect(sorted.map((f) => f.id).indexOf('stuck')).toBeGreaterThan(sorted.map((f) => f.id).indexOf('u1'))
+    expect(sorted.at(-1)!.id).toBe('shipped')
   })
 
   it('never lands you on an Up next feature when entering a project', () => {
