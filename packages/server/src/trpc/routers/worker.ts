@@ -1,7 +1,7 @@
 import type { Need, WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../../db/types'
-import { askWorkerToHandBack, listProjectWorkers, listWorkers, queueHoldOf, startUnassignedWorker } from '../../workers/service'
+import { askWorkerToHandBack, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, startUnassignedWorker } from '../../workers/service'
 import { workerPreviewPath } from '../../routes/design-pass-paths'
 import { phoneDesignPort } from '../../services/phone-link'
 import { publicProcedure, router } from '../context'
@@ -49,6 +49,15 @@ export const workerRouter = router({
   listProject: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }): ListedWorker[] => listProjectWorkers(ctx, input.projectId).map((w) => listed(ctx, w))),
+
+  /**
+   * A worker's feature (id and slug), so a `worker:<id>` link in a chat can
+   * open its chat (chats-link-to-what-they-name). Null for an unknown id, a
+   * worker owned by no feature, and a worker of another project.
+   */
+  locate: publicProcedure
+    .input(z.object({ projectId: z.string(), workerId: z.string() }))
+    .query(({ ctx, input }) => locateWorker(ctx, input.projectId, input.workerId)),
 
   /** The "+": a worker the human starts, with no assignment, that waits for them. */
   startUnassigned: publicProcedure

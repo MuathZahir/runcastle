@@ -95,6 +95,8 @@ A feature is the human's unless its epic (the orchestrator chat that created it)
 - **On autopilot**, the human cannot type in this chat: the epic is the only place they talk. Bring everything to the epic with `hand_back({ summary })`: questions, the plan's yes, "ready", a merge conflict. The epic never reads this chat, so the summary says what is done, what is left and what you need. A `wait_for_you` you call anyway goes to the epic the same way. The epic answers what it can; when the human handed their decisions to it, its answers count as theirs, designs and behaviour included, and it asks the human only what it cannot answer.
 - **When autopilot ends**, runcastle tells you the feature is the human's again. Re-ask any open question here with `wait_for_you`.
 
+**Link what you name.** When you point the human at a feature, a worker or a feature's plan or designs, write it as a link: `[Faster reviews](feature:faster-cheaper-reviews)`, `feature:<slug>/plan`, `feature:<slug>/design`, `[Header](worker:<worker id>)`. Use only a slug or worker id a runcastle tool gave you, never a guess: a link to nothing shows as plain text.
+
 ## When to ask, and when to stop
 
 - Carry on through anything the agreed plan settled. Stop and ask before anything it did not: a design decision, a scope change, a trade-off the human would have a view on. Say what you need decided and what you would do, call `wait_for_you({ why })`, and end your turn.

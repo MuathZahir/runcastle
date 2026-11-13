@@ -18,6 +18,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
+import { LINK_WHAT_YOU_NAME } from './link-rule'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import { releaseReviewDrive, reviewDrive, reviewDriveFor } from '../services/git'
 import { reapRecorder } from '../services/recorder-reap'
@@ -347,6 +348,7 @@ export function sandboxReviewBriefing(label: string, branch: string): string {
     '## How you work',
     `- Your checkout is ${IN.repo}, on branch ${branch}. You write no code and make no commits: leave it as you found it.`,
     "- Runcastle's tools for you: report_finding (one review finding), hand_back, read_feature (the feature's state, decisions and the lead's latest turns) and show_file (a file into this chat). You have no others, and no route to runcastle.",
+    `- ${LINK_WHAT_YOU_NAME}`,
     '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then end your turn so the human can decide.',
     "- Your assignment says what to review and how. Run the project's checks yourself, as it says.",
     '- To hand back, call hand_back with your account, as your assignment says. Then end your turn.',
@@ -365,6 +367,7 @@ export function hostReviewBriefing(w: Pick<WorkerRow, 'label' | 'featureBranch'>
     "- You write no code and make no commits: leave the human's checkout exactly as you found it, and never switch its branch.",
     "- Runcastle's tools for you: review_drive (the running app: status, scenarios, calls and screenshots), report_finding (one review finding), " +
       "hand_back, show_file (a file into this chat), get_feature_context and read_feature_doc (the feature's state and docs).",
+    `- ${LINK_WHAT_YOU_NAME}`,
     "- Your assignment says what to review and how. Run the project's checks yourself, as it says.",
     '- To hand back, call hand_back with your account, as your assignment says. Then end your turn: runcastle gives the drive back.',
   ].join('\n')

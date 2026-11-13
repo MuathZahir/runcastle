@@ -101,6 +101,20 @@ export function getWorker(ctx: AppCtx, id: string): WorkerRow | undefined {
   return ctx.db.select().from(workers).where(eq(workers.id, id)).get()
 }
 
+/**
+ * Where a worker's chat lives (chats-link-to-what-they-name): its feature's id
+ * and slug, for a `worker:<id>` link in an agent's chat. Null for an id the app
+ * has no record of, for a project's own worker (owned by no feature), and for
+ * a worker of another project, whose link must not open inside this one. A
+ * landed or dropped worker keeps its row, so it still resolves.
+ */
+export function locateWorker(ctx: AppCtx, projectId: string, id: string): { featureId: string; slug: string } | null {
+  const w = getWorker(ctx, id)
+  if (!w?.featureId) return null
+  const f = tryGetFeature(ctx, w.featureId)
+  return f && f.projectId === projectId ? { featureId: f.id, slug: f.slug } : null
+}
+
 function requireWorker(ctx: AppCtx, id: string): WorkerRow {
   const w = getWorker(ctx, id)
   if (!w) throw new NotFoundError(`no worker ${id}`)

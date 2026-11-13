@@ -66,8 +66,9 @@ describe('the project skill, orchestrating', () => {
     // Raised from 25_000 for the epic icon ids name_epic picks from (epics-that-look-alive decision 1),
     // then from 25_400 for the never-guess statement every agent carries word for word (agents-never-guess decision 12),
     // then from 26_700 for the merge line every epic acts on (the-epic-hears-when-its-features-merge decisions 3, 11),
-    // then from 27_300 for autopilot's run plan and hard limits (epics-on-autopilot).
-    expect(text.length).toBeLessThanOrEqual(28_000)
+    // then from 27_300 for autopilot's run plan and hard limits (epics-on-autopilot)
+    // and the linking rule every agent carries word for word (chats-link-to-what-they-name decision 6).
+    expect(text.length).toBeLessThanOrEqual(28_500)
     expect(text).not.toContain('## Your tools')
     expect(text).toContain('**Load your runcastle tools once**')
     const pointers = [...text.matchAll(/\.\/references\/([a-z-]+\.md)/g)].map((m) => m[1])
