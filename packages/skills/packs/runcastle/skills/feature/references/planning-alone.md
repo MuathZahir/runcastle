@@ -24,9 +24,9 @@ decisions, spec, designs or plan. Your closing message says planning stopped
 because what the human gets, where it lives or who sees it is open, and asks
 each open one in full, numbered, with your recommendation and the real options
 the survey found ("the existing Activity page, or a new tab?"). Then call
-`mcp__runcastle__wait_for_you({ why: "what, where or who is open" })` and end the turn. Do so when an epic owns the feature too: the
-questions are the human's, and the wait makes the feature theirs (SKILL.md,
-"Talk to your owner").
+`mcp__runcastle__wait_for_you({ why: "what, where or who is open" })` and end the turn. On autopilot that wait goes to the
+epic, which answers or asks the human (SKILL.md, "The human, or the epic on
+autopilot").
 **When the answers arrive**, record them in `decisions.md` as the human's
 (decided with them, no `**Assumed.**`) and finish the plan as this file says,
 from the question rounds on, ending on the request for the yes. Do not turn it
@@ -170,10 +170,8 @@ reach this part once the three are settled (**The three come first**).
    any designs waiting for approval in its line. Write nothing after step 6's question, so the turn ends on
    it, and then end the turn. The human answers in this chat when they
    are back; their yes is what starts the work, in a later turn.
-   **When an epic owns the feature** (talk to your owner, SKILL.md), the
-   plan's yes is that epic's to give: call `hand_back({ summary })` in place
-   of `wait_for_you`, with the plan and its check-first decisions, and close
-   the message by saying the plan went to that epic for its yes. **But when
-   the plan holds a For the human decision or a design waiting for approval**,
-   those are the human's, not the epic's: ask them in this chat and call
-   `wait_for_you` as above, which makes the feature theirs.
+   **On autopilot** (SKILL.md, "The human, or the epic on autopilot"), the
+   plan's yes is the epic's to give: call `hand_back({ summary })` in place
+   of `wait_for_you`, with the plan, its check-first decisions, every For the
+   human decision and any design waiting, and close the message by saying the
+   plan went to the epic for its yes.
