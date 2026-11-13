@@ -298,7 +298,7 @@ describe('a Codex worker after an idle stop', () => {
     const fake = createFakeAcp()
     const host = realHost(fake)
     const id = await startCodexWorker()
-    await until(() => getWorker(ctx, id)?.status === 'needs-you')
+    await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
     const conversation = getSessionRow(ctx, id)!.ccSessionId
     const container = getWorker(ctx, id)!.container!
 
@@ -319,7 +319,7 @@ describe('a Codex worker after an idle stop', () => {
     const fake = createFakeAcp()
     const host = realHost(fake)
     const id = await startCodexWorker()
-    await until(() => getWorker(ctx, id)?.status === 'needs-you')
+    await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
     const conversation = getSessionRow(ctx, id)!.ccSessionId!
     await host.stop(id, 'idle')
 

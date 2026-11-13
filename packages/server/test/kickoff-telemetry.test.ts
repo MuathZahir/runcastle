@@ -98,7 +98,7 @@ describe('session.kickoff — emitted once the host took the prompt, never befor
     // what was recorded is the composed chat briefing: the opening this feature's
     // state calls for (nothing on disk yet, so ideation), then the state header
     expect(recorded?.line).toContain('/runcastle:feature')
-    expect(recorded?.line).toContain('Feature status: Talking with you')
+    expect(recorded?.line).toContain('Feature status: Idle')
     expect(promptsOf(sessionId)[0].text).toBe(recorded?.line)
     await host.stopAll('shutdown')
   })
@@ -120,12 +120,14 @@ describe('session.kickoff — emitted once the host took the prompt, never befor
   it('records nothing when the host refuses the prompt', async () => {
     const feature = await featureWithWorktree('stillborn')
     const host = fakeHost()
-    setAgentHostForTests({
-      ...host,
-      prompt: async () => {
-        throw new Error('no agent here')
-      },
-    })
+    // Its own methods kept (the kickoff's status line asks what runs), only the prompt refused.
+    setAgentHostForTests(
+      Object.assign(Object.create(host) as typeof host, {
+        prompt: async () => {
+          throw new Error('no agent here')
+        },
+      }),
+    )
 
     await expect(launchSession(ctx, { featureId: feature.id, kind: 'chat' })).rejects.toThrow('no agent here')
 
