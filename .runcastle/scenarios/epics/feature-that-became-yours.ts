@@ -40,7 +40,7 @@ import type { AppCtx } from '../../../packages/server/src/db/types.ts'
 import { createFeature } from '../../../packages/server/src/services/features.ts'
 import { giveToChat, releaseNeedsYou } from '../../../packages/server/src/services/holding.ts'
 import { handOverLine, needsYouLine } from '../../../packages/server/src/services/lead-handback.ts'
-import { setWaiting } from '../../../packages/server/src/services/lead-status.ts'
+import { setWait } from '../../../packages/server/src/services/waits.ts'
 import { listProjects, openProject } from '../../../packages/server/src/services/projects.ts'
 import { createSessionRow, markSessionEnded, projectSessions } from '../../../packages/server/src/launcher/sessions.ts'
 import { seedThreadLog } from '../../../packages/server/src/threads/log.ts'
@@ -118,10 +118,9 @@ async function seed(ctx: AppCtx, project: Project, now: number): Promise<string>
 
   // The PDF lead hit a "who" question only the human can answer: wait_for_you made it theirs.
   releaseNeedsYou(ctx, pdf.id)
-  setWaiting(ctx, pdf.id, 'Who gets the PDF export?', 'answer')
-
   const lead = createSessionRow(ctx, { featureId: pdf.id, kind: 'chat', worktreePath: worktreeDir(project.id, pdf.slug), model: MODEL })
   markSessionEnded(ctx, lead.id)
+  setWait(ctx, lead.id, 'Who gets the PDF export?')
   seedThreadLog(
     lead.id,
     log(now - 20 * MINUTE, [

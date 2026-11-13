@@ -409,7 +409,7 @@ describe('renderSystemPrompt', () => {
   const STATES: Partial<Feature>[] = [
     {},
     {},
-    { waitingReason: 'ready to test' },
+    { stoppedAt: 1 },
     { status: 'shipped' },
   ]
 

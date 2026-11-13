@@ -9,7 +9,8 @@ import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { toolReadFeatureChat, toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
-import { HANDBACK_CLEARED, humanTypedAt, markHumanMessage, setHandback } from '../src/services/lead-status'
+import { humanTypedAt, markHumanMessage } from '../src/services/lead-status'
+import { setWait, waitOf } from '../src/services/waits'
 import { toolGetProjectContext } from '../src/mcp/server'
 import { getFeatureRow } from '../src/services/repo'
 import { listAfter } from '../src/services/events'
@@ -136,21 +137,17 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
     expect(humanTypedAt(ctx, f.id)).toEqual(expect.any(Number))
   })
 
-  /** the-status-tells-the-truth-about-who-and-what decision 7: an action answers a handback, a read does not. */
-  it('send_to_feature answers an outstanding handback; reading the feature leaves it standing', async () => {
+  /** needs-you decision 7: neither a read nor the orchestrator's message clears what the lead waits on. */
+  it('send_to_feature and reading the feature leave the lead’s wait standing', async () => {
     const me = orchestrator()
     const f = await feature('handed', { heldBy: me.id })
-    setHandback(ctx, f.id, 'Ready to merge.')
-    const cleared = () => listAfter(ctx, f.id, 0).filter((e) => e.type === HANDBACK_CLEARED)
+    const lead = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: '/wt' }).id
+    setWait(ctx, lead, 'Which currency?')
 
     toolReadFeatureChat(ctx, me, { slug: f.slug })
     await toolGetProjectContext(ctx, me, {})
-    expect(getFeatureRow(ctx, f.id).handback?.summary).toBe('Ready to merge.')
-    expect(cleared()).toHaveLength(0)
-
-    await toolSendToFeature(ctx, me, { slug: f.slug, message: 'Merging it now.' })
-    expect(getFeatureRow(ctx, f.id).handback).toBeNull()
-    expect(cleared()).toHaveLength(1)
+    await toolSendToFeature(ctx, me, { slug: f.slug, message: 'Euros.' }).catch(() => {})
+    expect(waitOf(ctx, lead)?.why).toBe('Which currency?')
   })
 
   it('read_feature_chat gives a null quote with a reason when the feature has no chat', async () => {
