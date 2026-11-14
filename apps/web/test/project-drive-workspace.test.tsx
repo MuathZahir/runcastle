@@ -83,6 +83,10 @@ vi.mock('../src/trpc', () => {
       worker: {
         listProject: { useQuery: () => ({ data: projectWorkers }) },
         handBack: { useMutation: mutation },
+        // The sidebar's feature rows' nested workers (workers-nest-under-their-feature).
+        listLive: { useQuery: () => ({ data: [] }) },
+        list: { useQuery: () => ({ data: undefined }) },
+        startUnassigned: { useMutation: mutation },
       },
       // The sidebar's reads, for the tests that mount it beside the page.
       useQueries: () => [],
