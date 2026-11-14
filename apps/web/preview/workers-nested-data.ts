@@ -239,7 +239,7 @@ function hoverState(): Sample {
 
 export type StateKey = 'open' | 'lanes' | 'folded' | 'epic' | 'autopilot' | 'none' | 'hover'
 
-export const STATES: { key: StateKey; label: string; hint: string; make: () => Sample }[] = [
+const RAW_STATES: { key: StateKey; label: string; hint: string; make: () => Sample }[] = [
   {
     key: 'open',
     label: 'Open feature',
@@ -273,5 +273,14 @@ export const STATES: { key: StateKey; label: string; hint: string; make: () => S
   { key: 'none', label: 'No workers', hint: 'Result ranking is open and has no workers: the row as today, no chevron.', make: noneState },
   { key: 'hover', label: 'Hover "+"', hint: 'The pointer on Search filters: "+" New worker and "…" replace the chevron’s neighbours.', make: hoverState },
 ]
+
+/** Each state numbers its ids from 1, so a state built twice (StrictMode) seeds folds for the ids it renders. */
+export const STATES = RAW_STATES.map((s) => ({
+  ...s,
+  make: () => {
+    n = 0
+    return s.make()
+  },
+}))
 
 export { DAY, HOUR, MIN }
