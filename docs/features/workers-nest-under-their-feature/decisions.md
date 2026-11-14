@@ -39,3 +39,16 @@
 ## 10. It looks like the sidebar it lives in
 **Decision:** Nested rows use the sidebar's existing rows, heights, paddings, glyphs and theme tokens (`apps/web/STYLE.md`); nothing new enters the theme. The bar is a professional, carefully finished look: alignment, indent guides, hover and active states, fold motion. The `frontend-design` skill's craft standard applies; its push toward a new, bold look does not.
 **Why:** The human: "make sure that it looks professional and maintains the consistent style of the sidebar."
+
+## 11. Workers nest wherever their feature's row sits
+**Decision:** Today's sidebar has no Needs you lane or Working shelf: features sit under epic cards, the "Other features" card, and the Backlog, Shipped and Archived shelves. A feature's live workers nest under its row in whichever of those it sits.
+**Why:** Decision 2 named lanes the sidebar no longer has; the design (approved 2026-11-14) shows the real places.
+Supersedes: 2 (the places only; the rest of 2 stands).
+
+## 12. A worker's need shows once
+**Decision:** While a feature is unfolded, a worker's need (its amber or red dot and its "Needs you · …" words) shows only on the worker's own row. The feature row shows its lead's own need, else its usual state words. When the feature is folded, the worker's need rolls up to the feature row as before (decision 9).
+**Why:** Both rows showed the same dot and the same words for one question. The human agreed.
+
+## 13. Worker rows keep two lines
+**Decision:** Nested worker rows keep the sidebar's two-line height.
+**Why:** The second line says what the worker needs, and it matches the feature rows; folding handles a crowded feature. The human approved the design with them.
