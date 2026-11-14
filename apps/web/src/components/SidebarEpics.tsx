@@ -551,7 +551,7 @@ export function SidebarEpics({
   const groups = orderEpicList(epics, other)
   const slim = groups.map((g) => g.kind === 'epic' && epicIsIdle(g.epic))
   const many = noun === 'epic' ? 'Epics' : 'Chats'
-  const row = (f: FeatureListItem, words: string, locked = false) => {
+  const row = (f: FeatureListItem, words: (f: FeatureListItem) => string, locked = false) => {
     const workers = workersFor?.(f)
     const onNewThread = newWorkerFor?.(f)
     return (
@@ -601,10 +601,10 @@ export function SidebarEpics({
                 icon={g.epic.icon}
                 autopilot={!!g.epic.autopilot}
               >
-                {g.epic.features.map((x) => row(x.feature, featureStateWords(x.feature, !!x.locked), !!x.locked))}
+                {g.epic.features.map((x) => row(x.feature, (f) => featureStateWords(f, !!x.locked), !!x.locked))}
               </SidebarEpicCard>
             ) : (
-              <OtherFeaturesCard label="Other features">{g.features.map((f) => row(f, featureStateWords(f)))}</OtherFeaturesCard>
+              <OtherFeaturesCard label="Other features">{g.features.map((f) => row(f, (it) => featureStateWords(it)))}</OtherFeaturesCard>
             )}
           </li>
         ))}

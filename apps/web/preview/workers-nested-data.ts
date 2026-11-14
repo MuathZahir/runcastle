@@ -243,19 +243,19 @@ export const STATES: { key: StateKey; label: string; hint: string; make: () => S
   {
     key: 'open',
     label: 'Open feature',
-    hint: 'Checkout coupons is open: its live workers under it, needs you first; "4 done" folds the finished ones and an old side chat.',
+    hint: 'Checkout coupons is open: its live workers under it, needs you first; "4 done" folds the finished ones and an old side chat. Badge design’s question shows on its own row only (decision 12).',
     make: openState,
   },
   {
     key: 'lanes',
     label: 'Many features',
-    hint: 'Nothing open: every feature row carries its live workers, under its epic and in Other features. No "N done" anywhere.',
+    hint: 'Nothing open: every feature row carries its live workers, under its epic and in Other features. No "N done" anywhere. A worker’s question shows on its row, not its feature’s.',
     make: lanesState,
   },
   {
     key: 'folded',
     label: 'Folded, needs you',
-    hint: 'Dark mode is folded while Theme toggle asks: the row keeps its amber dot and its Needs you words.',
+    hint: 'Dark mode is folded while Theme toggle asks: its question rolls up to the feature row, amber dot and Needs you words.',
     make: foldedState,
   },
   {

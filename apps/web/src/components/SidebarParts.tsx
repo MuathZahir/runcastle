@@ -317,7 +317,6 @@ export function SidebarFeatureRow({
   threads,
   folded: threadsFolded = false,
   onToggleThreads,
-  needsYou = false,
   workers,
   workersFolded,
   words: wordsProp,
@@ -340,14 +339,17 @@ export function SidebarFeatureRow({
   folded?: boolean
   /** With `threads`: the chevron that folds and unfolds them. */
   onToggleThreads?: () => void
-  /** A worker waits on the human: the row's amber dot lights even when the feature's own chat does not ask. */
-  needsYou?: boolean
   /** Its workers, nested under it. */
   workers?: FeatureWorkers
   /** The fold, held by the caller; kept per feature on this browser when absent. */
   workersFolded?: boolean
-  /** The second line's words in place of the feature's own: a row under its epic, a shelf row naming its epic. */
-  words?: string
+  /**
+   * The second line's words in place of the feature's own: a row under its
+   * epic, a shelf row naming its epic. As a function it is given the feature
+   * as the row shows it: without a need its unfolded worker row already shows
+   * (workers-nest-under-their-feature decision 12).
+   */
+  words?: string | ((f: FeatureListItem) => string)
   /**
    * The feature is locked to its epic's autopilot run (epics-on-autopilot
    * decisions 7, 17): this mark at the title's end, and never the amber dot —
@@ -372,9 +374,13 @@ export function SidebarFeatureRow({
   const shown = folded ? undefined : nestedRows
   // The open feature and what sits under it share one card, as its threads did; any other row's workers hang free.
   const carded = shown !== undefined && active
-  const lane = triageOf(f)
-  const nm = lock === undefined ? needsMe(f) : null
-  const words = wordsProp ?? featureStateWords(f)
+  // A worker's need shows once (decision 12): unfolded, it sits on the worker's own row, so this row drops it
+  // and says the lead's own state. Folded, it rolls up here (decision 9).
+  const needShownBelow = hasWorkers && !workersAreFolded && live.some((w) => w.id === f.need?.threadId)
+  const own: FeatureListItem = needShownBelow ? { ...f, need: null } : f
+  const lane = triageOf(own)
+  const nm = lock === undefined ? needsMe(own) : null
+  const words = typeof wordsProp === 'function' ? wordsProp(own) : (wordsProp ?? featureStateWords(own))
   const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
   // Folded, a worker that asks still lights the row (decision 9); a locked feature's never does (decision 7).
   const workerNeed = hasWorkers && workersAreFolded && workersNeedYou(live)
@@ -398,7 +404,7 @@ export function SidebarFeatureRow({
         upNextProblem(f) && 'text-danger-text',
       )}
       aside={relTime(f.lastActivityAt)}
-      dot={lock !== undefined ? undefined : (rowDot(f) ?? (needsYou || workerNeed ? 'warning' : undefined))}
+      dot={lock !== undefined ? undefined : (rowDot(own) ?? (workerNeed ? 'warning' : undefined))}
       {...(lock !== undefined ? { mark: lock } : {})}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}
       active={active}

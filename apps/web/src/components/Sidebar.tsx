@@ -408,7 +408,7 @@ export function Sidebar(props: SidebarProps) {
         active={isOpen(f)}
         onSelect={selectFeature}
         actions={featureActions(f)}
-        words={shelfFeatureWords(f, featureStateWords(f, !!f.autopilot), epicName(f))}
+        words={(g) => shelfFeatureWords(g, featureStateWords(g, !!g.autopilot), epicName(g))}
         {...(workers ? { workers } : {})}
         {...(onNewThread ? { onNewThread } : {})}
       />

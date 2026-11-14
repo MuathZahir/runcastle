@@ -95,6 +95,37 @@ describe('workers nested under their feature', () => {
     expect(calm).not.toContain('bg-warning')
   })
 
+  describe("a worker's need shows once (decision 12)", () => {
+    const workerAsks = f({ status: 'active', need: need('Asking one asks', { threadId: 'Asking one' }) })
+    const leadAsks = f({ status: 'active', need: need('Which retry policy?') })
+    /** The feature row alone: the markup before its first nested worker. */
+    const featureRow = (html: string) => html.slice(0, html.indexOf('Failed one'))
+    const dots = (html: string) => html.match(/bg-warning/g)?.length ?? 0
+
+    it("unfolded, the worker's need is on its own row only", () => {
+      const html = row({ f: workerAsks })
+      expect(featureRow(html)).not.toContain('Needs you')
+      expect(featureRow(html)).toContain('Idle')
+      // One amber dot: the worker's.
+      expect(dots(html)).toBe(1)
+      expect(html).toContain('Asking one asks')
+    })
+
+    it("folded, the worker's need rolls up to the feature row", () => {
+      const html = row({ f: workerAsks, workersFolded: true })
+      expect(html).toContain('Needs you · Asking one asks')
+      expect(dots(html)).toBe(1)
+      expect(order(html)).toEqual([])
+    })
+
+    it("the lead's own need still shows on the feature row, unfolded", () => {
+      const html = row({ f: leadAsks })
+      expect(featureRow(html)).toContain('Needs you · Which retry policy?')
+      // The lead's dot, and the worker's own on its row.
+      expect(dots(html)).toBe(2)
+    })
+  })
+
   it('carries a fold chevron only on a row with workers under it', () => {
     expect(row()).toContain('aria-label="Hide workers"')
     expect(row({ workers: workers({ entries: [worker('Landed one', 'landed', 1)] }) })).not.toContain('workers"')
