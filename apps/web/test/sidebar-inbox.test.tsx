@@ -40,6 +40,12 @@ vi.mock('../src/trpc', () => ({
     project: {
       list: { useQuery: () => ({ data: [] }) },
     },
+    // The feature rows' nested workers (workers-nest-under-their-feature).
+    worker: {
+      listLive: { useQuery: () => ({ data: [] }) },
+      list: { useQuery: () => ({ data: undefined }) },
+      startUnassigned: { useMutation: () => ({ mutate: vi.fn() }) },
+    },
     projectNotes: { openCount: { useQuery: () => ({ data: data.notes }) } },
     thread: {
       list: { useQuery: () => ({ data: data.threads }) },
