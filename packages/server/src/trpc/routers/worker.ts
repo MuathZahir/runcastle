@@ -1,7 +1,7 @@
 import type { Need, WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../../db/types'
-import { askWorkerToHandBack, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, startUnassignedWorker } from '../../workers/service'
+import { askWorkerToHandBack, listLiveWorkers, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, startUnassignedWorker } from '../../workers/service'
 import { workerPreviewPath } from '../../routes/design-pass-paths'
 import { phoneDesignPort } from '../../services/phone-link'
 import { publicProcedure, router } from '../context'
@@ -49,6 +49,15 @@ export const workerRouter = router({
   listProject: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }): ListedWorker[] => listProjectWorkers(ctx, input.projectId).map((w) => listed(ctx, w))),
+
+  /**
+   * Every feature's live workers in the project — not handed back, landed or
+   * dropped — oldest first, each carrying its `featureId`: the rows the sidebar
+   * nests under each feature (workers-nest-under-their-feature decision 2).
+   */
+  listLive: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }): ListedWorker[] => listLiveWorkers(ctx, input.projectId).map((w) => listed(ctx, w))),
 
   /**
    * A worker's feature (id and slug), so a `worker:<id>` link in a chat can

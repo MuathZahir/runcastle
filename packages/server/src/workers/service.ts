@@ -26,7 +26,7 @@ import {
   resolveSandboxImage,
 } from '@runcastle/core'
 import { envPath, sessionDir } from '@runcastle/core/paths'
-import { features, sessions, workers } from '../db/schema'
+import { features, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
@@ -150,36 +150,20 @@ export function workersWorkingByFeature(ctx: AppCtx, projectId: string): Map<str
 }
 
 /**
- * What each feature's workers page holds, for the arrow on its sidebar row
- * (clicking-a-feature-opens-its-lead decisions 4, 5): how many workers are in
- * play, and whether the page lists anything at all — a worker in any state, or
- * a side or drive chat from before workers. A feature absent from the map has
- * an empty page.
+ * Every feature's live workers in the project, oldest first
+ * (workers-nest-under-their-feature decision 2): those not handed back, landed
+ * or dropped, which the sidebar nests under each feature's row. The project's
+ * own workers, owned by no feature, are not among them.
  */
-export function workersPageByFeature(ctx: AppCtx, projectId: string): Map<string, { inPlay: number }> {
-  const out = new Map<string, { inPlay: number }>()
-  const rows = ctx.db
-    .select({ featureId: workers.featureId, status: workers.status, n: count() })
+export function listLiveWorkers(ctx: AppCtx, projectId: string): WorkerRow[] {
+  return ctx.db
+    .select({ w: workers })
     .from(workers)
     .innerJoin(features, eq(features.id, workers.featureId))
-    .where(eq(features.projectId, projectId))
-    .groupBy(workers.featureId, workers.status)
+    .where(and(eq(features.projectId, projectId), inArray(workers.status, [...IN_PLAY_WORKER_STATUSES])))
+    .orderBy(workers.createdAt)
     .all()
-  for (const r of rows) {
-    if (!r.featureId) continue
-    const page = out.get(r.featureId) ?? { inPlay: 0 }
-    if (IN_PLAY_WORKER_STATUSES.includes(r.status)) page.inPlay += r.n
-    out.set(r.featureId, page)
-  }
-  // The old side and drive chats the page lists in Done (interactive-workers decision 23).
-  const oldChats = ctx.db
-    .selectDistinct({ featureId: sessions.featureId })
-    .from(sessions)
-    .innerJoin(features, eq(features.id, sessions.featureId))
-    .where(and(eq(features.projectId, projectId), inArray(sessions.kind, ['side', 'scenario', 'drive-fix'])))
-    .all()
-  for (const r of oldChats) if (r.featureId && !out.has(r.featureId)) out.set(r.featureId, { inPlay: 0 })
-  return out
+    .map((r) => r.w)
 }
 
 /**
