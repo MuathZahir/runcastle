@@ -169,7 +169,7 @@ describe('the chat-first feature page', () => {
     expect(html).not.toContain('data-panel')
   })
 
-  it('reads Idle with nothing running and nothing asked, and carries only Merge & ship, no Go and no "+" (the sidebar page has it)', () => {
+  it('reads Idle with nothing running and nothing asked, and carries only Merge & ship, no Go and no "+" (the feature'''s sidebar row has it)', () => {
     const header = headerOf(page({ tickets: [ticket(1)] }))
     expect(header).toContain('Idle')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])

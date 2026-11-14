@@ -19,7 +19,7 @@ export const ACTION_KINDS = [
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in
   'merge', // feature.merge — ships the feature, reachable from every state
   'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)
-  'newThread', // a new worker with no assignment, as the feature's sidebar page's "+"
+  'newThread', // a new worker with no assignment, as the feature row's "+"
 ] as const
 
 export type ActionKind = (typeof ACTION_KINDS)[number]

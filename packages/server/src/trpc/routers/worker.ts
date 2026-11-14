@@ -26,7 +26,8 @@ function listed(ctx: AppCtx, w: WorkerRow): ListedWorker {
 
 /**
  * Interactive workers as the web drives them (docs/features/interactive-workers):
- * the feature's worker rows for its sidebar page, the "+" that starts a worker
+ * the feature's worker rows nested under its sidebar row, the project-wide live
+ * list behind every feature's rows, the "+" that starts a worker
  * with no assignment (decision 7), and a worker's Hand back button (decision 5).
  * Thin over `workers/service.ts`, which owns the events.
  */

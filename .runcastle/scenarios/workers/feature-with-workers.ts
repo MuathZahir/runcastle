@@ -3,8 +3,8 @@
  * one in every status — two needing the human, two working, one queued, one
  * handed back, one landed, one dropped, one failed — beside one old side chat
  * from before workers. The lead's chat holds the handbacks and the failure as
- * runcastle's lines, so its cards draw (interactive-workers decisions 3, 21, 23,
- * 24), and the turns that started the workers, so its "Started N workers" cards
+ * runcastle's lines, so its cards draw (interactive-workers decisions 3, 21, 23),
+ * and the turns that started the workers, so its "Started N workers" cards
  * draw with each worker's live status (calmer-worker-chats decision 6).
  *
  * Run by the project's scenario runner (`bun {file}`) inside a test drive of
@@ -15,8 +15,9 @@
  * the drive resolves against its own URL.
  *
  * The workers are rows only: no container is started, so a worker's preview
- * and its agent do not answer. The page's lanes, the worker chats' assignment
- * cards and headers, and the lead's handback cards are what this lands on.
+ * and its agent do not answer. The worker rows nested under the feature's
+ * sidebar row, the worker chats' assignment cards and headers, and the lead's
+ * handback cards are what this lands on.
  *
  * `SCENARIO_PROJECT` names a different project to seed (tests register a temp
  * repo under its own name).

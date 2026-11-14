@@ -345,7 +345,7 @@ export function Workspace({
   // The page's root, where Reply finds the composer to put the cursor in.
   const frame = useRef<HTMLElement>(null)
   // A started, unshipped feature takes new workers with no assignment: the
-  // sidebar page's "+", the palette's entry and Ctrl+Shift+O (interactive-workers
+  // feature row's "+", the palette's entry and Ctrl+Shift+O (interactive-workers
   // decision 7). The shortcut works from anywhere on the page, the composer
   // included, so it listens in the capture phase, before any field can keep
   // the key to itself.

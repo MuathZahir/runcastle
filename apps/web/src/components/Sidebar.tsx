@@ -319,7 +319,7 @@ export function Sidebar(props: SidebarProps) {
 
   // The phone's list (phone decision 1): only shown with nothing open, so no
   // row is current, and a row is the whole door — no hover menu, no threads,
-  // no workers arrow (clicking-a-feature-opens-its-lead decision 8).
+  // no nested workers (workers-nest-under-their-feature decision 8).
   const currentFeature = !phone && view === 'feature' ? selectedFeatureId : null
   const isOpen = (f: FeatureListItem) => f.id === currentFeature
   // A feature row opens its lead (decisions 1, 7); the open one's brings its

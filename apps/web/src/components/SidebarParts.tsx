@@ -170,7 +170,6 @@ function TwoLineRow({
   onClick,
   actions,
   toggle,
-  trail,
 }: {
   title: string
   tooltip?: string
@@ -189,8 +188,6 @@ function TwoLineRow({
   onClick?: () => void
   actions?: ReactNode
   toggle?: ReactNode
-  /** A control at the row's right end, centred across both lines and always shown (a feature row's workers arrow). */
-  trail?: ReactNode
 }) {
   return (
     <div
@@ -206,7 +203,7 @@ function TwoLineRow({
         title={tooltip ?? title}
         aria-current={active ? 'page' : undefined}
         onClick={onClick}
-        className={cx('flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] py-2 pl-2.5 text-left', trail !== undefined ? 'pr-10' : 'pr-2.5')}
+        className={cx('flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] px-2.5 py-2 text-left')}
       >
         <span className={cx('flex min-w-0 items-center gap-2', toggle !== undefined && 'pr-6')}>
           <span
@@ -237,7 +234,7 @@ function TwoLineRow({
           data-row-actions=""
           className={cx(
             'absolute top-1.5 flex items-center transition-opacity duration-(--dur-1)',
-            toggle !== undefined ? 'right-7' : trail !== undefined ? 'right-10' : 'right-1',
+            toggle !== undefined ? 'right-7' : 'right-1',
             REVEAL_NAV,
           )}
         >
@@ -245,7 +242,6 @@ function TwoLineRow({
         </span>
       )}
       {toggle !== undefined && <span className="absolute top-1.5 right-1">{toggle}</span>}
-      {trail !== undefined && <span className="absolute top-1/2 right-1.5 -translate-y-1/2">{trail}</span>}
     </div>
   )
 }
@@ -1020,7 +1016,7 @@ export function OrchestratorCard({
   name = 'Epics',
   tile,
 }: {
-  /** The card's name: "Orchestrator", or "Lead" on a feature's own page, one level down. */
+  /** The card's name: "Orchestrator" unless given. */
   name?: string
   /** The mark in the accent tile; the Orchestrator's hub when absent. */
   tile?: ReactNode

@@ -230,7 +230,7 @@ type WireWorker = Pick<
 
 const STARTED_BY: Record<CoreWorkerRow['startedBy'], WorkerEntry['startedBy']> = { lead: 'lead', human: 'you' }
 
-/** A worker's row in its feature's sidebar page. */
+/** A worker's row, nested under its feature's sidebar row. */
 export function workerEntry(w: WireWorker): WorkerEntry {
   return {
     id: w.id,
@@ -274,7 +274,7 @@ export function workerCanHandBack(status: WorkerStatus): boolean {
 }
 
 /**
- * The feature's sidebar page's rows: its workers, its drive workers among them
+ * The open feature's nested rows: its workers, its drive workers among them
  * (drive-chats-become-workers decision 11), then its old side and drive chats.
  */
 export function featureWorkerEntries(workers: readonly WireWorker[], threads: readonly ThreadEntry[]): WorkerEntry[] {
