@@ -468,8 +468,9 @@ export function registerOrchestratorTools(
     {
       title: 'Start a draft',
       description:
-        'Start a draft, as Start does: cut its branch and scaffold its brief. Refused while it ' +
-        'waits on an unmerged dependency, or once started. Launches nothing — call plan_feature ' +
+        'Start a draft, as Start does: first land your commits, then cut its branch and scaffold its brief. ' +
+        'Refused when your commits cannot land, while it waits on an unmerged dependency, or once started. ' +
+        'Launches nothing — call plan_feature ' +
         'or send_to_feature when it is ready to work. Also allowed on a human\'s "Plan automatically" feature you cut, ' +
         'before its planning run.',
       inputSchema: {
@@ -501,7 +502,9 @@ export function registerOrchestratorTools(
     'stop_feature_run',
     {
       title: 'Stop a feature’s automatic planning run',
-      description: 'End the automatic planning run going on a feature, as its Stop button does.',
+      description:
+        'End a feature’s automatic planning run (the unattended one plan_feature launches). It never ends the ' +
+        'lead’s chat or its workers and does not press Stop; refused when no planning run is going.',
       inputSchema: { slug: SlugInput },
     },
     toolStopFeatureRun,
@@ -534,9 +537,10 @@ export function registerOrchestratorTools(
     {
       title: 'Merge a feature',
       description:
-        'Merge a feature into its base, as Merge does. On a conflict it returns `conflict` and the ' +
-        '`files` to resolve in the worktree. A clean merge of a feature you cut returns `inProgress`: ' +
-        'the other features you cut still in progress (slug, title, who runs it), to check the merge fits with.',
+        'Merge a feature into its base, as Merge does: it writes the outcome doc, marks it shipped and cleans up, ' +
+        'which a hand merge would not. On a conflict it returns `conflict` and the `files`: resolve them in the ' +
+        'worktree, commit, and call again. A clean merge of a feature you cut returns `inProgress`, your other ' +
+        'features still in progress, to check the merge fits with.',
       inputSchema: { slug: SlugInput },
     },
     toolMergeFeature,

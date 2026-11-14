@@ -170,10 +170,8 @@ describe('the `project` session kind', () => {
     // the RESOLVED session branch — the picked one, not the project's main line
     expect(out).toContain('cut from `develop`')
     expect(out).toContain('land on `develop`')
-    // the one tool whose BEHAVIOUR is surprising is still named: create_feature
-    // does not open a terminal on what it creates.
-    expect(out).toContain('create_feature')
-    // …but the roster is not restated, and no pipeline tool is offered.
+    // the roster is not restated, and no pipeline tool is offered; what a tool
+    // does is its own description's (skills-become-short-rules).
     expect(out).not.toContain('## runcastle MCP tools')
     expect(out).not.toContain('get_work_record')
     expect(out).not.toContain('emit_tickets')

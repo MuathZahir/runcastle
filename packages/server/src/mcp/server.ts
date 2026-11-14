@@ -2758,7 +2758,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Dry-run the test drive',
         description:
           'Prove the recorded drive keys by running the real test-drive machinery under a ' +
-          "synthetic identity in the human's checkout. Ask the human before `start`: it starts services and creates a database.",
+          "synthetic identity in the human's checkout. Ask the human before `start`: it starts services and creates a database. " +
+          '`start` first lands your commits, and is refused if they cannot land.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop'])
@@ -2982,7 +2983,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'List project notes',
         description:
           'List this project’s open notes oldest first. Notes with a screenshot include its ' +
-          'absolute host path and a ready-made attachment sentence for a feature’s brief.',
+          'absolute host path and an attachment sentence to paste verbatim into a feature’s brief. `driveBranch` and ' +
+          '`driveCommit` say what was being driven when it was jotted.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -3002,8 +3004,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Mark one or several open notes triaged with one outcome and an optional destination feature.',
         inputSchema: {
           noteIds: z.array(z.string().min(1)).min(1),
-          outcome: z.string().min(1),
-          featureId: z.string().min(1).optional(),
+          outcome: z
+            .string()
+            .min(1)
+            .describe('`→ new feature <title>`, `→ batch feature <title>`, `→ sent to <slug>` or `dropped: <why>`.'),
+          featureId: z.string().min(1).optional().describe('The destination feature’s id (not its slug), when it went to a feature.'),
         },
       },
       async (args, extra) => {
@@ -3140,9 +3145,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'Get feature context',
       description:
-        'The current feature: header (status, rounds, waiting reason, dependencies, designs), ' +
-        'ticket rows, the to-do and the canonical docs. A repeat call returns only what ' +
-        'changed; `full: true` resends everything.',
+        'This feature’s state: status, waiting reason, Stop and drive marks, autopilot, dependencies, newest ' +
+        'ready, workers, `annotatedModels`, `scenarios`, designs, open defects and findings, and its docs. Call it ' +
+        'first. A repeat call returns only what changed; `full: true` resends everything.',
     }
     const full = z.boolean().optional().describe('Return every doc in full.')
     if (projectReads) {
@@ -3151,8 +3156,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         {
           ...config,
           description:
-            'Any feature of this project, named by `slug`, as a short status view: state, waiting ' +
-            'reason, ticket counts, review verdict and a docs index. `full: true` returns the lead’s whole bundle.',
+            'Any feature of this project, named by `slug`, as a short status view: state, waiting reason, ' +
+            'autopilot, worker counts, newest ready, open findings, designs, base, dependencies and a docs index. ' +
+            '`full: true` returns the lead’s whole bundle, with worker ids.',
           inputSchema: { slug: ReadSlug, full },
         },
         async ({ slug, full: wantsFull }, extra) => {
@@ -3253,10 +3259,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Declare the feature ready for the human',
         description:
-          'Put a test drive in front of the human and mark the feature ready to test. Refused ' +
-          'while a worker is working or holds work that has not landed.',
+          'Put a test drive in front of the human and mark the feature ready to test: it waits on the human ' +
+          'until they write, or on autopilot tells your epic. Refused while a worker is working or holds work ' +
+          'that has not landed.',
         inputSchema: {
-          scenario: z.string().min(1).describe('A short title for what to drive, e.g. "Checkout with a coupon".'),
+          scenario: z.string().min(1).describe('The title of the drive Test drive starts, e.g. "Checkout with a coupon".'),
         },
       },
       async (args, extra) => {
@@ -3275,9 +3282,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Start a worker',
         description:
           'Start a worker on the human’s yes: an agent in its own sandbox and branch off this feature branch, with ' +
-          'one assignment. `with-you` is taste work the human iterates on and hands back once they are happy; ' +
-          '`on-its-own` hands back when done. Its handback reaches you as a message; nothing lands until you call ' +
-          'land_worker.',
+          'one assignment. `with-you` is taste work the human iterates on and hands back when happy; `on-its-own` ' +
+          'hands back when done. Past the machine’s agent limit it waits queued. Nothing lands until land_worker. ' +
+          'Refused after the human presses Stop, until they reply.',
         inputSchema: {
           label: z.string().min(1).max(60).describe('A short name for the worker, e.g. "Header".'),
           purpose: z.string().min(1).max(160).describe('One line on what it does, shown under its label.'),
@@ -3304,9 +3311,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start the Review worker',
         description:
-          'Start the feature’s Review worker once the work is done: it runs the project’s checks, drives the app when it can ' +
-          '(else reads the diff), reports findings and hands back with the Review Package. After fixing defects you judged ' +
-          'real, start one with `verify`.',
+          'Start the feature’s Review worker once the work is done. It writes no code: it runs the project’s checks, ' +
+          'then drives the app on this machine when it can (holding the one drive slot, waiting while the human ' +
+          'drives) or reads the diff (`gates`), and hands back a Review Package. After fixing defects you judged real, ' +
+          'start one with `verify`. Refused after the human presses Stop, until they reply.',
         inputSchema: {
           mode: z.enum(['drive', 'gates']).optional().describe('`gates` when there is nothing to drive; omit to drive whenever this machine can.'),
           verify: z
@@ -3325,7 +3333,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
               commit: z
                 .string()
                 .regex(/^[0-9a-f]{7,64}$/i, 'a commit SHA (git rev-parse HEAD), never a branch name or HEAD')
-                .describe('The commit SHA your full checks passed on (git rev-parse HEAD).'),
+                .describe('Commit SHA (git rev-parse HEAD). If the review is on it or differs only in feature docs, it reruns only the typecheck.'),
               commands: z.array(z.string().min(1)).min(1).describe('The commands you ran.'),
             })
             .optional()
@@ -3345,7 +3353,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       'message_worker',
       {
         title: 'Message a worker',
-        description: 'Send one of your workers a message, at any time. One sent while it works waits for the end of its turn.',
+        description:
+          'Send one of your workers a message, at any time; the human may be talking to it too. One sent while it ' +
+          'works waits for the end of its turn. Refused after the human presses Stop, until they reply.',
         inputSchema: {
           workerId: z.string().min(1).describe('The worker’s id, from get_feature_context’s workers.'),
           text: z.string().min(1).describe('What to tell it.'),
@@ -3382,7 +3392,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       'send_back_worker',
       {
         title: 'Send a worker’s work back',
-        description: 'Send a handed-back worker’s work back with what to change; it works again and hands back again.',
+        description:
+          'Send a handed-back worker’s work back with what to change; it works again and hands back again (a Review ' +
+          'worker reviews again). Refused after the human presses Stop, until they reply.',
         inputSchema: {
           workerId: z.string().min(1).describe('The worker’s id.'),
           note: z.string().min(1).describe('What to change.'),
@@ -3501,8 +3513,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start the design server',
         description:
-          'Run the project’s frontend dev server in your worktree so the human can see designs live. ' +
-          'Returns { url, port, command }; one server per feature.',
+          'Run the project’s frontend dev server in your worktree so the human can see designs live; one per ' +
+          'feature. Returns { url, port, command }. The command is recorded in `.runcastle/design.json`; the server ' +
+          'stops when the chat ends, the feature ships or after 30 minutes unseen, and opening the Design view restarts it.',
         inputSchema: {
           command: z.string().min(1).optional().describe('Serves on $RUNCASTLE_DESIGN_PORT; omit to reuse the recorded one.'),
         },
@@ -3521,7 +3534,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show the human a panel',
         description:
-          'Open a panel (`work`, `review`, `details` or `drive`) beside the chat while you talk about what it shows.',
+          'Open a panel (`work`, `review`, `details` or `drive`) beside the chat while you talk about what it shows; ' +
+          'never in a run with nobody present.',
         inputSchema: {
           view: PanelView.describe('Which view the panel shows.'),
         },
@@ -3540,9 +3554,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show the human a design',
         description:
-          'Record a design page from the design server and post its card in the chat. Showing it ' +
-          'again resets it to waiting; start the server first. Returns { recorded, state }. From an ' +
-          'orchestrator chat: post the card of a design the feature’s lead recorded (`slug`, `path`); it never approves it.',
+          'Record a design page from the design server, post its card in the chat and open the Design tab when ' +
+          'someone is present. Showing it again resets it to waiting; start the server first. Approve clicks reach ' +
+          'you as one line once no design waits. From an orchestrator chat: post the card of a design the feature’s ' +
+          'lead recorded (`slug`, `path`); it never approves it.',
         inputSchema: {
           path: z.string().min(1).describe('The page path on the design server, no `?state=`.'),
           title: z.string().min(1).max(120).optional().describe('The screen the design is, in a few words. Required in a feature’s chat.'),
@@ -3565,7 +3580,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Show the human the plan',
         description:
-          'Post the plan card (plan page, decisions, spec) in this chat; call it when asking for the yes and after every redraw.',
+          'Post the plan card (plan page, decisions, spec) in this chat and open the Plan tab when someone is ' +
+          'present (an orchestrator chat only posts the card); call it when asking for the yes and after every redraw.',
         inputSchema: {
           slug: z.string().optional().describe("The feature's slug. A feature's own chat leaves it out."),
         },
@@ -3605,7 +3621,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Show the human a file',
         description:
           'Show one file (up to 100 MB) in this chat: a picture inline, anything else as a card. ' +
-          'It waits for nobody; make Markdown and HTML self-contained.',
+          'It waits for nobody; make Markdown and HTML self-contained. Words before the call fold away once the ' +
+          'turn ends, so put any question after it. A review’s screenshots already come in its package.',
         inputSchema: {
           path: z.string().min(1).describe('The file. A relative path starts at your working folder.'),
           caption: z.string().max(200).optional().describe('One line saying what the file shows.'),
@@ -3625,8 +3642,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Notify the human’s phone',
         description:
-          'Send the human a phone notification when they asked to be told or you need them and they ' +
-          'seem away; one plain sentence, shown on the lock screen, no secrets.',
+          'Send the human a phone notification: one plain sentence, shown on the lock screen, no secrets. Only for ' +
+          'what a wait does not cover: runcastle already pings the phone when a chat starts waiting on them.',
         inputSchema: {
           message: z
             .string()

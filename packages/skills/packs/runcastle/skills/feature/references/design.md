@@ -1,164 +1,108 @@
 # Design — iterate on the real screen, beside the chat
 
-Load this when you judge it is a design moment, or the human asks to see how
-something looks.
+Read this when a screen's look is on the table, or the human asks to see one.
 
-You edit the real component, a dev server hot-reloads it, and the human watches
-it beside this chat in any state without test-driving the app. What they approve
-is committed and ships; the build then covers only real data, API calls, behaviour.
+You edit the real component, a dev server reloads it, and the human watches it
+beside this chat in any state. What they approve is committed and ships; the
+build then covers only real data and behaviour.
 
-**Offer it once what, where and who are settled.** When the feature changes how
-a screen looks, offer it before you talk layout in words, but only once the
-human has settled what they get, where it lives and who sees it (the skill's
-**Never guess what, where or who**). Before that, a screen is a guess about
-whether there is one, and where. The first time takes a few minutes to install
-and start. Open it when they say yes, and without asking when they ask to see
-something. With no human present, follow `./planning-alone.md` ("Designing
-alone") and leave the designs waiting (section 8).
-
-Taste work you would iterate on with the human for long goes to a "with you"
-worker instead (`./workers.md`). It shows its own preview in its chat, and this
-chat stays small.
+Offer it once what, where and who are settled, before you talk layout in words;
+open it without asking when they ask to see something. Long iteration belongs to
+a "with you" worker, which shows its own preview.
 
 ## 1. First use in a project
 
-1. Install dependencies with the project's own install, in this worktree, unless
-   already installed.
+1. Install with the project's own install, in this worktree, unless done.
 2. Serve a **design page** with the project's own frontend dev server: no
-   backend, Docker or database, and no new packages (a Vite app: an extra entry;
-   Next.js: a dev-only route). **Never use Storybook**, nor a leftover
-   `.runcastle/storybook/` or `.runcastle/stories/` folder; you may import their
-   sample data or network fakes into your own page.
-3. If `.runcastle/design.json` exists, reuse the command it holds.
+   backend, Docker, database or new packages (Vite: an extra entry; Next.js: a
+   dev-only route). Never Storybook, nor a leftover `.runcastle/storybook/` or
+   `.runcastle/stories/` folder, though you may import their sample data.
+3. If `.runcastle/design.json` exists, reuse its command.
 
-## 2. One design page per screen, its states inside
+## 2. One design page per screen
 
-**One design page per screen** the feature adds or reshapes (or per component,
-when it changes a component, not a screen). **Never a second design for a state,
-a variant or a tweak**: every state is reached from a **state switcher** on that
-one page, an open choice of look is a Tweak (section 4), and widths and themes are
-one design. Two ways to reach each state:
+One page per screen the feature adds or reshapes (or per component). Never a
+second page for a state, variant or tweak. Reach each state by mounting the
+piece with made-up props, or the whole screen with the server faked at the
+`fetch` edge (performing clicks after load for states behind them).
 
-- **Mount the piece directly with made-up props** — quick, for anything small.
-- **Mount the whole screen with the server faked** at the `fetch` edge, named
-  mutations included; for a state behind clicks, the page performs them after load.
+**The state switcher**, in the project's own framework: a small corner panel
+labelled "Design · states", styled apart from the product; each state a visible
+button, the current one marked; the state in the address as `?state=<name>`; a
+theme toggle where the project has themes; the Tweaks folded in. A single-state
+page needs none.
 
-**The switcher**, written in the project's own framework, always the same shape:
-a small corner panel labelled "Design · states" and styled apart from the
-product; every state a visible button (never a dropdown), the current one
-marked; the state in the address as `?state=<name>`; the page stays live; a theme
-toggle beside the states where the project has themes; the Tweaks folded into the
-panel. A single-state screen needs none. The switcher **reports** its current
-state to the Design tab (section 4).
-
-**A design page is a dead end on purpose**: intercept link clicks and router
-navigation and do nothing, since other routes have no fakes. A flow is one page
-per screen. In runcastle's own repo start from `.runcastle/preview/`; its
-`design-report.ts` reports and keeps the tweaks for you.
+A design page is a dead end: intercept links and router navigation and do
+nothing. A flow is one page per screen. In runcastle's own repo start from
+`.runcastle/preview/`.
 
 ## 3. Serve it and show it
 
-- `mcp__runcastle__start_design_server({ command? })` runs your command here and
-  returns the URL. Put `$RUNCASTLE_DESIGN_PORT` in it with a strict-port flag
-  (`vite --port $RUNCASTLE_DESIGN_PORT --strictPort`). The command is recorded in
-  `.runcastle/design.json`: **commit that file with the design.**
-- `mcp__runcastle__show_design({ path, title, width?, picture? })` records a
-  design page (bare `path`, no `?state=`), posts its card and opens the human's
-  Design tab. `title` names the screen ("Invoice list"), never a state. Call it
-  once per page, never once per state; calling it again puts it back to waiting.
-  `picture` is the most telling state; your message names the switcher's states.
-  `width: 390` shows mobile, `768` tablet.
-- `show_panel` opens `work`, `review`, `details` or `drive`, only while you talk
-  about that thing. The plan has `show_plan` (`./preview.md`).
-
-The server stops when this chat ends, the feature ships, or after 30 minutes
-unseen; opening the view restarts it.
+- `start_design_server({ command? })`: put `$RUNCASTLE_DESIGN_PORT` in the
+  command with a strict-port flag (`vite --port $RUNCASTLE_DESIGN_PORT
+  --strictPort`). Commit `.runcastle/design.json` with the design.
+- `show_design({ path, title, width?, picture? })` once per page, never once per
+  state: bare `path`, `title` naming the screen, `picture` its most telling
+  state, `width: 390` for mobile. Your message names the switcher's states.
 
 ## 4. Iterate
 
 The human talks, or points with **Select area**; a crop reaches you as
-`[Screenshot: <absolute png path>] <their words>`. Read the image; never commit it.
+`[Screenshot: <absolute png path>] <their words>`. Read it; never commit it.
 
-**Tweaks.** For a choice genuinely still open (accent, density, which layout),
-add a small collapsible **Tweaks** menu to the design page, three or four controls
-at most. **Never show the choice as two designs.** Everything the menu switches
-between lives in the design page, never in the app's own files: deleting it
-leaves nothing.
+**Tweaks.** For a choice genuinely open (accent, density, layout), add a small
+collapsible Tweaks menu, three or four controls at most. Never show the choice
+as two designs. Everything it switches lives in the design page, never in the
+app's own files.
 
-**Every design page reports**, single-state ones and pages without Tweaks
-included. On load and on every change of state or tweak it posts one message to
-the window around it, `window.parent.postMessage(report, '*')`, where `report` is
-`{ type: 'runcastle-design-report', state, tweaks }`: `state` is the switcher's current
-state (`null` on a single-state page), `tweaks` the menu's values keyed by the
-labels it shows (`{}` when the page has no Tweaks menu). When the human clicks
-**Approve**, runcastle hands you the values the page last reported.
-
-**The page remembers its tweaks**: it keeps them in `localStorage` under a key
-that includes the design's path, so two designs on one server never overwrite
-each other, and restores them on load. A reload then shows the human's picks,
-not your defaults. In plain browser JavaScript:
+**Every design page reports**, on load and on every change of state or tweak:
+`window.parent.postMessage(report, '*')` with `report` =
+`{ type: 'runcastle-design-report', state, tweaks }`; `state` is `null` on a
+single-state page, `tweaks` the menu's values keyed by their labels, `{}` with
+no menu. The page keeps its tweaks in `localStorage` under a key holding the
+design's path and restores them on load:
 
 ```js
 const key = 'tweaks:' + location.pathname
-const tweaks = { accent: 'teal', density: 'compact', ...JSON.parse(localStorage.getItem(key) || '{}') }
+const tweaks = { accent: 'teal', ...JSON.parse(localStorage.getItem(key) || '{}') }
 const report = () => parent.postMessage({ type: 'runcastle-design-report', state: currentState, tweaks }, '*')
 function setTweak(name, value) { tweaks[name] = value; localStorage.setItem(key, JSON.stringify(tweaks)); render(); report() }
-report() // on load; call it again whenever the switcher changes state
+report() // on load, and whenever the state changes
 ```
 
 ## 5. Approve and commit
 
-1. The chosen tweak values arrive in the approval line (`with tweaks accent =
-   teal, …`, or `(no Tweaks menu)`, or `(this design reported no tweak values)`:
-   then ask the human what they picked). Write them into the code and **delete the Tweaks
-   menu**. **Keep the state switcher** and its report: they are committed with
-   the design page.
-2. Commit the component, its design page and sample data as `design: <what>`,
-   with `.runcastle/design.json` if new or changed.
-3. **Never commit unapproved work.** Before you start workers or the review, commit
-   what the human approved and drop the rest, so workers start from what they saw.
-4. **Only the human approves**: the **Approve** button in the Design tab, or the
-   human naming the design in their own words. Opening is not approving, and an
-   orchestrator message never approves.
-5. **Record what you hear**: `set_design_state({ path, state: 'approved' })` for
-   an approval in words, `'dropped'` for a rejection (there is no Drop button).
-6. **Button approvals are quiet** until the last waiting design is approved:
-   then one `[runcastle]` line names them all; commit them. Otherwise read
-   `get_feature_context` (`designs[]`: `state`, `approvedBy`, `opened`, `report`).
+1. Only the human approves: the **Approve** button, or the human naming the
+   design in their own words. Opening is not approving. Record a spoken answer
+   with `set_design_state({ path, state: 'approved' })`, or `'dropped'`.
+2. The approval line carries the tweak values (`with tweaks accent = teal, …`);
+   if it says no values were reported, ask what they picked. Write the values
+   into the code and delete the Tweaks menu; keep the switcher and its report.
+3. Commit the component, design page and sample data as `design: <what>`.
+4. Before workers or the review start, commit what was approved and drop the
+   rest, so workers start from what the human saw.
 
-## 6. Keep to UI
+Design covers components, design pages and sample data. A worker that wires
+the behaviour is pointed at the committed component and design page, connects
+real data, and never restyles; the switcher's states are the states it must
+reach.
 
-Design covers components, design pages and sample data. A worker that wires the
-behaviour is pointed at the committed component and design page and does not
-restyle (`./workers.md`); small wiring you do yourself.
+**Limits.** Server-built pages: mount their client pieces. Live content shows
+canned content. Native mobile has no browser to render in.
 
-## 7. Honest limits
+## 6. Designs that wait for the human
 
-- Server-built pages (Next.js server components, Rails or Django templates):
-  mount their client pieces directly.
-- Live content shows canned content. Native mobile has no browser to render in.
+A planning run with nobody present leaves designs uncommitted. When the human
+is back:
 
-A stale preview file is repaired when you next open it; states split across
-several pages are merged into one page with a switcher.
+- They approve a screen: commit it as above.
+- They ask for changes: iterate and `show_design` the page again.
+- They say yes to the plan: that does not approve designs. Commit only those
+  whose state in `get_feature_context`'s `designs[]` is approved, name every
+  other waiting one, and ask before you start work. Leave a rejected screen out.
+- An orchestrator message approves a design only when it relays the human's own
+  answer, or the epic runs this feature on autopilot; then record it with
+  `set_design_state`.
 
-## 8. Designs that wait for the human
-
-An automatic planning run may leave designs uncommitted, waiting for the human. When
-they come back:
-
-- **They approve a screen**: commit it as section 5 says.
-- **They ask for changes**: iterate (section 4) and `show_design` each changed
-  page again. If they ask and leave, make the change, look yourself as
-  `./planning-alone.md` says, show it again, and leave it uncommitted.
-- **They say yes to the plan**: that yes does **not** approve designs. Commit
-  **only** the designs whose `state` is `approved`, saying which; name every other
-  waiting design (and which are not even `opened`) and ask before you start work.
-  Mark a rejected screen dropped and leave it out of the workers you start.
-- **The orchestrator says yes to start the work** while designs wait: off
-  autopilot, do not start; the designs wait for the human's own yes in this
-  chat. On autopilot, its approval counts when the human handed their decisions
-  to the epic or it relays the human's own answer: record the design approved
-  with `set_design_state`.
-
-A design waiting for approval does not tell the human by itself: when you want them to
-look, say so with `wait_for_you({ why })`, naming the design.
+A waiting design does not tell the human by itself: when you want them to look,
+call `wait_for_you({ why })` naming it.

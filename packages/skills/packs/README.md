@@ -8,9 +8,9 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 
 | Skill | Invoked | Does |
 |---|---|---|
-| `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills on what the brief did not settle, records decisions, writes the spec, builds itself or hands work to workers, has the end reviewed by a Review worker, hands over the drive; grilling, spec, workers, planning alone, the preview and design live in its `references/` |
+| `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills on what the brief did not settle, records decisions, writes the spec, builds itself or hands work to workers, has the end reviewed by a Review worker, hands over the drive; decisions and spec, design, planning alone and the preview live in its `references/` |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never changes it |
-| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
+| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: turns raw intent into features with real briefs, runs them on autopilot when asked, prepares the project, answers questions about it, and owns `CONTEXT.md` and the ADRs; the charter format and preparation live in its `references/` |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):
@@ -24,16 +24,18 @@ packs/
     └── skills/
         ├── feature/
         │   ├── SKILL.md
-        │   └── references/         # grilling, spec, workers, planning-alone, preview, design
+        │   └── references/         # loaded on demand by SKILL.md, never up front
+        │       ├── decisions-and-spec.md
+        │       ├── design.md
+        │       ├── planning-alone.md
+        │       ├── preview.md
+        │       └── preview-starter.html
         ├── qa/SKILL.md
         ├── project/
         │   ├── SKILL.md
         │   └── references/         # loaded on demand by SKILL.md, never up front
         │       ├── charter.md
-        │       ├── health-sweeps.md
-        │       ├── preparation.md
-        │       ├── preparation-recipes.md
-        │       └── triage.md
+        │       └── preparation.md
         └── code-review/SKILL.md
 ```
 
@@ -47,11 +49,10 @@ with a one-line description of when to read it; the agent has file tools in its
 worktree and reads one only when that job actually arrives.
 
 `project` is the case that earned it: the charter format (a full verbatim
-markdown template) and the health-sweep procedure were ~18% of the largest skill
-in the pack, loaded on every intake conversation that never touches either. Both
-moved to `references/`, and `SKILL.md` keeps only the rules that must fire the
-moment the subject comes up — "never scaffold an empty charter", "never run a
-sweep unprompted" — plus the pointer.
+markdown template) was a large share of the biggest skill in the pack, loaded on
+every conversation that never touches it. It moved to `references/charter.md`,
+and `SKILL.md` keeps only the pointer and the rules that must fire the moment the
+subject comes up.
 
 Use it when a section is (a) long, (b) needed by a minority of the skill's
 conversations, and (c) safe to be absent until then. Do **not** use it for
@@ -74,9 +75,9 @@ Every skill's `description` is loaded into every session in the pack, whether or
 not that session can use it. That is cheap for a skill the model might genuinely
 need and risky for one it must not run: a session carrying the descriptions of
 every other kind's entry skill is one description-match away from running
-another session's procedure — `project/SKILL.md` says "**Never run a design
-grilling**" while `feature`'s description sits in the same list offering exactly
-that.
+another session's procedure — the orchestrator leaves a big feature's design
+grill to that feature's own chat, while `feature`'s description sits in the same
+list offering exactly that.
 
 The **session-entry** skills — today `feature`, `qa` and `project`
 — used to carry `disable-model-invocation:
@@ -125,13 +126,17 @@ The standing convention across this pack:
   rule lives there, backed by `launcher/edit-guard.ts`, and is *not* restated in
   any skill).
 - **Procedures belong to the skill.** One skill owns each procedure in full;
-  `feature/references/grilling.md` is the whole grilling procedure.
+  `feature/references/decisions-and-spec.md` is the whole decisions-and-spec
+  procedure.
 - **Where a skill names a fact the prompt also names, it points instead of
   restating** — "the injected system prompt carries the slug and paths; trust
   `get_feature_context` for the live state."
-- **Where two skills need the same procedure, the second delegates by
-  reference** — "grill the way `feature/references/grilling.md` does" rather
-  than a second copy that ages differently.
+- **Where two pages need the same procedure, the second points to the first**
+  — `planning-alone.md` runs the self-check in `./preview.md` rather than a
+  second copy that ages differently.
+- **A tool's contract belongs to the tool's description** — what it returns,
+  when it is refused, what it changes. A skill names the tool and when to call
+  it, not how it behaves.
 - **A rule the hook enforces is stated once, as enforced, not as advice.** The
   `qa` kind's write refusals are server-side; `qa/SKILL.md` says so rather than
   asking nicely.

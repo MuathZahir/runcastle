@@ -182,7 +182,8 @@ export function registerOrchestratorRunTools(
         description:
           "Send a message to the agent of a feature on autopilot in this epic, marked as from this epic, not the human. " +
           'To pass on the human’s own answer, put their words verbatim in `humanWords`: it is marked as theirs. ' +
-          'Refused on a feature that is the human’s: link them to its chat instead.',
+          'It clears the feature’s Stop, as a human message does. Refused on a feature that is the human’s: link ' +
+          'them to its chat instead.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z.string().optional().describe('Your own words: what to change and why, or what you found.'),
@@ -206,7 +207,7 @@ export function registerOrchestratorRunTools(
       {
         title: 'Read a feature’s chat',
         description:
-          "The last turns of a feature's chat, plus the files it `shown` and its `reviewShots`. " +
+          "The last turns of a feature's chat, plus the files it `shown` (re-show them with show_file) and its `reviewShots`. " +
           'A repeat read returns only what is new; `full: true` returns the last turns again.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),

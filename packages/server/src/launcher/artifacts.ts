@@ -23,7 +23,6 @@ import { autoCompactWindow } from './runtimes/types'
 import {
   ENTRY_SKILLS,
   FEATURE_SKILL,
-  ORCHESTRATING,
   PLANNING_ALONE,
   entrySkillsFor,
   skillRef,
@@ -89,20 +88,17 @@ export function serverUrlFor(config: RuncastleConfig): string {
 // --- renderers (pure) -------------------------------------------------------
 
 /**
- * What every feature chat may do in its checkout (`the-feature-lead-runs-rounds`
- * decisions 5 and 7; tickets-and-review-are-tools-not-phases decision 13). The
- * edit and install guards lift for every chat and side session
- * (`isUnguardedLead`), so the brief says what the lead may do rather than what
- * it may not, and how its commits travel.
+ * What every feature chat may do in its checkout and how its commits travel
+ * (`the-feature-lead-runs-rounds` decisions 5 and 7). The edit and install
+ * guards lift for every chat (`isUnguardedLead`), so the brief says what the
+ * lead may do rather than what it may not. How to judge a change is the
+ * feature skill's; this is only the session's fact.
  */
 export function leadCodeRule(): string {
   return (
-    '- **You may change code yourself.** A change small enough not to need a worker is yours ' +
-    'to make in this checkout, and you may install dependencies here to typecheck and test it. ' +
-    "Verify with the project's own checks before you commit.\n" +
-    '- **Your commits land through the feature\'s landing queue**, between worker landings ' +
-    'during a round, and they wait while the human is driving the feature. Use a conventional ' +
-    '`feat(scope): …` subject; never reword a `ticket(<seq>): …` or `runcastle: …` commit.'
+    '- You may change code and install dependencies in this checkout.\n' +
+    "- **Your commits land through the feature's landing queue**, and they wait while the human " +
+    'is driving the feature. Never reword a `ticket(<seq>): …` or `runcastle: …` commit.'
   )
 }
 
@@ -123,7 +119,7 @@ function purposeLine(purpose: SessionPurpose | undefined, runtime: AgentRuntime)
     case 'relay':
       return (
         "This is a relay run: the project's orchestrator, not the human, sent this conversation a " +
-        "message — apply it by the skill's change-handling rules, marking any decision it changes as the orchestrator's."
+        "message. Any decision it changes is the orchestrator's, not the human's."
       )
     case 'resolve-conflict':
       return (
@@ -153,36 +149,25 @@ function headlessRule(): string {
     '  in this same conversation.',
     '- A refused tool is not a wait: do not retry it or wait for approval. Decide on what you',
     '  know and treat that decision as a candidate to check first.',
-    OUTRANKS_TALKING_TO_THE_HUMAN,
   ].join('\n')
 }
 
 /**
- * The line the headless rule ends on. {@link renderSessionPrompt} appends
- * {@link talkingToTheHumanSection} after every brief, so it lands BELOW a
- * headless rule — and an agent that follows the last instruction it read would
- * end its run on a framed decision for nobody. Its writing rules still serve the
- * human who reads the `**Assumed.**` decisions later, so it is kept but outranked.
- */
-const OUTRANKS_TALKING_TO_THE_HUMAN = [
-  '- This section outranks "How to talk to the human" at the end of this brief: follow its',
-  '  writing rules in what you leave behind for the human to read later, but put a question',
-  '  to them only through `wait_for_you`.',
-].join('\n')
-
-/**
  * The injected system prompt (feature brief). One brief for every feature
  * `chat` — attended, headless wake, self-plan, relay, resolve-conflict — in any
- * state of the feature (tickets-and-review-are-tools-not-phases decision 4):
- * the chat is the feature's lead from its first message, and the feature skill
- * carries the whole loop. An errand adds one sentence ({@link purposeLine}), a
- * headless run the rules for nobody watching ({@link headlessRule}).
+ * state of the feature (tickets-and-review-are-tools-not-phases decision 4).
+ *
+ * It carries only what is true of THIS session: which feature, its branch and
+ * docs, whether anyone is watching, what the checkout allows, and which skill to
+ * open. How the lead works is the feature skill's (skills-become-short-rules):
+ * a rule restated here drifts from the skill, and the two then disagree. An
+ * errand adds one sentence ({@link purposeLine}), a headless run the facts of
+ * nobody watching ({@link headlessRule}).
  *
  * Deliberately NO MCP tool cheat-sheet in any renderer. Every tool a session can
  * call is already in its tool list with a longer, schema-backed description, and
  * registration is filtered by audience — so a hand-written list here can name a
- * tool this session was never given. Where a prompt must CONSTRAIN which tools
- * apply it says so in one line of policy, never as a field-level restatement.
+ * tool this session was never given.
  */
 export function renderSystemPrompt(
   feature: Feature,
@@ -201,27 +186,17 @@ export function renderSystemPrompt(
     '',
     feature.oneLiner,
     '',
-    "You are this feature's **lead**, from your first message until the human merges it. You",
-    'talk with the human, decide and record what the feature is, build it yourself or in rounds',
-    'of sandboxed workers, check it, and hand it to the human to test-drive. Where possible this',
-    "terminal RESUMES the feature's conversation, so you may already have its context above.",
+    "You are this feature's **lead**, from your first message until the human merges it. Where",
+    "possible this terminal RESUMES the feature's conversation, so you may already have its context above.",
     '',
-    '## Feature',
-    `- Slug: \`${feature.slug}\``,
-    `- Branch: \`${feature.branch}\``,
-    '',
-    '## Knowledge (versioned in the target repo)',
-    `Feature docs live at \`${docs}/\`:`,
-    `- \`${docs}/brief.md\` — the brief the feature was created with.`,
-    `- \`${docs}/decisions.md\` — decisions, recorded as they settle.`,
-    `- \`${docs}/spec.md\` — the spec, written once the feature is concrete.`,
-    'Write them in THIS working directory and commit them like any other change. Workers read',
-    'them; keep them true when a round changes what was decided.',
-    '',
-    '## Rules',
-    '- The human owns Merge and the drive; you never merge, and you never start a draft.',
-    '- One round at a time. A dispatch is refused while a round runs, while the human is',
-    '  driving this feature, and after Stop until the human replies.',
+    '## This session',
+    `- Feature: \`${feature.slug}\`, on branch \`${feature.branch}\`` +
+      (feature.baseBranch ? `, which merges into \`${feature.baseBranch}\`.` : '.'),
+    "- Working directory: the feature's own worktree on that branch, not the human's checkout.",
+    `- Docs folder: \`${docs}/\` (\`brief.md\`, \`decisions.md\`, \`spec.md\`). Write them here and commit them.`,
+    unattended
+      ? '- No human is present (see below).'
+      : '- A human is present: you talk with them in this chat.',
     leadCodeRule(),
     otherEntrySkillsRule(),
     '',
@@ -648,37 +623,13 @@ export interface ProjectBrief {
 }
 
 /**
- * The orchestrating section of the project prompt: that this session is the
- * project's orchestrator, where its judgement is written down, and that nothing
- * will prompt it.
- */
-function renderOrchestratingSection(runtime: AgentRuntime): string[] {
-  return [
-    `## ${ORCHESTRATING}`,
-    "**You are this project's orchestrator.** You can check on any of its features, create, start and",
-    'plan the ones you cut, and message, drive and merge them only while they are on autopilot in this epic,',
-    'acting on what the human asked or agreed, as far as they asked.',
-    `Read and follow the "${ORCHESTRATING}" section of the \`${skillRef(runtime, 'project')}\``,
-    'skill — it is how you judge every step; nothing here replaces it.',
-    '',
-    'You run without permission prompts: you edit the repo and run commands without asking.',
-    '',
-  ]
-}
-
-/**
- * The injected brief for a `project` session (decisions 17–20).
- *
- * Two things it must say that no other prompt has to. First, what this session
- * is FOR: intake and decomposition terminating in `create_feature`, with
- * portfolio Q&A, routing and curation as support jobs — naming it by scope
- * ("a session at project level") would describe a container and invite exactly
- * the open-ended do-stuff agent the guided pipeline exists to prevent. Second,
- * where its writes go: this is the one session with whole-repo write access, it
- * works on a runcastle-owned branch, and its commits reach the human's checkout
- * when the terminal closes. A session that writes but never commits leaves the
- * tree dirty, which is precisely what blocks a test drive and the next merge —
- * so "land what you wrote and leave the tree clean" is its closing move.
+ * The injected brief for a `project` session (decisions 17–20): only what is
+ * true of this session. What the orchestrator is for and how it judges each
+ * step are the project skill's (skills-become-short-rules) — restated here they
+ * drift from it. What stays is where its writes go: this is the one session with
+ * whole-repo write access, it works on a runcastle-owned branch, and its commits
+ * reach the human's checkout when the terminal closes, so a session that writes
+ * but never commits leaves the tree dirty and blocks the next drive and merge.
  *
  * The task line asks first and explores second on purpose: told only to drive
  * the session, the agent opens with `get_project_context` — charter plus every
@@ -693,49 +644,23 @@ export function renderProjectPrompt(
   return [
     `# runcastle — ${project.name} (orchestrator)`,
     '',
-    'This is the **orchestrator**: a conversation that belongs to the project, not to',
-    'any one feature. There is no feature state to move and no planning step to report here.',
+    "You are this project's **orchestrator**: a conversation that belongs to the project, not to",
+    'any one feature.',
     '',
-    '## What this session is for',
-    '- **Intake and decomposition** — the job no other surface can do. Take whatever the',
-    '  human brings, grill it until it resolves into N features, and create them with',
-    '  `create_feature`. A feature born here carries a real brief: the reasoning you just',
-    '  worked out, not a restated one-liner.',
-    '- **Portfolio Q&A** — "have we already decided X?", "did we ever build Y?" — the same',
-    '  lookup intake needs anyway to avoid creating a duplicate feature.',
-    '- **Routing** — an incoming thing is one of exactly five destinations: a new feature,',
-    '  a quick change, an existing feature\'s revisit, more rounds on something in review',
-    "  (a message to that feature's agent), or nothing. Say which, and why.",
-    '- **Curation, advisory only** — you may report that two in-flight features are on a',
-    '  collision course or that an ADR looks stale. You do NOT fix either. Every fix routes',
-    '  back through a feature, through promotion at merge, or through the charter.',
-    '- **The charter (`CONTEXT.md`)** — you are the only session in runcastle allowed to',
-    '  write it. Create it lazily: when there is first something to write, not before.',
-    '',
-    '## Where you are working — and where your writes go',
+    '## This session',
     `- Working directory: \`${worktreePath}\` — a runcastle-owned worktree, NOT the human's`,
     `  checkout at \`${project.repoPath}\`.`,
     `- Branch: \`${branch}\`, cut from \`${base}\` when this session launched.`,
-    `- **Your commits land on \`${base}\` when this terminal closes**, arriving`,
-    "  in the human's checkout the way a `git pull` does. Write real code and real docs —",
-    '  there is no sandbox here — and commit everything you write before you finish.',
-    '  A session that edits without committing leaves a dirty tree, which is exactly what',
-    '  blocks a test drive and jams the next merge. Land what you wrote; leave it clean.',
+    `- **Your commits land on \`${base}\` when this terminal closes**, arriving in the human's`,
+    '  checkout the way a `git pull` does. Commit everything you write before you finish: an',
+    '  uncommitted edit leaves a dirty tree, which blocks a test drive and the next merge.',
+    '- Every merged feature\'s docs are on disk here at `docs/features/<slug>/`; an in-flight',
+    "  feature's are not.",
+    '- A human is present: you talk with them in this chat.',
+    '- You run without permission prompts: you edit the repo and run commands without asking.',
+    "- The runcastle skill pack also carries the feature sessions' entry skills; they are",
+    '  denied to this session by settings. Yours is the one named below.',
     '',
-    '## Your tools',
-    'You have the project-level tools and NONE of the feature pipeline\'s — a session with',
-    'no feature has no business moving one through it. `create_feature` is the point',
-    'of this session, and it does NOT open a terminal on what it creates: the new card',
-    'appearing in the rail is the feedback, and the human decides what to work on next.',
-    '',
-    'Every merged feature\'s docs are already on disk in this worktree at',
-    '`docs/features/<slug>/` — read them with your ordinary file tools. An in-flight',
-    'feature\'s docs are not: `read_feature_brief({ slug })` returns its brief.',
-    '',
-    "The runcastle skill pack also carries the feature sessions' entry skills; they are",
-    'denied to this session by settings. Yours is the one named below.',
-    '',
-    ...renderOrchestratingSection(runtime),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
@@ -1062,11 +987,11 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 // --- writer -----------------------------------------------------------------
 
 /**
- * The section every interactive session's prompt ends with: brief the human
- * like a senior advisor joining partway through. Appended once, by
- * {@link renderSessionPrompt}, so every renderer — today's and any added later
- * — carries it without a per-renderer edit. Burn agents never talk to the
- * human, so the burner prompts do not get it.
+ * The section a host worker's prompt ends with: brief the human like a senior
+ * advisor joining partway through. Appended by {@link renderSessionPrompt}. The
+ * feature lead and the orchestrator do not get it: their skills carry how to
+ * talk to the human (skills-become-short-rules), and a second copy here would
+ * drift from them.
  */
 export function talkingToTheHumanSection(): string {
   return [
@@ -1094,10 +1019,11 @@ export function talkingToTheHumanSection(): string {
  * its home dir. Same prose, two destinations.
  */
 export function renderSessionPrompt(input: WriteArtifactsInput): string {
-  return `${renderBrief(input).trimEnd()}\n\n${talkingToTheHumanSection()}`
+  const brief = renderBrief(input)
+  return input.hostWorker ? `${brief.trimEnd()}\n\n${talkingToTheHumanSection()}` : brief
 }
 
-/** The kind-specific brief {@link renderSessionPrompt} carries, before its shared closing section. */
+/** The kind-specific brief {@link renderSessionPrompt} carries, before a host worker's closing section. */
 function renderBrief(input: WriteArtifactsInput): string {
   const {
     session,

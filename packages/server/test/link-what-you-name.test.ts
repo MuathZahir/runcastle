@@ -53,8 +53,4 @@ describe('the linking rule', () => {
       expect(LINK_WHAT_YOU_NAME).toContain(form)
     }
   })
-
-  it('tells the orchestrator where worker ids come from', () => {
-    expect(read('project', 'SKILL.md')).toContain("A feature's worker ids come from `get_feature_context({ slug, full: true })`.")
-  })
 })
