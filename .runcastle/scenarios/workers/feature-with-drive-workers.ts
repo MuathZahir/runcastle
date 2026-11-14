@@ -15,9 +15,10 @@
  * the drive resolves against its own URL.
  *
  * Rows only: no agent runs and no drive is held, so a message to a drive
- * worker is refused. The sidebar's worker lanes, the drive workers' chats with
- * their headers and assignment cards, the old drive chat's read-only note and
- * the lead's handback card naming the branch are what this lands on.
+ * worker is refused. The worker rows nested under the feature's sidebar row,
+ * the drive workers' chats with their headers and assignment cards, the old
+ * drive chat's read-only note and the lead's handback card naming the branch
+ * are what this lands on.
  *
  * `SCENARIO_PROJECT` names a different project to seed (tests register a temp
  * repo under its own name).

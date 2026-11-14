@@ -137,6 +137,15 @@ export function workerGroups(workers: readonly WorkerEntry[]): WorkerGroups {
   return groups
 }
 
+/**
+ * Whether a feature's row offers "+" New worker (workers-nest-under-their-
+ * feature decision 5): only while it is in progress, never a draft, shipped or
+ * archived one.
+ */
+export function takesNewWorkers(f: { status: 'draft' | 'active' | 'shipped' | 'archived' }): boolean {
+  return f.status === 'active'
+}
+
 /** Whether any worker waits on the human: the folded feature row's amber dot. */
 export function workersNeedYou(workers: readonly WorkerEntry[]): boolean {
   return workers.some((w) => !w.old && (w.status === 'needs-you' || w.status === 'failed'))
@@ -221,7 +230,7 @@ type WireWorker = Pick<
 
 const STARTED_BY: Record<CoreWorkerRow['startedBy'], WorkerEntry['startedBy']> = { lead: 'lead', human: 'you' }
 
-/** A worker's row in its feature's sidebar page. */
+/** A worker's row, nested under its feature's sidebar row. */
 export function workerEntry(w: WireWorker): WorkerEntry {
   return {
     id: w.id,
@@ -265,7 +274,7 @@ export function workerCanHandBack(status: WorkerStatus): boolean {
 }
 
 /**
- * The feature's sidebar page's rows: its workers, its drive workers among them
+ * The open feature's nested rows: its workers, its drive workers among them
  * (drive-chats-become-workers decision 11), then its old side and drive chats.
  */
 export function featureWorkerEntries(workers: readonly WireWorker[], threads: readonly ThreadEntry[]): WorkerEntry[] {

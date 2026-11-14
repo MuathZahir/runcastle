@@ -28,6 +28,12 @@ vi.mock('../src/trpc', () => ({
       prep: { useQuery: () => ({ data: { pendingKeys: [], findings: [] } }) },
       list: { useQuery: () => ({ data: [{ id: 'project-1', name: 'Project' }] }) },
     },
+    // The feature rows' nested workers (workers-nest-under-their-feature).
+    worker: {
+      listLive: { useQuery: () => ({ data: [] }) },
+      list: { useQuery: () => ({ data: undefined }) },
+      startUnassigned: { useMutation: () => ({ mutate: vi.fn() }) },
+    },
     projectNotes: { openCount: { useQuery: () => ({ data: 0 }) } },
     thread: {
       list: { useQuery: () => ({ data: [] }) },

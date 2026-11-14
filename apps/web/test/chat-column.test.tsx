@@ -11,12 +11,12 @@ import { openMenu, openList } from './floating'
 
 /**
  * The feature page's chat column (chat-as-web-components decision 7) and the
- * feature's own sidebar page (interactive-workers decision 24): opening a
- * feature swaps the sidebar to its page, fed by `worker.list` and the threads
- * the page publishes, and the column shows the thread in front through
- * ThreadColumn, a worker's with its assignment card and its header's actions.
- * A drive errand brings its scenario chat to the front and closing it hands
- * the column back; the page's "+" starts a worker with no assignment.
+ * open feature's workers nested under its sidebar row
+ * (workers-nest-under-their-feature): the rows are fed by `worker.list` and
+ * the threads the page publishes, and the column shows the thread in front
+ * through ThreadColumn, a worker's with its assignment card and its header's
+ * actions. A drive errand brings its scenario chat to the front and closing it
+ * hands the column back; the row's "+" starts a worker with no assignment.
  *
  * Tier 2: row menus are portalled. The seam is the page as it assembles its
  * column and publishes its threads, beside the real sidebar, on the app's real
@@ -129,14 +129,9 @@ function server({
     'feature.launchSession': () => ({ sessionId: 'th_started' }),
     'feature.driveScenarios': () => ({ runnerConfigured: true, scenarios: [] }),
     'feature.openScenarioChat': () => ({ sessionId: 'th_scn' }),
-    // The sidebar's own read: the open feature's row, in its lane, with its
-    // workers arrow while its workers page lists anything (clicking-a-feature-opens-its-lead decision 4).
-    'feature.list': () =>
-      ['feat_1', 'feat_a', 'feat_b'].map((id) => {
-        const page = id === 'feat_1' && (rows.length > 0 || list.some((t) => t.role === 'side' || t.role === 'old-drive-chat'))
-        const inPlay = rows.filter((w) => ['needs-you', 'failed', 'working', 'queued'].includes(w.status)).length
-        return listItem({ id, slug: id, ...(page ? { workersPage: { inPlay } } : {}) })
-      }),
+    // The sidebar's own reads: the features' rows, and every feature's live workers to nest under them.
+    'feature.list': () => ['feat_1', 'feat_a', 'feat_b'].map((id) => listItem({ id, slug: id })),
+    'worker.listLive': () => rows.filter((w) => !['handed-back', 'landed', 'dropped'].includes(w.status)),
     ...extra,
   })
 }
@@ -246,42 +241,38 @@ const column = (): HTMLElement => document.querySelector('[data-column]') as HTM
 const sidebar = (): HTMLElement => document.querySelector('[data-sidebar]') as HTMLElement
 /** The page header's worker status and actions. */
 const header = (): HTMLElement => document.querySelector('[data-header]') as HTMLElement
-/** The open feature's own sidebar page (decision 24); null while the sidebar shows the features list. */
-const featurePage = (): HTMLElement | null => within(sidebar()).queryByRole('region', { name: 'Demo' })
-/** The open feature's workers arrow, which alone goes down to its page (clicking-a-feature-opens-its-lead decisions 2, 3). */
-const arrow = (): Promise<HTMLElement> => within(sidebar()).findByRole('button', { name: /^Workers/ })
-/** Press the arrow and wait for the feature's page. */
-const down = async (): Promise<void> => {
-  fireEvent.click(await arrow())
-  await waitFor(() => expect(featurePage()).not.toBeNull())
-}
-/** A list of chats inside the Lead card, which the drive's chats no longer get: they are workers. */
+/** The open feature's workers, nested under its row (workers-nest-under-their-feature); null while it has none. */
+const nestedWorkers = (): HTMLElement | null => within(sidebar()).queryByRole('group', { name: 'Demo · workers' })
+/** A list of chats under the feature, which the drive's chats no longer get: they are workers. */
 const threadList = (): HTMLElement | null => within(sidebar()).queryByRole('list', { name: 'Chats' })
-/** A lane of the feature's page: its rows' labels, in order. */
-const lane = (name: 'Needs you' | 'Working' | 'Done'): string[] => {
-  const section = within(featurePage()!).queryByRole('region', { name })
-  return section ? within(section).getAllByRole('button').flatMap((b) => (b.title ? [b.title.split(' — ')[0]!] : [])) : []
+/** The nested worker rows' labels, in order. */
+const nestedRows = (): string[] => {
+  const group = nestedWorkers()
+  return group ? within(group).getAllByRole('button').flatMap((b) => (b.title ? [b.title.split(' — ')[0]!] : [])) : []
 }
-/** Unfold the Done lane. */
+/** Unfold the open feature's "N done". */
 const openDone = (): void => {
-  fireEvent.click(within(within(featurePage()!).getByRole('region', { name: 'Done' })).getAllByRole('button')[0]!)
+  fireEvent.click(within(nestedWorkers()!).getByRole('button', { name: /^\d+ done$/ }))
 }
-/** A worker's row on the feature's page, by its label. */
-const pickWorker = (label: string): void => {
-  const row = within(featurePage()!)
+/** A nested worker row, by its label. */
+const workerRow = (label: string): HTMLElement => {
+  const row = within(nestedWorkers()!)
     .getAllByRole('button')
     .find((b) => b.title === label || b.title.startsWith(`${label} — `))
   if (!row) throw new Error(`no worker row "${label}"`)
-  fireEvent.click(row)
+  return row
 }
-/** The Lead card. */
-const leadCard = (): HTMLElement => within(featurePage()!).getByRole('button', { name: /^Lead(?! actions)/ })
+const pickWorker = (label: string): void => {
+  fireEvent.click(workerRow(label))
+}
+/** The open feature's row with what nests under it. */
+const openFeature = (): HTMLElement => sidebar().querySelector('[data-feature-group="feat_1"]') as HTMLElement
 const newScenario = (): void => {
   openList(screen.getByRole('button', { name: /Blank app/ }))
   fireEvent.click(screen.getByRole('option', { name: 'New scenario' }))
 }
 
-describe('the open feature’s own sidebar page (interactive-workers decisions 3, 7, 23, 24)', () => {
+describe('the open feature’s workers, nested under its row (workers-nest-under-their-feature)', () => {
   const lead = thread('th_main', 'Feature chat', 'main')
   const mixed = {
     threads: [
@@ -302,65 +293,45 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     ],
   }
 
-  it('opens on the features list, and its arrow goes down to the feature’s page from worker.list: the Lead card, needs-you rows, the Working shelf with queued inside, Done folded', async () => {
+  it('nests the open feature’s workers under its row from worker.list: needs you and failed first, then working and queued, the finished ones folded into "N done"', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
     await within(column()).findByText('said in th_main')
     // Opening the feature keeps the list (clicking-a-feature-opens-its-lead decision 1).
-    expect(featurePage()).toBeNull()
-    expect(within(sidebar()).getAllByRole('button', { name: /^Demo/ }).length).toBeGreaterThan(0)
-    // The arrow counts the workers in play: two need you, one works, one queued.
-    expect((await arrow()).textContent).toBe('4')
-    await down()
-    await waitFor(() => expect(lane('Needs you')).toEqual(['Header', 'Search']))
-    expect(within(featurePage()!).getByRole('heading', { name: 'Demo' })).toBeTruthy()
-    expect(within(featurePage()!).getByRole('button', { name: 'Back to the features' })).toBeTruthy()
-    expect(within(featurePage()!).getByRole('button', { name: 'New worker' })).toBeTruthy()
-    expect(leadCard().getAttribute('aria-current')).toBe('page')
-    // Working ones first, then the queued in line.
-    expect(lane('Working')).toEqual(['Data', 'Docs'])
+    expect(within(sidebar()).getByRole('region', { name: 'Epics' })).toBeTruthy()
+    await waitFor(() => expect(nestedRows()).toEqual(['Header', 'Search', 'Data', 'Docs']))
+    expect(within(openFeature()).getByRole('button', { name: 'New worker' })).toBeTruthy()
     // Folded: its count shows, its rows do not.
-    expect(lane('Done')).toEqual([])
+    expect(within(nestedWorkers()!).getByRole('button', { name: '2 done' })).toBeTruthy()
     openDone()
-    expect(lane('Done')).toEqual(['Footer', 'An old side thread'])
-    expect(within(featurePage()!).getByText('Old side chat')).toBeTruthy()
-    // The features list is not drawn while the page is.
-    expect(within(sidebar()).queryByRole('region', { name: 'Epics' })).toBeNull()
+    expect(nestedRows()).toEqual(['Header', 'Search', 'Data', 'Docs', 'Footer', 'An old side thread'])
+    expect(within(nestedWorkers()!).getByText('Old side chat')).toBeTruthy()
   })
 
-  it('goes back to the features list leaving the chat in front unchanged, and the feature’s row brings its lead back without going down', async () => {
+  it('opens a worker’s chat from its nested row, and the feature’s row brings its lead back', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
-    await down()
-    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
+    await waitFor(() => expect(nestedRows()).toHaveLength(4))
     pickWorker('Header')
     expect(await within(column()).findByText('said in w_ask')).toBeTruthy()
-
-    fireEvent.click(within(featurePage()!).getByRole('button', { name: 'Back to the features' }))
-    expect(featurePage()).toBeNull()
-    expect(within(sidebar()).getByRole('region', { name: 'Epics' })).toBeTruthy()
-    expect(within(column()).getByText('said in w_ask')).toBeTruthy()
     expect(threadName().textContent).toBe('Header')
 
-    // The open feature's row brings its lead to the front and the list stays (decisions 1, 3).
+    // The open feature's row brings its lead to the front (clicking-a-feature-opens-its-lead decisions 1, 3).
     fireEvent.click(within(sidebar()).getAllByRole('button', { name: /^Demo/ })[0]!)
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
-    expect(featurePage()).toBeNull()
+    expect(nestedRows()).toHaveLength(4)
   })
 
   it('lights the amber dot on a worker that needs the human, and red on a failed one', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
-    await down()
-    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
-    const row = (label: string) => within(featurePage()!).getAllByRole('button').find((b) => b.title.startsWith(`${label} — `))!
-    expect(row('Header').innerHTML).toContain('bg-warning')
-    expect(row('Search').innerHTML).toContain('bg-danger')
-    expect(row('Data').innerHTML).not.toContain('bg-warning')
+    await waitFor(() => expect(nestedRows()).toHaveLength(4))
+    expect(workerRow('Header').innerHTML).toContain('bg-warning')
+    expect(workerRow('Search').innerHTML).toContain('bg-danger')
+    expect(workerRow('Data').innerHTML).not.toContain('bg-warning')
   })
 
-  it('keeps a picked worker in the address, and a reload reopens it on the features list', async () => {
+  it('keeps a picked worker in the address, and a reload reopens it', async () => {
     window.history.replaceState(null, '', '/p/proj_1/f/login')
     render(<Page />, { wrapper: server(mixed).Wrapper })
-    await down()
-    await waitFor(() => expect(lane('Working')).toHaveLength(2))
+    await waitFor(() => expect(nestedRows()).toHaveLength(4))
     pickWorker('Data')
     await waitFor(() => expect(window.location.search).toBe('?thread=w_run'))
 
@@ -368,8 +339,6 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     render(<Page />, { wrapper: server(mixed).Wrapper })
     expect(await within(column()).findByText('said in w_run')).toBeTruthy()
     expect(threadName().textContent).toBe('Data')
-    // Only the arrow goes down (decision 3).
-    expect(featurePage()).toBeNull()
   })
 
   it('moving to another feature leaves the open worker behind: the new page shows its own', async () => {
@@ -396,8 +365,8 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     const api = server({ threads: [lead, thread('w_run', 'Data', 'worker')], workers: [worker('w_run', 'Data', { status: 'working' })] })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    await down()
-    fireEvent.click(within(featurePage()!).getByRole('button', { name: 'New worker' }))
+    await waitFor(() => expect(nestedRows()).toEqual(['Data']))
+    fireEvent.click(within(openFeature()).getByRole('button', { name: 'New worker' }))
     expect(await within(column()).findByText('said in th_new')).toBeTruthy()
     expect(api.inputs('worker.startUnassigned')).toEqual([{ featureId: 'feat_1' }])
     expect(api.inputs('thread.new')).toEqual([])
@@ -414,8 +383,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
       workers: [worker('w_ask', 'Header', { previewPath: '/__runcastle/open/worker/w_ask', previewPort: 41001, devServer: true })],
     })
     render(<Page />, { wrapper: api.Wrapper })
-    await down()
-    await waitFor(() => expect(lane('Needs you')).toEqual(['Header']))
+    await waitFor(() => expect(nestedRows()).toEqual(['Header']))
     pickWorker('Header')
     const card = await within(column()).findByRole('region', { name: 'Assignment: Header' })
     // It starts folded to its name and purpose line; a click opens the rest.
@@ -435,8 +403,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
 
   it('offers no Open preview without a preview, and no Hand back once a worker has handed back', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
-    await down()
-    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
+    await waitFor(() => expect(nestedRows()).toHaveLength(4))
     openDone()
     pickWorker('Footer')
     await within(column()).findByText('said in w_back')
@@ -449,8 +416,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
   it('opens an old side chat as a read-only transcript: no composer, the old-side-chat note', async () => {
     const api = server(mixed)
     render(<Page />, { wrapper: api.Wrapper })
-    await down()
-    await waitFor(() => expect(lane('Needs you')).toHaveLength(2))
+    await waitFor(() => expect(nestedRows()).toHaveLength(4))
     openDone()
     pickWorker('An old side thread')
     expect(await within(column()).findByText('said in th_old')).toBeTruthy()
@@ -472,8 +438,7 @@ describe('the open feature’s own sidebar page (interactive-workers decisions 3
     })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    // No workers, so no arrow and no Lead card: the row's own "…" holds it (clicking-a-feature-opens-its-lead decision 11).
-    expect(within(sidebar()).queryByRole('button', { name: /^Workers/ })).toBeNull()
+    // The open feature row's own "…" holds it (clicking-a-feature-opens-its-lead decision 11).
     openMenu(within(sidebar()).getAllByRole('button', { name: 'Feature actions' })[0]!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename the lead’s chat…' }))
     const field = screen.getByRole('textbox', { name: 'Chat name' })
@@ -683,10 +648,9 @@ describe('the Scenarios worker in the column (drive-chats-become-workers decisio
     await within(column()).findByText('said in th_main')
     newScenario()
     await within(column()).findByText('said in th_scn')
-    await down()
-    await waitFor(() => expect(lane('Needs you')).toEqual(['Scenarios']))
+    await waitFor(() => expect(nestedRows()).toEqual(['Scenarios']))
     expect(threadList()).toBeNull()
-    const row = within(featurePage()!).getByTitle(/^Scenarios — /).parentElement as HTMLElement
+    const row = within(nestedWorkers()!).getByTitle(/^Scenarios — /).parentElement as HTMLElement
     openMenu(within(row).getByRole('button', { name: 'Worker actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Close the scenario chat' }))
     expect(await within(column()).findByText('said in th_main')).toBeTruthy()
@@ -813,8 +777,7 @@ describe('a Select area crop', () => {
     URL.createObjectURL = vi.fn(() => 'blob:crop')
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
-    await down()
-    await waitFor(() => expect(lane('Working')).toEqual(['A worker']))
+    await waitFor(() => expect(nestedRows()).toEqual(['A worker']))
     pickWorker('A worker')
     await within(column()).findByText('said in th_old')
 

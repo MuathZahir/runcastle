@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
 import { cx, IconButton, Kbd, Skeleton, SkeletonBar } from '../ui'
@@ -20,12 +20,13 @@ import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ThreadEntry } from '../lib/chat-thread'
 import { threadIsActive, useSidebarThreads } from '../lib/sidebar-threads'
+import { featureWorkerEntries, takesNewWorkers, workerEntry, type WorkerEntry } from '../lib/workers'
 import { epicNameOf, epicsFrom, shelfFeatureWords } from '../lib/feature-ui/epics'
-import { FeatureSidebar } from './workers/FeatureSidebar'
 import { hasDraft, useThreadActions } from '../lib/use-thread'
 import { UNSTARTED_CHAT, standIn, withStandIns } from '../lib/chat-sessions'
 import {
   IconArchive,
+  IconBranch,
   IconDoc,
   IconGitMerge,
   IconList,
@@ -58,6 +59,7 @@ import {
   SidebarStatusLine,
   SidebarThreadRow,
   SidebarWorkerItem,
+  type FeatureWorkers,
 } from './SidebarParts'
 import { SidebarEpics } from './SidebarEpics'
 import { EpicLookPopover } from './EpicLookPopover'
@@ -118,6 +120,13 @@ export interface SidebarProps {
  */
 function byLastMoved(features: FeatureListItem[]): FeatureListItem[] {
   return [...features].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+}
+
+/** The project's live workers, by the feature that owns each. */
+function groupByFeature<W extends { featureId: string | null }>(workers: readonly W[]): Map<string, W[]> {
+  const out = new Map<string, W[]>()
+  for (const w of workers) if (w.featureId) out.set(w.featureId, [...(out.get(w.featureId) ?? []), w])
+  return out
 }
 
 /**
@@ -295,29 +304,9 @@ export function Sidebar(props: SidebarProps) {
   const allConversations = projectThreads?.allConversations ?? onOpenConversations
   const epicName = (f: FeatureListItem) => epicNameOf(f, chats)
 
-  // The drill-in (interactive-workers decision 24): the open feature's own page
-  // in place of the features list. Only the workers arrow on its row goes down
-  // to it (clicking-a-feature-opens-its-lead decisions 2, 3): a row click, the
-  // palette, a push tap or the address open their chat and leave the list in
-  // place. Back goes up; opening anything other than that feature forgets it.
-  // Going either way changes only the sidebar.
-  const [downTo, setDownTo] = useState<string | null>(null)
-  const [motion, setMotion] = useState<'down' | 'up' | null>(null)
-  useEffect(() => {
-    if (view !== 'feature' || selectedFeatureId !== downTo) setDownTo(null)
-    // Only a move to another feature or view clears it; `downTo` changing is the arrow's own doing.
-  }, [view, selectedFeatureId])
-  const openFeature = featureThreads ? features.find((f) => f.id === selectedFeatureId) : undefined
-  const drilled =
-    !phone && featureThreads && openFeature && downTo === openFeature.id ? { feature: openFeature, threads: featureThreads } : null
-  const goUp = () => {
-    setDownTo(null)
-    setMotion('up')
-  }
-
-  // The open feature's lead chat, renamed or exported from its row's "…": with
-  // the list kept (decision 1), the Lead card on the workers page is no longer
-  // one click away, and a feature with no workers has no such page.
+  // The open feature's lead chat, renamed or exported from its row's "…": the
+  // row is the lead's door (clicking-a-feature-opens-its-lead), and its
+  // workers sit under it (workers-nest-under-their-feature decision 1).
   const leadChatActions = (): FeatureAction[] => {
     const lead = featureThreads?.threads.find((t) => t.role === 'main')
     const actions = lead ? threadActionsFor(lead) : []
@@ -330,7 +319,7 @@ export function Sidebar(props: SidebarProps) {
 
   // The phone's list (phone decision 1): only shown with nothing open, so no
   // row is current, and a row is the whole door — no hover menu, no threads,
-  // no workers arrow (clicking-a-feature-opens-its-lead decision 8).
+  // no nested workers (workers-nest-under-their-feature decision 8).
   const currentFeature = !phone && view === 'feature' ? selectedFeatureId : null
   const isOpen = (f: FeatureListItem) => f.id === currentFeature
   // A feature row opens its lead (decisions 1, 7); the open one's brings its
@@ -352,21 +341,66 @@ export function Sidebar(props: SidebarProps) {
   }
   const featureActions = (f: FeatureListItem): FeatureAction[] =>
     phone ? [] : isOpen(f) ? [...leadChatActions(), ...actionsFor(f)] : actionsFor(f)
-  const workersFor = (f: FeatureListItem) =>
-    phone || !f.workersPage
-      ? undefined
-      : {
-          live: f.workersPage.inPlay,
-          // Down to its workers page: the open feature keeps the chat in front, any other opens on its lead.
-          onOpen: () => {
-            setDownTo(f.id)
-            setMotion('down')
-            if (!isOpen(f)) onSelect(f.id)
-          },
-        }
+
+  // Every feature's workers under its row (workers-nest-under-their-feature
+  // decisions 1–4): the live ones of every feature from one project-wide read;
+  // the open feature's from what its page reads (`worker.list`, the same query
+  // key, so no second fetch) with its old side and drive chats, so its finished
+  // ones fold into "N done". The phone's list nests nothing (decision 8).
+  const liveWorkers = trpc.worker.listLive.useQuery({ projectId }, { refetchInterval: poll, enabled: !phone }).data
+  const openWorkers = trpc.worker.list.useQuery(
+    { featureId: currentFeature ?? '' },
+    { refetchInterval: poll, enabled: !phone && currentFeature !== null },
+  ).data
+  const liveByFeature = groupByFeature(liveWorkers ?? [])
+  const workerRowsOf = (f: FeatureListItem) =>
+    isOpen(f) && openWorkers ? openWorkers : (liveByFeature.get(f.id) ?? [])
+  const startWorker = trpc.worker.startUnassigned.useMutation({
+    onSuccess: ({ workerId }, { featureId }) => {
+      void utils.worker.listLive.invalidate()
+      onOpenWorkerChat?.(featureId, workerId)
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  const workerActionsFor = (f: FeatureListItem) => (w: WorkerEntry): FeatureAction[] => {
+    // An old chat is always one of the open feature's threads; a worker's row can come before its thread.
+    const thread = (isOpen(f) ? featureThreads?.threads.find((t) => t.id === w.id) : undefined) ?? standIn(w.id, w.label, 'worker')
+    const branch = workerRowsOf(f).find((r) => r.id === w.id)?.branch
+    const settled = w.status === 'landed' || w.status === 'dropped'
+    return [
+      ...threadActionsFor(thread),
+      ...(branch && !settled ? [{ key: 'copy-branch', label: 'Copy branch name', icon: <IconBranch />, onSelect: () => copyText(branch, toast) }] : []),
+    ]
+  }
+  const workersFor = (f: FeatureListItem): FeatureWorkers | undefined => {
+    if (phone) return undefined
+    const open = isOpen(f) ? featureThreads : null
+    const rows = workerRowsOf(f)
+    const entries = open ? featureWorkerEntries(rows, open.threads) : rows.map(workerEntry)
+    if (entries.length === 0) return undefined
+    return {
+      entries,
+      withDone: !!open,
+      current: open?.current ?? null,
+      // The open feature brings the chat to its front; any other opens on that worker's chat.
+      onOpen: (id) => (open ? open.pick(id) : onOpenWorkerChat ? onOpenWorkerChat(f.id, id) : onSelect(f.id)),
+      actionsFor: workerActionsFor(f),
+    }
+  }
+  // "+" New worker (decision 5), on a feature in progress only: on the open one
+  // its page starts it; any other is opened, then the worker starts there.
+  const newWorkerFor = (f: FeatureListItem): (() => void) | undefined => {
+    if (phone || !takesNewWorkers(f)) return undefined
+    if (isOpen(f) && featureThreads) return featureThreads.newThread
+    return () => {
+      onSelect(f.id)
+      startWorker.mutate({ featureId: f.id })
+    }
+  }
   // A shelf row: its epic named quietly in its second line (decision 21).
   const shelfRow = (f: FeatureListItem) => {
     const workers = workersFor(f)
+    const onNewThread = newWorkerFor(f)
     return (
       <SidebarFeatureRow
         key={f.id}
@@ -374,8 +408,9 @@ export function Sidebar(props: SidebarProps) {
         active={isOpen(f)}
         onSelect={selectFeature}
         actions={featureActions(f)}
-        words={shelfFeatureWords(f, featureStateWords(f, !!f.autopilot), epicName(f))}
+        words={(g) => shelfFeatureWords(g, featureStateWords(g, !!g.autopilot), epicName(g))}
         {...(workers ? { workers } : {})}
+        {...(onNewThread ? { onNewThread } : {})}
       />
     )
   }
@@ -431,12 +466,6 @@ export function Sidebar(props: SidebarProps) {
         </SidebarHead>
       )}
 
-      {drilled ? (
-        <div key="page" className={cx('mt-3 flex min-h-0 flex-1 flex-col', motion === 'down' && 'animate-slide-in-right')}>
-          <FeatureSidebar feature={drilled.feature} threads={drilled.threads} onBack={goUp} threadActionsFor={threadActionsFor} />
-        </div>
-      ) : (
-      <div key="list" className={cx('flex min-h-0 flex-1 flex-col', motion === 'up' && 'animate-slide-in-left')}>
         <div className="-mx-2 mt-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
           {projectWork}
           {list.isLoading ? (
@@ -453,6 +482,7 @@ export function Sidebar(props: SidebarProps) {
               onAllEpics={allConversations ?? onSelectProject}
               featureActions={featureActions}
               workersFor={workersFor}
+              newWorkerFor={newWorkerFor}
               {...(phone ? {} : { epicActions: threadActionsFor })}
               onNewEpic={newEpic}
               newEpicOpen={!phone && !!projectThreads?.newEpicOpen}
@@ -482,8 +512,6 @@ export function Sidebar(props: SidebarProps) {
             />
           </div>
         </div>
-      </div>
-      )}
 
       {phone ? <PhoneNotificationsRow projectId={projectId} /> : <SidebarFoot {...props} />}
 

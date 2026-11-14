@@ -372,8 +372,10 @@ export function useLiveSync(): LiveStatus {
       // The feature's workers (interactive-workers): every status change, start,
       // handback, land and drop is a `worker.*` event, and the sidebar's lanes,
       // the worker's header and the lead's handback cards read them; and the
-      // project's own, a project drive's Scenarios worker.
+      // project's own, a project drive's Scenarios worker; and every feature's
+      // live workers, nested under their rows in the sidebar.
       refetches.push(u.worker.list.invalidate())
+      refetches.push(u.worker.listLive.invalidate())
       refetches.push(u.worker.listProject.invalidate())
       // The scenarios a drive can land on. A scenario chat commits a new file
       // and records the runner mid-drive (`scenario.*`, `settings.updated`), and

@@ -6,7 +6,7 @@ import type { DriveState } from '../lib/workspace'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry, ThreadState } from '../lib/chat-thread'
-import { OLD_CHAT_WORDS, WORKER_STATUS_WORDS, workerGroups, workerStatusWhy } from '../lib/workers'
+import { OLD_CHAT_WORDS, WORKER_STATUS_WORDS, workerGroups, workersNeedYou, workerStatusWhy } from '../lib/workers'
 import type { WorkerEntry } from '../lib/workers'
 import { ThreadStateMark } from './chat/thread/ThreadState'
 import {
@@ -170,7 +170,6 @@ function TwoLineRow({
   onClick,
   actions,
   toggle,
-  trail,
 }: {
   title: string
   tooltip?: string
@@ -189,8 +188,6 @@ function TwoLineRow({
   onClick?: () => void
   actions?: ReactNode
   toggle?: ReactNode
-  /** A control at the row's right end, centred across both lines and always shown (a feature row's workers arrow). */
-  trail?: ReactNode
 }) {
   return (
     <div
@@ -206,7 +203,7 @@ function TwoLineRow({
         title={tooltip ?? title}
         aria-current={active ? 'page' : undefined}
         onClick={onClick}
-        className={cx('flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] py-2 pl-2.5 text-left', trail !== undefined ? 'pr-10' : 'pr-2.5')}
+        className={cx('flex w-full cursor-pointer flex-col gap-0.5 rounded-[inherit] px-2.5 py-2 text-left')}
       >
         <span className={cx('flex min-w-0 items-center gap-2', toggle !== undefined && 'pr-6')}>
           <span
@@ -237,7 +234,7 @@ function TwoLineRow({
           data-row-actions=""
           className={cx(
             'absolute top-1.5 flex items-center transition-opacity duration-(--dur-1)',
-            toggle !== undefined ? 'right-7' : trail !== undefined ? 'right-10' : 'right-1',
+            toggle !== undefined ? 'right-7' : 'right-1',
             REVEAL_NAV,
           )}
         >
@@ -245,7 +242,6 @@ function TwoLineRow({
         </span>
       )}
       {toggle !== undefined && <span className="absolute top-1.5 right-1">{toggle}</span>}
-      {trail !== undefined && <span className="absolute top-1/2 right-1.5 -translate-y-1/2">{trail}</span>}
     </div>
   )
 }
@@ -260,8 +256,52 @@ function NewThreadButton({ onClick, label = 'New chat' }: { onClick: () => void;
 }
 
 /**
+ * A feature's workers, nested under its row (workers-nest-under-their-feature
+ * decisions 1–4, 7): the rows to draw and what a click and a "…" do.
+ */
+export interface FeatureWorkers {
+  /** Its workers as `WorkerEntry`s, in any order: the row sorts them with `workerGroups`. */
+  entries: readonly WorkerEntry[]
+  /** The open feature: its finished workers and old chats fold into "N done". Elsewhere they are not drawn. */
+  withDone?: boolean
+  /** The worker whose chat is in front, if any. */
+  current: string | null
+  onOpen: (id: string) => void
+  actionsFor: (w: WorkerEntry) => FeatureAction[]
+}
+
+/** Where each feature's fold is kept (decision 9): folded is remembered on this browser, unfolded is the default. */
+const WORKERS_FOLDED_KEY = (featureId: string) => `runcastle.sidebar.workersFolded:${featureId}`
+
+function readWorkersFolded(featureId: string): boolean {
+  try {
+    return localStorage.getItem(WORKERS_FOLDED_KEY(featureId)) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** A feature's fold, kept per feature on this browser. */
+function useWorkersFolded(featureId: string): [boolean, () => void] {
+  const [folded, setFolded] = useState(() => readWorkersFolded(featureId))
+  const toggle = () => {
+    const next = !folded
+    setFolded(next)
+    try {
+      if (next) localStorage.setItem(WORKERS_FOLDED_KEY(featureId), '1')
+      else localStorage.removeItem(WORKERS_FOLDED_KEY(featureId))
+    } catch {
+      // localStorage unavailable (private mode): the fold still holds in-session.
+    }
+  }
+  return [folded, toggle]
+}
+
+/**
  * One feature: its title, then its progress glyph, where it is in words and how
- * long ago it last moved. Working rows' words shimmer.
+ * long ago it last moved. Working rows' words shimmer. Its live workers sit
+ * under it, indented to its words' column; under the open feature, "N done"
+ * folds the finished ones. A chevron folds them all away.
  */
 export function SidebarFeatureRow({
   f,
@@ -271,10 +311,10 @@ export function SidebarFeatureRow({
   nested = false,
   onNewThread,
   threads,
-  folded = false,
+  folded: threadsFolded = false,
   onToggleThreads,
-  needsYou = false,
   workers,
+  workersFolded,
   words: wordsProp,
   lock,
 }: {
@@ -283,39 +323,63 @@ export function SidebarFeatureRow({
   onSelect: (id: string) => void
   actions: FeatureAction[]
   nested?: boolean
-  /** A "+" on the row (the preview frames' first drafts; the app's rows carry none since the feature's own page holds it). */
+  /** "+" on hover: New worker, on a feature in progress (decision 5). */
   onNewThread?: () => void
   /**
    * The open feature's {@link SidebarThreadList}, once it has more than its
-   * main chat: unfolded, the row and its threads share one card.
+   * main chat: unfolded, the row and its threads share one card (the design
+   * pages' threads-in-the-sidebar frames).
    */
   threads?: ReactNode
-  /** The human folded the open feature's threads away (decision 10). */
+  /** The human folded the open feature's threads away. */
   folded?: boolean
   /** With `threads`: the chevron that folds and unfolds them. */
   onToggleThreads?: () => void
-  /** A worker waits on the human: the row's amber dot lights even when the feature's own chat does not ask (decision 3). */
-  needsYou?: boolean
+  /** Its workers, nested under it. */
+  workers?: FeatureWorkers
+  /** The fold, held by the caller; kept per feature on this browser when absent. */
+  workersFolded?: boolean
   /**
-   * The feature has something on its workers page: the arrow at the row's end
-   * that goes down to it, with how many workers need the human or are at work
-   * (clicking-a-feature-opens-its-lead decisions 2, 4, 5).
+   * The second line's words in place of the feature's own: a row under its
+   * epic, a shelf row naming its epic. As a function it is given the feature
+   * as the row shows it: without a need its unfolded worker row already shows
+   * (workers-nest-under-their-feature decision 12).
    */
-  workers?: { live: number; onOpen: () => void }
-  /** The second line's words in place of the feature's own: a row under its epic, a shelf row naming its epic. */
-  words?: string
+  words?: string | ((f: FeatureListItem) => string)
   /**
    * The feature is locked to its epic's autopilot run (epics-on-autopilot
    * decisions 7, 17): this mark at the title's end, and never the amber dot —
-   * its needs go to the epic, whose card carries them.
+   * its needs go to the epic, whose card carries them. Its worker rows carry
+   * the same mark (workers-nest-under-their-feature decision 7).
    */
   lock?: ReactNode
 }) {
-  const shown = folded ? undefined : threads
-  const lane = triageOf(f)
-  const nm = lock === undefined ? needsMe(f) : null
-  const words = wordsProp ?? featureStateWords(f)
+  const [storedFold, toggleFold] = useWorkersFolded(f.id)
+  const groups = workers ? workerGroups(workers.entries) : null
+  const live = groups ? [...groups.needsYou, ...groups.working] : []
+  const done = groups && workers?.withDone ? groups.done : []
+  const hasWorkers = live.length + done.length > 0
+  const workersAreFolded = workersFolded ?? storedFold
+  const folded = hasWorkers ? workersAreFolded : threadsFolded
+  const nestedRows =
+    hasWorkers && workers ? (
+      <NestedWorkers live={live} done={done} workers={workers} lock={lock} feature={f.title} />
+    ) : (
+      threads
+    )
+  const shown = folded ? undefined : nestedRows
+  // The open feature and what sits under it share one card, as its threads did; any other row's workers hang free.
+  const carded = shown !== undefined && active
+  // A worker's need shows once (decision 12): unfolded, it sits on the worker's own row, so this row drops it
+  // and says the lead's own state. Folded, it rolls up here (decision 9).
+  const needShownBelow = hasWorkers && !workersAreFolded && live.some((w) => w.id === f.need?.threadId)
+  const own: FeatureListItem = needShownBelow ? { ...f, need: null } : f
+  const lane = triageOf(own)
+  const nm = lock === undefined ? needsMe(own) : null
+  const words = typeof wordsProp === 'function' ? wordsProp(own) : (wordsProp ?? featureStateWords(own))
   const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
+  // Folded, a worker that asks still lights the row (decision 9); a locked feature's never does (decision 7).
+  const workerNeed = hasWorkers && workersAreFolded && workersNeedYou(live)
   const row = (
     <TwoLineRow
       title={f.title}
@@ -336,32 +400,37 @@ export function SidebarFeatureRow({
         upNextProblem(f) && 'text-danger-text',
       )}
       aside={relTime(f.lastActivityAt)}
-      dot={lock !== undefined ? undefined : (rowDot(f) ?? (needsYou ? 'warning' : undefined))}
+      dot={lock !== undefined ? undefined : (rowDot(own) ?? (workerNeed ? 'warning' : undefined))}
       {...(lock !== undefined ? { mark: lock } : {})}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}
       active={active}
-      flat={shown !== undefined}
-      nested={nested || shown !== undefined}
+      flat={carded}
+      nested={nested || carded}
       onClick={() => onSelect(f.id)}
       actions={
         onNewThread || menu ? (
           <>
-            {onNewThread && <NewThreadButton onClick={onNewThread} />}
+            {onNewThread && <NewThreadButton onClick={onNewThread} label="New worker" />}
             {menu}
           </>
         ) : undefined
       }
-      {...(workers ? { trail: <WorkersArrow live={workers.live} onOpen={workers.onOpen} /> } : {})}
       toggle={
-        threads !== undefined && onToggleThreads ? (
-          <FoldToggle folded={folded} onToggle={onToggleThreads} what="chats" />
+        hasWorkers ? (
+          <FoldToggle folded={workersAreFolded} onToggle={toggleFold} what="workers" />
+        ) : threads !== undefined && onToggleThreads ? (
+          <FoldToggle folded={threadsFolded} onToggle={onToggleThreads} what="chats" />
         ) : undefined
       }
     />
   )
   if (shown === undefined) return row
   return (
-    <div data-open-feature="" className={cx(SIDEBAR_CARD, nested && 'rounded-md', 'flex shrink-0 flex-col p-1')}>
+    <div
+      data-feature-group={f.id}
+      {...(carded ? { 'data-open-feature': '' } : {})}
+      className={cx('flex shrink-0 flex-col', carded && cx(SIDEBAR_CARD, nested && 'rounded-md', 'p-1'))}
+    >
       {row}
       {shown}
     </div>
@@ -369,28 +438,72 @@ export function SidebarFeatureRow({
 }
 
 /**
- * The way down to a feature's workers page (clicking-a-feature-opens-its-lead
- * decisions 2, 5, 6): a quiet "3 ›" at the row's end, the number being the
- * workers that need the human or are at work, a bare "›" when none are. It
- * never takes a colour: the row's own dot and words say when a worker needs you.
+ * The column a feature's worker rows hang in: a worker row's left edge sits so
+ * its title lines up with the feature's words, past the feature's 12px glyph
+ * and its gap (TwoLineRow: `pl-2.5`, a 12px glyph, `gap-1.5`).
  */
-export function WorkersArrow({ live, onOpen }: { live: number; onOpen: () => void }) {
-  const label = live > 0 ? `Workers · ${live} working or waiting` : 'Workers'
+const NEST_INDENT = 'ml-[18px]'
+/** The guide line: a hairline down the feature's glyph's centre, from under the row to its last worker. */
+const NEST_GUIDE = 'pointer-events-none absolute top-0 bottom-2 left-[15.5px] w-px bg-border-subtle'
+
+/**
+ * A feature's workers under its row (workers-nest-under-their-feature
+ * decisions 2–4, 6, 7): the live ones as worker rows, needs you and failed
+ * first, then working, idle and queued; under the open feature, "N done"
+ * folds the finished ones and the old side and drive chats. Each row is
+ * {@link SidebarWorkerItem} at the nested radius, so hover and the chat in
+ * front read as they do one level up. Enters as a shelf opens: rising in.
+ */
+function NestedWorkers({
+  live,
+  done,
+  workers,
+  lock,
+  feature,
+}: {
+  live: readonly WorkerEntry[]
+  done: readonly WorkerEntry[]
+  workers: FeatureWorkers
+  lock: ReactNode | undefined
+  feature: string
+}) {
+  // A finished worker whose chat is in front opens its fold.
+  const [doneOpen, setDoneOpen] = useState(() => done.some((w) => w.id === workers.current))
+  const row = (w: WorkerEntry) => (
+    <SidebarWorkerItem
+      key={w.id}
+      worker={w}
+      active={w.id === workers.current}
+      onSelect={workers.onOpen}
+      actions={workers.actionsFor(w)}
+      nested
+      {...(lock !== undefined ? { lock } : {})}
+    />
+  )
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onOpen}
-      className={cx(
-        'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center gap-px rounded-full bg-fill-well pr-1 text-xs text-text-secondary tabular-nums',
-        live > 0 ? 'pl-2' : 'pl-1',
-        'transition-colors duration-(--dur-1) ease-app hover:bg-surface-selected hover:text-text',
-      )}
-    >
-      {live > 0 && <span>{live}</span>}
-      <IconChevronRight size={14} />
-    </button>
+    <div role="group" aria-label={`${feature} · workers`} className="relative flex animate-rise-in flex-col">
+      <span aria-hidden className={NEST_GUIDE} />
+      <div className={cx(NEST_INDENT, 'flex flex-col gap-px')}>
+        {live.map(row)}
+        {done.length > 0 && (
+          <>
+            <button
+              type="button"
+              aria-expanded={doneOpen}
+              onClick={() => setDoneOpen((v) => !v)}
+              className="group/done flex h-7 w-full shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-left text-xs text-text-tertiary transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text-secondary"
+            >
+              <IconChevronRight
+                size={12}
+                className={cx('shrink-0 text-icon transition-transform duration-(--dur-2) ease-app', doneOpen && 'rotate-90')}
+              />
+              <span className="tabular-nums">{done.length} done</span>
+            </button>
+            {doneOpen && <div className="flex animate-rise-in flex-col gap-px">{done.map(row)}</div>}
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -452,12 +565,7 @@ function ShelfHead({
  * two-line rows as every lane; `cap` shows that many, then "Show N more".
  * Absent when empty. Folded unless `defaultOpen`; `open`/`onOpenChange` to control it.
  */
-export function Shelf(props: Parameters<typeof ItemShelf<FeatureListItem>>[0]) {
-  return <ItemShelf<FeatureListItem> {...props} />
-}
-
-/** {@link Shelf} over any rows: a feature's Done workers, one level down. */
-export function ItemShelf<T>({
+export function Shelf({
   icon,
   label,
   features,
@@ -469,9 +577,8 @@ export function ItemShelf<T>({
 }: {
   icon: ReactNode
   label: string
-  /** The shelf's rows: features, or a feature's done workers one level down. */
-  features: T[]
-  renderRow: (f: T) => ReactNode
+  features: FeatureListItem[]
+  renderRow: (f: FeatureListItem) => ReactNode
   cap?: number
   defaultOpen?: boolean
   open?: boolean
@@ -513,19 +620,13 @@ export function ItemShelf<T>({
  * Working: a shelf that starts open, its rows inside the bay — a card with one
  * accent light travelling its edge. Absent when no agent is at work.
  */
-export function WorkingShelf(props: Parameters<typeof ItemWorkingShelf<FeatureListItem>>[0]) {
-  return <ItemWorkingShelf<FeatureListItem> {...props} />
-}
-
-/** {@link WorkingShelf} over any rows: a feature's working workers, one level down. */
-export function ItemWorkingShelf<T extends { id: string }>({
+export function WorkingShelf({
   features,
   renderRow,
 }: {
-  /** The rows at work: features, or a feature's working workers one level down. */
-  features: T[]
+  features: FeatureListItem[]
   /** Draws one row; `nested` is true — the row sits inside the bay. */
-  renderRow: (f: T, nested: true) => ReactNode
+  renderRow: (f: FeatureListItem, nested: true) => ReactNode
 }) {
   const [open, setOpen] = useState(true)
   if (features.length === 0) return null
@@ -796,7 +897,7 @@ export function SidebarThreadList({
 }
 
 // ---------------------------------------------------------------------------
-// Workers on the feature's own sidebar page (interactive-workers decision 24)
+// Workers under their feature's row (workers-nest-under-their-feature)
 // ---------------------------------------------------------------------------
 
 /**
@@ -826,9 +927,14 @@ export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'o
   }
 }
 
+/** A worker whose question its epic's autopilot answers: between turns, asking nothing of the human. */
+function unasked({ need: _need, ...w }: WorkerEntry): WorkerEntry {
+  return { ...w, status: 'idle' }
+}
+
 /**
- * One worker on its feature's own sidebar page, drawn exactly as a feature
- * row is one level up: its label as the title (the amber dot at its end when it
+ * One worker under its feature's row, drawn exactly as a feature row is one
+ * level up: its label as the title (the amber dot at its end when it
  * needs you, red when it failed), then its mark, its status in words and its
  * age. "Needs you" reads in the secondary grey, as a feature's need does; only
  * the dot is amber. A failure's words are red, as a stuck feature's are. Working words shimmer, as a working feature's do; queued and done rows
@@ -840,18 +946,27 @@ export function SidebarWorkerItem({
   onSelect,
   actions,
   nested = false,
+  lock,
 }: {
   worker: WorkerEntry
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
   nested?: boolean
+  /**
+   * Its feature is locked to its epic's autopilot run (workers-nest-under-
+   * their-feature decision 7): this mark where the dot sits, never the dot,
+   * and a question it asks reads as Idle — the epic answers it.
+   */
+  lock?: ReactNode
 }) {
-  const w = worker
+  const locked = lock !== undefined
+  const w: WorkerEntry = locked && worker.status === 'needs-you' ? unasked(worker) : worker
   const why = workerStatusWhy(w)
   const words = w.old ? OLD_CHAT_WORDS[w.old] : why ? `${WORKER_STATUS_WORDS[w.status]} · ${why}` : WORKER_STATUS_WORDS[w.status]
-  const asks = !w.old && (w.status === 'needs-you' || w.status === 'failed')
-  const quiet = !!w.old || !(asks || w.status === 'working' || w.status === 'idle')
+  const acts = !w.old && (w.status === 'needs-you' || w.status === 'failed')
+  const asks = !locked && acts
+  const quiet = !!w.old || !(acts || w.status === 'working' || w.status === 'idle')
   return (
     <TwoLineRow
       title={w.label}
@@ -865,6 +980,7 @@ export function SidebarWorkerItem({
       )}
       aside={w.updatedAt > 0 ? relTime(w.updatedAt) : undefined}
       {...(asks ? { dot: w.status === 'failed' ? ('danger' as const) : ('warning' as const) } : {})}
+      {...(locked ? { mark: lock } : {})}
       quiet={quiet}
       active={active}
       nested={nested}
@@ -900,7 +1016,7 @@ export function OrchestratorCard({
   name = 'Epics',
   tile,
 }: {
-  /** The card's name: "Orchestrator", or "Lead" on a feature's own page, one level down. */
+  /** The card's name: "Orchestrator" unless given. */
   name?: string
   /** The mark in the accent tile; the Orchestrator's hub when absent. */
   tile?: ReactNode

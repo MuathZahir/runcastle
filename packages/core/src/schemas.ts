@@ -1058,9 +1058,8 @@ export type WorkerStatus = z.infer<typeof WorkerStatus>
 
 /**
  * A worker still in play: waiting on the human (or failed, so someone must
- * act), or at work (or queued for a slot). The workers page's Needs you and
- * Working groups, and the number on a feature row's workers arrow
- * (clicking-a-feature-opens-its-lead decision 5).
+ * act), or at work (or queued for a slot): the workers the sidebar nests
+ * under every feature row (workers-nest-under-their-feature decision 2).
  */
 export const IN_PLAY_WORKER_STATUSES: readonly WorkerStatus[] = ['needs-you', 'failed', 'working', 'queued']
 

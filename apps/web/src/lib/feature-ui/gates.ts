@@ -208,7 +208,7 @@ export function sessionStatusLabel(session: { status: string }): string {
  * as the agent working and fill the feature chat's place in the column. Nor is
  * a worker or an old side chat: the bar, the status line and the feature chat
  * speak for the main chat (several-sessions-per-feature decision 12), and each
- * worker has its own row on the feature's sidebar page.
+ * worker has its own row nested under the feature's sidebar row.
  */
 export function activeSession<T extends { status: string; kind: string }>(
   sessions: readonly T[],
