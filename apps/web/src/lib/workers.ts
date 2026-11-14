@@ -137,6 +137,15 @@ export function workerGroups(workers: readonly WorkerEntry[]): WorkerGroups {
   return groups
 }
 
+/**
+ * Whether a feature's row offers "+" New worker (workers-nest-under-their-
+ * feature decision 5): only while it is in progress, never a draft, shipped or
+ * archived one.
+ */
+export function takesNewWorkers(f: { status: 'draft' | 'active' | 'shipped' | 'archived' }): boolean {
+  return f.status === 'active'
+}
+
 /** Whether any worker waits on the human: the folded feature row's amber dot. */
 export function workersNeedYou(workers: readonly WorkerEntry[]): boolean {
   return workers.some((w) => !w.old && (w.status === 'needs-you' || w.status === 'failed'))

@@ -9,7 +9,7 @@ import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { AutopilotMark, AutopilotTrail } from './autopilot/AutopilotParts'
-import { featureStateWords, openRowMenu, SIDEBAR_CARD, SidebarFeatureRow, ThreadListMore } from './SidebarParts'
+import { featureStateWords, openRowMenu, SIDEBAR_CARD, SidebarFeatureRow, ThreadListMore, type FeatureWorkers } from './SidebarParts'
 
 /**
  * The sidebar's list of epics (docs/features/orchestrator-chats-become-epics,
@@ -504,7 +504,9 @@ export interface SidebarEpicsProps {
   epicActions?: (chat: ThreadEntry) => FeatureAction[]
   featureActions?: (f: FeatureListItem) => FeatureAction[]
   /** A feature's way down to its workers, when it has some. */
-  workersFor?: (f: FeatureListItem) => { live: number; onOpen: () => void } | undefined
+  workersFor?: (f: FeatureListItem) => FeatureWorkers | undefined
+  /** "+" on a feature row's hover: New worker, on a feature in progress; undefined for the rest. */
+  newWorkerFor?: (f: FeatureListItem) => (() => void) | undefined
   /** What the list calls a chat: "epic" (decision 14), or "chat". */
   noun?: 'epic' | 'chat'
   /** Start a new epic: the dotted slot on top (epics-that-look-alive decision 5). No slot without it. */
@@ -541,6 +543,7 @@ export function SidebarEpics({
   epicActions,
   featureActions,
   workersFor,
+  newWorkerFor,
   noun = 'epic',
   onNewEpic,
   newEpicOpen = false,
@@ -550,6 +553,7 @@ export function SidebarEpics({
   const many = noun === 'epic' ? 'Epics' : 'Chats'
   const row = (f: FeatureListItem, words: string, locked = false) => {
     const workers = workersFor?.(f)
+    const onNewThread = newWorkerFor?.(f)
     return (
       <SidebarFeatureRow
         key={f.id}
@@ -561,6 +565,7 @@ export function SidebarEpics({
         words={words}
         {...(locked ? { lock: <LockedMark /> } : {})}
         {...(workers ? { workers } : {})}
+        {...(onNewThread ? { onNewThread } : {})}
       />
     )
   }
