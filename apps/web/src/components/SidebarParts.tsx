@@ -569,12 +569,7 @@ function ShelfHead({
  * two-line rows as every lane; `cap` shows that many, then "Show N more".
  * Absent when empty. Folded unless `defaultOpen`; `open`/`onOpenChange` to control it.
  */
-export function Shelf(props: Parameters<typeof ItemShelf<FeatureListItem>>[0]) {
-  return <ItemShelf<FeatureListItem> {...props} />
-}
-
-/** {@link Shelf} over any rows: a feature's Done workers, one level down. */
-export function ItemShelf<T>({
+export function Shelf({
   icon,
   label,
   features,
@@ -586,9 +581,8 @@ export function ItemShelf<T>({
 }: {
   icon: ReactNode
   label: string
-  /** The shelf's rows: features, or a feature's done workers one level down. */
-  features: T[]
-  renderRow: (f: T) => ReactNode
+  features: FeatureListItem[]
+  renderRow: (f: FeatureListItem) => ReactNode
   cap?: number
   defaultOpen?: boolean
   open?: boolean
@@ -630,19 +624,13 @@ export function ItemShelf<T>({
  * Working: a shelf that starts open, its rows inside the bay — a card with one
  * accent light travelling its edge. Absent when no agent is at work.
  */
-export function WorkingShelf(props: Parameters<typeof ItemWorkingShelf<FeatureListItem>>[0]) {
-  return <ItemWorkingShelf<FeatureListItem> {...props} />
-}
-
-/** {@link WorkingShelf} over any rows: a feature's working workers, one level down. */
-export function ItemWorkingShelf<T extends { id: string }>({
+export function WorkingShelf({
   features,
   renderRow,
 }: {
-  /** The rows at work: features, or a feature's working workers one level down. */
-  features: T[]
+  features: FeatureListItem[]
   /** Draws one row; `nested` is true — the row sits inside the bay. */
-  renderRow: (f: T, nested: true) => ReactNode
+  renderRow: (f: FeatureListItem, nested: true) => ReactNode
 }) {
   const [open, setOpen] = useState(true)
   if (features.length === 0) return null

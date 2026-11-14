@@ -5,20 +5,19 @@ import '@fontsource-variable/geist-mono'
 import '../src/theme.css'
 import '../src/styles.css'
 import { TooltipProvider } from '../src/ui/tooltip'
-import { FeatureSidebarPage } from '../src/components/workers/FeatureSidebarPage'
+import { SidebarFeatureRow } from '../src/components/SidebarParts'
 import { WorkerStatusLine } from '../src/components/workers/WorkerParts'
 import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
 import { featureStatus } from '../src/lib/feature-ui/status-line'
 import { workerStatusWhy } from '../src/lib/workers'
-import { leadStatusWords } from '../src/components/workers/FeatureSidebar'
 import { applyStoredTheme } from '../src/lib/theme'
-import { featuresWith, lead, mixed, OPEN_TITLE } from './workers-sidebar-data'
+import { featuresWith, mixed, OPEN_TITLE } from './workers-sidebar-data'
 
 /**
  * Needs you is the agent's call (docs/features/needs-you-is-the-agent-s-call):
- * a feature's workers page, each worker card reading its own need, else Working
- * while a turn runs, else Idle; beside it the status lines a feature and a
- * worker show. A dead end: nothing opens.
+ * a feature's row with its workers nested under it, each worker row reading
+ * its own need, else Working while a turn runs, else Idle; beside it the
+ * status lines a feature and a worker show. A dead end: nothing opens.
  */
 
 applyStoredTheme()
@@ -41,17 +40,13 @@ createRoot(document.getElementById('root')!).render(
     <TooltipProvider>
       <div className="flex h-screen gap-6 bg-canvas p-3">
         <div className="flex w-[264px] shrink-0 flex-col">
-          <FeatureSidebarPage
-            feature={open}
-            leadStatus={leadStatusWords(lead, open)}
-            onBack={noop}
-            onNewWorker={noop}
-            lead={lead}
-            workers={mixed}
-            current={null}
-            onOpen={noop}
-            leadActions={[]}
-            actionsFor={() => []}
+          <SidebarFeatureRow
+            f={open}
+            active
+            onSelect={noop}
+            actions={[]}
+            onNewThread={noop}
+            workers={{ entries: mixed, withDone: true, current: null, onOpen: noop, actionsFor: () => [] }}
           />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-4 pt-4">

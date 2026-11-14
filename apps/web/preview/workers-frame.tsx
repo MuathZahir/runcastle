@@ -11,6 +11,7 @@ import {
   SidebarFeatureRow,
   SidebarStatusLine,
   WorkingShelf,
+  type FeatureWorkers,
 } from '../src/components/SidebarParts'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
@@ -78,8 +79,8 @@ export { HEADER, LEAD, lead, OPEN_TITLE }
 
 /**
  * The project sidebar. `threads` draws the open feature's nested list (the
- * left-sidebar placement); without it the open feature is one row, its amber
- * dot lit while a worker needs the human (the rail placement).
+ * left-sidebar placement); without it the open feature's workers nest under
+ * its row (workers-nest-under-their-feature), the one in front lit.
  */
 export function FrameSidebar({
   workers,
@@ -87,9 +88,8 @@ export function FrameSidebar({
   onNewWorker,
   features: given,
   onSelectFeature,
-  page,
-  motion,
-  workersFor,
+  current = null,
+  onOpenWorker = noop,
   openId,
 }: {
   workers: readonly WorkerEntry[]
@@ -98,14 +98,12 @@ export function FrameSidebar({
   onNewWorker?: () => void
   /** The project's features, when the page adjusts the sample. */
   features?: FeatureListItem[]
-  /** A feature row's click (the drill-in placement goes down a level on it). */
+  /** A feature row's click. */
   onSelectFeature?: (id: string) => void
-  /** The drill-in placement: the feature's own page in place of the Orchestrator card and the lanes. */
-  page?: ReactNode
-  /** Which way the body last moved: down into a feature, up to the list. Slides it in from that side. */
-  motion?: 'down' | 'up' | null
-  /** A feature row's workers arrow, where the feature has a workers page (clicking-a-feature-opens-its-lead). */
-  workersFor?: (f: FeatureListItem) => { live: number; onOpen: () => void } | undefined
+  /** The worker whose chat is in front, if any. */
+  current?: string | null
+  /** A nested worker row's click. */
+  onOpenWorker?: (id: string) => void
   /** The open feature, when the page moves it; else the sample's "Sidebar refresh". */
   openId?: string
 }) {
@@ -119,7 +117,8 @@ export function FrameSidebar({
 
   const row = (f: FeatureListItem, nested = false) => {
     const isOpen = f.id === (openId ?? open.id)
-    const arrow = workersFor?.(f)
+    const nestedWorkers: FeatureWorkers | undefined =
+      isOpen && !threads ? { entries: workers, withDone: true, current, onOpen: onOpenWorker, actionsFor: workerActions } : undefined
     return (
       <SidebarFeatureRow
         key={f.id}
@@ -130,8 +129,7 @@ export function FrameSidebar({
         nested={nested}
         {...(isOpen && onNewWorker ? { onNewThread: onNewWorker } : {})}
         {...(isOpen && threads ? { threads, folded, onToggleThreads: () => setFolded((v) => !v) } : {})}
-        needsYou={isOpen && needing(workers) > 0}
-        {...(arrow ? { workers: arrow } : {})}
+        {...(nestedWorkers ? { workers: nestedWorkers } : {})}
       />
     )
   }
@@ -147,12 +145,6 @@ export function FrameSidebar({
         <CreateMenu onDraft={noop} onOpenNote={noop} />
         <CollapseSidebarButton />
       </div>
-      {page ? (
-        <div key="page" className={cx('mt-3 flex min-h-0 flex-1 flex-col', motion === 'down' && 'animate-slide-in-right')}>
-          {page}
-        </div>
-      ) : (
-      <div key="list" className={cx('flex min-h-0 flex-1 flex-col', motion === 'up' && 'animate-slide-in-left')}>
       <div className="mt-3">
         <OrchestratorCard status="Plan, cut and ask · 2 notes" state="idle" active={false} onOpen={noop} actions={[]} />
       </div>
@@ -168,8 +160,6 @@ export function FrameSidebar({
           <Shelf icon={<IconArchive />} label="Archived" features={archived} renderRow={(f) => row(f)} />
         </div>
       </div>
-      </div>
-      )}
       <div className="flex shrink-0 flex-col gap-2 pt-2">
         <SidebarStatusLine
           healthTone="success"

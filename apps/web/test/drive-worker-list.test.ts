@@ -2,17 +2,17 @@ import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ThreadEntry, WorkerRow } from '@runcastle/core'
-import { FeatureSidebarPage } from '../src/components/workers/FeatureSidebarPage'
+import { SidebarFeatureRow } from '../src/components/SidebarParts'
 import { workerColumnProps } from '../src/components/workers/WorkerChat'
-import { featureWorkerEntries, shownWorkerStatus, workerGroups, workerStatusWhy, workersAtWork } from '../src/lib/workers'
+import { featureWorkerEntries, shownWorkerStatus, workerGroups, workerStatusWhy, workersAtWork, type WorkerEntry } from '../src/lib/workers'
 import { listItem } from './fixtures'
 
 /**
- * The drive's Fix-drive and Scenarios workers on the feature's sidebar page
- * (drive-chats-become-workers decisions 10, 11): they sit in the worker groups
- * by status like any worker, with no list of their own under the lead, and an
- * old drive chat is a read-only transcript in Done. Tier 1: the markup is the
- * behaviour.
+ * The drive's Fix-drive and Scenarios workers among the feature's workers
+ * (drive-chats-become-workers decisions 10, 11), nested under its row
+ * (workers-nest-under-their-feature): they sit in the worker groups by status
+ * like any worker, with no list of their own, and an old drive chat is a
+ * read-only transcript in "N done". Tier 1: the markup is the behaviour.
  */
 
 type Wire = Parameters<typeof featureWorkerEntries>[0][number]
@@ -67,28 +67,28 @@ describe('drive workers in the feature’s worker groups', () => {
     ])
   })
 
-  it('draws them in the lanes, the old drive chat as "Old drive chat", and no chat list under the lead', () => {
-    const html = renderToStaticMarkup(
-      createElement(FeatureSidebarPage, {
-        feature: listItem(),
-        leadStatus: 'Working',
-        onBack: () => {},
-        onNewWorker: () => {},
-        lead,
-        workers: featureWorkerEntries(rows, threads),
-        current: null,
-        onOpen: () => {},
-        leadActions: [],
-        actionsFor: () => [],
-        defaultDoneOpen: true,
-      }) as ReactElement,
-    )
-    const needsYou = html.slice(html.indexOf('aria-label="Needs you"'))
-    expect(needsYou.indexOf('Scenarios')).toBeLessThan(needsYou.indexOf('Header'))
+  it('nests them under the open feature, the old drive chat as "Old drive chat" in "N done", and no chat list', () => {
+    // The old drive chat in front opens "N done".
+    const html = nested(featureWorkerEntries(rows, threads), 'th_fix')
+    expect(html.indexOf('Scenarios')).toBeLessThan(html.indexOf('Header'))
+    expect(html).toContain('3 done')
     expect(html).toContain('Old drive chat')
     expect(html).not.toContain('aria-label="Chats"')
   })
 })
+
+/** The open feature's row with its workers nested under it (workers-nest-under-their-feature). */
+function nested(entries: WorkerEntry[], current: string | null = null): string {
+  return renderToStaticMarkup(
+    createElement(SidebarFeatureRow, {
+      f: listItem({ status: 'active' }),
+      active: true,
+      onSelect: () => {},
+      actions: [],
+      workers: { entries, withDone: true, current, onOpen: () => {}, actionsFor: () => [] },
+    }),
+  )
+}
 
 /** needs-you-is-the-agent-s-call decision 6: its own need, else Working while a turn runs, else Idle. */
 describe('a worker’s shown status', () => {
@@ -123,20 +123,7 @@ describe('a worker’s shown status', () => {
   it('draws an idle worker in the in-play group, reading Idle', () => {
     const idle = featureWorkerEntries([wire('w_i', 'Idle one', { status: 'working' })], [])
     expect(workerGroups(idle).working.map((w) => w.status)).toEqual(['idle'])
-    const html = renderToStaticMarkup(
-      createElement(FeatureSidebarPage, {
-        feature: listItem(),
-        leadStatus: 'Idle',
-        onBack: () => {},
-        onNewWorker: () => {},
-        lead,
-        workers: idle,
-        current: null,
-        onOpen: () => {},
-        leadActions: [],
-        actionsFor: () => [],
-      }) as ReactElement,
-    )
+    const html = nested(idle)
     expect(html).toContain('>Idle<')
     expect(html).not.toContain('text-shimmer">Idle')
   })
