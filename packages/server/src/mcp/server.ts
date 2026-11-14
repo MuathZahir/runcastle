@@ -3282,7 +3282,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Start a worker',
         description:
           'Start a worker on the human’s yes: an agent in its own sandbox and branch off this feature branch, with ' +
-          'one assignment. `with-you` is taste work the human iterates on and hands back when happy; `on-its-own` ' +
+          'one assignment. `with-you` is taste work the human iterates on and hands back when happy (never a design: that is yours); ' +
+          '`on-its-own` ' +
           'hands back when done. Past the machine’s agent limit it waits queued. Nothing lands until land_worker. ' +
           'Refused after the human presses Stop, until they reply.',
         inputSchema: {

@@ -7,8 +7,9 @@ beside this chat in any state. What they approve is committed and ships; the
 build then covers only real data and behaviour.
 
 Offer it once what, where and who are settled, before you talk layout in words;
-open it without asking when they ask to see something. Long iteration belongs to
-a "with you" worker, which shows its own preview.
+open it without asking when they ask to see something. Design stays here, never
+in a worker: a worker has no Design tab and no browser. Workers build only what
+the human approved.
 
 ## 1. First use in a project
 
