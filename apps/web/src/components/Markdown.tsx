@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
@@ -92,6 +93,10 @@ const MARKDOWN_TONE = {
   tertiary: 'text-text-tertiary',
 } as const
 
+/** The plugin lists, made once: the same list each render lets the renderer's work be skipped. */
+const PLUGINS = [remarkGfm]
+const WITH_BREAKS = [remarkGfm, remarkBreaks]
+
 /** remark-gfm marks a task list with this class and nothing else does. */
 const TASK_LIST = 'contains-task-list'
 
@@ -150,7 +155,7 @@ const COMPONENTS: Components = {
  * `breaks` keeps a single newline as a line break, the way Claude and t3code
  * show an agent's chat text; off for documents, whose prose is hard-wrapped.
  */
-export function Markdown({
+export const Markdown = memo(function Markdown({
   source,
   className,
   size = 'sm',
@@ -166,11 +171,9 @@ export function Markdown({
   const root = `${MARKDOWN_CLASSES.root} ${MARKDOWN_SIZE[size]} ${MARKDOWN_TONE[tone]}`
   return (
     <div className={className ? `${root} ${className}` : root}>
-      <ReactMarkdown remarkPlugins={breaks ? [remarkGfm, remarkBreaks] : [remarkGfm]} components={COMPONENTS}
-        urlTransform={markdownUrlTransform}
-      >
+      <ReactMarkdown remarkPlugins={breaks ? WITH_BREAKS : PLUGINS} components={COMPONENTS} urlTransform={markdownUrlTransform}>
         {source}
       </ReactMarkdown>
     </div>
   )
-}
+})

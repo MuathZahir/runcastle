@@ -1606,3 +1606,47 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   if (view.state === 'idle') view.plan = []
   return view
 }
+
+/** Whether two plain values (what a fold makes: objects, arrays, strings, numbers) are the same. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false
+    for (let n = 0; n < a.length; n++) if (!sameValue(a[n], b[n])) return false
+    return true
+  }
+  if (Array.isArray(b)) return false
+  const ak = Object.keys(a)
+  if (ak.length !== Object.keys(b).length) return false
+  for (const key of ak) {
+    if (!Object.hasOwn(b, key) || !sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) return false
+  }
+  return true
+}
+
+/**
+ * A fresh fold's items, each one that did not change since `prev` replaced by
+ * its earlier copy: a chunk streamed into a long thread changes one item, and
+ * whatever draws the rest can tell they did not change by identity alone.
+ * Answers `prev` itself when nothing changed at all.
+ */
+export function keepItemIdentity(prev: readonly ThreadItem[], next: ThreadItem[]): ThreadItem[] {
+  if (prev.length === 0) return next
+  let byId: Map<string, ThreadItem> | undefined
+  let same = prev.length === next.length
+  const out = next.map((item, n) => {
+    let before: ThreadItem | undefined = prev[n]
+    if (before?.id !== item.id) {
+      byId ??= new Map(prev.map((x) => [x.id, x]))
+      before = byId.get(item.id)
+    }
+    if (before && sameValue(before, item)) {
+      if (before !== prev[n]) same = false
+      return before
+    }
+    same = false
+    return item
+  })
+  return same ? (prev as ThreadItem[]) : out
+}

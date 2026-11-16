@@ -35,4 +35,4 @@ export type {
   UsageReport,
   WorkStep,
 } from '@runcastle/core'
-export { EMPTY_THREAD_VIEW, foldThread, modelFamily } from '@runcastle/core'
+export { EMPTY_THREAD_VIEW, foldThread, keepItemIdentity, modelFamily } from '@runcastle/core'

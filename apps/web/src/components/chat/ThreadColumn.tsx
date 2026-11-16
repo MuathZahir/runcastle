@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import type { ThreadEntry } from '../../lib/chat-thread'
 import { subscribeInbox, takeFromInbox } from '../../lib/composer-inbox'
 import { useIsPhone } from '../../lib/use-phone'
-import { promptIdFor, useThread, type ModelPick, type ThreadStart } from '../../lib/use-thread'
+import { useDraft } from '../../lib/drafts'
+import { promptIdFor, useFileLookup, useThread, type ModelPick, type ThreadStart } from '../../lib/use-thread'
 import { Spinner } from '../../ui'
 import { ApprovalDock, FormDock, LinkDock, QuestionDock } from './thread/AskDock'
 import { ChatThread } from './thread/ChatThread'
@@ -164,14 +165,13 @@ export function ThreadColumn({
       />
     )
   ) : (
-    <Composer
-      value={t.draft}
-      onChange={t.setDraft}
+    <DraftComposer
+      draftAt={t.draftAt}
+      threadId={threadId}
       attachments={t.attachments}
       onAttach={t.attach}
       onRemoveAttachment={t.removeAttachment}
       commands={view.commands}
-      files={t.files}
       state={view.state}
       {...(locked ? { locked } : {})}
       {...(placeholder ? { placeholder } : {})}
@@ -211,11 +211,27 @@ export function ThreadColumn({
     />
   )
 
-  const branch = async (itemId: string) => {
-    const promptId = promptIdFor(view.items, itemId)
-    const to = promptId && (await t.branch(promptId))
-    if (to) onOpenThread?.(to)
-  }
+  // The message actions stay the same functions from render to render, so the
+  // memoised transcript is not redrawn for them.
+  const latest = useRef({ t, onOpenThread })
+  latest.current = { t, onOpenThread }
+  const onEdit = useCallback((id: string, text: string, undoFiles: boolean) => latest.current.t.edit(id, text, undoFiles), [])
+  const onBranch = useCallback((itemId: string) => {
+    const now = latest.current.t
+    const promptId = promptIdFor(now.view.items, itemId)
+    if (!promptId) return
+    void now.branch(promptId).then((to) => {
+      if (to) latest.current.onOpenThread?.(to)
+    })
+  }, [])
+  const isClosed = !!closed
+  const canBranch = !!onOpenThread
+  const canUndoFiles = onRuntime === 'claude-code'
+  // A thread that takes no messages takes no edits either; a branch opens only where a page can bring it to the front.
+  const actions = useMemo(
+    () => (isClosed ? undefined : { onEdit, ...(canBranch ? { onBranch } : {}), canUndoFiles }),
+    [isClosed, onEdit, onBranch, canBranch, canUndoFiles],
+  )
 
   return (
     <section ref={root} aria-label={label} data-thread-column="" className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
@@ -224,8 +240,7 @@ export function ThreadColumn({
         <ChatThread
           items={view.items}
           state={view.state}
-          // A thread that takes no messages takes no edits either; a branch opens only where a page can bring it to the front.
-          {...(closed ? {} : { actions: { onEdit: t.edit, ...(onOpenThread ? { onBranch: (id: string) => void branch(id) } : {}), canUndoFiles: onRuntime === 'claude-code' } })}
+          {...(actions ? { actions } : {})}
           {...(locked ? {} : { onDropImages: t.attach })}
           emptyHint={emptyHint}
           {...(empty ? { empty } : {})}
@@ -244,4 +259,19 @@ export function ThreadColumn({
       </div>
     </section>
   )
+}
+
+/**
+ * The composer over the draft it keeps under `draftAt`: the words live here, so
+ * a key redraws this alone, not the column and its transcript. The `@` file
+ * lookup follows the words, so it lives here too.
+ */
+function DraftComposer({
+  draftAt,
+  threadId,
+  ...rest
+}: { draftAt: string; threadId: string | null } & Omit<ComponentProps<typeof Composer>, 'value' | 'onChange' | 'files'>) {
+  const [text, setText] = useDraft(draftAt)
+  const files = useFileLookup(threadId, text)
+  return <Composer value={text} onChange={setText} files={files} {...rest} />
 }
