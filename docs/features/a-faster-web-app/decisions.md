@@ -32,6 +32,7 @@ Check first: 3, 6, 7, 8, 9
 - a first visit (empty browser cache) shows it within 3 s.
 **Why:** 50 ms is below what a typist notices. The refresh numbers are what today's bundle cannot reach: it sends about 1.8 MB unzipped on every refresh, which alone takes about 1.5 s at 10 Mbit/s before any work starts.
 **Assumed.** Alternative: no fixed numbers, just "clearly faster than before" by the human's feel.
+**Amended by the human (2026-11-16):** the slowest 5% of keys while an agent streams lands at about 80 ms, not 50; the human accepted that ("Accept the 80ms"). Off-screen messages keep their layout.
 
 ## 7. Long chats keep every message on the page
 **Decision:** A long chat still draws all its messages. The typing fix comes from not redrawing old messages on each key, not from dropping off-screen ones.

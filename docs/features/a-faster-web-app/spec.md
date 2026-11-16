@@ -90,5 +90,4 @@ What is left of the streaming slowest 5% is mostly the browser laying out the lo
 
 ## Open questions
 
-- Whether the streaming slowest 5% (about 80 ms against 50) is good enough, or worth skipping layout of off-screen messages.
 - Whether the human ever tunnels to 4513 (decision 3).
