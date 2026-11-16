@@ -21,7 +21,9 @@ hand, the lead writes that scenario before the verify review (decision 7). The
 setup and one signed-in, onboarded base scenario stay with the project; the
 feature's other scenarios leave with it as today (decision 6). A project whose
 drive cannot carry scenarios is flagged once and the review goes on by hand
-(decision 8). Nothing changes on any screen; the Blank app nudge and the human's
+(decision 8). Fixtures are built as a ladder of steps each calling its parent, so
+scenarios stay thin and an app change is fixed in one step (decision 9). Nothing
+changes on any screen; the Blank app nudge and the human's
 ＋ New scenario chat stay as they are.
 
 **The lead's drive (new tool).** The feature lead gets a drive tool shaped like
@@ -60,7 +62,11 @@ taken from the ＋ New scenario chat's setup brief so both say the same thing: t
 drive-only login route if the app has sign-in, typecheck coverage of
 `.runcastle/scenarios/`, base fixtures, the runner, then the permanent base
 scenario (a freshly signed-up, onboarded user on the app's first real screen),
-then the feature's own. It adds: prove each on the lead's drive before the
+then the feature's own. The fixtures form a ladder (decision 9): each step is a
+function that calls its parent (`signedUpUser` → `onboardedUser` → …), and a
+scenario calls the deepest step it needs, adds only its own bit and prints where
+to land. A new state that later scenarios will share becomes a new step on the
+ladder, not code copied between scenarios; a data-copy scenario stays off it. It adds: prove each on the lead's drive before the
 review; after a review's "No scenario reaches <state>", write and prove that one
 before the verify review; if the drive will not start or `drive.env` does not
 carry the database, say so once (`wait_for_you`, or `hand_back` on autopilot),
@@ -69,13 +75,17 @@ The ready message names the base scenario as permanent and lists the rest as
 leaving with the feature. The Plan's "who builds what" names scenario setup as the
 lead's part when the feature will do it.
 
+**The ＋ New scenario chat's setup brief** gains the same ladder rule, so a chat
+and a lead set a project up the same way. Outside setup mode its brief says to
+reuse the ladder's steps and add a step rather than copy one.
+
 **The review's prompt.** The scenario block's fallback ("none — …, so set up each
 criterion's state by hand") also asks for the "No scenario reaches <state>"
 observation, so a feature with no scenarios at all still tells its lead which
 states to cover. "Never write or edit a scenario" stays. The verify review gets
 the same block, as it does today through its mode.
 
-Unchanged: the ＋ New scenario chat and its setup mode, the Blank app nudge, the
+Unchanged: when the ＋ New scenario chat runs in setup mode, the Blank app nudge, the
 orchestrator's preparation ("do not set up scenarios while preparing" stays), the
 scenario-data folder, and which scenario Test drive starts.
 
@@ -91,6 +101,8 @@ scenario-data folder, and which scenario Test drive starts.
   `_fixtures/` on the base; false without a runner.
 - **The review assignment render** (existing, `renderReviewAssignment`): the
   no-scenarios fallback carries the observation line.
+- **The scenario chat's brief** (existing, `renderScenarioPrompt`): setup mode
+  and the plain brief both carry the ladder rule.
 - The skill text has no test; the review reads it against this spec.
 
 ## Out of scope
@@ -102,6 +114,8 @@ scenario-data folder, and which scenario Test drive starts.
   language-agnostic.
 - The Review worker writing scenarios.
 - Any screen change.
+- Runcastle chaining scenarios at run time (running one on top of another); the
+  ladder lives in the project's own code (decision 9).
 - Parked: the ready declaration hands the epic a scenario title where its drive
   tool expects a file (backlog draft "Ready's scenario reaches the epic as a file").
 

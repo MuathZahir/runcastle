@@ -202,7 +202,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div class="fstep"><span class="n">1</span><div><p class="h">Builds the feature's code, as today</p><p class="d">Its Plan already said "the lead sets scenarios up" under who builds what. <a class="pin" data-d="3">3</a></p></div></div>
     <div class="fstep"><span class="n">2</span><div><p class="h">Sets scenarios up</p><p class="d">The same steps the human's ＋ New scenario chat follows: a drive-only login route if the app has sign-in, typecheck coverage, base fixtures, the runner command, then the scenarios.</p>
       <div class="files"><span class="file keep">login route</span><span class="file keep">_fixtures/</span><span class="file keep">runner</span><span class="file keep">accounts/new-user-onboarded</span><span class="file go">billing/plan-card-ready-to-build</span></div>
-      <p class="hint" style="margin-top:6px">Green outline stays with the project <a class="pin" data-d="6">6</a>. The feature's own scenario leaves with it, as today.</p></div></div>
+      <p class="hint" style="margin-top:6px">Green outline stays with the project <a class="pin" data-d="6">6</a>. The feature's own scenario leaves with it, as today.</p>
+      <p class="d" style="margin-top:8px">The fixtures are a ladder; each scenario calls the deepest step it needs and adds only its own bit. <a class="pin" data-d="9">9</a></p>
+      <div class="files"><span class="file">signedUpUser()</span><span class="hint">→</span><span class="file">onboardedUser()</span><span class="hint">→</span><span class="file">userWithPlan()</span><span class="hint">→ scenario: 3 lines + ENTRY_URL</span></div>
+      <p class="hint" style="margin-top:6px">A migration that breaks signup is fixed in <span class="mono">signedUpUser()</span>, and every scenario above it works again.</p></div></div>
     <div class="fstep"><span class="n">3</span><div><p class="h">Proves each one on a real drive of its branch</p><p class="d">Starts a drive the way a review does, runs the scenario, and a browser subagent checks the landing shows the state, signed in. <a class="pin" data-d="5">5</a></p></div></div>
     <div class="fstep"><span class="n">4</span><div><p class="h">Starts the full review</p><p class="d">The review replays the scenarios. A state it still had to reach by hand comes back as "No scenario reaches …".</p></div></div>
     <div class="fstep"><span class="n">5</span><div><p class="h">Writes those missing scenarios, then the verify review</p><p class="d">So the second walkthrough starts at the fixed state too. <a class="pin" data-d="7">7</a></p></div></div>
@@ -214,7 +217,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h3>Who builds what</h3>
   <div class="who">
     <div class="row"><b>Lead drive tools</b><span>The lead's own drive of its branch (start, run a scenario, stop), recording the runner, the new "set up" rule, and the review's no-scenarios line, with tests.</span><span class="k">on its own · Sonnet</span></div>
-    <div class="row"><b>Me (the lead)</b><span>The feature skill's new scenario guidance and setup page, then the project's checks.</span><span class="k">me</span></div>
+    <div class="row"><b>Me (the lead)</b><span>The feature skill's new scenario guidance and setup page, the ladder rule in the ＋ New scenario chat's brief, then the project's checks.</span><span class="k">me</span></div>
     <div class="row"><b>Review</b><span>One review round at the end, as usual.</span><span class="k">review</span></div>
   </div>
 </div>
@@ -245,6 +248,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="dot"></i>Per-language tooling in runcastle's code</li>
       <li><i class="dot"></i>The Review worker writing scenarios</li>
       <li><i class="dot"></i>Any screen change</li>
+      <li><i class="dot"></i>Runcastle chaining scenarios at run time</li>
     </ul></div>
   </div>
 </section>
@@ -261,6 +265,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <li><b>"Set up" rule.</b> <span class="mono">scenarios.setUp</span> = runner recorded and the base branch tracks any file under <span class="mono">.runcastle/scenarios/</span>, fixtures included, so a project whose scenarios all left is still set up.</li>
         <li><b>Review prompt.</b> The no-scenarios fallback also asks for the "No scenario reaches &lt;state&gt;" observation. "Never write a scenario" stays.</li>
         <li><b>Skill pack.</b> The feature skill's Scenarios section is rewritten; a new reference page carries the setup steps, taken from the ＋ New scenario chat's setup brief.</li>
+        <li><b>Ladder.</b> Lives in the project's fixtures as functions calling their parents; runcastle reads nothing inside a scenario. Said in the setup page and in <span class="mono">renderScenarioPrompt</span>.</li>
         <li><b>Proof.</b> Runcastle has no sign-in, so the signed-in landing is proven on the human's own project after merge; live sessions get it only after a publish and reinstall.</li>
       </ul>
     </div>
@@ -280,22 +285,18 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var D = [
     ['A feature\'s own agents set scenarios up when the project has none', 'Every review on the autopilot project redid signup and onboarding by hand; the human said yes.'],
     ['Both reviews stay; the verify review is made fast instead', 'A walkthrough of the state before the fixes would be useless, so the second review stays.'],
-    ['The lead does the setup itself, and its Plan says so', 'Setup must be proven on a real drive, and only the lead runs on this machine.', 'assumed'],
-    ['"Slow to reach" means anything the person driving would build by hand', 'The judgement planning already makes; any app with sign-in qualifies.', 'assumed'],
-    ['The lead proves setup on a real drive of its branch before the first review', 'A setup that breaks inside the review costs the very by-hand setup this removes, plus a fix round.', 'assumed'],
-    ['Setup stays with the project, with one permanent signed-in scenario', 'Signup and onboarding is what every later review would redo.', 'assumed'],
-    ['A state the review had to reach by hand gets a scenario before the verify review', 'This is what makes the verify review fast.', 'assumed'],
-    ['A project whose drive cannot carry scenarios is flagged, never stopped', 'Drive setup is preparation\'s job; stopping would stall an autopilot epic.', 'assumed']
+    ['The lead does the setup itself, and its Plan says so', 'Setup must be proven on a real drive, and only the lead runs on this machine.'],
+    ['"Slow to reach" means anything the person driving would build by hand', 'The judgement planning already makes; any app with sign-in qualifies.'],
+    ['The lead proves setup on a real drive of its branch before the first review', 'A setup that breaks inside the review costs the very by-hand setup this removes, plus a fix round.'],
+    ['Setup stays with the project, with one permanent signed-in scenario', 'Signup and onboarding is what every later review would redo.'],
+    ['A state the review had to reach by hand gets a scenario before the verify review', 'This is what makes the verify review fast.'],
+    ['A project whose drive cannot carry scenarios is flagged, never stopped', 'Drive setup is preparation\'s job; stopping would stall an autopilot epic.'],
+    ['Fixtures form a ladder; scenarios stay thin', 'One migration should mean fixing one step, not tens of scenarios.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [3, 'A worker writes the setup and the lead proves it, or the Review worker sets it up when it finds none', 'Guesses who does the work; changes who builds what', 'who'],
-    [5, 'No new tool: the first review is the proof, and a broken scenario is a defect fixed before the verify review', 'Adds a tool that boots the app on your machine; the cheaper path costs one slow review if setup breaks', 'new tool'],
-    [6, 'Everything leaves with the feature except the runner, login route and fixtures', 'Adds a permanent scenario to your project without you asking for it', 'your project'],
-    [8, 'Stop the feature before its first review until the drive is prepared, or let the lead fix drive.env itself', 'Decides between a slow review and a stalled epic for you', 'stop or not']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
