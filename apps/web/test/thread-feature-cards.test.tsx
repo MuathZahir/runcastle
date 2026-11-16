@@ -158,6 +158,18 @@ describe("runcastle's lines in a thread", () => {
     expect(screen.getByText((_, el) => el?.textContent === message && el.children.length === 0)).toBeTruthy()
     expect(screen.queryByText(/relayed/)).toBeNull()
     expect(screen.queryByText(/not the human/)).toBeNull()
+    expect(screen.queryByText('Sent into the running turn')).toBeNull()
+  })
+
+  it("says an epic's message went into the running turn when it was steered (epic-messages-reach-a-busy-agent-at-once decision 4)", () => {
+    render(
+      thread(
+        [{ ...(runcastle('[runcastle] From Checkout, not the human: …', { orchestrator: [{ text: 'Drop the CSV export.' }] }) as Extract<ThreadItem, { kind: 'user' }>), steered: true }],
+        links(),
+      ),
+    )
+    expect(screen.getByText('Drop the CSV export.')).toBeTruthy()
+    expect(screen.getByText('Sent into the running turn')).toBeTruthy()
   })
 })
 

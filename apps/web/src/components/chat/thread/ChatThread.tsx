@@ -3,7 +3,6 @@ import type { DragEvent, ReactNode } from 'react'
 import type { FileChange, ThreadItem, ThreadState } from '../../../lib/chat-thread'
 import {
   IconAlert,
-  IconArrowRight,
   IconBranchFrom,
   IconCheck,
   IconChevronDown,
@@ -22,6 +21,7 @@ import { ShownFiles } from './ShownFiles'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { DesignCardsItem, PlanCardItem } from '../../design/ThreadCards'
 import { FeaturesCardItem, RuncastleDisplay, WorkersCardItem } from './FeatureCardItems'
+import { SteeredNote } from './FeatureCards'
 import { RAISED, WELL } from './surfaces'
 import { k } from './ComposerParts'
 import { ChangesCard, WorkBlock, duration } from './Work'
@@ -259,7 +259,12 @@ function Item({
     case 'user':
       return item.from === 'runcastle' ? (
         item.display ? (
-          <RuncastleDisplay display={item.display} agentText={untagRuncastle(item.text)} {...(item.at !== undefined ? { at: item.at } : {})} />
+          <RuncastleDisplay
+            display={item.display}
+            agentText={untagRuncastle(item.text)}
+            {...(item.at !== undefined ? { at: item.at } : {})}
+            {...(item.steered ? { steered: true } : {})}
+          />
         ) : (
           <RuncastleLine text={item.text} />
         )
@@ -525,12 +530,7 @@ function UserMessage({
           <span className="text-shimmer">Starting the agent…</span>
         </span>
       ) : (
-        item.steered && (
-          <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
-            <IconArrowRight size={12} className="text-icon" />
-            Sent into the running turn
-          </span>
-        )
+        item.steered && <SteeredNote />
       )}
     </div>
   )

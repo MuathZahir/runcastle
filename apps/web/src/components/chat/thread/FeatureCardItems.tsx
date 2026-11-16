@@ -5,7 +5,7 @@ import { FeatureHandbackCard, HandbackCard, WorkerFailedCard, type HandbackOutco
 import type { FeatureListItem } from '../../../lib/api'
 import { relTimeAgo } from '../../../lib/format'
 import { shownWorkerStatus } from '../../../lib/workers'
-import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote } from './FeatureCards'
+import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote, SteeredNote } from './FeatureCards'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { WorkersStartedCard } from '../../workers/WorkersStartedCard'
 
@@ -149,11 +149,14 @@ export function RuncastleDisplay({
   display,
   agentText,
   at,
+  steered,
 }: {
   display: NonNullable<Extract<ThreadItem, { kind: 'user' }>['display']>
   agentText: string
   /** When the line arrived, for the news block's "6m ago". */
   at?: number
+  /** It went into the agent's running turn: only an epic's message does (epic-messages-reach-a-busy-agent-at-once decision 4). */
+  steered?: boolean
 }) {
   const { find, open, linked } = useLiveFeature()
   const from = useContext(OrchestratorNameContext)
@@ -182,6 +185,7 @@ export function RuncastleDisplay({
       {display.orchestrator.map((message, i) => (
         <OrchestratorMessage key={i} text={message.text} {...(from ? { from } : {})} />
       ))}
+      {steered && <SteeredNote />}
     </div>
   )
 }
