@@ -25,6 +25,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright-core'
 // The page's side of `page.evaluate`, which runs in Chrome: this config has no DOM types.
 declare const document: { body: { innerText: string } }
 declare const window: { keyLags: number[] }
+declare const requestAnimationFrame: (callback: () => void) => number
 declare const PerformanceObserver: new (cb: (list: { getEntries(): { name: string; duration: number }[] }) => void) => {
   observe(opts: { type: string; buffered?: boolean; durationThreshold?: number }): void
 }
