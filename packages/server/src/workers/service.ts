@@ -1015,14 +1015,14 @@ async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
 }
 
 /**
- * A permission or question ask opened on a worker's thread: its agent halts
+ * A question ask opened on a worker's thread: its agent halts
  * mid-turn on the human, so the worker needs them until it is answered. The
  * feature's need already pings for the ask itself (interactive-workers decision
  * 10); this only makes the worker's own row say so. An MCP server's form or link
  * is the agent's own errand, as it is for the feature's need.
  */
 export function workerAskOpened(ctx: AppCtx, id: string, kind: Ask['kind']): void {
-  if (kind !== 'approval' && kind !== 'question') return
+  if (kind !== 'question') return
   const w = getWorker(ctx, id)
   if (w?.status === 'working') setStatus(ctx, w, 'needs-you')
 }

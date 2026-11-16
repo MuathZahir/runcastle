@@ -125,7 +125,7 @@ describe('thread router', () => {
   it('stops a running turn and answers an open ask', async () => {
     fake.script.turn = async (t) => {
       if (t.prompt[0].type === 'text' && t.prompt[0].text === 'ask') {
-        await t.permission({ toolCallId: 'b1', title: 'bun test' })
+        await t.ask([{ header: 'Runner', question: 'Which test runner?', options: ['bun', 'vitest'] }])
         return
       }
       await t.cancelled
@@ -140,10 +140,10 @@ describe('thread router', () => {
     await caller.thread.send({ threadId: id, text: 'ask' })
     await logUntil(id, (e) => e.some((x) => x.type === 'ask'))
     const { ask } = await caller.thread.view({ threadId: id })
-    expect(await caller.thread.answer({ threadId: id, askId: ask!.id, answer: { kind: 'approval', choice: 'allow' } })).toEqual({ ok: true })
+    expect(await caller.thread.answer({ threadId: id, askId: ask!.id, answer: { kind: 'question', answers: { 'Which test runner?': 'bun' } } })).toEqual({ ok: true })
     const events = await logUntil(id, (e) => e.filter((x) => x.type === 'turn_ended').length === 2)
-    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Allowed', answer: 'bun test' }] })
-    await expect(caller.thread.answer({ threadId: id, askId: ask!.id, answer: { kind: 'approval', choice: 'allow' } })).rejects.toThrow(/not open/)
+    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Runner:', answer: 'bun' }] })
+    await expect(caller.thread.answer({ threadId: id, askId: ask!.id, answer: { kind: 'question', answers: { 'Which test runner?': 'bun' } } })).rejects.toThrow(/not open/)
   })
 
   it('refuses an unknown thread', async () => {

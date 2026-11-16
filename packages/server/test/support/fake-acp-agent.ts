@@ -37,8 +37,8 @@ export interface FakeTurn {
   /** Send an agent message chunk. */
   say(text: string, messageId?: string): Promise<void>
   think(text: string): Promise<void>
-  /** Ask for permission (allow once / always / reject offered) and wait for the answer; `meta` rides the request, as codex-acp marks an MCP ask. */
-  permission(toolCall: acp.ToolCallUpdate, meta?: Record<string, unknown>): Promise<acp.RequestPermissionResponse>
+  /** Ask for permission (allow once / always / reject offered) and wait for the answer; `meta` rides the request, as codex-acp marks an MCP ask; `options` replaces the default three (the adapters' own ids). */
+  permission(toolCall: acp.ToolCallUpdate, meta?: Record<string, unknown>, options?: acp.PermissionOption[]): Promise<acp.RequestPermissionResponse>
   /** Ask AskUserQuestion's questions as claude-agent-acp's form elicitation, and wait for the answer. */
   ask(questions: FakeQuestion[]): Promise<acp.CreateElicitationResponse>
   /** Send any elicitation (an MCP server's form or URL) and wait for the answer. */
@@ -123,8 +123,8 @@ function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => voi
 }
 
 const PERMISSION_OPTIONS: acp.PermissionOption[] = [
-  { optionId: 'allow', name: 'Yes', kind: 'allow_once' },
-  { optionId: 'always', name: "Yes, and don't ask again", kind: 'allow_always' },
+  { optionId: 'allow-once', name: 'Yes', kind: 'allow_once' },
+  { optionId: 'allow-always', name: "Yes, and don't ask again", kind: 'allow_always' },
   { optionId: 'reject', name: 'No', kind: 'reject_once' },
 ]
 
@@ -264,8 +264,8 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
         sdkMessage: (message) => client.notify('_claude/sdkMessage', { sessionId: params.sessionId, message }),
         say: (text, messageId) => update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text }, ...(messageId ? { messageId } : {}) }),
         think: (text) => update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text } }),
-        permission: (toolCall, meta) =>
-          client.request(acp.methods.client.session.requestPermission, { sessionId: params.sessionId, toolCall, options: PERMISSION_OPTIONS, ...(meta ? { _meta: meta } : {}) }),
+        permission: (toolCall, meta, options) =>
+          client.request(acp.methods.client.session.requestPermission, { sessionId: params.sessionId, toolCall, options: options ?? PERMISSION_OPTIONS, ...(meta ? { _meta: meta } : {}) }),
         ask: (questions) => client.request(acp.methods.client.elicitation.create, questionForm(params.sessionId, 'ask-tool', questions)),
         elicit: (request) => client.request(acp.methods.client.elicitation.create, request),
         completeElicitation: (elicitationId) => client.notify(acp.methods.client.elicitation.complete, { elicitationId }),

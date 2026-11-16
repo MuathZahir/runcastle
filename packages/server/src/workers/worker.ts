@@ -10,7 +10,7 @@ import type { AgentProcess } from '../threads/host'
 import { CODEX_SETUP_MANAGED } from './codex-setup'
 import { LINK_WHAT_YOU_NAME } from './link-rule'
 import { sandboxReviewBriefing } from './review'
-import { type WorkerPermissionMode, permissionModeOf, workerAllowsItself } from './permissions'
+import { type WorkerPermissionMode, permissionModeOf } from './permissions'
 import {
   CODEX_AUTO_REVIEW_MODE,
   type Engine,
@@ -477,22 +477,19 @@ export interface WorkerProcessOptions {
 
 /**
  * A worker process's side of its permission mode (decision 11): the mode its
- * session reports, passed on to `onMode`, decides which asks it answers itself
- * (`workerAllowsItself`).
+ * session reports, passed on to `onMode`. Whatever it still asks, the host
+ * allows (agents-never-stop-for-approval decision 6).
  */
 export function permissionHooks(
   onMode: (mode: WorkerPermissionMode) => void,
   runtime: AgentRuntime = 'claude-code',
-): Required<Pick<AgentProcess, 'onMode' | 'allowsItself'>> {
-  let mode: WorkerPermissionMode | undefined
+): Required<Pick<AgentProcess, 'onMode'>> {
   return {
     onMode: (modeId) => {
       const next = permissionModeOf(modeId, runtime)
       if (!next) return
-      mode = next
       onMode(next)
     },
-    allowsItself: (req) => workerAllowsItself(mode, req),
   }
 }
 
@@ -564,8 +561,8 @@ export function workerLaunch(sb: WorkerSandbox, brief: WorkerBrief, opts: Pick<W
  * container, reached over `docker exec -i` stdio, and a second exec carries the
  * tool relay. The session opens in the container's clone, with the worker's
  * own MCP server, in its runtime's automatic mode (decision 11); when the
- * session reports another mode, that mode is unavailable and the worker answers
- * its in-sandbox permission asks itself, leaving the human's MCP servers to ask.
+ * session reports another mode, that mode is unavailable. Whatever it still
+ * asks, the host allows (agents-never-stop-for-approval decision 6).
  */
 export async function workerProcess(sb: WorkerSandbox, brief: WorkerBrief, opts: WorkerProcessOptions): Promise<AgentProcess> {
   const launch = workerLaunch(sb, brief, opts)

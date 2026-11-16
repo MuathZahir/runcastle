@@ -6,6 +6,7 @@ import { type EditDenial, editDenyResponse, evaluateEditGuard } from '../launche
 import { evaluateCheckoutGuard, guardsCheckout, mentionsCommit } from '../launcher/checkout-guard'
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
+import { evaluateRemoteGuard } from '../launcher/remote-guard'
 import { guardKindOf } from '../workers/drive'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { sessionAudience, toolsForAudience } from '../mcp/server'
@@ -462,11 +463,12 @@ function emitConversationEnded(
 
 /**
  * `PreToolUse` for the file-write and shell tools — the talk-session edit guard
- * (F2), the talk-worktree install guard ({@link evaluateInstallGuard}) and, for
- * a feature's chat or side session, the lead's line guard
- * ({@link evaluateLeadGuard}). A deny is returned as the verified hook shape.
- * Registered only for the kinds that may not write code (see `renderSettings` /
- * {@link evaluateEditGuard}).
+ * (F2), the talk-worktree install guard ({@link evaluateInstallGuard}), for
+ * a feature's chat or side session the lead's line guard
+ * ({@link evaluateLeadGuard}), and for every session the remote guard
+ * ({@link evaluateRemoteGuard}). A deny is returned as the verified hook shape.
+ * Registered for every host session, the orchestrator included; the edit and
+ * install guards pass the orchestrator, the one kind that may write anywhere.
  *
  * A host-side session's shell call also meets the checkout guard
  * ({@link evaluateCheckoutGuard}).
@@ -524,6 +526,13 @@ async function handlePreToolUse(
           : undefined,
     }) ??
     (feature && (session.kind === 'chat' || session.kind === 'side') ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null) ??
+    evaluateRemoteGuard({
+      toolName,
+      command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
+      worktreePath: session.worktreePath,
+      ...(typeof payload?.cwd === 'string' ? { cwd: payload.cwd } : {}),
+      ...(feature && feature.slug !== PROJECT_WORKTREE_SLUG ? { ownFolders: [scenarioDataDir(feature.id)] } : {}),
+    }) ??
     (await checkoutGuardDenial(session, guardKind, toolName, toolInput))
   return denial ? editDenyResponse(denial) : {}
 }

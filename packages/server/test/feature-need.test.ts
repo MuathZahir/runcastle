@@ -167,7 +167,20 @@ describe('declare_ready → need', () => {
 })
 
 describe('an open ask', () => {
-  it('reads an approval in a running side thread as its title, opening that thread', async () => {
+  it('reads a question in a running side thread as its text, opening that thread', async () => {
+    const side = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt' }).id
+    running.add(side)
+    appendThreadEvent(side, { type: 'prompt', id: 'p1', text: 'push it', source: 'human' })
+    appendThreadEvent(side, { type: 'turn_started', source: 'human' })
+    appendThreadEvent(side, {
+      type: 'ask',
+      ask: { kind: 'question', id: 'ask_1', questions: [{ header: 'Remote', question: 'Push to which remote?', options: [{ label: 'origin' }, { label: 'fork' }], multiSelect: false }] },
+    })
+    expect(await need()).toMatchObject({ why: 'Push to which remote?', threadId: side, by: 'agent' })
+    expect(await listed()).toMatchObject({ threadId: side })
+  })
+
+  it('reads an approval left open in an old log as no need', async () => {
     const side = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt' }).id
     running.add(side)
     appendThreadEvent(side, { type: 'prompt', id: 'p1', text: 'push it', source: 'human' })
@@ -176,8 +189,7 @@ describe('an open ask', () => {
       type: 'ask',
       ask: { kind: 'approval', id: 'ask_1', call: { id: 'c1', kind: 'execute', title: 'git push', status: 'pending' } },
     })
-    expect(await need()).toMatchObject({ why: 'git push', threadId: side, by: 'agent' })
-    expect(await listed()).toMatchObject({ threadId: side })
+    expect(await need()).toBeNull()
   })
 })
 

@@ -293,16 +293,32 @@ describe('a worker that needs the human', () => {
     expect(needOf(ctx, feature)).toBeNull()
   })
 
-  it('raises a permission need when its agent waits on an approval, opening the worker', async () => {
-    // In auto mode, what the checker or the human's own ask rules still ask is the human's to answer.
+  it('a permission request raises no need: the host allows it and the worker stays working', async () => {
+    // Even in auto mode, what the checker or the human's own ask rules still ask is answered by the host.
+    let answer: unknown
     const asked = createFakeAcp({
       mode: 'auto',
-      turn: async (t) => void (await t.permission({ toolCallId: 'p1', title: 'git push --force origin HEAD:main', kind: 'execute' })),
+      turn: async (t) => void (answer = (await t.permission({ toolCallId: 'p1', title: 'git push --force origin HEAD:main', kind: 'execute' })).outcome),
     })
     const host = realHost(asked)
     const id = await startWorker()
-    await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'approval')
-    expect(needOf(ctx, feature)).toMatchObject({ why: 'git push --force origin HEAD:main', threadId: id })
+    await until(() => answer !== undefined)
+    expect(answer).toEqual({ outcome: 'selected', optionId: 'allow-once' })
+    expect(foldThread(readThreadEvents(id)).ask).toBeUndefined()
+    expect(status(id)).toBe('working')
+    expect(needOf(ctx, feature)).toBeNull()
+    await host.stop(id, 'archived')
+  })
+
+  it('raises a need when its agent asks the human a question, opening the worker', async () => {
+    const asked = createFakeAcp({
+      mode: 'auto',
+      turn: async (t) => void (await t.ask([{ header: 'Branch', question: 'Which branch should it push to?', options: ['main', 'release'] }])),
+    })
+    const host = realHost(asked)
+    const id = await startWorker()
+    await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'question')
+    expect(needOf(ctx, feature)).toMatchObject({ why: 'Which branch should it push to?', threadId: id })
     await host.stop(id, 'archived')
   })
 })
@@ -351,12 +367,12 @@ describe('a turn that starts while the last one’s end is still being read', ()
 })
 
 describe('a worker waiting on an ask', () => {
-  it('reads needs-you while the ask is open and working once it is answered, with the one permission ping', async () => {
+  it('reads needs-you while the ask is open and working once it is answered, with the one needs-you ping', async () => {
     let finish!: () => void
     const asked = createFakeAcp({
       mode: 'auto',
       turn: async (t) => {
-        await t.permission({ toolCallId: 'p1', title: 'git push origin HEAD', kind: 'execute' })
+        await t.ask([{ header: 'Branch', question: 'Push to which branch?', options: ['main', 'release'] }])
         await new Promise<void>((resolve) => (finish = resolve))
         await t.say('Pushed.')
       },
@@ -366,12 +382,12 @@ describe('a worker waiting on an ask', () => {
     const pings = () => listAfter(ctx, feature.id, 0).filter((e) => e.type === FEATURE_NEEDS_YOU).map((e) => e.data)
     const id = await startWorker()
     try {
-      await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'approval')
+      await until(() => foldThread(readThreadEvents(id)).ask?.kind === 'question')
       expect(status(id)).toBe('needs-you')
       await until(() => pings().length === 1)
-      expect(pings()[0]).toMatchObject({ why: 'git push origin HEAD', threadId: id })
+      expect(pings()[0]).toMatchObject({ why: 'Push to which branch?', threadId: id })
 
-      await host.answer(id, foldThread(readThreadEvents(id)).ask!.id, { kind: 'approval', choice: 'allow' })
+      await host.answer(id, foldThread(readThreadEvents(id)).ask!.id, { kind: 'question', answers: { 'Push to which branch?': 'main' } })
       expect(status(id)).toBe('working')
       await new Promise((r) => setTimeout(r, 120))
       // The worker leaving and the ask closing together are no news.

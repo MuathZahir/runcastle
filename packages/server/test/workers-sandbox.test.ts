@@ -268,22 +268,25 @@ const modeEvents = () =>
 const asks = (id: string) => readThreadEvents(id).filter((e) => e.type === 'ask')
 
 describe('the permission mode', () => {
-  it('runs in auto mode when the session opens in it, and leaves whatever auto mode still asks to the human', async () => {
+  const allowed = { outcome: { outcome: 'selected', optionId: 'allow-once' } }
+
+  it('runs in auto mode when the session opens in it, and allows whatever auto mode still asks without the human', async () => {
     const { id, host, answers } = await workerAsking('auto', [bash])
-    await until(() => asks(id).length === 1)
-    expect(answers).toEqual([])
+    await until(() => answers.length === 1)
+    expect(answers).toEqual([allowed])
+    expect(asks(id)).toEqual([])
     expect(modeEvents()).toEqual(['auto'])
+    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
     await host.stopAll('shutdown')
   })
 
-  it('falls back when auto mode is unavailable: in-sandbox tools are allowed, a call to one of the human’s MCP servers asks', async () => {
+  it('falls back when auto mode is unavailable: every request, a call to one of the human’s MCP servers too, is allowed without the human', async () => {
     const { id, host, answers } = await workerAsking('acceptEdits', [bash, neon])
-    await until(() => asks(id).length === 1)
-    expect(answers).toEqual([{ outcome: { outcome: 'selected', optionId: expect.stringMatching(/allow/) } }])
-    expect(asks(id)[0]).toMatchObject({ ask: { kind: 'approval', call: { title: 'mcp__neon__run_sql' } } })
+    await until(() => answers.length === 2)
+    expect(answers).toEqual([allowed, allowed])
+    expect(asks(id)).toEqual([])
     expect(modeEvents()).toEqual(['fallback'])
-    // Halted on the human's answer, the worker reads as needing them.
-    expect(getWorker(ctx, id)?.status).toBe('needs-you')
+    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
     await host.stopAll('shutdown')
   })
 })

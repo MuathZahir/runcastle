@@ -14,7 +14,7 @@ import { Markdown } from '../src/components/Markdown'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
 import { ContextMeter, ModelControls, PlanStrip } from '../src/components/chat/thread/ComposerParts'
-import { ApprovalDock, QuestionDock } from '../src/components/chat/thread/AskDock'
+import { QuestionDock } from '../src/components/chat/thread/AskDock'
 import {
   IconArchive,
   IconArrowLeft,
@@ -297,9 +297,7 @@ function ChatScreen({ open, onBack }: { open: Open; onBack: () => void }) {
           footer={
             <div className="flex flex-col gap-1.5">
               {open.ready && <p className="m-0 px-3 text-xs text-text-tertiary">Ready to test. The test drive is on your computer; you can still talk here.</p>}
-              {ask?.kind === 'approval' ? (
-                <ApprovalDock call={ask.call} onAnswer={noop} />
-              ) : ask?.kind === 'question' ? (
+              {ask?.kind === 'question' ? (
                 <QuestionDock questions={ask.questions} onAnswer={noop} />
               ) : (
                 <Composer

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import type * as acp from '@agentclientprotocol/sdk/unstable'
 import { foldThread, runningSubagents, threadActivity, type ThreadEvent, type ThreadItem } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
 import { features } from '../src/db/schema'
@@ -436,9 +437,9 @@ describe('idle stop', () => {
 
   it('never stops a process while an ask is open', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    setup({ turn: async (t) => void (await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })) })
+    setup({ turn: async (t) => void (await t.ask([{ header: 'Package', question: 'Which package?', options: ['zod', 'valibot'] }])) })
     const id = thread()
-    await host.prompt(id, { text: 'Add zod' }, { source: 'human' })
+    await host.prompt(id, { text: 'Add a validator' }, { source: 'human' })
     await logUntil(id, has('ask'))
     vi.advanceTimersByTime(IDLE_MS * 3)
     expect(host.isRunning(id)).toBe(true)
@@ -746,88 +747,91 @@ describe('automatic compaction', () => {
 })
 
 describe('asks', () => {
-  async function approval(choice: 'allow' | 'always' | 'deny') {
+  const PLAN_EXIT_OPTIONS: acp.PermissionOption[] = [
+    { optionId: 'exit-plan-clear-bypass', name: 'Yes, clear context and bypass', kind: 'allow_always' },
+    { optionId: 'exit-plan-bypass', name: 'Yes, bypass permissions', kind: 'allow_once' },
+    { optionId: 'exit-plan-default', name: 'Yes, ask before edits', kind: 'allow_once' },
+    { optionId: 'reject', name: 'No, keep planning', kind: 'reject_once' },
+  ]
+
+  /** One permission request from a turn, answered by the host; what the agent got back and the log after. */
+  async function permission(
+    toolCall: acp.ToolCallUpdate,
+    opts: { meta?: Record<string, unknown>; options?: acp.PermissionOption[]; thread?: Parameters<typeof thread>[0] } = {},
+  ) {
     let outcome: unknown
-    setup({
-      turn: async (t) => {
-        if (t.prompt[0].type === 'text' && t.prompt[0].text !== 'Add zod') return
-        outcome = (await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })).outcome
-      },
-    })
-    const id = thread()
-    await host.prompt(id, { text: 'Add zod' }, { source: 'human' })
-    const events = await logUntil(id, has('ask'))
-    const view = foldThread(events)
-    expect(view.state).toBe('waiting')
-    expect(view.ask).toMatchObject({ kind: 'approval', call: { id: 'b1', title: 'bun add zod', kind: 'execute' } })
-    expect(getSessionRow(ctx, id)!.awaitingInput).toBe(true)
-    await host.answer(id, view.ask!.id, { kind: 'approval', choice })
-    const after = await logUntil(id, turnsEnded(1))
-    return { id, outcome, events: after }
-  }
-
-  it('answers an approval with allow', async () => {
-    const { outcome, events } = await approval('allow')
-    expect(outcome).toEqual({ outcome: 'selected', optionId: 'allow' })
-    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Allowed', answer: 'bun add zod' }] })
-  })
-
-  it('answers an approval with always', async () => {
-    const { outcome, events } = await approval('always')
-    expect(outcome).toEqual({ outcome: 'selected', optionId: 'always' })
-    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Always allowed' }] })
-  })
-
-  it('answers an approval with deny', async () => {
-    const { outcome, events } = await approval('deny')
-    expect(outcome).toEqual({ outcome: 'selected', optionId: 'reject' })
-    expect(events.find((e) => e.type === 'ask_resolved')).toMatchObject({ lines: [{ what: 'Denied', answer: 'bun add zod', denied: true }] })
-  })
-
-  it('denies with a reason in one turn: the reason reaches the agent within it, and shows with the denial, not as a bubble', async () => {
-    let outcome: unknown
-    setup({
-      turn: async (t) => {
-        outcome = (await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })).outcome
-        const steer = await t.nextSteer()
-        await t.say(`Using ${steer[0].type === 'text' ? steer[0].text.replace('use ', '') : ''} instead.`)
-      },
-    })
-    const id = thread()
-    await host.prompt(id, { text: 'Add zod' }, { source: 'human' })
-    const asked = foldThread(await logUntil(id, has('ask')))
-    await host.answer(id, asked.ask!.id, { kind: 'approval', choice: 'deny', instead: 'use valibot' })
+    setup({ turn: async (t) => void (outcome = (await t.permission(toolCall, opts.meta, opts.options)).outcome) })
+    const id = thread(opts.thread)
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
     const events = await logUntil(id, turnsEnded(1))
-    expect(outcome).toEqual({ outcome: 'selected', optionId: 'reject' })
-    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Add zod'])
-    const view = foldThread(events)
-    expect(view.items.filter((i) => i.kind === 'agent')).toEqual([expect.objectContaining({ text: 'Using valibot instead.' })])
-    expect(view.items.some((i) => i.kind === 'user' && i.text === 'use valibot')).toBe(false)
-    expect(view.items.find((i) => i.kind === 'answered')).toMatchObject({ what: 'Denied —', answer: 'use valibot', denied: true })
+    return { id, outcome, events }
+  }
+  const ZOD: acp.ToolCallUpdate = { toolCallId: 'b1', title: 'bun add zod', kind: 'execute' }
+
+  it('answers a permission request at once with allow-once, opening no ask and never waiting', async () => {
+    const { outcome, events } = await permission(ZOD)
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'allow-once' })
+    expect(events.some((e) => e.type === 'ask' || e.type === 'ask_resolved')).toBe(false)
+    expect(foldThread(events).state).not.toBe('waiting')
   })
 
-  it('denies with a reason to an agent that does not steer: the reason is its next prompt, still shown only with the denial', async () => {
-    setup({
-      steering: false,
-      turn: async (t) => {
-        if (t.prompt[0].type === 'text' && t.prompt[0].text === 'Add zod') await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })
-      },
-    })
-    const id = thread()
-    await host.prompt(id, { text: 'Add zod' }, { source: 'human' })
-    const asked = foldThread(await logUntil(id, has('ask')))
-    await host.answer(id, asked.ask!.id, { kind: 'approval', choice: 'deny', instead: 'use valibot' })
-    const events = await logUntil(id, turnsEnded(2))
-    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Add zod', 'use valibot'])
-    expect(foldThread(events).items.some((i) => i.kind === 'user' && i.text === 'use valibot')).toBe(false)
+  it('logs a permission_allowed record with the title and the option picked', async () => {
+    const { events } = await permission(ZOD)
+    expect(events.find((e) => e.type === 'permission_allowed')).toMatchObject({ callId: 'b1', title: 'bun add zod', option: 'allow-once' })
+  })
+
+  it('never picks allow_always, even when it is listed first', async () => {
+    const options: acp.PermissionOption[] = [
+      { optionId: 'allow-always', name: 'Always', kind: 'allow_always' },
+      { optionId: 'reject', name: 'No', kind: 'reject_once' },
+      { optionId: 'allow-once', name: 'Yes', kind: 'allow_once' },
+    ]
+    const { outcome } = await permission(ZOD, { options })
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'allow-once' })
+  })
+
+  it('leaves plan mode into bypass, never into a clear-context option', async () => {
+    const { outcome, events } = await permission({ toolCallId: 'p1', title: 'Ready to code?' }, { options: PLAN_EXIT_OPTIONS })
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'exit-plan-bypass' })
+    expect(events.find((e) => e.type === 'permission_allowed')).toMatchObject({ option: 'exit-plan-bypass' })
+  })
+
+  it('leaves plan mode into auto when bypass is not offered', async () => {
+    const options = PLAN_EXIT_OPTIONS.filter((o) => o.optionId !== 'exit-plan-bypass').map((o) => (o.optionId === 'exit-plan-default' ? { ...o, optionId: 'exit-plan-auto' } : o))
+    const { outcome } = await permission({ toolCallId: 'p1', title: 'Ready to code?' }, { options })
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'exit-plan-auto' })
+  })
+
+  it('treats a request carrying an ask rule or other _meta the same', async () => {
+    const { outcome, events } = await permission(ZOD, { meta: { matchedAskRule: 'Bash(bun add:*)' } })
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'allow-once' })
+    expect(events.some((e) => e.type === 'ask')).toBe(false)
+  })
+
+  it("allows a Codex MCP tool approval (_meta.is_mcp_tool_approval) without the human", async () => {
+    const { outcome, events } = await permission({ toolCallId: 'm1', title: 'linear.create_issue' }, { meta: { is_mcp_tool_approval: true } })
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'allow-once' })
+    expect(events.some((e) => e.type === 'ask')).toBe(false)
+  })
+
+  it('refuses a request that offers nothing to allow, so it never waits', async () => {
+    const rejectOnly: acp.PermissionOption[] = [{ optionId: 'reject', name: 'No', kind: 'reject_once' }]
+    const { outcome, events } = await permission(ZOD, { options: rejectOnly })
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'reject' })
+    expect(events.find((e) => e.type === 'permission_refused')).toMatchObject({ callId: 'b1', option: 'reject' })
+    expect(events.some((e) => e.type === 'permission_allowed')).toBe(false)
+  })
+
+  it('cancels a request with no options at all', async () => {
+    expect((await permission(ZOD, { options: [] })).outcome).toEqual({ outcome: 'cancelled' })
   })
 
   it('refuses an answer to an ask that is not open', async () => {
-    setup({ turn: async (t) => void (await t.permission({ toolCallId: 'b1', title: 'x' })) })
+    setup({ turn: async (t) => void (await t.ask([{ header: 'Scope', question: 'Which?', options: ['A', 'B'] }])) })
     const id = thread()
     await host.prompt(id, { text: 'Go' }, { source: 'human' })
     await logUntil(id, has('ask'))
-    await expect(host.answer(id, 'ask_nope', { kind: 'approval', choice: 'allow' })).rejects.toBeInstanceOf(GateError)
+    await expect(host.answer(id, 'ask_nope', { kind: 'question', answers: {} })).rejects.toBeInstanceOf(GateError)
   })
 
   it('turns AskUserQuestion into a question ask and answers it by question text', async () => {
@@ -855,7 +859,7 @@ describe('asks', () => {
     })
   })
 
-  it('declines every ask at once on an unattended thread', async () => {
+  it('allows a permission request but declines a question at once on an unattended thread', async () => {
     const seen: unknown[] = []
     setup({
       turn: async (t) => {
@@ -866,10 +870,11 @@ describe('asks', () => {
     const id = thread({ purpose: 'self-plan' })
     await host.prompt(id, { text: 'Plan yourself' }, { source: 'runcastle' })
     const events = await logUntil(id, turnsEnded(1))
-    expect(seen).toEqual([{ outcome: 'selected', optionId: 'reject' }, 'decline'])
+    expect(seen).toEqual([{ outcome: 'selected', optionId: 'allow-once' }, 'decline'])
     expect(events.some((e) => e.type === 'ask')).toBe(false)
+    expect(events.find((e) => e.type === 'permission_allowed')).toMatchObject({ title: 'rm -rf build', option: 'allow-once' })
     const declined = events.filter((e) => e.type === 'ask_resolved')
-    expect(declined).toHaveLength(2)
+    expect(declined).toHaveLength(1)
     expect(declined[0]).toMatchObject({ lines: [{ what: 'Declined', answer: 'nobody is watching this run', denied: true }] })
   })
 })
@@ -1194,8 +1199,8 @@ describe("an MCP server's forms and links", () => {
     expect(foldThread(events).ask).toBeUndefined()
   })
 
-  it('refuses a decline for an approval or a question', async () => {
-    setup({ turn: async (t) => void (await t.permission({ toolCallId: 'b1', title: 'x' })) })
+  it('refuses a decline for a question', async () => {
+    setup({ turn: async (t) => void (await t.ask([{ header: 'Scope', question: 'Which?', options: ['A', 'B'] }])) })
     const id = thread()
     await host.prompt(id, { text: 'Go' }, { source: 'human' })
     const view = foldThread(await logUntil(id, has('ask')))

@@ -5,7 +5,7 @@ import { subscribeInbox, takeFromInbox } from '../../lib/composer-inbox'
 import { useIsPhone } from '../../lib/use-phone'
 import { promptIdFor, useThread, type ModelPick, type ThreadStart } from '../../lib/use-thread'
 import { Spinner } from '../../ui'
-import { ApprovalDock, FormDock, LinkDock, QuestionDock } from './thread/AskDock'
+import { FormDock, LinkDock, QuestionDock } from './thread/AskDock'
 import { ChatThread } from './thread/ChatThread'
 import { Composer } from './thread/Composer'
 import { ContextMeter, ModelControls, PlanStrip } from './thread/ComposerParts'
@@ -136,13 +136,7 @@ export function ThreadColumn({
   const footer = closed && !ask ? (
     closed
   ) : ask ? (
-    ask.kind === 'approval' ? (
-      <ApprovalDock
-        key={ask.id}
-        call={ask.call}
-        onAnswer={(choice, instead) => t.answer(ask, { kind: 'approval', choice, ...(instead ? { instead } : {}) })}
-      />
-    ) : ask.kind === 'question' ? (
+    ask.kind === 'question' ? (
       <QuestionDock key={ask.id} questions={ask.questions} onAnswer={(answers) => t.answer(ask, { kind: 'question', answers })} />
     ) : ask.kind === 'form' ? (
       <FormDock

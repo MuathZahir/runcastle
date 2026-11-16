@@ -16,7 +16,6 @@ import { designCropsDir, featureDocsRel, sessionDir } from '@runcastle/core/path
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
-import { guardsEdits } from './edit-guard'
 import { PRE_TOOL_MATCHER } from './install-guard'
 import { resolvePluginDir } from './skills-root'
 import { autoCompactWindow } from './runtimes/types'
@@ -906,11 +905,11 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   working or waiting on its human, and it is registered for every kind
  *   because a turn ends the same way whatever the session was opened to do.
  * - `PreToolUse` matches the file-write and shell tools and carries the
- *   talk-session edit guard (see {@link evaluateEditGuard}) and the talk-worktree
- *   install guard (`evaluateInstallGuard`) — registered for every kind except
- *   `project`, the one allowed to write code. A kind is needed to make that
- *   distinction, so an omitted `kind` gets the guard: a session whose kind we do
- *   not know is not one to hand whole-repo write access to.
+ *   talk-session edit guard (see {@link evaluateEditGuard}), the talk-worktree
+ *   install guard (`evaluateInstallGuard`) and the remote guard
+ *   (`evaluateRemoteGuard`) — registered for every kind. The edit and install
+ *   guards pass `project`, the one kind allowed to write anywhere; the remote
+ *   guard holds for it too (agents-never-stop-for-approval decision 8).
  * - Timeouts (seconds): SessionStart 20 (room for the hook client's retries — it
  *   records the conversation id a resume needs), UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
@@ -950,9 +949,7 @@ export function renderSettings(
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
       Stop: [{ hooks: [cmd('stop')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
-      ...(kind === undefined || guardsEdits(kind)
-        ? { PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
-        : {}),
+      PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }],
     },
   }
 }

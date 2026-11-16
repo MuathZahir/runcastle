@@ -12,7 +12,7 @@ import { SESSION_WAIT_CLEARED, SESSION_WAITING } from './waits'
  * The one event pings hang off (needs-you-is-the-agent-s-call decision 14):
  * `feature.needs_you` `{ why, threadId, by, featureId }`, emitted once each time
  * a chat — a lead, a worker, an orchestrator chat — enters a need it was not
- * in: its agent's wait, or an open permission prompt or question box. Never on
+ * in: its agent's wait, or an open question box. Never on
  * a re-read, an unchanged need, or at boot.
  */
 export { FEATURE_NEEDS_YOU }

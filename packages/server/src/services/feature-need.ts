@@ -9,7 +9,7 @@ import { waitsByFeature } from './waits'
 /**
  * What a feature needs from the human (needs-you-is-the-agent-s-call decision
  * 12): the newest of its lead's wait, its workers' waits, and an open
- * permission prompt or question box in any of its threads. `feature.list` and
+ * question box in any of its threads. `feature.list` and
  * `feature.get` carry it; the needs watcher (`need-watch.ts`) pings per chat.
  */
 

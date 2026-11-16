@@ -17,7 +17,7 @@ import type { Ask, Attachment, BackgroundTask, ContextUsage, Effort, PlanEntry, 
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
 import { ContextMeter, ModelControls, PlanStrip } from '../src/components/chat/thread/ComposerParts'
-import { ApprovalDock, FormDock, LinkDock, QuestionDock } from '../src/components/chat/thread/AskDock'
+import { FormDock, LinkDock, QuestionDock } from '../src/components/chat/thread/AskDock'
 import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
 import { NoticeStrip } from '../src/components/chat/NoticeStrip'
 import type { ChatNotice, StandingNotice } from '../src/lib/chat-notices'
@@ -185,27 +185,6 @@ function useThread(moment: MomentSample, goNew: () => void) {
     setSince(undefined)
   }
 
-  const approve = (answer: 'allow' | 'always' | 'deny', instead?: string) => {
-    if (ask?.kind !== 'approval') return
-    setAsk(undefined)
-    setItems((xs) => [
-      ...xs,
-      {
-        kind: 'answered',
-        id: nextId(),
-        what: answer === 'deny' ? 'Denied' : answer === 'always' ? 'Always allowed' : 'Allowed',
-        answer: ask.call.title,
-        denied: answer === 'deny',
-      },
-      ...(instead ? [{ kind: 'user' as const, id: nextId(), text: instead }] : []),
-    ])
-    reply(
-      answer === 'deny'
-        ? 'Understood — no new dependency. I will walk the tree of the parser the app already has instead.'
-        : 'Installed. Mapping the Markdown blocks to PDF blocks now.',
-    )
-  }
-
   const answer = (answers: Record<string, string>) => {
     if (ask?.kind !== 'question') return
     setAsk(undefined)
@@ -236,7 +215,7 @@ function useThread(moment: MomentSample, goNew: () => void) {
 
   return {
     items, state, ask, plan, tasks, setTasks, context, since, draft, setDraft, attachments, setAttachments, suggestion,
-    models, model, setModel, effort, setEffort, fast, setFast, send, stop, approve, answer, settleMcp, edit, attach, lastSent, branch: goNew,
+    models, model, setModel, effort, setEffort, fast, setFast, send, stop, answer, settleMcp, edit, attach, lastSent, branch: goNew,
     compact: () => {
       setDraft('/compact')
     },
@@ -246,9 +225,7 @@ function useThread(moment: MomentSample, goNew: () => void) {
 function ChatColumn({ moment, goNew, notices }: { moment: MomentSample; goNew: () => void; notices: boolean }) {
   const t = useThread(moment, goNew)
   const footer = t.ask ? (
-    t.ask.kind === 'approval' ? (
-      <ApprovalDock key={t.ask.id} call={t.ask.call} onAnswer={t.approve} />
-    ) : t.ask.kind === 'question' ? (
+    t.ask.kind === 'question' ? (
       <QuestionDock key={t.ask.id} questions={t.ask.questions} onAnswer={t.answer} />
     ) : t.ask.kind === 'form' ? (
       <FormDock
