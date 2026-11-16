@@ -182,7 +182,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   </ul>
   <h3>Who builds what</h3>
   <ul>
-    <li><b>Me (the lead), alone.</b> A short hands-on test first to see how Claude Code accepts a model it does not list, then the server change and its tests. No workers: it is a small server-side fix.</li>
+    <li><b>Me (the lead), alone.</b> A short hands-on test of how Claude Code accepts a model it does not list (done: the chat restarts on the picked model), then the server change and its tests. No workers: it is a small server-side fix.</li>
     <li><b>Review</b> at the end, driving a real chat: pick Fable 5.2 in a new chat and in a running one.</li>
   </ul>
 </section>
@@ -219,7 +219,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <!-- FILL:hood -->
       <p>The picker's list is the runtime's saved model catalog: what Claude Code last reported. Settings' list (the roster) only added 1M variants to it, so Fable 5.2 never got in.</p>
       <p><b>List:</b> the catalog function adds every roster model the saved catalog lacks, labelled the way Claude Code labels models ("Fable 5.2"). The picker itself is untouched.</p>
-      <p><b>Making the pick take:</b> Claude Code's adapter refuses to switch a session to a model it does not list. A hands-on test picks one of two routes. Preferred: runcastle tells each session to list the roster's models too (the <span class="mono">availableModels</span> setting), so switching works through today's path. Fallback: a pick the session does not offer restarts the chat's session on the new model, keeping the conversation. If neither holds, I stop and come back to you.</p>
+      <p><b>Making the pick take:</b> Claude Code's adapter refuses to switch a session to a model it does not list, and it ignores runcastle's settings file, so the "list more models" setting cannot help. Instead, picking such a model mid-chat logs the pick, and the next message restarts the chat's session on that model, keeping the conversation. A hands-on test confirmed a resumed conversation runs on the model it is launched with, and that a made-up model gives a clear error.</p>
       <p><b>Tests:</b> the catalog tests (one expects exactly 3 models after Claude Code reports) and the request-builder tests change; a real chat checks the answer comes from Fable 5.2.</p>
     </div>
   </details>
@@ -242,7 +242,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['A model works mid-chat, not only in a new chat', 'Claude Code would silently ignore a mid-chat switch to a model it does not list; a choice that does nothing is worse than none.', 'assumed'],
     ['A model Claude Code refuses fails like any failed start', 'Testing every model before listing it costs a session start each; the refusal already shows in the chat.', 'assumed'],
     ['Codex chats get the same rule', 'The brief says any model Settings lists, and both runtimes share one code path.', 'assumed'],
-    ['Older versions stay listed, under "Older models"', 'That is how the picker already treats older versions; no picker redesign.', 'assumed']
+    ['Older versions stay listed, under "Older models"', 'That is how the picker already treats older versions; no picker redesign.', 'assumed'],
+    ['Build the guard even though Fable 5.2 now shows', 'Claude Code\'s list caught up on its own; the human does not want any user to see a model in Settings that the picker lacks.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]

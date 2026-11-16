@@ -35,3 +35,7 @@ Check first: 4, 5, 6
 **Decision:** With Fable 5.2 listed, Fable 5.2 is the Fable row the picker shows; older Fable versions Settings lists (5, 5.1) go under the picker's existing "Older models" fold.
 **Why:** That is how the picker already treats older versions; no picker redesign (the brief rules it out).
 **Assumed.** Alternative: hide versions Claude Code itself does not offer.
+
+## 8. Build the guard even though Fable 5.2 now shows
+**Decision:** Build it anyway: a model that shows in Settings must always show in the picker, for every runcastle user, even when Claude Code's own list lags behind.
+**Why:** On 2026-11-16 Claude Code's list caught up and Fable 5.2 appeared in the picker without any change here. The human's words: "I don't want this to happen to users… the model showing in the settings page but not showing in the model picker". Chosen over closing the feature and parking the guard.

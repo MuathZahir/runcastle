@@ -39,44 +39,43 @@ older under "Older models") needs no change.
 `catalogEntry` and `threadModels` read the same merged catalog, so a thread that
 names Fable 5.2 resolves to it and its chip says "Fable 5.2".
 
-### 2. Making the pick take: first a spike, then one of two routes
+### 2. Making the pick take: stop and reopen (Route B)
 
 The adapter refuses `set_config_option` for a model value it does not list
 ("Invalid value for config option model"); runcastle's request builder
-(`configRequests` / `modelValue`) already drops such a pick silently before
-sending. And a session opens on its own choice (CLI settings, or a resumed
-conversation's last model), so the launch's model is not enough on its own.
+(`configRequests` / `modelValue`) used to drop such a pick silently.
 
-**Spike, before any code** (one scratch Claude Code session through the ACP
-host, run by hand):
-- start a fresh session with launch model `claude-fable-5-2`; record the
-  adapter's reported current model and the model the API answers with;
-- in that session, try `set_config_option` with `claude-fable-5-2`;
-- write the session's settings file with an `availableModels` list holding
-  `default`, the adapter's own values and `claude-fable-5-2`, and check the
-  adapter then offers Fable 5.2 and switches to it, and that subagents
-  (which use aliases such as `haiku`) still run.
+**Spike results (2026-11-16).** Route A, writing `availableModels` into the
+session's settings file, cannot work: claude-agent-acp 0.97.0 reads only the
+user, project, local and managed Claude settings, never the `--settings` file
+runcastle writes. The adapter does pass `_meta.claudeCode.options.model` to the
+CLI as its model, and does not override it on a fresh or resumed session. Run
+directly through the Agent SDK, a resumed conversation launched on a model the
+adapter does not list answered from that model; a made-up model failed with a
+clear "There's an issue with the selected model" error (decision 5).
 
-**Route A (preferred if the spike passes):** the launcher writes
-`availableModels` into each Claude Code session's settings file: `default`, the
-saved catalog's adapter values, and the roster's Claude Code ids. The adapter
-then lists every roster model itself (it synthesises an entry for an id its SDK
-does not know), so set-model, the catalog learning and resume all work through
-the existing paths. `catalogFromOptions` must label a synthesised entry (its
-name equals its raw id) with `rosterLabel`, so the saved catalog says "Fable
-5.2", not `claude-fable-5-2`.
+**Route B, as built** (`threads/host.ts`):
+- A pick in an open session that the session's options do not offer
+  (`offersModel` in `controls.ts`) applies its effort and fast mode, logs the
+  pick with the catalog's id and label, and marks the thread to reopen. The
+  next message stops the process ('idle') and starts a new one; the
+  conversation resumes.
+- A launch names the picked model when the adapter's saved catalog does not
+  list it (`adapterLists` in `model-catalog.ts`); a listed model goes through
+  the session's own switch as before. The opening `applyConfig` skips a model
+  the session does not list, and the thread logs that model, not the one the
+  adapter misreports.
+- While a session runs on an unlisted model, the next switch to a listed one
+  is sent even though the adapter claims it already runs on it.
+- Roster 1M ids whose model the adapter lists stay `keepLongContext`'s call,
+  so the merge adds no second 1M entry.
 
-**Route B (if the allowlist narrows what Claude Code may run):** when the human
-picks a model the running session does not offer, the host records the pick and
-stops the thread's process (as the edit-and-fork path already does); the next
-message reopens the conversation with the picked model as the launch model, and
-the opening `applyConfig` is skipped for a model the session does not list. The
-spike must show a resumed conversation honours the launch model; if neither
-route holds, stop and bring the human decision 4's alternative.
+**The symptom went away on its own.** On 2026-11-16 the adapter's list caught
+up (it now lists Fable 5.2 as `fable`). The human chose to build the guard
+anyway (decision 8), so a lag like this never hides a model again.
 
-Codex (6): the merge applies the same way. If Codex's adapter also refuses
-unlisted ids mid-session, Route B's stop-and-reopen covers it; check with one
-Codex session in the spike if Codex is installed, else note it untested.
+Codex (6): the merge and Route B are runtime-neutral. Not tried against a real
+Codex session.
 
 ### Refusals (5)
 
@@ -92,9 +91,9 @@ the chat shows an error and the next pick of a good model works.
   adapter report now expects the roster's extra models).
 - **`configRequests` (existing):** which set-config requests a pick produces,
   for Route B's "not offered" case.
-- **`catalogFromOptions` (existing):** labels of synthesised entries (Route A).
-- **The launcher's settings artifact (existing):** the `availableModels` it
-  writes (Route A).
+- **The host (thread-controls tests):** a roster-only model in the picker; a
+  pick that reopens the chat on it; a new chat that starts on it; the forced
+  switch back.
 - **A real chat (drive):** pick Fable 5.2 in a new chat and in a running one;
   the answer's model line and the chip say Fable 5.2.
 
@@ -106,6 +105,5 @@ the chat shows an error and the next pick of a good model works.
 
 ## Open questions
 
-- Which route holds is settled by the spike, not by the human.
 - The brief's screenshot (`.runcastle-attachments/pnote_VvPipGPPZc8v.png`) was
   not in this worktree; the brief's text was used instead.
