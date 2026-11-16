@@ -23,3 +23,11 @@
 ## 6. Workers show as a count that opens on click
 **Decision:** A feature row with live workers shows a small count at its end (a worker icon and "2"). Clicking it opens the live workers as one-line rows, each its name and a mark. Finished workers no longer show in the sidebar; the feature page's work panel lists them. A worker that needs the human turns its feature row amber, folded or not.
 **Why:** Keeps a feature to one line while workers run, and still reaches a worker's chat in one click. Chosen over a count with no way in, and over today's rows minus the "done" fold.
+
+## 7. No dots: circled icons say what a row waits on
+**Decision:** Replaces the marks in decision 4. No amber or red dots anywhere in the epic block, including the epic's own head. Ready to test wears a circled play, a question a circled "?", both amber; a failed worker or a feature that can't start wears a circled "!" in red. An epic whose own chat asks you wears the same "?" in its head.
+**Why:** The human: "why do we still have yellow dots? We have the run icon and maybe we can have a question mark icon for questions", and the first icons "feel out of place". One family of line icons, the size of the app's other icons, matches the rest of the app.
+
+## 8. An arrow before the title opens a feature's workers
+**Decision:** Replaces the clickable count in decision 6. A feature with live workers shows a collapse arrow before its title, and the arrow opens its workers under it; there is no worker count. Every feature title keeps the same left edge, so rows without workers leave the arrow's space empty. The fold line's arrow moves after its words ("2 working · 1 idle ›"), so the left column only ever means workers.
+**Why:** The human: "I don't want to have to click on the worker number to expand the thing… a collapse arrow would be more intuitive."
