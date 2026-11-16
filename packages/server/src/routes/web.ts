@@ -193,6 +193,10 @@ export function mountWebApp(app: Hono, distDir: string): void {
     const filePath = safeJoin(root, pathname)
     let path = filePath
     let file = filePath ? await load(filePath) : null
+    // A missing hashed asset is a real miss, never the page: a tab opened before
+    // an update asks for its old chunks by name, and the HTML shell under a
+    // script's name fails in a way the app cannot tell from a broken build.
+    if (!file && pathname.startsWith('/assets/')) return c.notFound()
     if (!file) {
       path = indexHtml
       file = await load(indexHtml)

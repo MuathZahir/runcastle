@@ -30,7 +30,7 @@ import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
-import { CommandPalette } from './CommandPalette'
+import { CommandPalette } from './lazy'
 import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
@@ -439,10 +439,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       </Frame>
 
       {/* A phone has neither the palette nor Settings: no keyboard to call them,
-          and Settings is the computer's. */}
-      {!phone && (
+          and Settings is the computer's. Mounted only while open, so its code
+          loads the first time it opens (it draws nothing while closed). */}
+      {!phone && ws.cmdkOpen && (
         <CommandPalette
-          open={ws.cmdkOpen}
+          open
           onClose={() => ws.setCmdk(false)}
           features={features ?? []}
           selectedFeatureId={ws.selectedFeatureId}

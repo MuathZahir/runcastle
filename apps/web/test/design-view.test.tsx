@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openMenu } from './floating'
 
@@ -277,7 +277,7 @@ describe('DesignView', () => {
     expect(after.getAttribute('src')).toBe(`${PASS}%2Fpreview%2Finvites`)
   })
 
-  it('Show output opens the design server’s own terminal', () => {
+  it('Show output opens the design server’s own terminal', async () => {
     status = { ...RUNNING, paneId: 'design:f1' }
     render(<DesignView featureId="f1" />)
     expect(screen.queryByTestId('terminal')).toBeNull()
@@ -285,7 +285,8 @@ describe('DesignView', () => {
     openMenu(screen.getByRole('button', { name: 'Design server' }))
     act(() => fireEvent.click(screen.getByRole('menuitem', { name: 'Show output' })))
 
-    expect(screen.getByTestId('terminal').textContent).toBe('design:f1')
+    // The terminal loads on first use (a-faster-web-app decision 9).
+    expect((await screen.findByTestId('terminal')).textContent).toBe('design:f1')
     openMenu(screen.getByRole('button', { name: 'Design server' }))
     act(() => fireEvent.click(screen.getByRole('menuitem', { name: 'Hide output' })))
     expect(screen.queryByTestId('terminal')).toBeNull()

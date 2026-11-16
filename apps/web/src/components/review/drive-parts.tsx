@@ -9,7 +9,7 @@ import { useScenarioChatDoor } from '../chat/ScenarioChat'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { Markdown } from '../Markdown'
-import { TerminalView } from '../TerminalView'
+import { TerminalView } from '../lazy'
 
 /**
  * The test drive's pieces that are not the app itself: the project's drive

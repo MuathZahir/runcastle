@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { IconArrowLeft, IconMore, IconPen, IconRefresh, IconTerminal } from '../../icons'
 import { DrivePanel } from '../review/DrivePanel'
 import { ErrorBoundary } from '../ErrorBoundary'
-import { TerminalView } from '../TerminalView'
+import { TerminalView } from '../lazy'
 import { mainChatInbox, putInInbox } from '../../lib/composer-inbox'
 import { designAddress, usePassReachable, type PassReach } from '../../lib/design-address'
 import { PassUnreachable } from './PassUnreachable'

@@ -62,8 +62,12 @@ describe('mountWebApp (SPA hosting)', () => {
 
   it('refuses path traversal outside the dist root', async () => {
     const res = await app.fetch(new Request('http://x/assets/..%2f..%2f..%2fetc%2fpasswd'))
-    // Escaping paths never resolve to a file; the SPA fallback is served instead.
-    expect(await res.text()).toContain('runcastle')
+    // Escaping paths never resolve to a file; under /assets/ that is a plain miss.
+    expect(res.status).toBe(404)
+    expect(await res.text()).not.toContain('root:')
+    const outside = await app.fetch(new Request('http://x/..%2f..%2f..%2fetc%2fpasswd'))
+    // Elsewhere the SPA fallback is served instead.
+    expect(await outside.text()).toContain('<title>runcastle</title>')
   })
 })
 
@@ -150,6 +154,12 @@ describe('mountWebApp (compression and caching)', () => {
 
     const fallback = await get('/features/x', { 'if-none-match': `W/${etag}` })
     expect(fallback.status).toBe(304)
+  })
+
+  it('answers 404 for a hashed asset an update removed, not the page', async () => {
+    const res = await get('/assets/index-old999.js')
+    expect(res.status).toBe(404)
+    expect(await res.text()).not.toContain('<title>runcastle</title>')
   })
 
   it('serves a rebuilt page on a plain refresh (an update shows)', async () => {

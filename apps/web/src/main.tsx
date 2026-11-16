@@ -20,6 +20,19 @@ import { TooltipProvider } from './ui/tooltip'
 applyStoredTheme()
 registerPhoneWorker()
 
+// A tab opened before a runcastle update still names the old build's lazy
+// chunks (the terminal, the design view, …), which the server no longer has.
+// Reload once onto the new build rather than leave that part broken; the
+// stamp keeps a chunk that is truly missing from reloading forever.
+const RELOADED_FOR_CHUNK = 'runcastle.reloadedForChunk'
+window.addEventListener('vite:preloadError', (event) => {
+  const last = Number(sessionStorage.getItem(RELOADED_FOR_CHUNK) ?? 0)
+  if (Date.now() - last < 60_000) return
+  sessionStorage.setItem(RELOADED_FOR_CHUNK, String(Date.now()))
+  event.preventDefault()
+  window.location.reload()
+})
+
 function Root() {
   const [queryClient] = useState(
     () =>
