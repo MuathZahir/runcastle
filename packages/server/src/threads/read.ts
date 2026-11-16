@@ -233,8 +233,9 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
 }
 
 /**
- * The open approval or question ask in the thread, as a need: the call's title
- * or the first question is its line (needs-you decision 2). Read from the
+ * The open question ask in the thread, as a need: its first question is its
+ * line (needs-you decision 2). Command approvals never reach the human
+ * (agents-never-stop-for-approval decision 1). Read from the
  * thread's log, folded as the chat folds it; only a thread whose process runs
  * can hold one open, since no ask outlives its process. Forms and links an MCP
  * server asks are the agent's own errand, not a need.
@@ -243,9 +244,9 @@ export function openAskNeed(ctx: AppCtx, threadId: string): Need | null {
   if (!agentHost(ctx).isRunning(threadId) || !hasThreadLog(threadId)) return null
   const { view, events } = foldedLog(threadId)
   const ask = view.ask
-  if (ask?.kind !== 'approval' && ask?.kind !== 'question') return null
+  if (ask?.kind !== 'question') return null
   const since = [...events].reverse().find((e) => e.type === 'ask' && e.ask.id === ask.id)?.at ?? 0
-  const why = ask.kind === 'approval' ? (ask.call.title || 'a tool call') : (ask.questions[0]?.question ?? '')
+  const why = ask.questions[0]?.question ?? ''
   return { why, since, threadId, by: 'agent' }
 }
 

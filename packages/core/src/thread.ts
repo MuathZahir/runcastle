@@ -122,9 +122,13 @@ export type FormField = z.infer<typeof FormField>
 export const FormValues = z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
 export type FormValues = z.infer<typeof FormValues>
 
-/** What the agent waits on the human for, docked where the composer is. */
+/**
+ * What the agent waits on the human for, docked where the composer is. A command
+ * approval is never one: runcastle answers every permission request itself
+ * (`agents-never-stop-for-approval`), so the agent only ever waits on the human
+ * for a question, a form or a link.
+ */
 export const Ask = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('approval'), id: z.string(), call: ToolCall }),
   z.object({ kind: z.literal('question'), id: z.string(), questions: z.array(Question) }),
   /** An MCP server asks the human to fill a form. */
   z.object({ kind: z.literal('form'), id: z.string(), server: z.string().optional(), message: z.string(), fields: z.array(FormField) }),
@@ -133,14 +137,21 @@ export const Ask = z.discriminatedUnion('kind', [
 ])
 export type Ask = z.infer<typeof Ask>
 
+/**
+ * A command approval the human answered, kept only so a thread log written
+ * before `agents-never-stop-for-approval` still replays: its call and its
+ * answer's lines show in history. Nothing writes one now, and one left open in
+ * an old log never docks.
+ */
+export const LegacyApproval = z.object({ kind: z.literal('approval'), id: z.string(), call: ToolCall })
+export type LegacyApproval = z.infer<typeof LegacyApproval>
+
+/** An `ask` entry of a thread log: a live ask, or an old log's approval. */
+export const LoggedAsk = z.union([Ask, LegacyApproval])
+export type LoggedAsk = z.infer<typeof LoggedAsk>
+
 /** How the human answered an ask — the input to the host's `answer`. */
 export const AskAnswer = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('approval'),
-    choice: z.enum(['allow', 'always', 'deny']),
-    /** With `deny`: what the agent should do instead, sent as the human's next words. */
-    instead: z.string().optional(),
-  }),
   /** Keyed by each question's `question` text, as Claude's AskUserQuestion answers are. */
   z.object({ kind: z.literal('question'), answers: z.record(z.string(), z.string()) }),
   z.object({ kind: z.literal('form'), values: FormValues }),
@@ -395,7 +406,22 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     tasks: z.array(BackgroundTask),
     agents: z.union([z.number().int().nonnegative(), z.array(BackgroundTask)]).optional(),
   }),
-  z.object({ type: z.literal('ask'), ask: Ask }),
+  z.object({ type: z.literal('ask'), ask: LoggedAsk }),
+  /**
+   * A permission request the agent's CLI sent even in its no-approval mode
+   * (a safety check, the human's ask rule, a mode switched off), which the host
+   * answered "allow once" itself without asking anyone. Never shown; kept so a
+   * later look at the log can see what was answered and why.
+   */
+  z.object({
+    type: z.literal('permission_allowed'),
+    /** The tool call's id, when the request named one. */
+    callId: z.string().optional(),
+    /** The call's title as the adapter rendered it (the command, for a shell call). */
+    title: z.string(),
+    /** The option the host picked, by its kind (`allow_once`, or a plan-exit mode). */
+    option: z.string(),
+  }),
   /**
    * An ask answered — by the human, by the host on an unattended thread, or
    * withdrawn by the agent. `lines` is what the thread keeps of it, one per
@@ -842,7 +868,8 @@ export function threadActivity(events: readonly ThreadEvent[], running: boolean,
       commands = e.tasks.length
       subagents = runningSubagents(e).length
     } else if (e.type === 'ask') {
-      asking = true
+      // An old log's open approval is no wait: nothing can answer it now.
+      asking = e.ask.kind !== 'approval'
     } else if (e.type === 'ask_resolved') {
       asking = false
     } else if (e.type === 'process' && e.state === 'stopped') {
@@ -1077,7 +1104,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       for (const call of card.calls) if (unfinished(call)) call.status = as
     }
   }
-  let ask: Ask | undefined
+  let ask: LoggedAsk | undefined
   let startingPrompt: Extract<ThreadItem, { kind: 'user' }> | null = null
   /** A compaction was shown since the last prompt: the next one is the same compaction told twice. */
   let compactedSincePrompt = false
@@ -1584,6 +1611,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
       case 'error':
         items.push({ kind: 'error', id: `error:${e.i}`, message: e.message })
         break
+      case 'permission_allowed':
       case 'rewound':
       case 'briefed':
       case 'branched':
@@ -1601,8 +1629,10 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   }
   markRunning(items, listed, (work) => workStart.get(work))
   markOlderCards(items)
-  view.ask = ask
-  view.state = ask ? 'waiting' : turn ? 'working' : 'idle'
+  // An old log's approval left open never docks: nothing answers one any more.
+  const live = ask?.kind === 'approval' ? undefined : ask
+  view.ask = live
+  view.state = live ? 'waiting' : turn ? 'working' : 'idle'
   if (view.state === 'idle') view.plan = []
   return view
 }

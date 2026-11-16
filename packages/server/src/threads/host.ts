@@ -81,6 +81,7 @@ import {
   type ToolDiff,
 } from './acp-map'
 import { elicitationAsk, formContent, formLines, unsupportedLine } from './elicitation'
+import { permissionAnswer } from './permission-policy'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
 import { withWorkers, workerStallBounds, workerTurnSlot } from '../workers/service'
@@ -128,8 +129,6 @@ export interface AgentProcess {
   conversationOnDisk?: (conversationId: string) => Promise<boolean>
   /** The permission mode the session runs in: told as it opens, and each time the agent reports a change. */
   onMode?: (modeId: string) => void
-  /** A permission ask this process answers yes to itself, never shown to the human (a worker without auto mode, interactive-workers decision 10). */
-  allowsItself?: (req: acp.RequestPermissionRequest) => boolean
 }
 
 /** Starts the agent process a launch describes. */
@@ -423,11 +422,11 @@ export function orchestratorCompactCommand(runtime: AgentRuntime): string {
   ].join(' ')
 }
 
-/** What a self-planning run's asks are answered with: nobody is there to answer them. */
+/** What a self-planning run's elicitations are answered with: nobody is there to answer them. */
 const UNATTENDED_LINE = { what: 'Declined', answer: 'nobody is watching this run', denied: true }
 
 /** Each ask's kind, said in a refused answer's error. */
-const ASK_NOUN: Record<Ask['kind'], string> = { approval: 'an approval', question: 'a question', form: 'a form', link: 'a link' }
+const ASK_NOUN: Record<Ask['kind'], string> = { question: 'a question', form: 'a form', link: 'a link' }
 
 /** The adapter as a child process speaking ACP on its stdio. */
 export const spawnAdapter: AgentTransport = (spec, row) => {
@@ -774,13 +773,7 @@ class Host implements AgentHost {
     const declinable = open.ask.kind === 'form' || open.ask.kind === 'link'
     if (open.ask.kind !== answer.kind && !(answer.kind === 'decline' && declinable)) throw new GateError(`ask ${askId} is ${ASK_NOUN[open.ask.kind]}`)
     let lines: Extract<ThreadEventBody, { type: 'ask_resolved' }>['lines']
-    const instead = answer.kind === 'approval' && answer.choice === 'deny' ? answer.instead?.trim() : undefined
-    if (open.ask.kind === 'approval' && answer.kind === 'approval') {
-      const what = { allow: 'Allowed', always: 'Always allowed', deny: 'Denied' }[answer.choice]
-      lines = instead
-        ? [{ what: `${what} —`, answer: instead, denied: true }]
-        : [{ what, answer: open.ask.call.title, ...(answer.choice === 'deny' ? { denied: true } : {}) }]
-    } else if ((open.ask.kind === 'form' || open.ask.kind === 'link') && answer.kind === 'decline') {
+    if ((open.ask.kind === 'form' || open.ask.kind === 'link') && answer.kind === 'decline') {
       lines = [{ what: 'Declined', answer: open.ask.message, denied: true }]
     } else if (open.ask.kind === 'form' && answer.kind === 'form') {
       lines = formLines(open.ask, answer.values)
@@ -793,16 +786,6 @@ class Host implements AgentHost {
     this.logAwaits(t.id, { type: 'ask_resolved', id: askId, lines })
     markAgentWorking(this.ctx, t.id)
     this.askHook(t.id, (row) => this.lifecycle.askAnswered?.(row))
-    if (instead) {
-      // Neither adapter carries a message on a reject (claude-agent-acp denies with its
-      // own fixed words; codex-acp's approvals have none), so what to do instead is
-      // steered into the turn the approval holds open — sent before the denial, so the
-      // agent has it when it goes on — and is shown as the denial's line, not a bubble.
-      // An agent that does not steer gets it as its next prompt, still shown only there.
-      const item: Queued = { id: newId('prompt'), text: instead, blocks: [{ type: 'text', text: instead }], source: 'human', hidden: true, logged: false }
-      if (t.turn && t.steering) void this.steer(t, item)
-      else this.enqueue(t, item)
-    }
     this.settleAsk(t, answer)
   }
 
@@ -1918,21 +1901,22 @@ class Host implements AgentHost {
     return getSessionRow(this.ctx, t.id)?.purpose === 'self-plan'
   }
 
+  /**
+   * A permission request is never the human's (agents-never-stop-for-approval
+   * decision 1): answered here at once by {@link permissionAnswer}, with a quiet
+   * record in the log, and no ask opened. What must not run was refused earlier,
+   * by the pre-tool guards.
+   */
   private async onPermission(t: Thread, req: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
-    const option = (...kinds: acp.PermissionOptionKind[]): acp.RequestPermissionResponse => {
-      const found = kinds.map((kind) => req.options.find((o) => o.kind === kind)).find((o) => o !== undefined)
-      return { outcome: found ? { outcome: 'selected', optionId: found.optionId } : { outcome: 'cancelled' } }
-    }
-    if (this.unattended(t)) {
-      appendThreadEvent(t.id, { type: 'ask_resolved', id: newId('ask'), lines: [UNATTENDED_LINE] })
-      return option('reject_once', 'reject_always')
-    }
-    if (t.proc?.allowsItself?.(req)) return option('allow_once')
-    const answer = await this.openAsk(t, { kind: 'approval', id: newId('ask'), call: toolCallOf(req.toolCall) })
-    if (answer === 'cancelled' || answer.kind !== 'approval') return { outcome: { outcome: 'cancelled' } }
-    if (answer.choice === 'allow') return option('allow_once')
-    if (answer.choice === 'always') return option('allow_always', 'allow_once')
-    return option('reject_once', 'reject_always')
+    const picked = permissionAnswer(req)
+    if (!picked) return { outcome: { outcome: 'cancelled' } }
+    appendThreadEvent(t.id, {
+      type: 'permission_allowed',
+      ...(req.toolCall.toolCallId ? { callId: req.toolCall.toolCallId } : {}),
+      title: toolCallOf(req.toolCall).title,
+      option: picked.optionId,
+    })
+    return { outcome: { outcome: 'selected', optionId: picked.optionId } }
   }
 
   private async onElicitation(t: Thread, req: acp.CreateElicitationRequest): Promise<acp.CreateElicitationResponse> {
