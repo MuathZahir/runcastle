@@ -25,6 +25,8 @@ const server = vi.hoisted(() => ({
   refreshPending: false,
   /** How many times the page asked for `settings.get` to be refetched. */
   invalidations: 0,
+  /** How many times the page asked the chats' model pickers to refetch their list. */
+  pickerRefetches: 0,
 }))
 
 vi.mock('../src/trpc', () => ({
@@ -34,6 +36,7 @@ vi.mock('../src/trpc', () => ({
     useUtils: () => ({
       settings: { get: { invalidate: () => void server.invalidations++ } },
       project: { prep: { invalidate: () => undefined } },
+      thread: { models: { invalidate: () => void server.pickerRefetches++ } },
     }),
     settings: {
       get: {
@@ -132,6 +135,7 @@ describe('Models page', () => {
     server.refreshes = 0
     server.refreshPending = false
     server.invalidations = 0
+    server.pickerRefetches = 0
   })
   afterEach(cleanup)
 
@@ -228,6 +232,8 @@ describe('Models page', () => {
       key: 'models',
       value: [...customModels, { id: 'my-new-proxy', runtime: 'codex', note: 'cheap' }],
     })
+    // An open chat's picker lists the new model without a reload.
+    expect(server.pickerRefetches).toBe(1)
   })
 
   it('removes a custom model, but not one a step is running', () => {
@@ -318,6 +324,8 @@ describe('Models page', () => {
 
       expect(server.refreshes).toBe(1)
       expect(server.invalidations).toBe(1)
+      // The pickers list every model Settings does, so an open one refetches too.
+      expect(server.pickerRefetches).toBe(1)
     })
 
     it('shows Refresh as pending while discovery runs', () => {
