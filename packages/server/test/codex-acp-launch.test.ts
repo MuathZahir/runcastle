@@ -76,6 +76,8 @@ describe('codexRuntime.acpLaunch', () => {
       RUNCASTLE_SESSION_ID: sess.id,
       RUNCASTLE_SERVER_URL: 'http://localhost:4512',
       NO_BROWSER: '1',
+      // Approvals off, as config.toml says: codex-acp would open in on-request auto review.
+      INITIAL_AGENT_MODE: 'agent-full-access',
     })
     expect(spec.envScrub).toEqual([])
   })

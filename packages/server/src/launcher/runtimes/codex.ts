@@ -604,6 +604,11 @@ export const codexRuntime: AgentRuntimeAdapter = {
         RUNCASTLE_SESSION_ID: input.session.id,
         RUNCASTLE_SERVER_URL: input.serverUrl,
         NO_BROWSER: '1',
+        // codex-acp opens every session, new or resumed, in its "Auto review"
+        // mode (on-request approvals), sent with each turn over config.toml's
+        // `approval_policy="never"`. A host session runs with approvals off
+        // (agents-never-stop-for-approval decision 1), so it opens in full access.
+        INITIAL_AGENT_MODE: CODEX_HOST_MODE,
         ...input.hostWorker?.env,
       },
       envScrub: [],
@@ -616,6 +621,9 @@ export const codexRuntime: AgentRuntimeAdapter = {
     return KICKOFF_LINES[kind]
   },
 }
+
+/** codex-acp's mode with approvals off and full access: what `approval_policy="never"` means on the host. */
+export const CODEX_HOST_MODE = 'agent-full-access'
 
 /** codex-acp's executable entry (`dist/index.js`), run by the current Bun — it starts under Bun as it does under node. */
 function codexAcpEntry(): string {

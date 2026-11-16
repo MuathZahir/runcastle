@@ -1264,6 +1264,11 @@ class Host implements AgentHost {
       // Taken as set unless the agent reports another while it sets it (a mode it falls back from, `onUpdate`).
       t.modeId = mode
       await conn.agent.request(acp.methods.agent.session.setMode, { sessionId: t.sessionId, modeId: mode })
+    } else if (mode && opened.modes && opened.modes.currentModeId !== mode) {
+      // The adapter withholds the mode asked for (bypass as root, or switched off in
+      // settings): every action now arrives as a permission request, which the host
+      // allows, so nothing stalls; said once so a root install shows in the log.
+      console.warn(`thread ${t.id}: asked for mode ${mode} but the agent runs in ${opened.modes.currentModeId}; its permission requests are allowed by runcastle`)
     }
     if (t.modeId) proc.onMode?.(t.modeId)
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
