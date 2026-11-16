@@ -16,7 +16,6 @@ import { RUNTIME_SPECS } from '../../doctor/doctor'
 import { codexAuthFile } from '../../services/codex-auth'
 import { cliNeedsMissingNode, resolveTool } from '../../util/resolve-executable'
 import { hookClientPath, renderSessionPrompt, serverUrlFor } from '../artifacts'
-import { guardsEdits } from '../edit-guard'
 import { PRE_TOOL_MATCHER } from '../install-guard'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
@@ -364,9 +363,7 @@ export function renderCodexHooks(
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
       Stop: [{ hooks: [cmd('stop')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
-      ...(kind === undefined || guardsEdits(kind)
-        ? { PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
-        : {}),
+      PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }],
     },
   }
 }

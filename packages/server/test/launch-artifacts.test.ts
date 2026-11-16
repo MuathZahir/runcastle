@@ -336,8 +336,8 @@ describe('renderSettings', () => {
    * between a session told to grill and a session that just implemented the
    * feature itself — full checkout, `acceptEdits`, no deny hook anywhere.
    */
-  it('registers the PreToolUse edit and install guards for every kind but `project`', () => {
-    for (const kind of ['chat', 'drive-fix'] as const) {
+  it('registers the PreToolUse guards for every kind, the orchestrator included', () => {
+    for (const kind of ['chat', 'drive-fix', 'project'] as const) {
       const guard = renderSettings('C:\\hooks\\hook-client.ts', kind).hooks.PreToolUse
       expect(guard).toHaveLength(1)
       expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
@@ -347,9 +347,9 @@ describe('renderSettings', () => {
         timeout: 5,
       })
     }
-    // decision 18 gives the orchestrator whole-repo write access — it is the
-    // one kind whose commits are the point of the session
-    expect(renderSettings('C:\\hooks\\hook-client.ts', 'project').hooks.PreToolUse).toBeUndefined()
+    // The orchestrator keeps whole-repo write access (the edit and install
+    // guards pass it); it gains the hook for the remote guard
+    // (agents-never-stop-for-approval decision 8).
   })
 
   /**
@@ -1320,8 +1320,8 @@ describe('codexRuntime.writeArtifacts', () => {
     }
   })
 
-  it('exempts the one kind that may write code from the edit guard, as Claude does', () => {
-    expect(renderCodexHooks('/tmp/hook-client.ts', 'project').hooks.PreToolUse).toBeUndefined()
+  it('registers the pre-tool hook for every kind, the orchestrator included, as Claude does', () => {
+    expect(renderCodexHooks('/tmp/hook-client.ts', 'project').hooks.PreToolUse).toHaveLength(1)
     expect(renderCodexHooks('/tmp/hook-client.ts', 'chat').hooks.PreToolUse).toHaveLength(1)
   })
 
