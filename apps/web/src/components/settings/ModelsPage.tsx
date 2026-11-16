@@ -92,6 +92,8 @@ function useSettingWrites(): SettingWrites {
       clearTimeout(savedTimer.current)
       savedTimer.current = setTimeout(() => setSaved(null), SAVED_MS)
       void utils.settings.get.invalidate()
+      // The picker lists every model Settings does: an open one picks up the change.
+      void utils.thread.models.invalidate()
       next()
     },
     onError: (e) => {
@@ -225,7 +227,10 @@ function DiscoveryStatus({ view }: { view: SettingsView }) {
 function RefreshModels() {
   const utils = trpc.useUtils()
   const refresh = trpc.settings.refreshModels.useMutation({
-    onSuccess: () => void utils.settings.get.invalidate(),
+    onSuccess: () => {
+      void utils.settings.get.invalidate()
+      void utils.thread.models.invalidate()
+    },
   })
   return (
     <>
