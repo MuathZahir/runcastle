@@ -530,6 +530,7 @@ async function handlePreToolUse(
       toolName,
       command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
       worktreePath: session.worktreePath,
+      ...(typeof payload?.cwd === 'string' ? { cwd: payload.cwd } : {}),
       ...(feature && feature.slug !== PROJECT_WORKTREE_SLUG ? { ownFolders: [scenarioDataDir(feature.id)] } : {}),
     }) ??
     (await checkoutGuardDenial(session, guardKind, toolName, toolInput))

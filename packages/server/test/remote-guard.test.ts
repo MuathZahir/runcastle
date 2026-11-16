@@ -163,6 +163,19 @@ describe('remote guard', () => {
       ]) refused(cmd)
     })
 
+    it('reads `cd -` as an unknown folder, not home', () => {
+      allowed('cd - && rm -rf build')
+      allowed('cd /tmp/x && cd - && rm -rf build')
+    })
+
+    it('starts from the folder the shell is in now, which a `cd` in an earlier call may have moved', () => {
+      const from = (cwd: string, command: string) =>
+        evaluateRemoteGuard({ toolName: 'Bash', command, worktreePath: own, cwd, home: '/home/u', tempFolders: ['/tmp'] })
+      expect(from(`${own}/packages/web`, 'rm -rf .vite')).toBeNull()
+      expect(from(`${own}/packages/web`, 'rm -rf ../..')).not.toBeNull()
+      expect(from('/home/u/code/app', 'rm -rf dist')).not.toBeNull()
+    })
+
     it('refuses the PowerShell and cmd spellings', () => {
       for (const cmd of [
         'Remove-Item -Recurse -Force C:\\Users\\u\\code',
@@ -193,7 +206,7 @@ describe('remote guard on the pre-tool hook', () => {
   })
   afterEach(() => clearRuntimeCtx())
 
-  async function shell(kind: SessionKind, command: string, runtime?: 'codex'): Promise<any> {
+  async function shell(kind: SessionKind, command: string, runtime?: 'codex', cwd?: string): Promise<any> {
     const app = new Hono()
     app.route('/api/hooks', hooksApp)
     const project = kind === 'project'
@@ -207,7 +220,7 @@ describe('remote guard on the pre-tool hook', () => {
     const res = await app.request('/api/hooks/pre-tool', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: id, payload: { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } } }),
+      body: JSON.stringify({ sessionId: id, payload: { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, ...(cwd ? { cwd } : {}) } }),
     })
     return res.json()
   }
@@ -223,6 +236,11 @@ describe('remote guard on the pre-tool hook', () => {
       expect(json.hookSpecificOutput?.permissionDecision).toBe('deny')
       expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/outside the session's folder/)
     }
+  })
+
+  it('resolves a delete against the cwd the hook reports', async () => {
+    expect((await shell('chat', 'rm -rf dist', undefined, '/home/u/elsewhere')).hookSpecificOutput?.permissionDecision).toBe('deny')
+    expect(await shell('chat', 'rm -rf dist', undefined, '/home/u/wt/dark-mode/packages/web')).toEqual({})
   })
 
   it('has no opinion on a plain push or a delete inside the folder', async () => {

@@ -32,8 +32,14 @@ export interface RemoteGuardInput {
   toolName?: string
   /** `tool_input.command` from the hook payload. */
   command?: string
-  /** The session's working folder, where its shell starts. */
+  /** The session's working folder: deletes inside it run. */
   worktreePath: string
+  /**
+   * The folder the shell is in now (the hook's `cwd`). Claude Code's shell keeps
+   * a `cd` from an earlier call, so this can differ from `worktreePath`; the
+   * session's folder is assumed when it is missing.
+   */
+  cwd?: string
   /** Other folders the session may delete inside (a feature's scenario data). */
   ownFolders?: string[]
   /** The home folder `~` and `$HOME` stand for; the OS's by default. */
@@ -52,7 +58,8 @@ export function evaluateRemoteGuard(input: RemoteGuardInput): EditDenial | null 
     owned: [...(input.ownFolders ?? []), ...(input.tempFolders ?? [tmpdir(), '/tmp'])].map((p) => resolve(p)),
   }
   // `${HOME}`'s braces would read as a group to the shell split.
-  const why = evaluateScript(ctx, input.command.replace(/\$\{HOME\}/g, '$HOME'), ctx.root, 0)
+  const start = input.cwd ? resolve(input.cwd) : ctx.root
+  const why = evaluateScript(ctx, input.command.replace(/\$\{HOME\}/g, '$HOME'), start, 0)
   return why ? { reason: `${why} ${FOOTER}` } : null
 }
 
@@ -81,7 +88,8 @@ function evaluateScript(ctx: Ctx, script: string, start: string | undefined, dep
     const name = commandName(verb)
     if (CD_VERBS.has(name)) {
       const target = args.find((a) => !a.startsWith('-'))
-      cwd = target === undefined ? ctx.home : at(ctx, cwd, target)
+      // A bare `cd` goes home; `cd -` goes back to a folder the guard never saw.
+      cwd = target === undefined ? (args.includes('-') ? undefined : ctx.home) : at(ctx, cwd, target)
       continue
     }
     const nested = nestedScript(name, args)
