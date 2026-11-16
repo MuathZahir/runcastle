@@ -123,6 +123,17 @@ this guard), feature leads, host-side drive and review workers, and Codex host
 sessions, whose hooks route to the same handler. Sandbox workers push only
 into their own local copy and have no GitHub login, so they are left out.
 
+### Recursive deletes outside the chat's folder are refused (decision 9)
+
+The same guard refuses a recursive delete whose target resolves outside the
+session's working folder, or is that folder or one above it: `rm` with
+`-r`/`-R`/`-rf`/`--recursive`, `rmdir /s`, PowerShell `Remove-Item -Recurse`
+(and its aliases `rm`, `del`, `ri`, `rd`), and `find … -delete`. The target is
+resolved against the cwd the shell split tracks through `cd`, with `~` and
+`$HOME` expanded. Targets under the system temp folder (`os.tmpdir()`, `/tmp`)
+run. A target it cannot resolve (another variable, a command substitution) is
+allowed, as with every guard here. Sandbox workers are left out.
+
 ### The dialog leaves the app
 
 With no producer, the `approval` ask kind goes from the live path:
@@ -175,8 +186,8 @@ done: it changes Claude Code's behaviour in other ways.
 - Guards that deny, and auto mode's checker blocks: unchanged.
 - The human's own Claude Code outside runcastle and their settings files.
 - Any new notification, escalation or approval log screen (decision 3).
-- Local destructive commands outside the remote guard's list: they run within
-  the existing guards (decision 4).
+- Local destructive commands other than recursive deletes outside the
+  session's folder (decision 9): they run within the existing guards.
 
 ## Open questions
 

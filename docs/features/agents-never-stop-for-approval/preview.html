@@ -184,6 +184,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="step bad mono">git push --delete · :branch · --mirror · --prune</div>
       <div class="step bad mono">gh pr merge · gh repo delete · gh release delete · gh … delete</div>
       <div class="step bad mono">gh api -X DELETE</div>
+      <div class="step bad">A recursive delete outside the chat's own folder <a class="pin" data-d="9">9</a></div>
     </div>
     <div class="lane">
       <h3>Still runs</h3>
@@ -260,18 +261,17 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Never, everywhere', 'Your words, "Yes to both": no agent of any kind shows the Allow / Reject box, autopilot on or off.'],
     ['Your own ask rules are ignored inside runcastle', 'Your words: your git push rule no longer stops runcastle agents, and your settings file is left alone.'],
     ['No telling anyone about a stuck approval', 'You rejected it: that moves the click instead of removing it.'],
-    ['Every command an agent still asks about runs', 'Every ask in the logs was ordinary work; runcastle answers allow at once, including Claude Code\'s own last safety checks.', 'assumed'],
-    ['An agent\'s own questions still reach you', 'Those are the agent asking, not a command waiting on a click.', 'assumed'],
+    ['Every command an agent still asks about runs', 'Every ask in the logs was ordinary work; runcastle answers allow at once, narrowed by 8 and 9.'],
+    ['An agent\'s own questions still reach you', 'Those are the agent asking, not a command waiting on a click.'],
     ['Sandbox workers keep their auto modes; only their approval asks go', 'You chose the providers\' auto modes for workers; a block is not a stall, so only what would reach you as an approval is answered.'],
-    ['The Allow / Reject box leaves the app', 'Nothing can raise one any more; a test guards that none is ever stored.', 'assumed'],
-    ['Commands that destroy things on the remote are refused', 'Your words: no destructive commands that could affect the remote. Force pushes, remote deletes, PR merges and the like are refused with a reason, never asked.']
+    ['The Allow / Reject box leaves the app', 'Nothing can raise one any more; a test guards that none is ever stored.'],
+    ['Commands that destroy things on the remote are refused', 'Your words: no destructive commands that could affect the remote. Force pushes, remote deletes, PR merges and the like are refused with a reason, never asked.'],
+    ['Recursive deletes outside the chat\'s own folder are refused', 'Your "Alright": the one other risk answering every ask adds. Deletes inside the folder and in temp still run.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [4, 'Also refuse local deletes that Claude Code flags as risky (for example a recursive delete outside the chat\'s own folder)', 'You named remote damage; a local delete outside the worktree is the one other risk this adds.', 'risk to data']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
