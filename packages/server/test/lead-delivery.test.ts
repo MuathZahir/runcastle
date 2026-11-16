@@ -245,21 +245,20 @@ describe('news to a lead (agents-are-woken-only-when-it-matters decision 10)', (
     expect(sentToAgent()[0]).toContain('[runcastle] Round 1 returned\n\n[runcastle] The human pressed Stop')
   })
 
-  it('ends a lead turn that waits on a permission, and holds Stop for the human’s reply', async () => {
+  it('never pauses a lead turn on a permission: runcastle allows it and the turn goes on (agents-never-stop-for-approval)', async () => {
+    let answer: unknown
     fake.script.turn = async (t) => {
       if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] work')) {
-        await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })
+        answer = await t.permission({ toolCallId: 'b1', title: 'bun add zod', kind: 'execute' })
       }
     }
     const f = feature()
     const id = chat(f.id)
     await deliverToLead(ctx, f, { text: 'work', source: 'runcastle' })
-    await logUntil(id, (e) => e.some((x) => x.type === 'ask'))
-
-    await stopFeature(ctx, f.id)
 
     await logUntil(id, turnsEnded(1))
-    expect(promptsOf(id).filter((p) => p.held)).toEqual([expect.objectContaining({ text: expect.stringContaining('The human pressed Stop') })])
+    expect(answer).toEqual({ outcome: { outcome: 'selected', optionId: 'allow-once' } })
+    expect(readThreadEvents(id).some((e) => e.type === 'ask')).toBe(false)
   })
 
   it('holds Stop for an idle lead', async () => {
