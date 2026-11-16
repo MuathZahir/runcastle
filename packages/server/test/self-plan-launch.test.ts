@@ -162,7 +162,7 @@ describe('a self-planning run', () => {
     expect(promptsOf(sessionId).at(-1)?.text).toContain('no human is present')
   })
 
-  it('declines what the agent asks, so nobody has to be there', async () => {
+  it('allows a permission request and declines a question, so nobody has to be there', async () => {
     const fake = fakeHost({
       turn: async (t) => {
         await t.permission({ toolCallId: 'p1', title: 'rm -rf build' })
@@ -175,7 +175,8 @@ describe('a self-planning run', () => {
 
     const events = await logUntil(sessionId, (e) => e.some((x) => x.type === 'turn_ended'))
     expect(events.filter((e) => e.type === 'ask')).toEqual([])
-    expect(events.filter((e) => e.type === 'ask_resolved')).toHaveLength(2)
+    expect(events.filter((e) => e.type === 'ask_resolved')).toHaveLength(1)
+    expect(events.find((e) => e.type === 'permission_allowed')).toMatchObject({ title: 'rm -rf build', option: 'allow-once' })
     expect(fake.last().received.some((r) => r.method === 'session/new')).toBe(true)
   })
 
@@ -259,7 +260,7 @@ describe('a self-planning run', () => {
     })
 
     // Stopping a planning run mid-turn (Stop, archive, a crash) must not leave the
-    // lead's chat declining every approval and question from then on.
+    // lead's chat declining every question from then on.
     it('ends the run when its process stops mid-turn, so asks reach the human again', async () => {
       const f = await feature('stopped')
       fakeHost({ turn: () => new Promise(() => {}) })

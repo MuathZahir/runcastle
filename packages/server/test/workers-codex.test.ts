@@ -275,20 +275,26 @@ describe("a Codex worker's permission mode", () => {
     return { id: await startCodexWorker(), host, answers }
   }
 
-  it('runs in auto-review when the session opens in it, leaving what the reviewer still asks to the human', async () => {
+  const allowed = { outcome: { outcome: 'selected', optionId: 'allow-once' } }
+
+  it('runs in auto-review when the session opens in it, and allows what the reviewer still asks without the human', async () => {
     const { id, host, answers } = await workerAsking('agent')
-    await until(() => asks(id).length === 1)
-    expect(answers).toEqual([])
+    await until(() => answers.length === 2)
+    expect(answers).toEqual([allowed, allowed])
+    expect(asks(id)).toEqual([])
     expect(modeEvents()).toEqual(['auto'])
+    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
     await host.stopAll('shutdown')
   })
 
-  it("falls back when auto-review is unavailable: in-sandbox actions are allowed, a call to one of the human's MCP servers asks", async () => {
+  it("falls back when auto-review is unavailable: every request, a call to one of the human's MCP servers too, is allowed without the human", async () => {
     const { id, host, answers } = await workerAsking('workspace-write')
-    await until(() => asks(id).length === 1)
-    expect(answers).toEqual([{ outcome: { outcome: 'selected', optionId: expect.stringMatching(/allow/) } }])
-    expect(asks(id)[0]).toMatchObject({ ask: { kind: 'approval', call: { title: 'linear.create_issue' } } })
+    await until(() => answers.length === 2)
+    expect(answers).toEqual([allowed, allowed])
+    expect(asks(id)).toEqual([])
+    expect(readThreadEvents(id).filter((e) => e.type === 'permission_allowed')).toMatchObject([{ title: 'bun install' }, { title: 'linear.create_issue' }])
     expect(modeEvents()).toEqual(['fallback'])
+    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
     await host.stopAll('shutdown')
   })
 })

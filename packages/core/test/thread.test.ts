@@ -8,6 +8,7 @@ import {
   threadActivity,
   ThreadEvent,
   type ShownFile,
+  ThreadEventBody as ThreadEventBodySchema,
   type ThreadEventBody,
   type ThreadItem,
 } from '../src/thread'
@@ -697,21 +698,40 @@ describe('foldThread', () => {
     expect(v.state).toBe('working')
   })
 
+  it('a legacy open approval ask parses and folds to no live ask: the thread is not waiting', () => {
+    const legacy = { type: 'ask' as const, ask: { kind: 'approval' as const, id: 'a1', call: { id: 'c1', kind: 'execute' as const, title: 'bun add x', status: 'pending' as const } } }
+    expect(ThreadEventBodySchema.safeParse(legacy).success).toBe(true)
+    const v = foldThread(log(prompt('p1'), { type: 'turn_started' }, legacy))
+    expect(v.ask).toBeUndefined()
+    expect(v.state).toBe('working')
+  })
+
+  it('a permission_allowed record folds without changing the view', () => {
+    const base = log(prompt('p1'), { type: 'turn_started' }, { type: 'agent_text', messageId: 'm1', text: 'Going.' })
+    const allowed: ThreadEventBody = { type: 'permission_allowed', callId: 'c1', title: 'bun add x', option: 'allow-once' }
+    expect(ThreadEventBodySchema.safeParse(allowed).success).toBe(true)
+    const after = foldThread(log(prompt('p1'), { type: 'turn_started' }, { type: 'agent_text', messageId: 'm1', text: 'Going.' }, allowed))
+    const before = foldThread(base)
+    expect(after.items).toEqual(before.items)
+    expect(after.state).toBe(before.state)
+    expect(after.ask).toBeUndefined()
+  })
+
   it('an open ask makes the thread wait; its answer folds to lines and work resumes after it', () => {
-    const approval = { kind: 'approval' as const, id: 'a1', call: { id: 'c1', kind: 'execute' as const, title: 'bun add x', status: 'pending' as const } }
-    const asking = log(prompt('p1'), { type: 'turn_started' }, { type: 'agent_text', messageId: 'm1', text: 'I need a package.' }, { type: 'ask', ask: approval })
+    const question = { kind: 'question' as const, id: 'a1', questions: [] }
+    const asking = log(prompt('p1'), { type: 'turn_started' }, { type: 'agent_text', messageId: 'm1', text: 'I need a package.' }, { type: 'ask', ask: question })
     const waiting = foldThread(asking)
     expect(waiting.state).toBe('waiting')
-    expect(waiting.ask).toEqual(approval)
+    expect(waiting.ask).toEqual(question)
 
     const answered = foldThread([
       ...asking,
-      { i: 4, at: 4000, type: 'ask_resolved', id: 'a1', lines: [{ what: 'Allowed', answer: 'bun add x' }] },
+      { i: 4, at: 4000, type: 'ask_resolved', id: 'a1', lines: [{ what: 'Answered', answer: 'bun' }] },
       { i: 5, at: 5000, type: 'agent_text', messageId: 'm2', text: 'Installed.' },
     ])
     expect(answered.state).toBe('working')
     expect(answered.ask).toBeUndefined()
-    expect(kinds(answered.items)).toEqual(['user', 'agent', 'work', 'answered', 'agent'])
+    expect(kinds(answered.items)).toEqual(['user', 'agent', 'answered', 'agent'])
   })
 
   it('a turn with approvals folds as one turn: each approved command is one row that settles, and no row is blank', () => {
@@ -1278,7 +1298,7 @@ describe('awaitsHuman', () => {
   const stopped: ThreadEventBody = { type: 'process', state: 'stopped' }
   const ask: ThreadEventBody = {
     type: 'ask',
-    ask: { kind: 'approval', id: 'a1', call: { id: 'c1', kind: 'execute', title: 'bun test', status: 'pending' } },
+    ask: { kind: 'question', id: 'a1', questions: [] },
   }
 
   it('waits on the human once the agent replied after their message', () => {
