@@ -196,8 +196,21 @@ done: it changes Claude Code's behaviour in other ways.
 - Local destructive commands other than recursive deletes outside the
   session's folder (decision 9): they run within the existing guards.
 
+## Reproduction (2026-11-16, branch server, Claude Code lead)
+
+- Bypass on: a heredoc Python edit, a heredoc commit and `rm -rf junk` ran
+  without any request; a `git push` under the human's ask rule raised one,
+  answered at once (`permission_allowed`, `allow-once`). A force push and
+  `rm -rf ~/…` were refused by the remote guard and the lead carried on; a
+  delete under `/tmp` ran. No ask in the log; the turn ended normally.
+- Bypass switched off (project settings `disableBypassPermissionsMode`, the
+  same clamp root causes): the server logged the mode warning, and an edit and
+  a committing Bash call each got a `permission_allowed` and ran.
+- Not reproduced: Codex (not installed here) and a real root user.
+
 ## Open questions
 
-- Which exact safety check raised each logged ask; the reproduction records
-  the `decisionReason` it sees, but the fix does not depend on it.
+- Which exact safety check raised each logged ask: the heredoc commands did
+  not ask in the reproduction, so it was likely a different Claude Code version
+  or the bypass clamp. The fix does not depend on it.
 - Whether the other PC ran as root; the fix covers it either way.
