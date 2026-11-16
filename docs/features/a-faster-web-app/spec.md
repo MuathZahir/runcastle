@@ -12,7 +12,7 @@ The work runs in three steps: measure, fix, measure again against the targets in
 
 ### 1. Measure (before any fix)
 
-Extend the existing thread-timing script (real Chrome via playwright-core against a scratch copy of the data, served by a local `buildApp`) into a measuring tool for this feature's targets. It gains:
+A new measuring script beside the thread-timing one, built the same way (real Chrome via playwright-core against a scratch copy of the data, served by a local `buildApp`). It has:
 - a typing measure: in the longest chat of the scratch data (500+ messages; seed a synthetic one if none is long enough), type a sentence and record key-to-paint time per key, idle and while a second writer streams agent text into that same chat;
 - a load measure: cold and warm refresh to "project page with sidebar filled", recording bytes over the wire, request count and time;
 - throttling through the Chrome DevTools Protocol: CPU 4x, network 10 Mbit/s and 60 ms round trips;
@@ -43,7 +43,19 @@ The cause, from reading the code and the installed build: the server sends the a
 
 ### Measured
 
-_Filled in by step 1 before any fix, and again at the end._
+Baseline, 2026-11-16, before any fix. Longest feature chat (8.4 MB log), CPU 4x slower, 10 Mbit/s, 60 ms round trips. "Key to screen" is the browser's own Event Timing for each key (press to next paint); "round trip from the driver" is how long until the test driver saw the key handled, which is what a typist feels once keys queue up.
+
+| What | Before | Target |
+|---|---|---|
+| First visit: project page shown | 4681 ms | 3000 |
+| First visit: over the wire | 1966 KB, 13 requests | — |
+| Repeat refresh: project page shown | 2799 ms | 1500 |
+| Repeat refresh: over the wire | 1954 KB | — |
+| Idle chat: key to screen, typical / slowest 5% | 344 / 448 ms | 50 |
+| Agent streaming: key to screen, typical / slowest 5% | 400 / 728 ms | 50 |
+| Agent streaming: key round trip from the driver | 2096 ms | — |
+
+The numbers point where the code read did: every refresh downloads the whole app again, each key costs a full redraw of the chat, and a streaming agent stacks redraws until keys show two seconds late (the human's "a couple seconds later"). The plan stands.
 
 ## Seams
 
