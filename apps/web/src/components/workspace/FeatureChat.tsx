@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
@@ -93,6 +93,12 @@ export function FeatureChat({
   const isScenario = inFront !== null && inFront === scenario.sessionId
   const entry = column.threads.find((t) => t.id === column.current)
   const workers = useFeatureWorkers(full.feature.id)
+  // One value per workers list: a fresh object each render changed this
+  // context above the whole chat, and React walked every message looking for
+  // its readers on each streamed chunk (a-faster-web-app).
+  const pickLatest = useRef(column.pick)
+  pickLatest.current = column.pick
+  const workerLinks = useMemo(() => ({ workers, openWorker: (id: string) => pickLatest.current(id) }), [workers])
   const worker = workerInFront(workers, column.threads, inFront)
   const workerProps = worker && !isMain ? workerColumnProps(worker, full.feature.branch) : null
   // One start at a time: two presses, or a Send during a start, wait on the same launch.
@@ -134,7 +140,7 @@ export function FeatureChat({
   if (column.pending) return <ThreadOpening label="Chat" />
   return (
     // What the lead's handback and failure cards read and open (interactive-workers decision 21).
-    <WorkerLinksContext.Provider value={{ workers, openWorker: column.pick }}>
+    <WorkerLinksContext.Provider value={workerLinks}>
       <OrchestratorNameContext.Provider value={epicName}>
       <ThreadColumn
         // A fresh column per thread: its draft, attachments and scroll are its

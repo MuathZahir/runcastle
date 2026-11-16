@@ -1,6 +1,7 @@
 import {
   createContext,
   useCallback,
+  useMemo,
   useContext,
   useEffect,
   useState,
@@ -64,6 +65,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000)
   }, [])
 
+  const control = useMemo(() => ({ push }), [push])
+
   useEffect(() => {
     sink = push
     return () => {
@@ -72,7 +75,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [push])
 
   return (
-    <ToastCtx.Provider value={{ push }}>
+    <ToastCtx.Provider value={control}>
       {children}
       <div
         className="fixed right-4 bottom-4 z-[400] flex max-w-95 flex-col items-end gap-2"

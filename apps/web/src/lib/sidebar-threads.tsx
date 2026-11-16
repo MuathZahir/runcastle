@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FeatureListItem } from './api'
 import { newestThread } from './chat-sessions'
+import { createPublished } from './published'
 import type { ThreadEntry } from './chat-thread'
 import type { WorkerEntry } from './workers'
 
@@ -32,35 +32,19 @@ export interface SidebarThreads {
   newEpicOpen?: boolean
 }
 
-const Published = createContext<SidebarThreads | null>(null)
-const Publish = createContext<(threads: SidebarThreads | null) => void>(() => {})
+const published = createPublished<SidebarThreads>()
 
 /** Under the project shell: what the open page publishes, for the sidebar beside it. */
-export function SidebarThreadsProvider({ children }: { children: ReactNode }) {
-  const [threads, setThreads] = useState<SidebarThreads | null>(null)
-  return (
-    <Publish.Provider value={setThreads}>
-      <Published.Provider value={threads}>{children}</Published.Provider>
-    </Publish.Provider>
-  )
-}
+export const SidebarThreadsProvider = published.Provider
 
 /**
  * The page's side: publish its threads on every render and withdraw them on
- * unmount. The page reads only the setter, so publishing never re-renders it.
+ * unmount. The page reads nothing back, so publishing never re-renders it.
  */
-export function usePublishSidebarThreads(threads: SidebarThreads | null): void {
-  const publish = useContext(Publish)
-  useEffect(() => {
-    publish(threads)
-  })
-  useEffect(() => () => publish(null), [publish])
-}
+export const usePublishSidebarThreads: (threads: SidebarThreads | null) => void = published.usePublish
 
 /** The sidebar's side: what the open page published, or null. */
-export function useSidebarThreads(): SidebarThreads | null {
-  return useContext(Published)
-}
+export const useSidebarThreads: () => SidebarThreads | null = published.useValue
 
 /**
  * The sidebar's order (decision 3): a feature's main chat first, then the rest

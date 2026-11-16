@@ -52,6 +52,8 @@ function findChrome(): string {
 const PORT = 4623
 const THROTTLE = !process.argv.includes('--no-throttle')
 const LOAD_ONLY = process.argv.includes('--load-only')
+/** Record the page's CPU while the agent streams and list the costliest functions. */
+const PROFILE = process.argv.includes('--profile')
 const CPU_SLOWDOWN = 4
 const LINK = { latency: 60, downloadThroughput: (10 * 1_000_000) / 8, uploadThroughput: (10 * 1_000_000) / 8 }
 const SENTENCE = 'the quick brown fox jumps over the lazy dog again'
@@ -115,6 +117,34 @@ async function throttle(context: BrowserContext, page: Page): Promise<void> {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_SLOWDOWN })
   await cdp.send('Network.enable')
   await cdp.send('Network.emulateNetworkConditions', { offline: false, ...LINK })
+}
+
+interface CpuProfile {
+  nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number } }[]
+  samples?: number[]
+  timeDeltas?: number[]
+}
+
+/** Self time per function across the recording, the 20 costliest. */
+function printProfile(profile: CpuProfile): void {
+  const byNode = new Map(profile.nodes.map((n) => [n.id, n]))
+  const self = new Map<string, number>()
+  let total = 0
+  const samples = profile.samples ?? []
+  const deltas = profile.timeDeltas ?? []
+  for (let i = 0; i < samples.length; i++) {
+    const node = byNode.get(samples[i] ?? -1)
+    if (!node) continue
+    const { functionName, url, lineNumber } = node.callFrame
+    const key = `${functionName || '(anonymous)'} ${url.split('/').pop() ?? ''}:${lineNumber + 1}`
+    const ms = (deltas[i] ?? 0) / 1000
+    self.set(key, (self.get(key) ?? 0) + ms)
+    total += ms
+  }
+  console.log(`\nwhile streaming, self time by function (of ${Math.round(total)} ms recorded):`)
+  for (const [key, ms] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 20)) {
+    console.log(`  ${Math.round(ms).toString().padStart(6)} ms  ${key}`)
+  }
 }
 
 async function main(): Promise<void> {
@@ -234,8 +264,14 @@ async function main(): Promise<void> {
       appendThreadEvent(target.id, { type: 'agent_text', messageId: 'speed_stream', text: 'words ' })
     }, CHUNK_EVERY_MS)
     await page.waitForTimeout(2000)
+    const profiler = PROFILE ? await context.newCDPSession(page) : null
+    if (profiler) {
+      await profiler.send('Profiler.enable')
+      await profiler.send('Profiler.start')
+    }
     await typeSentence('agent streaming')
     clearInterval(stream)
+    if (profiler) printProfile((await profiler.send('Profiler.stop')).profile)
     const shown = await page.evaluate(() => document.body.innerText.length)
     console.log(`chat text on the page: ${Math.round(shown / 1024)} KB`)
     await context.close()
