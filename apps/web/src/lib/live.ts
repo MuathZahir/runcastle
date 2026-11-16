@@ -406,18 +406,16 @@ export function refetchOnFocus(query: { queryKey: readonly unknown[] }): boolean
 export const JUST_READ_MS = 5000
 
 /**
- * The app's default `refetchOnMount`. A page load mounts its readers in waves:
+ * The app's default `staleTime`. A page load turns its readers on in waves:
  * the shell reads the lists, then the workspace mounts more readers of the same
- * lists once that data lands, and each of those refetched what had just
- * arrived, so a refresh fetched five lists twice (a-faster-web-app review). A
- * list the stream covers and that was read moments ago is not read again; the
- * stream, or the fallback poll while it is down, carries any change after it.
+ * lists once that data lands, or switches on readers that waited for an id,
+ * and each of those refetched what had just arrived, so a refresh fetched lists
+ * twice (a-faster-web-app review). A list the stream covers counts as fresh for
+ * a few seconds after it was read. That only spares those mount-time rereads:
+ * the stream's invalidations and the fallback poll ignore it.
  */
-export function refetchOnMount(
-  query: { queryKey: readonly unknown[]; state: { dataUpdatedAt: number } },
-  now: number = Date.now(),
-): boolean {
-  return !(liveCovers(query.queryKey) && now - query.state.dataUpdatedAt < JUST_READ_MS)
+export function staleTimeOf(query: { queryKey: readonly unknown[] }): number {
+  return liveCovers(query.queryKey) ? JUST_READ_MS : 0
 }
 
 /**

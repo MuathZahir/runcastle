@@ -3,7 +3,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { GlossaryProvider } from './components/GlossaryDialog'
-import { refetchOnFocus, refetchOnMount } from './lib/live'
+import { refetchOnFocus, staleTimeOf } from './lib/live'
 import { unhandledMutationError } from './lib/mutation-errors'
 import { registerPhoneWorker } from './lib/phone-push'
 import { applyStoredTheme } from './lib/theme'
@@ -62,8 +62,8 @@ function Root() {
             // are genuinely expensive (`setup.doctor`) opt out locally.
             refetchOnWindowFocus: refetchOnFocus,
             // A list read moments ago is not read again by a reader that
-            // mounts after it (`refetchOnMount` in lib/live.ts).
-            refetchOnMount,
+            // mounts or switches on after it (`staleTimeOf` in lib/live.ts).
+            staleTime: staleTimeOf,
             refetchOnReconnect: true,
           },
         },

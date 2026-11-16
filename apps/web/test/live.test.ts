@@ -7,7 +7,7 @@ import {
   livePollMs,
   JUST_READ_MS,
   refetchOnFocus,
-  refetchOnMount,
+  staleTimeOf,
   startLiveSync,
   type LiveSyncHandlers,
 } from '../src/lib/live'
@@ -175,15 +175,10 @@ describe('startLiveSync', () => {
     expect(refetchOnFocus(uncovered)).toBe(true)
   })
 
-  it('does not reread a covered list a new reader mounts on moments after it was read', () => {
-    const at = 1_000_000
-    const read = (key: unknown[], dataUpdatedAt: number) => ({ queryKey: key, state: { dataUpdatedAt } })
-    const covered = [['feature', 'list'], { type: 'query' }]
-    const uncovered = [['setup', 'doctor'], { type: 'query' }]
-    expect(refetchOnMount(read(covered, at - 500), at)).toBe(false)
-    expect(refetchOnMount(read(covered, at - JUST_READ_MS - 1), at)).toBe(true)
-    expect(refetchOnMount(read(covered, 0), at)).toBe(true)
-    expect(refetchOnMount(read(uncovered, at - 500), at)).toBe(true)
+  it('keeps a covered list fresh for a moment, so a reader switching on after it does not reread it', () => {
+    expect(staleTimeOf({ queryKey: [['feature', 'driveInfo'], { type: 'query' }] })).toBe(JUST_READ_MS)
+    expect(staleTimeOf({ queryKey: [['thread', 'list'], { type: 'query' }] })).toBe(JUST_READ_MS)
+    expect(staleTimeOf({ queryKey: [['setup', 'doctor'], { type: 'query' }] })).toBe(0)
   })
 
   it('keeps a quiet stream live — and its polls backed off — while pings arrive', () => {
