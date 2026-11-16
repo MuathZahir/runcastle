@@ -561,8 +561,8 @@ export function workerLaunch(sb: WorkerSandbox, brief: WorkerBrief, opts: Pick<W
  * container, reached over `docker exec -i` stdio, and a second exec carries the
  * tool relay. The session opens in the container's clone, with the worker's
  * own MCP server, in its runtime's automatic mode (decision 11); when the
- * session reports another mode, that mode is unavailable and the worker answers
- * its in-sandbox permission asks itself, leaving the human's MCP servers to ask.
+ * session reports another mode, that mode is unavailable. Whatever it still
+ * asks, the host allows (agents-never-stop-for-approval decision 6).
  */
 export async function workerProcess(sb: WorkerSandbox, brief: WorkerBrief, opts: WorkerProcessOptions): Promise<AgentProcess> {
   const launch = workerLaunch(sb, brief, opts)
