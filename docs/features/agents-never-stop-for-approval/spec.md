@@ -54,8 +54,9 @@ the thread host's permission handler (`onPermission`), which today opens an
    option that leaves plan mode into the session's no-approval mode, or else
    the first allowing option.
 2. Append a quiet record to the thread log (`permission_allowed`: the tool
-   call's title and, where the adapter sends it, the reason Claude Code gave)
-   so a later investigation can see what was answered. The chat shows the
+   call's id and title and the option picked) so a later investigation can see
+   what was answered. The adapter sends Claude Code's reason only to its own
+   AIR client, so the reason is not recorded. The chat shows the
    tool call as it shows any other; no new UI.
 3. Return at once. No ask is opened, nothing changes the agent's waiting
    state, nothing pings.
@@ -80,12 +81,12 @@ asks (`is_mcp_tool_approval`) are allowed like any other.
 
 Host-side Codex sessions (a Codex lead, orchestrator or host worker) are meant
 to run with approvals off: runcastle writes `approval_policy="never"` to their
-Codex config. But their launch names no session mode, so codex-acp likely
-opens them in its default `agent` mode (on-request approvals with auto review),
-and that mode is sent with every turn, over the config. The launch sets the
-session mode that matches the config (no approvals, full access), so these
-sessions stop asking at the source; the handler covers anything left. Verify
-the default-mode behaviour in the reproduction before relying on it.
+Codex config. But codex-acp opens every session, new or resumed, in its
+default `agent` mode (on-request approvals with auto review; read in its
+source), and that mode is sent with every turn, over the config. The launch
+sets `INITIAL_AGENT_MODE=agent-full-access` (no approvals, full access), the
+same switch sandbox workers use for auto review, so these sessions stop asking
+at the source; the handler covers anything left.
 
 Deny paths are untouched: the lead worktree guard and burn guard are hooks
 that deny before any permission request, and auto mode's checker blocks are
@@ -112,7 +113,10 @@ It refuses, for every shell command it can read:
 Plain `git push`, `gh pr create`, `gh run …` and `gh workflow run` stay
 allowed. It reuses the lead guard's light shell split (separators outside
 quotes, heredoc bodies dropped, bash and PowerShell alike), so it reads
-compound commands the same way. Like the lead guard, what it cannot read
+compound commands the same way, and reads through `sudo`/`env`-style wrappers
+and a script handed to `bash -c`, `pwsh -Command` or `cmd /c`. A `--dry-run`
+push is allowed. A `gh api` call with a `force=true` field (a forced ref update)
+counts as a force push. Like the lead guard, what it cannot read
 (a command built in a variable) is allowed: a guard must never wedge a
 session. The lead guard's existing remote rules (pushing the base branch,
 deleting the feature branch) stay as they are.
@@ -131,7 +135,9 @@ session's working folder, or is that folder or one above it: `rm` with
 (and its aliases `rm`, `del`, `ri`, `rd`), and `find … -delete`. The target is
 resolved against the cwd the shell split tracks through `cd`, with `~` and
 `$HOME` expanded. Targets under the system temp folder (`os.tmpdir()`, `/tmp`)
-run. A target it cannot resolve (another variable, a command substitution) is
+run, and so do targets under a feature's scenario data folder, which its
+sessions own; the temp or data folder itself is refused. `find . -delete`
+in the working folder runs, since it deletes what matches, not the folder. A target it cannot resolve (another variable, a command substitution) is
 allowed, as with every guard here. Sandbox workers are left out.
 
 ### The dialog leaves the app
@@ -154,7 +160,8 @@ in its transcript's last mode until then. The handler makes all of that, and
 an unavailable bypass mode, harmless, at the cost of one
 local round-trip per action. The launch also logs, once per session, when the
 adapter reports a mode other than the one asked for, so a root install shows
-up in the server log. Setting `IS_SANDBOX` to win bypass back as root is not
+up in the server log (a warning: "asked for mode … but the agent runs in …").
+Setting `IS_SANDBOX` to win bypass back as root is not
 done: it changes Claude Code's behaviour in other ways.
 
 ## Seams
