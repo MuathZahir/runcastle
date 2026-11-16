@@ -27,7 +27,8 @@ export interface PromptOptions {
   /**
    * `human`: sent now — into the running turn when one runs (steering).
    * `runcastle`: queued to the end of a running turn (a kickoff, a lead wake,
-   * an orchestrator line, a kickoff override), sent at once otherwise.
+   * an orchestrator line, a kickoff override), sent at once otherwise; with
+   * `steer`, sent now as a human one is.
    */
   source: 'human' | 'runcastle'
   /**
@@ -36,6 +37,13 @@ export interface PromptOptions {
    * chat's opening held for the human's first message, decision 12).
    */
   hold?: boolean
+  /**
+   * A `runcastle` prompt that is sent now like a human one: steered into the
+   * running turn when one runs, while keeping its source (an epic's message,
+   * epic-messages-reach-a-busy-agent-at-once decision 1). It still waits for a
+   * compaction and is still held over the usage limit.
+   */
+  steer?: boolean
   /** What the human reads of this prompt in place of its text (runcastle's own); logged beside it, never sent to the agent. */
   display?: PromptDisplay
   /** The model, effort and fast mode for this message, when they differ from the thread's. */

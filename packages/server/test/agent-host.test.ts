@@ -285,6 +285,38 @@ describe('a turn', () => {
     expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Start', 'Round ended'])
   })
 
+  it('steers a runcastle prompt sent with steer into the running turn, keeping its source (epic-messages-reach-a-busy-agent-at-once decision 1)', async () => {
+    setup({
+      turn: async (t) => {
+        const steer = await t.nextSteer()
+        await t.say(`Heard: ${steer[0].type === 'text' ? steer[0].text : ''}`)
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Start' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    await host.prompt(id, { text: 'From the epic' }, { source: 'runcastle', steer: true, display: { orchestrator: [{ text: 'From the epic' }] } })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(events.find((e) => e.type === 'prompt' && e.text === 'From the epic')).toMatchObject({ source: 'runcastle', steered: true })
+    expect(methods().filter((m) => m === 'session/prompt')).toHaveLength(1)
+    expect(foldThread(events).items.find((i) => i.kind === 'user' && i.text === 'From the epic')).toMatchObject({ from: 'runcastle', steered: true })
+    expect(foldThread(events).items.at(-1)).toMatchObject({ kind: 'agent', text: 'Heard: From the epic' })
+  })
+
+  it('queues a runcastle prompt sent with steer as the next turn when the agent does not steer', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    setup({ steering: false, turn: async (t) => void (t.prompt[0].type === 'text' && t.prompt[0].text === 'Start' ? await gate : undefined) })
+    const id = thread()
+    await host.prompt(id, { text: 'Start' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    await host.prompt(id, { text: 'From the epic' }, { source: 'runcastle', steer: true })
+    expect(methods()).not.toContain('_session/steering')
+    release()
+    await logUntil(id, turnsEnded(2))
+    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Start', 'From the epic'])
+  })
+
   it('a held prompt alone is logged and starts nothing', async () => {
     setup()
     const id = thread()

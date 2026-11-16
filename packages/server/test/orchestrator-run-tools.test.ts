@@ -120,6 +120,20 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
     }
   })
 
+  it('send_to_feature steers every message into the lead’s running turn (epic-messages-reach-a-busy-agent-at-once decision 2)', async () => {
+    const me = orchestrator()
+    const f = await feature('steered', { lockedTo: me.id })
+    const prompt = vi.spyOn(host, 'prompt')
+    await toolSendToFeature(ctx, me, { slug: f.slug, message: 'Drop the CSV export.' })
+    await toolSendToFeature(ctx, me, { slug: f.slug, humanWords: 'PDF only.' })
+    // The chat's own opening comes first when the tool opens the chat; only the epic's messages are pinned.
+    const epics = prompt.mock.calls.map((c) => c[2]).filter((o) => o.display && 'orchestrator' in o.display)
+    expect(epics).toEqual([
+      expect.objectContaining({ source: 'runcastle', steer: true }),
+      expect.objectContaining({ source: 'runcastle', steer: true }),
+    ])
+  })
+
   it('send_to_feature relays the human’s own words only through humanWords, marked as theirs (epics-on-autopilot decision 25)', async () => {
     const me = orchestrator()
     const f = await feature('relayed', { lockedTo: me.id })
