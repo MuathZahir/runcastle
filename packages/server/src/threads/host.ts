@@ -735,7 +735,9 @@ class Host implements AgentHost {
       logged: false,
     }
     const t = this.threads.get(threadId)
-    if (t?.turn && opts.source === 'runcastle' && !opts.steer) {
+    // A runcastle prompt sent with `steer` takes the steering path only when the
+    // runtime steers; otherwise it queues, unlogged, as runcastle's own do.
+    if (t?.turn && opts.source === 'runcastle' && !(opts.steer && t.steering)) {
       t.queue.push(item)
       return { promptId: item.id }
     }

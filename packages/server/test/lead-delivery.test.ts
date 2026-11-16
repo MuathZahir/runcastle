@@ -207,10 +207,13 @@ describe('deliverToLead', () => {
     // In the log at once, steered, still runcastle's: shown as the epic's message.
     expect(promptsOf(id).at(-1)).toMatchObject({ text: '[runcastle] Euros.', source: 'runcastle', steered: true, display: { orchestrator: [{ text: 'Euros.' }] } })
     await vi.waitFor(() => expect(heard).toBe('[runcastle] Euros.'))
-    release()
-    await logUntil(id, turnsEnded(1))
-    expect(sentToAgent()).toHaveLength(1)
+    // Runcastle's own notice in the same turn still waits for its end (decision 3).
+    await deliverToLead(ctx, f, { text: 'Worker handed back', source: 'runcastle' })
+    expect(promptsOf(id).map((p) => p.text)).not.toContain('[runcastle] Worker handed back')
     expect(waitOf(ctx, id)?.why).toBe('Which currency?')
+    release()
+    await logUntil(id, turnsEnded(2))
+    expect(sentToAgent()).toEqual(['[runcastle] first', '[runcastle] Worker handed back'].map((t) => expect.stringContaining(t)))
   })
 
   it('stamps the human’s mark for a human message, still said as runcastle’s prompt', async () => {
