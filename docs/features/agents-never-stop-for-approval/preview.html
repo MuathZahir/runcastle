@@ -176,13 +176,29 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="step good">Runcastle answers "allow, this once" at once <a class="pin" data-d="4">4</a>. The command runs; the chat shows it like any other.</div>
     </div>
   </div>
+  <p>One class never runs, asked or not: commands that destroy things on the remote <a class="pin" data-d="8">8</a>.</p>
+  <div class="flow">
+    <div class="lane">
+      <h3>Refused, with a reason</h3>
+      <div class="step bad mono">git push --force · -f · --force-with-lease · +ref</div>
+      <div class="step bad mono">git push --delete · :branch · --mirror · --prune</div>
+      <div class="step bad mono">gh pr merge · gh repo delete · gh release delete · gh … delete</div>
+      <div class="step bad mono">gh api -X DELETE</div>
+    </div>
+    <div class="lane">
+      <h3>Still runs</h3>
+      <div class="step good mono">git push (plain)</div>
+      <div class="step good mono">gh pr create · gh run view · gh workflow run</div>
+      <div class="step">The agent reads the refusal and carries on another way. No box, no wait.</div>
+    </div>
+  </div>
   <p>The same holds in every chat: orchestrator, leads, workers in and out of the sandbox, drive chats <a class="pin" data-d="1">1</a>; for your git push rule <a class="pin" data-d="2">2</a>; and for sandbox workers, which keep the auto modes you chose <a class="pin" data-d="6">6</a>.</p>
   <p>What still reaches you is unchanged: an agent asking you a question, an MCP server asking for input <a class="pin" data-d="5">5</a>. Nothing new pings you <a class="pin" data-d="3">3</a>.</p>
   <p>The Allow / Reject box itself leaves the chat and the phone view <a class="pin" data-d="7">7</a>. That is the one visible change, a removal, so there is no new screen to design.</p>
   <h3>Who builds what</h3>
   <ul class="who">
-    <li><b>Me, the lead.</b> The server answers every approval itself; the box comes out of the app; tests for each kind of ask. A small change in one place, so no workers.</li>
-    <li><b>A subagent of mine.</b> Reproduces the asks for real from this branch's server: a heredoc edit, a push under your rule, a flagged delete, a run as root, one Codex worker. It confirms none stops.</li>
+    <li><b>Me, the lead.</b> The server answers every approval itself; a new guard refuses remote-destroying commands in every chat on your machine, the orchestrator included; the box comes out of the app; tests for each kind of ask and command. A small change in one place, so no workers.</li>
+    <li><b>A subagent of mine.</b> Reproduces the asks for real from this branch's server: a heredoc edit, a push under your rule, a flagged delete, a force push to a scratch repo (refused), a run as root, one Codex worker. It confirms none stops.</li>
     <li><b>The review</b> at the end, as usual.</li>
   </ul>
 </section>
@@ -223,6 +239,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <p><b>Codex chats on the host.</b> Their config says no approvals, but their launch names no session mode, so Codex likely runs them in its asking mode. The launch sets the matching mode; the handler covers anything left.</p>
       <p><b>Replaced branches.</b> The human ask; the sandbox worker fallback that asked before MCP calls; the reject that planning-alone runs give.</p>
       <p><b>Removed.</b> The approval dock in the chat and phone views and their design states, the approval answer path, the "needs you" reason from an approval. Old thread logs still parse.</p>
+      <p><b>Remote guard.</b> A new check in the pre-tool hook chain beside the edit, lead and checkout guards. Hooks run before permissions and hold under no-approval mode, so a deny is certain. It reuses the lead guard's shell split, so compound commands and heredocs read the same. Wired for the orchestrator (which has no pre-tool hook today), leads, host workers and Codex host chats; sandbox workers cannot reach the remote.</p>
       <p><b>Untouched.</b> Question and MCP input asks, the worktree and burn guards, auto mode's checker blocks.</p>
       <p><b>Proof.</b> Host tests feed each request shape and assert the option picked and that no ask opened; a hand-started reproduction from the branch's server confirms it for real.</p>
     </div>
@@ -245,15 +262,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['No telling anyone about a stuck approval', 'You rejected it: that moves the click instead of removing it.'],
     ['Every command an agent still asks about runs', 'Every ask in the logs was ordinary work; runcastle answers allow at once, including Claude Code\'s own last safety checks.', 'assumed'],
     ['An agent\'s own questions still reach you', 'Those are the agent asking, not a command waiting on a click.', 'assumed'],
-    ['Sandbox workers keep their auto modes; only their approval asks go', 'You chose the providers\' auto modes for workers; a block is not a stall, so only what would reach you as an approval is answered.', 'assumed'],
-    ['The Allow / Reject box leaves the app', 'Nothing can raise one any more; a test guards that none is ever stored.', 'assumed']
+    ['Sandbox workers keep their auto modes; only their approval asks go', 'You chose the providers\' auto modes for workers; a block is not a stall, so only what would reach you as an approval is answered.'],
+    ['The Allow / Reject box leaves the app', 'Nothing can raise one any more; a test guards that none is ever stored.', 'assumed'],
+    ['Commands that destroy things on the remote are refused', 'Your words: no destructive commands that could affect the remote. Force pushes, remote deletes, PR merges and the like are refused with a reason, never asked.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [4, 'Refuse Claude Code\'s own safety checks with a reason so the agent finds another way; allow only the rest', 'Allowing them means a delete Claude Code would have stopped on now runs. Safer the other way, but an agent may loop on a command it needs.', 'risk to data'],
-    [6, 'Start sandbox workers in the same no-approval mode as leads, and Codex with approvals off', 'It changes what you decided in interactive-workers if picked; the plan keeps your choice.', 'your earlier decision']
+    [4, 'Also refuse local deletes that Claude Code flags as risky (for example a recursive delete outside the chat\'s own folder)', 'You named remote damage; a local delete outside the worktree is the one other risk this adds.', 'risk to data']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {

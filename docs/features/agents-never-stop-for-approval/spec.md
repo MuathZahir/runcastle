@@ -91,6 +91,38 @@ Deny paths are untouched: the lead worktree guard and burn guard are hooks
 that deny before any permission request, and auto mode's checker blocks are
 denies the worker explains in its chat.
 
+### Remote-destroying commands are refused (decision 8)
+
+Answering every ask removes the one check many remote commands had: the
+human's `git push` ask rule. And under bypass mode most remote commands never
+ask at all. So a new **remote guard** joins the pre-tool hook chain the edit,
+install, lead and checkout guards already form. Hooks run before any
+permission check and hold under bypass mode, so a deny there is certain and
+never a stall: the agent reads the reason and carries on.
+
+It refuses, for every shell command it can read:
+
+- `git push` with `--force`, `-f`, `--force-with-lease`, `--force-if-includes`
+  or a `+` refspec; with `--delete`/`-d` or a `:ref` refspec; with `--mirror`
+  or `--prune`;
+- `gh repo delete|archive|rename`, `gh release delete`, `gh pr merge`, and the
+  other `gh … delete` subcommands (secrets, variables, labels, caches, runs);
+- `gh api` with `-X`/`--method` `DELETE`.
+
+Plain `git push`, `gh pr create`, `gh run …` and `gh workflow run` stay
+allowed. It reuses the lead guard's light shell split (separators outside
+quotes, heredoc bodies dropped, bash and PowerShell alike), so it reads
+compound commands the same way. Like the lead guard, what it cannot read
+(a command built in a variable) is allowed: a guard must never wedge a
+session. The lead guard's existing remote rules (pushing the base branch,
+deleting the feature branch) stay as they are.
+
+It applies to every host session that can reach the real remote: the
+orchestrator (which has no pre-tool hook today and gains one, carrying only
+this guard), feature leads, host-side drive and review workers, and Codex host
+sessions, whose hooks route to the same handler. Sandbox workers push only
+into their own local copy and have no GitHub login, so they are left out.
+
 ### The dialog leaves the app
 
 With no producer, the `approval` ask kind goes from the live path:
@@ -122,12 +154,17 @@ done: it changes Claude Code's behaviour in other ways.
   a plan-exit request, a Codex MCP approval, a worker in fallback mode, a
   self-plan session) and observe the response option and that no ask was
   opened. The one seam that proves the feature.
+- **Existing: the pre-tool hook route**, as the lead and checkout guard
+  tests drive it. Feed each refused command shape (alone, inside a compound
+  `cd … && …` chain, with a heredoc) for each session kind, and the allowed
+  ones next to them; observe deny or allow.
 - **Existing: the thread log.** After any session, no `ask` entry of kind
   `approval` exists; a `permission_allowed` record does.
 - **New, by hand: a real reproduction.** Start a lead from the branch's own
   server (drive machinery runs the installed version, so hand-start it) and
   have it run a heredoc Python edit, a `git push` with the human's ask rule in
-  place, and a delete Claude Code flags; then start one as root without
+  place, a delete Claude Code flags, and a `git push --force` to a throwaway
+  branch of a scratch repo (refused, the agent carries on); then start one as root without
   `IS_SANDBOX`. None stops; each shows a `permission_allowed` record. Same for
   one Codex worker.
 
@@ -138,6 +175,8 @@ done: it changes Claude Code's behaviour in other ways.
 - Guards that deny, and auto mode's checker blocks: unchanged.
 - The human's own Claude Code outside runcastle and their settings files.
 - Any new notification, escalation or approval log screen (decision 3).
+- Local destructive commands outside the remote guard's list: they run within
+  the existing guards (decision 4).
 
 ## Open questions
 
