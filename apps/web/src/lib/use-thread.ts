@@ -4,7 +4,7 @@ import { trpc } from '../trpc'
 import { EMPTY_THREAD_VIEW, foldThread, keepItemIdentity } from './chat-thread'
 import type { Ask, AskAnswer, Attachment, Effort, ModelChoice, ThreadEvent, ThreadItem, ThreadView } from './chat-thread'
 import { flushDraft, readDraft, writeDraft } from './drafts'
-import { useLivePoll } from './live'
+import { refetchOnFocus, useLivePoll } from './live'
 import { attachmentsAt, loadAttachments, moveAttachments, pendingAttachment, subscribeAttachments, updateAttachments } from './pending-attachments'
 import { useToast } from './toast'
 
@@ -138,7 +138,9 @@ export function useThread({
       // A read after a cursor never changes by itself: only a live signal (or
       // the stream being down) says there is more after it.
       staleTime: Infinity,
-      refetchOnWindowFocus: 'always',
+      // Coming back to the tab skips the read while the stream is live (it
+      // pushes every new event); with the stream down it is the safety net.
+      refetchOnWindowFocus: (query) => (refetchOnFocus(query) ? 'always' : false),
       refetchOnReconnect: 'always',
       refetchInterval: poll,
     },
