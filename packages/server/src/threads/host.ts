@@ -1916,7 +1916,7 @@ class Host implements AgentHost {
     const picked = permissionAnswer(req)
     if (!picked) return { outcome: { outcome: 'cancelled' } }
     appendThreadEvent(t.id, {
-      type: 'permission_allowed',
+      type: picked.kind.startsWith('allow') ? 'permission_allowed' : 'permission_refused',
       ...(req.toolCall.toolCallId ? { callId: req.toolCall.toolCallId } : {}),
       title: toolCallOf(req.toolCall).title,
       option: picked.optionId,

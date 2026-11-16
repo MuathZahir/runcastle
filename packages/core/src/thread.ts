@@ -423,6 +423,18 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     option: z.string(),
   }),
   /**
+   * A permission request that offered no allowing option at all, which the
+   * host refused at once rather than wait on anyone. Never shown, like
+   * `permission_allowed`.
+   */
+  z.object({
+    type: z.literal('permission_refused'),
+    callId: z.string().optional(),
+    title: z.string(),
+    /** The reject option the host picked. */
+    option: z.string(),
+  }),
+  /**
    * An ask answered — by the human, by the host on an unattended thread, or
    * withdrawn by the agent. `lines` is what the thread keeps of it, one per
    * question or form field filled (or one for an approval, a link, a decline):
@@ -1612,6 +1624,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         items.push({ kind: 'error', id: `error:${e.i}`, message: e.message })
         break
       case 'permission_allowed':
+      case 'permission_refused':
       case 'rewound':
       case 'briefed':
       case 'branched':

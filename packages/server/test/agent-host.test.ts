@@ -816,7 +816,10 @@ describe('asks', () => {
 
   it('refuses a request that offers nothing to allow, so it never waits', async () => {
     const rejectOnly: acp.PermissionOption[] = [{ optionId: 'reject', name: 'No', kind: 'reject_once' }]
-    expect((await permission(ZOD, { options: rejectOnly })).outcome).toEqual({ outcome: 'selected', optionId: 'reject' })
+    const { outcome, events } = await permission(ZOD, { options: rejectOnly })
+    expect(outcome).toEqual({ outcome: 'selected', optionId: 'reject' })
+    expect(events.find((e) => e.type === 'permission_refused')).toMatchObject({ callId: 'b1', option: 'reject' })
+    expect(events.some((e) => e.type === 'permission_allowed')).toBe(false)
   })
 
   it('cancels a request with no options at all', async () => {
