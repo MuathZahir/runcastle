@@ -1096,10 +1096,33 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   const isWords = (s: Segment): s is Extract<Segment, { kind: 'text' }> => s.kind === 'text' && !!s.text.trim()
 
   /**
+   * The open part of the turn changed since it was last laid out live. Each
+   * layout replaces the last one whole, so a live layout waits until something
+   * reads the items ({@link sync}) or the part settles: a streamed log folds in
+   * time linear in its events, not in events times the turn's length.
+   */
+  let dirty = false
+  /** Lay the open part out live now, if it changed since it was. Before anything reads or adds to `items` directly. */
+  const sync = () => {
+    if (!dirty) return
+    dirty = false
+    layout(true)
+  }
+  /** Lay the open part out: live ones when next read, a settled one at once. */
+  const render = (live: boolean, endedAt?: number) => {
+    if (live) {
+      dirty = !!turn
+      return
+    }
+    dirty = false
+    layout(false, endedAt)
+  }
+
+  /**
    * Lay the open part of the turn out again, in order, in place of what it laid
    * out last time: its words, its runs of work, and the items shown between.
    */
-  const render = (live: boolean, endedAt?: number) => {
+  const layout = (live: boolean, endedAt?: number) => {
     if (!turn) return
     const t: Turn = turn
     if (t.regionStart < 0) t.regionStart = items.length
@@ -1325,6 +1348,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           startingPrompt = item
         }
         if (turn) splitTurn(e)
+        sync()
         items.push(item)
         view.suggestion = undefined
         break
@@ -1342,6 +1366,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
           listed = []
           endUnlisted(before, 'failed')
           if (turn) closeTurn(e, e.error ? 'error' : e.restarted ? 'restarted' : 'cancelled', undefined, e.error)
+          sync()
           if (e.error && !items.some((x) => x.id === `error:${e.i}`)) items.push({ kind: 'error', id: `error:${e.i}`, message: e.error })
           ask = undefined
           view.tasks = []
@@ -1489,6 +1514,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         // compares against the model before the first of them.
         const open = turn as Turn | null
         const lastSeg = open?.segments.at(-1)
+        sync()
         const stacked = open ? lastSeg?.kind === 'item' && lastSeg.item.kind === 'model' : items.at(-1)?.kind === 'model'
         if (stacked) {
           if (open) open.segments.pop()
@@ -1566,6 +1592,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         // Every start of one turn is one card, words between them or not; a worker started twice is one row.
         const row: WorkerStartedRow = { workerId: e.workerId, label: e.label, purpose: e.purpose, kind: e.kind }
         const open = turn as Turn | null
+        sync()
         const last = items.at(-1)
         const card = open ? open.workers : last?.kind === 'workers_card' ? last : undefined
         if (card) {
@@ -1582,6 +1609,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
         view.suggestion = e.text ?? undefined
         break
       case 'error':
+        sync()
         items.push({ kind: 'error', id: `error:${e.i}`, message: e.message })
         break
       case 'rewound':
@@ -1599,6 +1627,7 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
     closeTurn(events[events.length - 1], 'end_turn')
     ask = open
   }
+  sync()
   markRunning(items, listed, (work) => workStart.get(work))
   markOlderCards(items)
   view.ask = ask
