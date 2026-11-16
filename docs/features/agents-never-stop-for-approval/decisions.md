@@ -3,7 +3,7 @@
 What the human decided, or must decide, about this feature. Planned with nobody
 present on 2026-11-16: decisions marked **Assumed.** are the lead's picks.
 
-Check first: 4, 6
+Check first: 4
 
 ## 1. Never, everywhere
 **Decision:** No runcastle agent ever shows the command approval dialog (the box in a chat with a command and Allow / Reject buttons): not the orchestrator, not a feature lead, not a worker, not the drive chats, with autopilot on or off.
@@ -29,10 +29,13 @@ Check first: 4, 6
 
 ## 6. Workers in the sandbox stop asking too
 **Decision:** Workers in the sandbox keep the modes the human chose for them (`interactive-workers` decision 11): Claude Code's "auto" mode, where a checker model blocks risky commands, and Codex's auto review. A block stays a block: the worker says in its chat what it wanted, as today. What changes is that nothing they raise reaches the human as an approval: anything still asked (the human's ask rules, Claude Code's safety checks, and the MCP-call asks of the fallback used when auto mode is not on the human's plan) is allowed as in 4.
-**Why:** The human asked for the providers' own auto modes, and a block is not a stall. Only the approval asks have to go.
-**Assumed.** Alternative: start sandbox workers in the same no-approval mode as leads and Codex with approvals off. Simpler and fewer asks to answer, but it drops the checker the human chose.
+**Why:** The human asked for the providers' own auto modes, and a block is not a stall. Only the approval asks have to go. The human said "Sounds good" to this when asked to check it.
 
 ## 7. The Allow / Reject dialog leaves the app
 **Decision:** Once nothing can raise a command approval, the dialog that shows one is removed from the app.
 **Why:** It would be dead code that hides a bug if it ever showed again; a test asserts no approval ask is ever stored instead.
 **Assumed.** Alternative: keep the dialog as a fallback that never shows.
+
+## 8. Commands that destroy things on the remote are refused
+**Decision:** Supersedes 4 for remote commands. No runcastle agent may run a command that destroys or rewrites something on the remote: a force push, deleting a remote branch or tag, a mirror or prune push, deleting a repo or release, merging a pull request, or a raw `DELETE` call to GitHub. The command is refused with a reason, never asked about, so the agent carries on another way. Plain pushes, opening pull requests and starting CI runs stay allowed. It covers every chat that can reach the real remote: the orchestrator, leads and workers on the host, Claude Code and Codex alike.
+**Why:** The human: "We don't want to introduce risk to this. We don't want destructive commands that could affect the remote." Until now their `git push` ask rule was the only check on many of these; with it ignored (2), a refusal takes its place. A refusal is not a stall, so 1 still holds. Sandbox workers push only into a local copy and never reach the remote.
