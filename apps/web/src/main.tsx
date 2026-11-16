@@ -3,6 +3,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { GlossaryProvider } from './components/GlossaryDialog'
+import { refetchOnFocus } from './lib/live'
 import { unhandledMutationError } from './lib/mutation-errors'
 import { registerPhoneWorker } from './lib/phone-push'
 import { applyStoredTheme } from './lib/theme'
@@ -43,9 +44,10 @@ function Root() {
             // rescheduled on return — so with no focus refetch the UI could sit
             // stale for a minute until someone reloaded the page. The SSE feed
             // (lib/live.ts) is the primary path now; this is its safety net for
-            // when the stream is down. Queries that are genuinely expensive
-            // (`setup.doctor`) opt out locally.
-            refetchOnWindowFocus: true,
+            // when the stream is down, so a query the live stream keeps current
+            // skips it while the stream is up (`refetchOnFocus`). Queries that
+            // are genuinely expensive (`setup.doctor`) opt out locally.
+            refetchOnWindowFocus: refetchOnFocus,
             refetchOnReconnect: true,
           },
         },

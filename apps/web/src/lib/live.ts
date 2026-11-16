@@ -17,8 +17,9 @@ import { REVIEW_ARTIFACTS_KEY } from './reviews'
  *
  * Signals say only *what* changed; the data always comes back through the
  * normal queries, so there is one source of truth. Polling stays configured as
- * the fallback for a stream that is down, and `refetchOnWindowFocus` covers the
- * gap on return.
+ * the fallback for a stream that is down, and so does `refetchOnWindowFocus`:
+ * while the stream is live, the queries it covers ({@link liveCovers}) skip it
+ * (a-faster-web-app decision 8), since a reconnect resyncs them anyway.
  *
  * A stream that dies silently is worse than no stream at all: while the client
  * believes it is `live` every poll is backed off to 30s, so one unnoticed death
@@ -204,6 +205,8 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
   let releaseSource: (() => void) | null = null
   let lastFrameAt = Date.now()
   let disposed = false
+  /** Has any stream proved itself yet? Only a later `ready` is a reconnect. */
+  let connectedBefore = false
   const gone = (): boolean => disposed
   const resyncAll = oneAtATime(handlers.resyncAll, gone)
   const resyncThreadLists = oneAtATime(handlers.resyncThreadLists, gone)
@@ -239,6 +242,14 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
     const onReady = (): void => {
       lastFrameAt = Date.now()
       setLiveStatus('live')
+      // The first connect has nothing to catch up on: every query on screen was
+      // just fetched by the page load itself, and resyncing here fetched each
+      // list twice on every refresh (a-faster-web-app). Until this frame the
+      // status read `connecting`, so the queries polled at the fast fallback.
+      if (!connectedBefore) {
+        connectedBefore = true
+        return
+      }
       // Reconnect resync: while the stream was down (server restart, laptop
       // asleep, network blip) signals were missed by definition. Refetch
       // everything once so the UI is correct without a page reload.
@@ -326,6 +337,69 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
     // closed stream must never leave it reading `live`.
     setLiveStatus('connecting')
   }
+}
+
+/**
+ * The tRPC routes the stream keeps current: everything `invalidateDbBacked` in
+ * {@link useLiveSync} invalidates, plus the thread reads the `thread` signal
+ * moves. Keep it in step with that list. A dotted entry is one procedure; a bare
+ * one is a whole router.
+ */
+export const LIVE_COVERED_PATHS: readonly string[] = [
+  'events',
+  'feature.list',
+  'feature.get',
+  'feature.driveInfo',
+  'feature.readyDeclarations',
+  'feature.sessions',
+  'feature.driveScenarios',
+  'feature.commitCount',
+  'feature.mergeDelta',
+  'thread.list',
+  'thread.events',
+  'worker.list',
+  'worker.listLive',
+  'worker.listProject',
+  'notes',
+  'projectNotes',
+  'findings',
+  'project.prep',
+  'project.list',
+  'project.sessionBranch',
+  'project.projectSession',
+  'project.conversations',
+  'docs',
+  'settings.get',
+  'setup.imageBuildTarget',
+  'design.status',
+  'design.list',
+  'design.planFigures',
+]
+
+const LIVE_COVERED = new Set(LIVE_COVERED_PATHS)
+
+/**
+ * Does the stream keep this query current? Reads a tRPC query key (its first
+ * element is the procedure path as an array) or the review artifact listing's
+ * own key.
+ */
+export function liveCovers(queryKey: readonly unknown[]): boolean {
+  const head = queryKey[0]
+  if (head === REVIEW_ARTIFACTS_KEY) return true
+  if (!Array.isArray(head) || head.length === 0) return false
+  const path = head.map(String)
+  return LIVE_COVERED.has(path[0] ?? '') || LIVE_COVERED.has(path.slice(0, 2).join('.'))
+}
+
+/**
+ * The app's default `refetchOnWindowFocus` (a-faster-web-app decision 8). Coming
+ * back to the tab used to refetch every list on screen, dozens of round trips
+ * over a tunnel, for data the stream already pushed. A query the stream covers
+ * now skips it while the stream is live; when the stream is down the old safety
+ * net is back, and a query the stream does not cover keeps it always.
+ */
+export function refetchOnFocus(query: { queryKey: readonly unknown[] }): boolean {
+  return getLiveStatus() !== 'live' || !liveCovers(query.queryKey)
 }
 
 /**
