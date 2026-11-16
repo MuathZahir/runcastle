@@ -4,7 +4,7 @@
  * slowed 4x) reaching runcastle over an SSH tunnel (10 Mbit/s, 60 ms round trips).
  *
  *   bun run --filter @runcastle/web build
- *   CHROME_PATH=/path/to/chrome bun scripts/speed.ts [--no-throttle]
+ *   CHROME_PATH=/path/to/chrome bun scripts/speed.ts [--no-throttle] [--load-only] [--detail]
  *
  * Like thread-timing.ts it works on a copy, never on the real data: the database
  * and every thread log are copied to a scratch data dir and served by `buildApp`
@@ -51,6 +51,7 @@ function findChrome(): string {
 
 const PORT = 4623
 const THROTTLE = !process.argv.includes('--no-throttle')
+const LOAD_ONLY = process.argv.includes('--load-only')
 const CPU_SLOWDOWN = 4
 const LINK = { latency: 60, downloadThroughput: (10 * 1_000_000) / 8, uploadThroughput: (10 * 1_000_000) / 8 }
 const SENTENCE = 'the quick brown fox jumps over the lazy dog again'
@@ -160,6 +161,18 @@ async function main(): Promise<void> {
       return { ms, kb: entries.reduce((s, e) => s + e.transfer, 0) / 1024, requests: entries.length }
     }
     const cold = await load(() => page.goto(projectUrl, { waitUntil: 'commit' }))
+    if (process.argv.includes('--detail')) {
+      const rows = await page.evaluate(() =>
+        (performance.getEntriesByType('resource') as unknown as { name: string; startTime: number; responseEnd: number; transferSize: number }[]).map((e) => ({
+          at: Math.round(e.startTime),
+          end: Math.round(e.responseEnd),
+          kb: Math.round(e.transferSize / 1024),
+          name: decodeURIComponent(e.name.replace(/^https?:\/\/[^/]+/, '')).slice(0, 400),
+        })),
+      )
+      console.log('first visit, every request (start → end ms, KB):')
+      for (const r of rows) console.log(`  ${String(r.at).padStart(5)} → ${String(r.end).padStart(5)}  ${String(r.kb).padStart(4)} KB  ${r.name}`)
+    }
     results.push(['first visit: project page shown', cold.ms, 'ms', 3000])
     results.push(['first visit: KB over the wire', cold.kb, 'KB', Number.POSITIVE_INFINITY])
     results.push(['first visit: requests', cold.requests, '', Number.POSITIVE_INFINITY])
@@ -174,7 +187,7 @@ async function main(): Promise<void> {
   }
 
   // ── Typing in the longest chat ──
-  {
+  if (!LOAD_ONLY) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     await context.addInitScript((key) => localStorage.setItem(key, 'true'), SETUP_KEY)
     const page = await context.newPage()
