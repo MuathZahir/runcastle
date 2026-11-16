@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import type { FormField, FormValues, Question, ToolCall } from '../../../lib/chat-thread'
-import { IconArrowLeft, IconArrowRight, IconCheck, IconCube, IconExternalLink, IconShield, IconSparkle } from '../../../icons'
+import type { FormField, FormValues, Question } from '../../../lib/chat-thread'
+import { IconArrowLeft, IconArrowRight, IconCheck, IconCube, IconExternalLink, IconSparkle } from '../../../icons'
 import { BARE_BUTTON, Button, Checkbox, Field, Kbd, LINK, TextField, cx } from '../../../ui'
 import { useIsPhone } from '../../../lib/use-phone'
-import { DiffView } from './Work'
 import { RAISED } from './surfaces'
 
 /**
@@ -316,87 +315,6 @@ export function QuestionDock({
             </Button>
           )
         )}
-      </DockFooter>
-    </div>
-  )
-}
-
-/**
- * "May I run this?" — the call itself (the command, or the file's diff for an
- * edit), then Claude Code's three answers: yes; yes and don't ask again; no,
- * and here's what to do instead.
- */
-export function ApprovalDock({
-  call,
-  onAnswer,
-}: {
-  call: ToolCall
-  onAnswer: (answer: 'allow' | 'always' | 'deny', instead?: string) => void
-}) {
-  const [instead, setInstead] = useState('')
-  const box = useRef<HTMLDivElement>(null)
-  const phone = useIsPhone()
-  useEffect(() => box.current?.focus(), [])
-  const verb =
-    call.kind === 'execute' ? 'Run this command?' : call.kind === 'edit' ? `Make this edit to ${call.diff?.path ?? 'the file'}?` : call.kind === 'fetch' ? 'Fetch this page?' : 'Use this tool?'
-  const first = call.title.split(/\s+/).slice(0, 2).join(' ')
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === '1') onAnswer('allow')
-    if (e.key === '2') onAnswer('always')
-    if (e.key === 'Escape') onAnswer('deny')
-  }
-  return (
-    <div ref={box} tabIndex={-1} onKeyDown={onKeyDown} role="group" aria-label="The agent asks to" className={cx(DOCK, 'outline-none', phone && PHONE_DOCK)}>
-      <div className={cx('flex flex-col', DOCK_BODY)}>
-        <div className="flex flex-col gap-2 px-4 pt-3">
-          <span className="flex items-center gap-2 text-sm font-medium text-text">
-            <IconShield size={15} className="shrink-0 text-warning" />
-            {verb}
-          </span>
-          {call.diff ? (
-            <DiffView lines={call.diff.lines} />
-          ) : (
-            <pre className="m-0 overflow-x-auto rounded-md bg-surface-inset px-3 py-2 font-mono text-xs leading-[20px] whitespace-pre-wrap text-text ring-1 ring-inset ring-border-subtle">
-              {call.kind === 'execute' && <span className="text-text-tertiary select-none">$ </span>}
-              {call.title}
-            </pre>
-          )}
-        </div>
-        <div className="flex flex-col gap-0.5 px-2 pt-2 pb-2">
-          <Choice n={1} on={false} label="Yes" onPick={() => onAnswer('allow')} />
-          <Choice
-            n={2}
-            on={false}
-            label={
-              call.kind === 'edit' ? (
-                'Yes, and allow edits for the rest of this chat'
-              ) : (
-                <>
-                  Yes, and don’t ask again for <span className="font-mono text-xs">{first}</span> in this project
-                </>
-              )
-            }
-            onPick={() => onAnswer('always')}
-          />
-          <OtherChoice
-            n={3}
-            value={instead}
-            onChange={setInstead}
-            placeholder="No, and tell the agent what to do instead"
-            onEnter={() => onAnswer('deny', instead)}
-          />
-        </div>
-      </div>
-      <DockFooter
-        keys={
-          <>
-            <Kbd>1</Kbd> <Kbd>2</Kbd> to answer · <Kbd>Esc</Kbd> to deny
-          </>
-        }
-      >
-        <Button variant="ghost" size="sm" onClick={() => onAnswer('deny', instead || undefined)}>
-          Deny
-        </Button>
       </DockFooter>
     </div>
   )

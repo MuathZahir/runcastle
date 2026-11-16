@@ -269,18 +269,6 @@ const ASKING: ThreadItem[] = [
   },
 ]
 
-export const APPROVAL: Ask = {
-  kind: 'approval',
-  id: 'p1',
-  call: call({ id: 'c8', kind: 'execute', title: 'bun add mdast-util-from-markdown@2.0.2', status: 'pending' }),
-}
-
-export const EDIT_APPROVAL: Ask = {
-  kind: 'approval',
-  id: 'p2',
-  call: call({ id: 'c9', kind: 'edit', title: 'src/server/export.test.ts', status: 'pending', diff: TEST_DIFF }),
-}
-
 const PAGE_SIZE: Question = {
   header: 'Page size',
   question: 'Which page size should the PDF use?',
@@ -438,8 +426,6 @@ const TERMINAL_ERA: ThreadItem[] = [
 export type Moment =
   | 'working'
   | 'subagent'
-  | 'approval'
-  | 'edit-approval'
   | 'question'
   | 'one-question'
   | 'mcp-form'
@@ -477,8 +463,6 @@ const CTX: ContextUsage = { used: 61_400, size: 1_000_000, costUsd: 1.84 }
 export const MOMENTS: MomentSample[] = [
   { key: 'working', label: 'Working', items: WORKING, state: 'working', plan: PLAN, tasks: TASKS, context: CTX, thread: 'main' },
   { key: 'subagent', label: 'Subagent running', items: SUBAGENT, state: 'working', context: CTX, thread: 'main' },
-  { key: 'approval', label: 'Approval', items: ASKING, state: 'waiting', ask: APPROVAL, context: CTX, thread: 'main' },
-  { key: 'edit-approval', label: 'Edit approval', items: ASKING, state: 'waiting', ask: EDIT_APPROVAL, context: CTX, thread: 'main' },
   { key: 'question', label: 'Questions', items: HISTORY.slice(0, 3), state: 'waiting', ask: QUESTIONS, context: CTX, thread: 'main' },
   { key: 'one-question', label: 'One question', items: HISTORY.slice(0, 3), state: 'waiting', ask: ONE_QUESTION, context: CTX, thread: 'main' },
   { key: 'mcp-form', label: 'MCP form', items: HISTORY.slice(0, 3), state: 'waiting', ask: MCP_FORM, context: CTX, thread: 'main' },

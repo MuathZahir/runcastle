@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ThreadEvent } from '@runcastle/core'
 import { Composer } from '../src/components/chat/thread/Composer'
-import { ApprovalDock, QuestionDock } from '../src/components/chat/thread/AskDock'
+import { QuestionDock } from '../src/components/chat/thread/AskDock'
 import { fakeTrpc } from './fake-trpc'
 import { atWidth } from './phone-width'
 
@@ -65,9 +65,7 @@ describe('the ask docks on a phone', () => {
     atWidth(true)
     const onAnswer = vi.fn()
     render(<QuestionDock questions={[{ question: 'Which?', header: 'Pick', multiSelect: false, options: [{ label: 'A' }, { label: 'B' }] }]} onAnswer={onAnswer} />)
-    render(<ApprovalDock call={{ id: 'c1', kind: 'execute', title: 'bun test', status: 'pending' }} onAnswer={() => {}} />)
     expect(document.querySelector('kbd')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: 'B' }))
     expect(onAnswer).toHaveBeenCalledWith({ 'Which?': 'B' })
   })

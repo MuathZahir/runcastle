@@ -446,7 +446,7 @@ describe('ThreadColumn', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Model' }).textContent).toBe('Haiku 4.5'))
   })
 
-  it('docks an approval in the composer’s place, and answering it calls thread.answer', async () => {
+  it('does not dock an old log’s open approval: the composer stays', async () => {
     const api = server([
       ...HISTORY,
       prompt(4, 'p2', 'Add the PDF library'),
@@ -455,12 +455,8 @@ describe('ThreadColumn', () => {
       { i: 7, at, type: 'ask', ask: { kind: 'approval', id: 'ask1', call: { id: 'c1', kind: 'execute', title: 'bun add pdfkit', status: 'pending' } } },
     ])
     render(<ThreadColumn threadId="th1" />, { wrapper: api.Wrapper })
-    await screen.findByText('Run this command?')
-    expect(screen.queryByLabelText('Message')).toBeNull()
-    fireEvent.keyDown(screen.getByRole('group', { name: 'The agent asks to' }), { key: '1' })
-    await waitFor(() =>
-      expect(api.inputs('thread.answer')).toEqual([{ threadId: 'th1', askId: 'ask1', answer: { kind: 'approval', choice: 'allow' } }]),
-    )
+    await screen.findByLabelText('Message')
+    expect(screen.queryByRole('group', { name: 'The agent asks to' })).toBeNull()
   })
 
   it('shows a subagent’s row and a background command on the strip, with no Stop since no runtime lets runcastle stop one', async () => {
