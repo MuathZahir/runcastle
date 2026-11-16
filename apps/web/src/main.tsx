@@ -3,7 +3,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { GlossaryProvider } from './components/GlossaryDialog'
-import { refetchOnFocus } from './lib/live'
+import { refetchOnFocus, refetchOnMount } from './lib/live'
 import { unhandledMutationError } from './lib/mutation-errors'
 import { registerPhoneWorker } from './lib/phone-push'
 import { applyStoredTheme } from './lib/theme'
@@ -61,6 +61,9 @@ function Root() {
             // skips it while the stream is up (`refetchOnFocus`). Queries that
             // are genuinely expensive (`setup.doctor`) opt out locally.
             refetchOnWindowFocus: refetchOnFocus,
+            // A list read moments ago is not read again by a reader that
+            // mounts after it (`refetchOnMount` in lib/live.ts).
+            refetchOnMount,
             refetchOnReconnect: true,
           },
         },

@@ -402,6 +402,24 @@ export function refetchOnFocus(query: { queryKey: readonly unknown[] }): boolean
   return getLiveStatus() !== 'live' || !liveCovers(query.queryKey)
 }
 
+/** How long a stream-covered list counts as just read, for a reader that mounts after it. */
+export const JUST_READ_MS = 5000
+
+/**
+ * The app's default `refetchOnMount`. A page load mounts its readers in waves:
+ * the shell reads the lists, then the workspace mounts more readers of the same
+ * lists once that data lands, and each of those refetched what had just
+ * arrived, so a refresh fetched five lists twice (a-faster-web-app review). A
+ * list the stream covers and that was read moments ago is not read again; the
+ * stream, or the fallback poll while it is down, carries any change after it.
+ */
+export function refetchOnMount(
+  query: { queryKey: readonly unknown[]; state: { dataUpdatedAt: number } },
+  now: number = Date.now(),
+): boolean {
+  return !(liveCovers(query.queryKey) && now - query.state.dataUpdatedAt < JUST_READ_MS)
+}
+
 /**
  * Mount once, at the app root. Returns the stream's connection state so the
  * shell can show that updates are flowing (or that it fell back to polling).
