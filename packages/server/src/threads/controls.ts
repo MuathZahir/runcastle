@@ -162,26 +162,44 @@ function modelValue(option: SelectOption, id: string): string | undefined {
 }
 
 /**
+ * Whether a session's options can switch it to the model `id` names: false
+ * for a model its adapter does not list (one runcastle's roster knows and the
+ * adapter does not yet), which the session can only run by reopening on it.
+ * True when the session reports no model option at all: there is nothing to
+ * reopen for.
+ */
+export function offersModel(options: readonly acp.SessionConfigOption[] | null | undefined, id: string): boolean {
+  const model = modelOption(options)
+  return !model || modelValue(model, id) !== undefined
+}
+
+/**
  * The `session/set_config_option` requests that move a session's options to
  * `choice`, in the order they must go: the model first, since the effort
  * levels and fast mode a session offers are the model's. A value the session
- * does not offer, or already has, asks for nothing.
+ * does not offer, or already has, asks for nothing — except a model while the
+ * session runs one its adapter does not list (`offModel`): its options then
+ * name a model it is not on, so the switch is sent even onto that one.
  */
 export function configRequests(
   sessionId: string,
   options: readonly acp.SessionConfigOption[] | null | undefined,
   choice: ConfigChoice,
+  offModel = false,
 ): acp.SetSessionConfigOptionRequest[] {
   const out: acp.SetSessionConfigOptionRequest[] = []
-  const select = (option: SelectOption | undefined, value: string | undefined) => {
-    if (!option || value === undefined || option.currentValue === value) return
-    // Already on it through Claude's `default`, which stands for it.
-    if (option.currentValue === DEFAULT_MODEL && defaultTarget(option)?.value === value) return
-    if (option.currentValue === DEFAULT_EFFORT && defaultEffortLevel(option) === value) return
+  const select = (option: SelectOption | undefined, value: string | undefined, always = false) => {
+    if (!option || value === undefined) return
+    if (!always) {
+      if (option.currentValue === value) return
+      // Already on it through Claude's `default`, which stands for it.
+      if (option.currentValue === DEFAULT_MODEL && defaultTarget(option)?.value === value) return
+      if (option.currentValue === DEFAULT_EFFORT && defaultEffortLevel(option) === value) return
+    }
     if (selectValues(option).some((c) => c.value === value)) out.push({ sessionId, configId: option.id, value })
   }
   const model = modelOption(options)
-  select(model, model && choice.model !== undefined ? modelValue(model, choice.model) : undefined)
+  select(model, model && choice.model !== undefined ? modelValue(model, choice.model) : undefined, offModel)
   select(effortOption(options), choice.effort)
   const fast = fastOption(options)
   if (fast && choice.fast !== undefined) {

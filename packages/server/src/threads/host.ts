@@ -57,6 +57,7 @@ import {
   configRequests,
   forkAtMeta,
   lastAgentMessageId,
+  offersModel,
   threadMarkdown,
   turnEndIndex,
   type ConfigChoice,
@@ -88,7 +89,7 @@ import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { assignEpicColor } from './epic-look'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
-import { catalogEntry, LONG_CONTEXT, readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
+import { adapterLists, catalogEntry, LONG_CONTEXT, readModelCatalog, rosterLabel, threadModels, writeModelCatalog } from './model-catalog'
 import { namesItsSubject, runtimeMayName, threadAbout, threadName } from './naming'
 import { seedFromTranscript } from './read'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
@@ -572,6 +573,16 @@ interface Thread {
   lastActiveAt?: number
   /** The idle stop is waiting for its compaction: the process stops when that turn ends, if nothing else came. */
   stopAfterCompaction?: boolean
+  /**
+   * It runs a model its adapter does not list (one it was launched on): its
+   * options name another model, so a switch is sent even onto that one.
+   */
+  offModel?: boolean
+  /**
+   * The human picked a model its adapter does not list, which an open session
+   * cannot switch to: its next turn runs in a process reopened on that model.
+   */
+  reopen?: boolean
 }
 
 /** `background: true` when the thread still runs background commands or subagents; `subagents: true` when some are subagents. */
@@ -913,6 +924,15 @@ class Host implements AgentHost {
     const row = this.row(threadId)
     const t = this.threads.get(threadId)
     if (t?.conn && t.sessionId && t.configOptions) {
+      if (choice.model !== undefined && !offersModel(t.configOptions, choice.model)) {
+        // Not one this session can switch to: the next turn reopens it on the pick, which is logged now.
+        const { model: _, ...rest } = choice
+        await this.applyConfig(t, rest)
+        t.reopen = true
+        appendThreadEvent(threadId, { ...this.unlistedModel(row, choice.model, modelEvent(t.configOptions)), picked: true })
+        return
+      }
+      t.reopen = false
       await this.applyConfig(t, choice)
       const model = this.runsOn(row, modelEvent(t.configOptions), choice.model)
       if (model) appendThreadEvent(threadId, { ...model, picked: true })
@@ -1126,14 +1146,33 @@ class Host implements AgentHost {
     return { ...model, model: long.id, label: long.label }
   }
 
+  /**
+   * A model its session's adapter does not list, as the thread logs it: the
+   * catalog's id and label for it (the roster's, `modelCatalog`), with the
+   * effort and fast mode the session reports, since its options name another
+   * model.
+   */
+  private unlistedModel(row: SessionRow, id: string, reported: ModelEvent | null): ModelEvent {
+    const runtime = row.runtime ?? DEFAULT_RUNTIME
+    const entry = catalogEntry(runtime, modelRoster(rosterConfig(this.ctx)), id)
+    return {
+      type: 'model',
+      model: entry?.id ?? id,
+      label: entry?.label ?? rosterLabel(id, runtime),
+      ...(reported?.effort ? { effort: reported.effort } : {}),
+      ...(reported?.fast !== undefined ? { fast: reported.fast } : {}),
+    }
+  }
+
   /** Set each option in turn: the model first, since the effort levels and fast mode offered are the model's. */
   private async applyConfig(t: Thread, choice: ConfigChoice): Promise<void> {
     if (choice.effort !== undefined) t.effortPicked = true
     for (const key of ['model', 'effort', 'fast'] as const) {
       if (choice[key] === undefined || !t.conn || !t.sessionId) continue
-      for (const req of configRequests(t.sessionId, t.configOptions, { [key]: choice[key] })) {
+      for (const req of configRequests(t.sessionId, t.configOptions, { [key]: choice[key] }, key === 'model' && t.offModel === true)) {
         const res = await t.conn.agent.request(acp.methods.agent.session.setConfigOption, req)
         this.noteOptions(t, res.configOptions)
+        if (key === 'model') t.offModel = false
       }
     }
   }
@@ -1199,7 +1238,12 @@ class Host implements AgentHost {
     // Read before the session opens: the adapter announces its own model as it
     // opens (claude-agent-acp), and that logged announcement is not a pick.
     const intended = this.intendedConfig(t.id, followed)
-    const spec = await this.launch(this.ctx, followed)
+    // A model its adapter does not list can only be run by launching on it: an
+    // open session cannot be switched to it. Any other is switched to once open.
+    const launchModel = this.pendingConfig.get(t.id)?.model ?? intended.model
+    const launchOn =
+      launchModel && launchModel !== followed.model && !adapterLists(followed.runtime ?? DEFAULT_RUNTIME, launchModel) ? { ...followed, model: launchModel } : followed
+    const spec = await this.launch(this.ctx, launchOn)
     // The launch may have moved a thread with no conversation yet to its kind's
     // current worktree (`adoptWorktree`): open the process and session there.
     const moved = getSessionRow(this.ctx, t.id)?.worktreePath
@@ -1288,7 +1332,11 @@ class Host implements AgentHost {
     const pick = this.pendingConfig.get(t.id)
     const chosen = { ...intended, ...pick }
     this.pendingConfig.delete(t.id)
-    await this.applyConfig(t, chosen)
+    // Launched on a model its adapter does not list: the session runs it, whatever its options name.
+    const unlisted = chosen.model !== undefined && !offersModel(t.configOptions, chosen.model)
+    if (unlisted) t.offModel = true
+    const { model: _, ...rest } = chosen
+    await this.applyConfig(t, unlisted ? rest : chosen)
     // Stopped while it started (an archive, a shutdown): the stop already logged it.
     if (isStopped(t)) return
     const live = markSessionLive(this.ctx, t.id, { ccSessionId: t.sessionId })
@@ -1297,7 +1345,8 @@ class Host implements AgentHost {
     // A pick made while no session could take it is logged as made, ahead of
     // the start; the model logged as the process runs is the start's own,
     // never a pick (`lastPickedModel`).
-    const model = this.runsOn(row, modelEvent(t.configOptions), chosen.model)
+    const reported = modelEvent(t.configOptions)
+    const model = unlisted && chosen.model !== undefined ? this.unlistedModel(row, chosen.model, reported) : this.runsOn(row, reported, chosen.model)
     if (model && pick) appendThreadEvent(t.id, { ...model, picked: true })
     appendThreadEvent(t.id, { type: 'process', state: 'running' })
     if (model && !pick) appendThreadEvent(t.id, model)
@@ -1538,12 +1587,32 @@ class Host implements AgentHost {
     if (t.state !== 'running' || t.turn) return
     const next = t.queue.shift()
     if (!next) return this.armIdle(t)
+    if (t.reopen) return void this.reopen(t, next)
     // A lead quiet past the resume gap is compacted before the turn it comes back to (decision 6c).
     const ahead = this.resumeCompaction(t, next)
     if (ahead) t.queue.unshift(next)
     const item = ahead ?? next
     if (!item.logged) this.logPrompt(t.id, item)
     void this.runTurn(t, item)
+  }
+
+  /**
+   * Reopen the thread's process on the model the human picked that its
+   * adapter does not list (`setConfig`), between turns: the conversation goes
+   * on in a new process launched on that model, with what was queued.
+   */
+  private async reopen(t: Thread, next: Queued): Promise<void> {
+    const queue = [next, ...t.queue]
+    t.queue = []
+    await this.stop(t.id, 'idle')
+    // A message sent while it stopped already started the new process: the queue goes ahead of it.
+    const started = this.threads.get(t.id)
+    if (started) {
+      started.queue.unshift(...queue)
+      return this.pump(started)
+    }
+    const fresh = this.start(this.row(t.id), next.source)
+    fresh.queue.push(...queue)
   }
 
   private async runTurn(t: Thread, item: Queued): Promise<void> {

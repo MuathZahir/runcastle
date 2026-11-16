@@ -41,6 +41,8 @@ let host: AgentHost
 
 beforeEach(async () => {
   ctx = await makeTestCtx()
+  // Chats start on the model the fake agent runs on: one it does not list is what the chat says it runs on (fable-5-2-in-the-model-picker).
+  ctx.config.model = 'claude-opus-5-5'
   caller = createCallerFactory(appRouter)(ctx)
   projectId = seedProject(ctx).id
   featureId = seedFeature(ctx, projectId).id

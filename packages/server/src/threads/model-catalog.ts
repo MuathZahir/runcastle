@@ -137,15 +137,26 @@ function keepLongContext(models: ModelChoice[], id: string, runtime: AgentRuntim
 
 /**
  * The runtime's catalog: the adapter's as last kept, else the roster mapped to
- * its shape, with the roster's 1M models the adapter lists none for. The
- * operator's note on a roster model is that model's one-line description where
- * they wrote one.
+ * its shape, with the roster's 1M models the adapter lists none for. Every
+ * other roster model the adapter does not list is offered too, after the
+ * adapter's own (fable-5-2-in-the-model-picker): Settings and the picker list
+ * the same models even while the adapter lags behind a model runcastle already
+ * discovered; a running session switches to one by reopening on it (`host.ts`).
+ * The operator's note on a roster model is that model's one-line description
+ * where they wrote one.
  */
 export function modelCatalog(runtime: AgentRuntime, roster: readonly ModelEntry[]): ModelCatalog {
   const kept = readModelCatalog(runtime)
   if (!kept) return rosterCatalog(roster, runtime)
   const models = kept.models.map((m) => ({ ...m }))
   for (const r of roster) if (r.runtime === runtime) keepLongContext(models, r.id, runtime)
+  const adapters = kept.models
+  for (const extra of rosterCatalog(roster, runtime).models) {
+    if (entryFor(models, extra.id, runtime)) continue
+    // A 1M model whose model the adapter lists is keepLongContext's call, made above.
+    if (LONG_CONTEXT.test(extra.id) && entryFor(adapters, extra.id.replace(LONG_CONTEXT, ''), runtime)) continue
+    models.push(extra)
+  }
   for (const r of roster) {
     if (r.runtime !== runtime || !r.note) continue
     const entry = entryFor(models, r.id, runtime)
@@ -174,6 +185,16 @@ export function threadModels(runtime: AgentRuntime, roster: readonly ModelEntry[
   const current = catalogModel(catalog, named, runtime)
   const effort = catalog.models.find((m) => m.id === current)?.defaultEffort
   return { runtime, models: withKnownControls(catalog.models, runtime), current, ...(effort ? { effort } : {}) }
+}
+
+/**
+ * Whether the runtime's adapter itself lists `id` (by id, or by the label it
+ * gives the model), as its sessions last reported; false before any has. A
+ * model it does not list is one the picker offers from the roster only.
+ */
+export function adapterLists(runtime: AgentRuntime, id: string): boolean {
+  const kept = readModelCatalog(runtime)
+  return !!kept && entryFor(kept.models, id, runtime) !== undefined
 }
 
 /** The catalog's entry for the model `named` names (its id, or a roster id), so a thread logs the id and label its picker offers. */

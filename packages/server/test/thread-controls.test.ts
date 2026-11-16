@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { foldThread, type AgentRuntime, type SessionRow, type ThreadEvent } from '@runcastle/core'
+import { CURATED_MODELS, foldThread, type AgentRuntime, type SessionRow, type ThreadEvent } from '@runcastle/core'
 import { modelCatalogPath } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
@@ -61,6 +61,17 @@ function setup(script: FakeScript = {}): void {
   setAgentHostForTests(host)
 }
 
+/**
+ * The picker's first `count` entries, the adapter's own list (with its 1M
+ * twins): every entry after them must be a roster model the adapter does not
+ * list, which `modelCatalog` offers after the adapter's.
+ */
+function adapterPart<T extends { id: string }>(models: readonly T[], count: number): T[] {
+  const roster = new Set(CURATED_MODELS.map((m) => m.id))
+  expect(models.slice(count).filter((m) => !roster.has(m.id))).toEqual([])
+  return models.slice(0, count)
+}
+
 function chat(opts: { runtime?: AgentRuntime; worktreePath?: string; kind?: 'chat' | 'project' } = {}): string {
   const model = opts.runtime === 'codex' ? { model: { id: 'gpt-5.5', runtime: 'codex' as const } } : {}
   const worktreePath = opts.worktreePath ?? '/wt'
@@ -111,10 +122,12 @@ const said = (id: string) =>
 
 describe('model, effort and fast mode', () => {
   it('lists the session models, and switches the model for the next message with a divider', async () => {
+    ctx.config.model = 'claude-opus-5-5'
     setup({ models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }], options: 'claude' })
     const id = chat()
     await converse(id, 'Hello')
-    expect(await caller.thread.models({ threadId: id })).toEqual({
+    const listed = await caller.thread.models({ threadId: id })
+    expect({ ...listed, models: adapterPart(listed.models, 2) }).toEqual({
       runtime: 'claude-code',
       models: [
         { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true, efforts: ['low', 'medium', 'high', 'max'], defaultEffort: 'high' },
@@ -139,6 +152,7 @@ describe('model, effort and fast mode', () => {
   })
 
   it('sets a boolean fast mode as a boolean', async () => {
+    ctx.config.model = 'claude-opus-5-5'
     setup({ options: 'claude', fastBoolean: true })
     const id = chat()
     await converse(id, 'Hello')
@@ -162,6 +176,7 @@ describe('model, effort and fast mode', () => {
   })
 
   it('sends nothing to the agent when the message asks for what the thread already runs on', async () => {
+    ctx.config.model = 'claude-opus-5-5'
     setup({ options: 'claude' })
     const id = chat()
     await converse(id, 'Hello')
@@ -188,7 +203,7 @@ describe('model, effort and fast mode', () => {
     setup({ model: { id: 'gpt-5.5', label: '5.5' }, models: [{ id: 'gpt-5.5-mini', label: '5.5 Mini' }], options: 'codex' })
     const codex = chat({ runtime: 'codex' })
     await converse(codex, 'Hello')
-    expect((await caller.thread.models({ threadId: codex })).models).toEqual([
+    expect(adapterPart((await caller.thread.models({ threadId: codex })).models, 2)).toEqual([
       // Codex's `xhigh` is no level runcastle offers.
       { id: 'gpt-5.5', label: '5.5', fast: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
       // No session ran on it: it takes what one said of its GPT generation.
@@ -350,7 +365,7 @@ describe('the model the composer shows is the one the agent runs on', () => {
     setup(ALIASES)
     await converse(chat(), 'Hello')
     const { models } = await caller.thread.models({ featureId })
-    expect(models.map((m) => [m.id, m.label])).toEqual([
+    expect(adapterPart(models, 5).map((m) => [m.id, m.label])).toEqual([
       ['opus', 'Opus 5'],
       ['claude-opus-5[1m]', 'Opus 5 (1M)'],
       ['sonnet', 'Sonnet 5'],
@@ -363,7 +378,7 @@ describe('the model the composer shows is the one the agent runs on', () => {
     setup({ ...ALIASES, models: [...ALIASES.models!, { id: 'opus[1m]', label: 'Opus 5 (1M context)' }, { id: 'sonnet[1m]', label: 'Sonnet 5 long' }] })
     await converse(chat(), 'Hello')
     const { models } = await caller.thread.models({ featureId })
-    expect(models.map((m) => m.id)).toEqual(['opus', 'sonnet', 'haiku', 'opus[1m]', 'sonnet[1m]'])
+    expect(adapterPart(models, 5).map((m) => m.id)).toEqual(['opus', 'sonnet', 'haiku', 'opus[1m]', 'sonnet[1m]'])
   })
 
   it("restarts a thread on the model the human last picked, not its row's, with no divider", async () => {
@@ -568,11 +583,12 @@ describe("a runtime's one model catalog", () => {
   ]
 
   it('answers the same list, ids and labels before the agent starts, while it runs and after it stops', async () => {
+    ctx.config.model = 'claude-opus-5-5'
     setup(CLAUDE)
     const id = chat()
     await converse(id, 'Hello')
     const running = await caller.thread.models({ threadId: id })
-    expect(running).toEqual({ runtime: 'claude-code', models: LIST, current: 'claude-opus-5-5' })
+    expect({ ...running, models: adapterPart(running.models, LIST.length) }).toEqual({ runtime: 'claude-code', models: LIST, current: 'claude-opus-5-5' })
     // Not running, it also says the effort Opus 5.5 starts on, which its next turn runs on.
     const stopped = { ...running, effort: 'high' }
     await host.stop(id, 'idle')
@@ -587,6 +603,7 @@ describe("a runtime's one model catalog", () => {
   })
 
   it('names the model Default stands for, and never writes "Default (recommended)" in the thread', async () => {
+    ctx.config.model = 'claude-opus-5-5'
     setup(CLAUDE)
     const id = chat()
     await converse(id, 'Hello')
@@ -643,7 +660,57 @@ describe("a runtime's one model catalog", () => {
     await converse(id, 'Hello')
     const { models } = await caller.thread.models({ threadId: id })
     expect(models.find((m) => m.id === 'claude-opus-4-8')?.note).toBe('opus 4.8 — UI work')
-    expect(models).toHaveLength(3)
+    expect(adapterPart(models, 3)).toHaveLength(3)
+  })
+
+  describe('a model Settings lists that the adapter does not (fable-5-2-in-the-model-picker)', () => {
+    const FABLE = { id: 'claude-fable-5-2', runtime: 'claude-code' as const }
+
+    it('is offered after the adapter\'s models, named as the adapter would name it', async () => {
+      ctx.config = { ...ctx.config, model: 'claude-opus-5-5', models: [FABLE] }
+      setup(CLAUDE)
+      await converse(chat(), 'Hello')
+      const { models } = await caller.thread.models({ featureId })
+      expect(models.slice(0, LIST.length).map((m) => m.id)).toEqual(LIST.map((m) => m.id))
+      expect(models.find((m) => m.id === 'claude-fable-5-2')).toMatchObject({ label: 'Fable 5.2', efforts: EFFORTS })
+    })
+
+    it('reopens a running chat on it at the next message, keeping the conversation', async () => {
+      ctx.config = { ...ctx.config, model: 'claude-opus-5-5', models: [FABLE] }
+      setup(CLAUDE)
+      const id = chat()
+      await converse(id, 'Hello')
+      await caller.thread.setModel({ threadId: id, model: 'claude-fable-5-2' })
+      // The adapter refuses a model it does not list: nothing is asked of it, the pick is logged.
+      expect(received('session/set_config_option').filter((p) => p.configId === 'model')).toEqual([])
+      expect(readThreadEvents(id).at(-1)).toMatchObject({ type: 'model', model: 'claude-fable-5-2', label: 'Fable 5.2', picked: true })
+      expect(fake.processes).toHaveLength(1)
+
+      await caller.thread.send({ threadId: id, text: 'On Fable' })
+      await logUntil(id, turnsEnded(2))
+      expect(fake.processes).toHaveLength(2)
+      expect(launched.map((r) => r.model)).toEqual(['claude-opus-5-5', 'claude-fable-5-2'])
+      expect(fake.last().received.map((r) => r.method)).toContain('session/load')
+      expect(said(id)).toEqual(['user:Hello', 'agent:Done.', 'model:Fable 5.2', 'user:On Fable', 'agent:Done.'])
+      expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'claude-fable-5-2', label: 'Fable 5.2' })
+
+      // Back to a model it lists: the adapter still claims Opus 5.5, so the switch is sent anyway.
+      await caller.thread.setModel({ threadId: id, model: 'claude-opus-5-5' })
+      expect(fake.last().received.filter((r) => r.method === 'session/set_config_option').map((r) => (r.params as { configId: string; value: string }).value)).toEqual(['claude-opus-5-5'])
+      expect(readThreadEvents(id).at(-1)).toMatchObject({ type: 'model', model: 'claude-opus-5-5', label: 'Opus 5.5' })
+    })
+
+    it('starts a new chat on it when it is the model the chat starts on', async () => {
+      ctx.config = { ...ctx.config, model: 'claude-fable-5-2', models: [FABLE] }
+      setup(CLAUDE)
+      // The adapter has reported its list once, so runcastle knows Fable 5.2 is not on it.
+      await converse(chat(), 'Hello')
+      const id = chat()
+      await converse(id, 'Hello')
+      expect(launched.at(-1)?.model).toBe('claude-fable-5-2')
+      expect(fake.last().received.filter((r) => r.method === 'session/set_config_option' && (r.params as { configId: string }).configId === 'model')).toEqual([])
+      expect(foldThread(readThreadEvents(id)).model).toMatchObject({ id: 'claude-fable-5-2', label: 'Fable 5.2' })
+    })
   })
 })
 
