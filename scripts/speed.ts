@@ -97,10 +97,10 @@ function largestThread(): Target {
   return top
 }
 
-/** A feature title of the project, newest first: the sidebar lists it once loaded. */
+/** The newest active feature's title: the sidebar lists it once loaded (drafts it may not). */
 function sidebarTitle(project: string): string {
   const db = new Database(join(scratch, 'runcastle.db'), { readonly: true })
-  const row = db.query('select title from features where project_id = ? order by created_at desc limit 1').get(project) as { title: string } | null
+  const row = db.query("select title from features where project_id = ? and status = 'active' order by created_at desc limit 1").get(project) as { title: string } | null
   db.close()
   if (!row) throw new Error('the project has no features')
   return row.title
