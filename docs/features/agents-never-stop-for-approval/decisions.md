@@ -11,14 +11,14 @@ Check first: 4, 6
 
 ## 2. The human's own ask rules are ignored inside runcastle
 **Decision:** Inside runcastle sessions, the human's Claude Code "ask" rules (today `Bash(git push *)` in their own Claude Code settings) are ignored too, without editing their settings file.
-**Why:** The human's words, "Yes to both". Their rule still asks in their own Claude Code outside runcastle.
+**Why:** The human's words, "Yes to both". Their rule still asks in their own Claude Code outside runcastle. This reverses `small-fixes-before-publish`, where the human's ask rules kept prompting by design, and the part of `interactive-workers` decision 11 that applied them to workers.
 
 ## 3. No telling anyone about a stuck approval
 **Decision:** Runcastle does not tell the epic or the human that an agent is waiting on an approval.
 **Why:** The human rejected it: that moves the click, it does not remove it.
 
-## 4. Every command Claude Code still asks about runs
-**Decision:** When Claude Code asks to approve a command even in the no-approval mode runcastle starts it in, runcastle answers "allow" itself, at once. That covers Claude Code's own safety checks (for example some delete commands and commands it cannot fully read, like a script fed in through a heredoc), the human's ask rules, and any session whose no-approval mode was switched off.
+## 4. Every command an agent still asks about runs
+**Decision:** When Claude Code or Codex asks to approve a command even in the no-approval mode runcastle starts it in, runcastle answers "allow, this once" itself, at once. That covers Claude Code's own safety checks (for example some delete commands and commands it cannot fully read, like a script fed in through a heredoc), the human's ask rules, and any session whose no-approval mode was switched off.
 **Why:** Every ask in this machine's logs was ordinary work (a commit with a long message, a short Python edit, a push), and the brief wants the work to go on. Allowing behaves like Claude Code's no-approval mode with its last checks off; the guards that deny (the lead's worktree guard, the burn guard) still stop what they stop today.
 **Assumed.** Alternative: refuse Claude Code's own safety checks with a reason, so the agent tries another way, and allow only the rest. Safer for files outside the worktree, but an agent may loop on a command it needs.
 
@@ -28,9 +28,9 @@ Check first: 4, 6
 **Assumed.** Alternative: none worth weighing; recorded because the brief lists it as a limit rather than as the human's words.
 
 ## 6. Workers in the sandbox stop asking too
-**Decision:** Workers that run inside the sandbox (Claude Code in its "auto" mode, and Codex) never escalate a command to the human. Claude Code workers there start in the same no-approval mode as everything else, Codex workers with approvals turned off, and anything either still asks is allowed as in 4.
-**Why:** The sandbox is the guard for those workers; the "auto" mode's extra check sends doubtful commands to a human who is not there.
-**Assumed.** Alternative: keep "auto" mode and Codex's auto review, and only answer what they would have escalated. Keeps their extra screening, but a screened command is still allowed in the end, so the screening buys little.
+**Decision:** Workers in the sandbox keep the modes the human chose for them (`interactive-workers` decision 11): Claude Code's "auto" mode, where a checker model blocks risky commands, and Codex's auto review. A block stays a block: the worker says in its chat what it wanted, as today. What changes is that nothing they raise reaches the human as an approval: anything still asked (the human's ask rules, Claude Code's safety checks, and the MCP-call asks of the fallback used when auto mode is not on the human's plan) is allowed as in 4.
+**Why:** The human asked for the providers' own auto modes, and a block is not a stall. Only the approval asks have to go.
+**Assumed.** Alternative: start sandbox workers in the same no-approval mode as leads and Codex with approvals off. Simpler and fewer asks to answer, but it drops the checker the human chose.
 
 ## 7. The Allow / Reject dialog leaves the app
 **Decision:** Once nothing can raise a command approval, the dialog that shows one is removed from the app.
