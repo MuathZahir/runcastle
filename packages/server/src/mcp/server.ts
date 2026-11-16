@@ -2261,7 +2261,7 @@ export function toolReadFeatureBrief(
   const brief =
     feature.status === 'shipped' && existsSync(onDisk)
       ? readFileSync(onDisk, 'utf8')
-      : feature.brief
+      : getFeatureRow(ctx, feature.id).brief
   return {
     slug: feature.slug,
     title: feature.title,
