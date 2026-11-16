@@ -57,6 +57,22 @@ Baseline, 2026-11-16, before any fix. Longest feature chat (8.4 MB log), CPU 4x 
 
 The numbers point where the code read did: every refresh downloads the whole app again, each key costs a full redraw of the chat, and a streaming agent stacks redraws until keys show two seconds late (the human's "a couple seconds later"). The plan stands.
 
+After, 2026-11-16, same data and throttling, on commit e8779ae. Ranges are over three or four runs.
+
+| What | Before | After | Target |
+|---|---|---|---|
+| First visit: project page shown | 4681 ms | 2477–2967 ms | 3000, met |
+| First visit: over the wire | 1966 KB, 13 requests | 474 KB, 25 requests | — |
+| Repeat refresh: project page shown | 2799 ms | 1055–1216 ms | 1500, met |
+| Repeat refresh: over the wire | 1954 KB | 103 KB | — |
+| Idle chat: key to screen, typical / slowest 5% | 344 / 448 ms | 24–32 / 32–40 ms | 50, met |
+| Agent streaming: key to screen, typical / slowest 5% | 400 / 728 ms | 24–40 / 40–88 ms | 50: typical met, slowest 5% mostly not |
+| Agent streaming: key round trip from the driver | 2096 ms | 200–257 ms | — |
+
+Two fixes beyond the plan came out of the measurements. The feature list no longer carries each feature's brief (218 KB of the 491 KB the first page read fetched; only the draft page shows a brief, and it reads the feature itself). And a profile while streaming showed React walking the whole chat on every chunk, because the values the page publishes for the sidebar and palette, and the providers around the chat column, changed identity on every render; they now hold still.
+
+What is left of the streaming slowest 5% is mostly the browser laying out the long chat after each chunk (the chat's scroll-to-bottom reads its height, which forces that layout). Cutting it further means skipping layout of off-screen messages, which is the human's call (decision 7).
+
 ## Seams
 
 - **The measuring script** (existing, extended): real Chrome, throttled, against a scratch copy of the data. Observes key-to-paint time, load time, bytes and request counts. It is the check for decision 6.
@@ -74,5 +90,5 @@ The numbers point where the code read did: every refresh downloads the whole app
 
 ## Open questions
 
-- The real numbers: not yet taken. Step 1 takes them; the fixes above follow from reading the code and may shift once measured.
+- Whether the streaming slowest 5% (about 80 ms against 50) is good enough, or worth skipping layout of off-screen messages.
 - Whether the human ever tunnels to 4513 (decision 3).
