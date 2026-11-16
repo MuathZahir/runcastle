@@ -3,6 +3,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { GlossaryProvider } from './components/GlossaryDialog'
+import { refetchOnFocus } from './lib/live'
 import { unhandledMutationError } from './lib/mutation-errors'
 import { registerPhoneWorker } from './lib/phone-push'
 import { applyStoredTheme } from './lib/theme'
@@ -18,6 +19,19 @@ import { TooltipProvider } from './ui/tooltip'
 // Paint the stored theme onto <html> before the first render (lib/theme.ts).
 applyStoredTheme()
 registerPhoneWorker()
+
+// A tab opened before a runcastle update still names the old build's lazy
+// chunks (the terminal, the design view, …), which the server no longer has.
+// Reload once onto the new build rather than leave that part broken; the
+// stamp keeps a chunk that is truly missing from reloading forever.
+const RELOADED_FOR_CHUNK = 'runcastle.reloadedForChunk'
+window.addEventListener('vite:preloadError', (event) => {
+  const last = Number(sessionStorage.getItem(RELOADED_FOR_CHUNK) ?? 0)
+  if (Date.now() - last < 60_000) return
+  sessionStorage.setItem(RELOADED_FOR_CHUNK, String(Date.now()))
+  event.preventDefault()
+  window.location.reload()
+})
 
 function Root() {
   const [queryClient] = useState(
@@ -43,9 +57,10 @@ function Root() {
             // rescheduled on return — so with no focus refetch the UI could sit
             // stale for a minute until someone reloaded the page. The SSE feed
             // (lib/live.ts) is the primary path now; this is its safety net for
-            // when the stream is down. Queries that are genuinely expensive
-            // (`setup.doctor`) opt out locally.
-            refetchOnWindowFocus: true,
+            // when the stream is down, so a query the live stream keeps current
+            // skips it while the stream is up (`refetchOnFocus`). Queries that
+            // are genuinely expensive (`setup.doctor`) opt out locally.
+            refetchOnWindowFocus: refetchOnFocus,
             refetchOnReconnect: true,
           },
         },
