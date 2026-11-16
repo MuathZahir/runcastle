@@ -19,3 +19,7 @@
 ## 5. The progress ring leaves the sidebar rows
 **Decision:** The hollow circle before each feature row (its share of landed tickets) is removed from the sidebar.
 **Why:** The human: it is useless now that workers replaced rounds and laps; it shows nothing true.
+
+## 6. Workers show as a count that opens on click
+**Decision:** A feature row with live workers shows a small count at its end (a worker icon and "2"). Clicking it opens the live workers as one-line rows, each its name and a mark. Finished workers no longer show in the sidebar; the feature page's work panel lists them. A worker that needs the human turns its feature row amber, folded or not.
+**Why:** Keeps a feature to one line while workers run, and still reaches a worker's chat in one click. Chosen over a count with no way in, and over today's rows minus the "done" fold.
