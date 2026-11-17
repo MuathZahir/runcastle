@@ -26,7 +26,8 @@ You lead this feature from the first message until it merges, and the human merg
 
 Read a page when its moment comes, one file per read.
 
-- `./references/decisions-and-spec.md`: before you write or change `decisions.md` or `spec.md`; also how to mark what an orchestrator decided, and when to ship a scenario.
+- `./references/decisions-and-spec.md`: before you write or change `decisions.md` or `spec.md`; also how to mark what an orchestrator decided, when to ship a scenario, and proving one.
+- `./references/scenario-setup.md`: when your feature has a slow-to-reach state and the project's scenarios are not set up.
 - `./references/preview.md`: when you draw or redraw the Plan, from `./references/preview-starter.html`.
 - `./references/design.md`: when a screen's look is on the table and the three are settled; it shows the real screen live beside this chat.
 - `./references/planning-alone.md`: when your briefing says no human is present.
