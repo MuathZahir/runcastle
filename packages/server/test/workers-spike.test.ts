@@ -26,6 +26,7 @@ describe('worker sandbox argv', () => {
     runtimeDir: '/data/workers/runtime/0.97.0',
     uid: 1001,
     gid: 1001,
+    labels: { 'runcastle.owner': 'runcastle' },
   }
 
   it('publishes exactly one port, on the host loopback, and never uses host networking', () => {

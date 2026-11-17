@@ -11,7 +11,7 @@ import { tryGetFeature } from '../services/repo'
 import { agentHost } from '../threads/types'
 import { type SandboxEngine, sandboxEngine } from './engine'
 import { type ContainerFacts, type VolumeFacts, WORKER_CONTAINER_PREFIX, originsDir, ownershipOf } from './ownership'
-import { emitWorker, isSettingUp, keepConversation, removeHalfMade, sandboxOf, updateWorker } from './service'
+import { emitWorker, isSettingUp, keepConversation, previewAwake, removeHalfMade, sandboxOf, updateWorker } from './service'
 import { runtimeDirName } from './worker'
 
 /**
@@ -309,7 +309,7 @@ async function sweepContainers(
         tally.removed(project(row.projectId), NOUNS.container, c.sizeBytes)
         continue
       }
-      if (!c.running) continue
+      if (!c.running || previewAwake(row.id)) continue
       const sb = sandboxOf(ctx, row)
       if (sb) await engine.stop(sb)
       else await engine.stopContainers([c.name])

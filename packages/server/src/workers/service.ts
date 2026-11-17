@@ -1512,6 +1512,11 @@ interface PreviewWake {
 
 const previewWakes = new Map<string, PreviewWake>()
 
+/** Whether a worker's sandbox is up for a preview someone opened lately: its own idle stop stops it, not the sweep. */
+export function previewAwake(id: string): boolean {
+  return previewWakes.has(id)
+}
+
 /** A worker whose sandbox may serve a preview: started, and neither dropped nor failed. */
 function previewSandbox(ctx: AppCtx, id: string): { w: WorkerRow; sb: WorkerSandbox } | undefined {
   const w = getWorker(ctx, id)
