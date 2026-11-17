@@ -1,13 +1,14 @@
 import { existsSync } from 'node:fs'
-import { DEFAULT_SANDBOX_IMAGE } from '@runcastle/core'
-import type { ExecFn } from '../doctor/doctor'
-import { tryImageBuildSlot } from './image-build'
 import {
+  DEFAULT_SANDBOX_IMAGE,
   LABEL_DATA_DIR as DATA_DIR_LABEL,
   LABEL_OWNER as OWNER_LABEL,
   LABEL_PROJECT as PROJECT_LABEL,
   OWNER_VALUE,
-} from '../workers/labels-local'
+} from '@runcastle/core'
+import { sameDataDir } from '@runcastle/core/paths'
+import type { ExecFn } from '../doctor/doctor'
+import { tryImageBuildSlot } from './image-build'
 import { builderNamePrefix, DOCKERFILE_HASH_LABEL, removeBuilderArgs } from './sandbox-image'
 import type { Runtime } from './setup'
 
@@ -167,7 +168,7 @@ export async function removeStaleSandboxImages(
     const owner = image.labels[OWNER_LABEL]
     if (owner !== undefined && owner !== OWNER_VALUE) continue
     const markedDir = image.labels[DATA_DIR_LABEL]
-    if (markedDir && markedDir !== dataDir && exists(markedDir)) continue
+    if (markedDir && !sameDataDir(markedDir, dataDir) && exists(markedDir)) continue
     if (image.tags.some((tag) => !isRuncastleTag(tag))) continue
     if (inUse.has(normaliseId(image.id))) continue
 

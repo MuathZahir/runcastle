@@ -1,5 +1,7 @@
 import { LABEL_DATA_DIR } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
+import { createSystemExec } from '../doctor/system-exec'
+import { removeLeftoverBuilders, removeStaleSandboxImages, type StaleImagesResult } from '../services/sandbox-image-cleanup'
 import type { AgentProcess } from '../threads/host'
 import { inspectContainer, listContainers, listVolumes, removeContainer, removeVolume, stopContainers } from './containers'
 import { type ContainerFacts, ForeignContainerError, type VolumeFacts, ownershipOf } from './ownership'
@@ -61,6 +63,12 @@ export interface SandboxEngine {
   /** Stop containers by name at once, giving each `seconds` (the shutdown's and the sweep's). */
   stopContainers(containers: string[], seconds?: number): Promise<void>
   removeVolume(volume: string): Promise<void>
+  /**
+   * Remove runcastle's sandbox images nothing needs (replaced ones, and those of
+   * projects not in `liveProjectIds`) and this install's leftover buildx
+   * builders (decision 8). Never throws.
+   */
+  removeStaleImages(input: { dataDir: string; liveProjectIds: readonly string[] }): Promise<StaleImagesResult>
   /** Remove the container, the worker branch on the host and its bare copy. */
   remove(sb: WorkerSandbox): Promise<void>
   /** The handback the worker wrote since the last one taken, if any. */
@@ -102,6 +110,11 @@ export function containerEngine(name: Engine): SandboxEngine {
     removeContainer: (container) => removeContainer(name, container),
     stopContainers: (containers, seconds) => stopContainers(name, containers, seconds),
     removeVolume: (volume) => removeVolume(name, volume),
+    removeStaleImages: async ({ dataDir: dir, liveProjectIds }) => {
+      const exec = createSystemExec()
+      if (name === 'docker') await removeLeftoverBuilders({ exec, dataDir: dir })
+      return removeStaleSandboxImages({ engine: name, exec, dataDir: dir, liveProjectIds })
+    },
     remove: (sb) => removeSandbox(sb),
     takeHandback: (sb) => takeHandbackNote(sb),
     devServerStarted: (sb) => devServerRecorded(sb),
@@ -177,6 +190,7 @@ export function ownedOnly(base: SandboxEngine): SandboxEngine {
     removeContainer: (container) => base.removeContainer(container),
     stopContainers: (containers, seconds) => base.stopContainers(containers, seconds),
     removeVolume: (volume) => base.removeVolume(volume),
+    removeStaleImages: (input) => base.removeStaleImages(input),
     remove: on(async (sb) => {
       await base.remove(sb)
       verified.delete(sb.container)

@@ -1,6 +1,6 @@
 import type { ExecFn } from '../doctor/doctor'
 import { dataDir } from '@runcastle/core/paths'
-import { LABEL_PROJECT, labelArgs, ownerLabels } from './labels-local'
+import { LABEL_PROJECT, labelArgs, ownerLabels } from '@runcastle/core'
 import { type BurnUser, burnUserSpec, resolveBurnUser } from './burn-user'
 import type { PackageManager } from '../services/repo-toolchain'
 

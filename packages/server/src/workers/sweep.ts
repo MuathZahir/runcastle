@@ -7,6 +7,7 @@ import { dataDir as installDataDir, sameDataDir } from '@runcastle/core/paths'
 import { projects, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { emitProject } from '../services/events'
+import { expireReviewCaptures } from '../services/review-capture-expiry'
 import { tryGetFeature } from '../services/repo'
 import { agentHost } from '../threads/types'
 import { type SandboxEngine, sandboxEngine } from './engine'
@@ -41,6 +42,8 @@ export const NOUNS = {
   branch: { one: 'worker branch', many: 'worker branches' },
   runtime: { one: 'old runtime folder', many: 'old runtime folders' },
   worktree: { one: 'old worktree', many: 'old worktrees' },
+  image: { one: 'old image', many: 'old images' },
+  capture: { one: 'old review capture', many: 'old review captures' },
 } as const satisfies Record<string, Noun>
 
 /** How a sweep step says what it did. A project id it cannot name is undefined: the line goes on the install's oldest project. */
@@ -189,11 +192,13 @@ async function sweepOnce(ctx: AppCtx, opts: SweepOptions): Promise<SweepResult> 
         projectIds,
         exists,
       )
+      await sweepImages(engine, tally, projectIds)
     }
     await sweepOrigins(ctx, tally, rows)
     await sweepBranches(ctx, tally, rows, projectRows)
     sweepRuntimeDirs(tally)
     await sweepSandcastleWorktrees(ctx, tally, projectRows)
+    sweepReviewCaptures(ctx, tally, project)
     for (const step of extraSweepSteps) {
       try {
         await step.run(ctx, tally)
@@ -205,6 +210,23 @@ async function sweepOnce(ctx: AppCtx, opts: SweepOptions): Promise<SweepResult> 
     tally.failed(undefined, 'the sweep', err)
   }
   return report(ctx, tally)
+}
+
+/** Sandbox images a rebuild replaced or whose project is gone (decision 8), after the containers that may have used them. */
+async function sweepImages(engine: SandboxEngine, tally: Tally, projectIds: ReadonlySet<string>): Promise<void> {
+  const out = await engine.removeStaleImages({ dataDir: tally.dataDir, liveProjectIds: [...projectIds] })
+  for (const image of out.removed) {
+    const owner = image.tags.map((t) => t.match(/runcastle-(proj_[A-Za-z0-9_-]+)$/)?.[1]).find((p) => p && projectIds.has(p))
+    tally.removed(owner, NOUNS.image, image.bytes)
+  }
+  for (const f of out.failed) tally.failed(undefined, `image ${f.tags[0] ?? f.id.slice(0, 19)}`, f.error)
+}
+
+/** Review captures 30 days after their feature closed, or at once when it is gone (decision 10). */
+function sweepReviewCaptures(ctx: AppCtx, tally: Tally, project: (id: string | undefined) => string | undefined): void {
+  const out = expireReviewCaptures({ db: ctx.db, now: Date.now(), dataDir: tally.dataDir })
+  for (const c of out.removed) tally.removed(project(c.projectId ?? undefined), NOUNS.capture, c.bytes)
+  for (const f of out.failed) tally.failed(undefined, `review capture ${f.id}`, f.error)
 }
 
 /** Each project's line: one `cleanup.swept` for what went, one `cleanup.failed` for what would not go. */

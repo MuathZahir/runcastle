@@ -5,11 +5,11 @@ import { createSystemExec } from '../doctor/system-exec'
 import { dataDir } from '@runcastle/core/paths'
 import { type BuildStepRunner, prepareImageBuild, runImageBuild } from '../services/image-build'
 import { removeStaleSandboxImages } from '../services/sandbox-image-cleanup'
+import { ROOT_BURN_REFUSED, runningAsRoot } from '../workers/burn-user'
 
 function formatBytes(bytes: number): string {
   return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`
 }
-import { ROOT_BURN_REFUSED, runningAsRoot } from '../workers/burn-user'
 
 export const BUILD_IMAGE_USAGE = 'usage: runcastle build-image'
 

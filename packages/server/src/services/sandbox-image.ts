@@ -5,6 +5,9 @@ import {
   AGENT_RUNTIMES,
   type AgentRuntime,
   DEFAULT_SANDBOX_IMAGE,
+  LABEL_DOCKERFILE_HASH,
+  LABEL_PROJECT,
+  ownerLabels,
   resolveSandboxImage,
   type RuncastleConfig,
 } from '@runcastle/core'
@@ -12,7 +15,6 @@ import { type ExecFn, RUNTIME_SPECS } from '../doctor/doctor'
 import { type BurnUser, resolveBurnUser } from '../workers/burn-user'
 import type { HostAgentVersions } from './agent-cli-versions'
 import { dataDir } from '@runcastle/core/paths'
-import { LABEL_DOCKERFILE_HASH, LABEL_PROJECT, ownerLabels } from '../workers/labels-local'
 import type { Runtime } from './setup'
 
 /**
@@ -274,7 +276,7 @@ export interface ImageBuildStep {
   buildArgs: Record<string, string>
   /**
    * Labels stamped next to {@link DOCKERFILE_HASH_LABEL}: the ownership marks
-   * (`labels-local.ts`) on every step, and the stock step's CLI versions.
+   * (`@runcastle/core` labels) on every step, and the stock step's CLI versions.
    */
   labels: Record<string, string>
   /**

@@ -174,6 +174,7 @@ export function fakeEngine(): FakeEngine {
         if (engine.held.has(name)) engine.held.set(name, false)
       }
     },
+    removeStaleImages: async () => ({ removed: [], freedBytes: 0, failed: [] }),
     removeVolume: async (name) => {
       engine.removedVolumes.push(name)
       engine.volumes = engine.volumes.filter((v) => v.name !== name)

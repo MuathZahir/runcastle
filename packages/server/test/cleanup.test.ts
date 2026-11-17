@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type Feature, LABEL_DATA_DIR, LABEL_DOCKERFILE_HASH, LABEL_PROJECT, LABEL_WORKER } from '@runcastle/core'
@@ -389,6 +389,35 @@ describe('the sweep', () => {
     const lines = sweptLines().map((e) => [e.type, e.message])
     expect(lines).toContainEqual(['cleanup.swept', 'Removed 1 old image (space freed unknown)'])
     expect(lines).toContainEqual(['cleanup.failed', expect.stringContaining('captures: disk on fire')])
+  })
+
+  it('removes old sandbox images and stale review captures, on the project’s line', async () => {
+    let asked: { dataDir: string; liveProjectIds: readonly string[] } | undefined
+    engine.removeStaleImages = async (input) => {
+      asked = input
+      return {
+        removed: [{ id: 'sha256:old', tags: [`sandcastle:runcastle-${feature.projectId}`], reason: 'dangling', bytes: 1e9 }],
+        freedBytes: 1e9,
+        failed: [],
+      }
+    }
+    // A capture no row maps to, untouched for 40 days; a fresh one beside it stays.
+    const stale = join(dataDir(), 'reviews', 'rev_stale')
+    const fresh = join(dataDir(), 'reviews', 'rev_fresh')
+    for (const dir of [stale, fresh]) {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'shot.png'), 'x'.repeat(1000))
+    }
+    const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000)
+    utimesSync(join(stale, 'shot.png'), old, old)
+    utimesSync(stale, old, old)
+
+    await sweepLeftovers(ctx)
+
+    expect(asked?.liveProjectIds).toContain(feature.projectId)
+    expect(existsSync(stale)).toBe(false)
+    expect(existsSync(fresh)).toBe(true)
+    expect(sweptLines().map((e) => e.message)).toContain('Removed 1 old image and 1 old review capture (1.0 GB)')
   })
 
   it('never throws when the engine fails', async () => {
