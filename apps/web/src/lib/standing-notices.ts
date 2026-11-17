@@ -54,11 +54,11 @@ export interface SlotBlocker {
   cutOff: boolean
   stop: SlotStop | null
   /**
-   * A Review worker's live drive (triage-batch decision 16): who drives, the
+   * A Review worker's or the lead's live drive (triage-batch decision 16): who drives, the
    * feature it tries, and whether that is this one. The human's Test drive
    * waits for it; its chat is one click away.
    */
-  agent?: { featureId: string; workerId?: string; name: string; thisFeature: boolean; branch: string }
+  agent?: { featureId: string; workerId?: string; name: string; thisFeature: boolean; branch: string; lead?: true }
 }
 
 /** The project's drive slot as `feature.driveInfo` reports it. */
