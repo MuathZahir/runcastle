@@ -192,7 +192,7 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
       title: agent.thisFeature
         ? agentDriveLine(agent)
         : `${agent.name} is trying ${agent.branch || 'another feature'}`,
-      subtitle: 'it holds the drive slot, so your test drive waits until the review hands back',
+      subtitle: `it holds the drive slot, so your test drive waits until ${agent.lead ? 'it stops its drive' : 'the review hands back'}`,
       ...(agent.workerId && open
         ? { action: { label: 'Open its chat', onClick: () => open(agent.featureId, agent.workerId!) } }
         : {}),
