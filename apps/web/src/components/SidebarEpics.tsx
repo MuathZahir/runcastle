@@ -1,4 +1,4 @@
-import { Fragment, isValidElement, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { cx, StatusDot } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry } from '../lib/chat-thread'
@@ -9,7 +9,8 @@ import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { AutopilotMark, AutopilotTrail } from './autopilot/AutopilotParts'
-import { featureStateWords, openRowMenu, SIDEBAR_CARD, SidebarFeatureRow, ThreadListMore, type FeatureWorkers } from './SidebarParts'
+import { openRowMenu, SIDEBAR_CARD, ThreadListMore, type FeatureWorkers } from './SidebarParts'
+import { EpicFeatureList, NeedMark, needCount, type EpicFeatureItem } from './SidebarEpicFeatures'
 
 /**
  * The sidebar's list of epics (docs/features/orchestrator-chats-become-epics,
@@ -195,7 +196,7 @@ function EpicTile({ quiet = false, open = false, icon }: { quiet?: boolean; open
     <span
       aria-hidden
       className={cx(
-        'inline-flex size-8 shrink-0 items-center justify-center rounded-md ring-1 ring-inset',
+        'inline-flex size-7 shrink-0 items-center justify-center rounded-md ring-1 ring-inset',
         quiet
           ? 'bg-fill-well text-icon ring-border-subtle'
           : cx(
@@ -206,27 +207,8 @@ function EpicTile({ quiet = false, open = false, icon }: { quiet?: boolean; open
             ),
       )}
     >
-      {quiet ? <IconList size={15} /> : <EpicIcon icon={icon} size={17} />}
+      {quiet ? <IconList size={14} /> : <EpicIcon icon={icon} size={15} />}
     </span>
-  )
-}
-
-/** An epic's second line at rest: how many features it holds in motion or up next. */
-function restWords(n: number): string {
-  return n === 0 ? 'Nothing in motion' : n === 1 ? '1 feature' : `${n} features`
-}
-
-/** The card's body: its features, a hairline between each, as the old Working bay held its rows. */
-function CardRows({ label, children }: { label: string; children: ReactNode[] }) {
-  return (
-    <div role="group" aria-label={label} className="flex flex-col p-1">
-      {children.map((c, i) => (
-        <Fragment key={isValidElement(c) && c.key !== null ? c.key : i}>
-          {i > 0 && <span aria-hidden className="mx-2.5 h-px bg-border-subtle" />}
-          {c}
-        </Fragment>
-      ))}
-    </div>
   )
 }
 
@@ -241,16 +223,18 @@ function CardRows({ label, children }: { label: string; children: ReactNode[] })
  */
 export function SidebarEpicCard({
   chat,
-  count,
   active,
   onOpen,
   actions = [],
   color,
   icon,
   autopilot = false,
+  waiting = 0,
   children,
 }: {
   chat: ThreadEntry
+  /** How many of its features need you: the count in its head, when shown. */
+  waiting?: number
   /**
    * It runs its features by itself (epics-on-autopilot decision 7): the
    * "Autopilot" mark at the name's end, and `data-autopilot` on the card for
@@ -261,19 +245,16 @@ export function SidebarEpicCard({
   color?: EpicColor | null | undefined
   /** Its icon (decision 1); the default chat bubble while unset. */
   icon?: EpicIconId | null | undefined
-  /** Its features in the card, for the resting line. */
-  count: number
   active: boolean
   onOpen: (chatId: string) => void
   actions?: FeatureAction[]
-  /** Its feature rows. */
-  children?: ReactNode[]
+  /** Its features: an {@link EpicFeatureList}. */
+  children?: ReactNode
 }) {
   const doing = epicWords(chat)
-  const words = doing ?? restWords(count)
   const asking = !!chat.need
   const working = chat.state === 'working'
-  const rows = children ?? []
+  const showCount = waiting > 0
   return (
     <div
       style={epicStyle(color)}
@@ -305,35 +286,32 @@ export function SidebarEpicCard({
           title={doing ? `${chat.title} — ${doing}` : chat.title}
           aria-current={active ? 'page' : undefined}
           onClick={() => onOpen(chat.id)}
-          className="flex w-full cursor-pointer items-center gap-2.5 py-2 pr-2.5 pl-2 text-left"
+          className="flex w-full cursor-pointer items-center gap-2.5 py-1.5 pr-2.5 pl-1.5 text-left"
         >
           <EpicTile open={active} icon={icon} />
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-md font-semibold tracking-tight text-text">{chat.title}</span>
-              {autopilot && (
-                <span className={cx('inline-flex transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
-                  <AutopilotMark working={working} />
-                </span>
-              )}
-              {asking && (
-                <span className={cx('transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
-                  <StatusDot tone="warning" />
-                </span>
-              )}
-            </span>
-            <span
-              className={cx(
-                'truncate text-xs',
-                asking
-                  ? 'text-text-secondary'
-                  : working
-                    ? 'text-shimmer text-text-tertiary'
-                    : 'text-[color-mix(in_oklab,var(--epic-text)_70%,var(--color-text-tertiary))]',
-              )}
-            >
-              {words}
-            </span>
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-md font-semibold tracking-tight text-text">{chat.title}</span>
+            {autopilot && (
+              <span className={cx('inline-flex transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
+                <AutopilotMark working={working} />
+              </span>
+            )}
+            {asking && (
+              <span className={cx('inline-flex transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
+                <NeedMark kind="question" soft />
+              </span>
+            )}
+            {showCount && (
+              <span
+                aria-label={`${waiting} need${waiting === 1 ? 's' : ''} you`}
+                className={cx(
+                  'inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--epic) px-1 text-xs font-semibold text-canvas tabular-nums transition-opacity duration-(--dur-1)',
+                  actions.length > 0 && CONCEAL,
+                )}
+              >
+                {waiting}
+              </span>
+            )}
           </span>
         </button>
         {actions.length > 0 && (
@@ -345,11 +323,7 @@ export function SidebarEpicCard({
           </span>
         )}
       </div>
-      {rows.length > 0 && (
-        <div className="border-t border-border-subtle">
-          <CardRows label={chat.title}>{rows}</CardRows>
-        </div>
-      )}
+      {children && <div className="border-t border-border-subtle">{children}</div>}
     </div>
   )
 }
@@ -469,19 +443,14 @@ function NewEpicSlot({ open = false, onClick }: { open?: boolean; onClick: () =>
 }
 
 /** The features with no epic (decision 7), as a quiet card: a neutral head that is a label, not a door. */
-function OtherFeaturesCard({ label, children }: { label: string; children: ReactNode[] }) {
+function OtherFeaturesCard({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="card relative shrink-0 overflow-hidden rounded-lg">
-      <div className="flex items-center gap-2.5 py-2 pr-2.5 pl-2">
+      <div className="flex items-center gap-2.5 py-1.5 pr-2.5 pl-1.5" title="Features not from an epic">
         <EpicTile quiet />
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-md font-semibold tracking-tight text-text-secondary">{label}</span>
-          <span className="truncate text-xs text-text-tertiary">Not from an epic · {restWords(children.length).toLowerCase()}</span>
-        </span>
+        <span className="min-w-0 flex-1 truncate text-md font-semibold tracking-tight text-text-secondary">{label}</span>
       </div>
-      <div className="border-t border-border-subtle">
-        <CardRows label={label}>{children}</CardRows>
-      </div>
+      <div className="border-t border-border-subtle">{children}</div>
     </div>
   )
 }
@@ -551,24 +520,19 @@ export function SidebarEpics({
   const groups = orderEpicList(epics, other)
   const slim = groups.map((g) => g.kind === 'epic' && epicIsIdle(g.epic))
   const many = noun === 'epic' ? 'Epics' : 'Chats'
-  const row = (f: FeatureListItem, words: (f: FeatureListItem) => string, locked = false) => {
-    const workers = workersFor?.(f)
-    const onNewThread = newWorkerFor?.(f)
-    return (
-      <SidebarFeatureRow
-        key={f.id}
-        f={f}
-        active={f.id === currentFeature}
-        onSelect={onSelectFeature}
-        actions={featureActions?.(f) ?? []}
-        nested
-        words={words}
-        {...(locked ? { lock: <LockedMark /> } : {})}
-        {...(workers ? { workers } : {})}
-        {...(onNewThread ? { onNewThread } : {})}
-      />
-    )
-  }
+  const list = (foldId: string, label: string, items: EpicFeatureItem[]) => (
+    <EpicFeatureList
+      foldId={foldId}
+      label={label}
+      items={items}
+      currentFeature={currentFeature}
+      onSelect={onSelectFeature}
+      featureActions={featureActions}
+      workersFor={workersFor}
+      newWorkerFor={newWorkerFor}
+      lockMark={<LockedMark />}
+    />
+  )
   return (
     <section aria-label={many} className="flex flex-col gap-2.5">
       {onNewEpic && <NewEpicSlot open={newEpicOpen} onClick={onNewEpic} />}
@@ -593,18 +557,18 @@ export function SidebarEpics({
             ) : g.kind === 'epic' ? (
               <SidebarEpicCard
                 chat={g.epic.chat}
-                count={g.epic.features.length}
                 active={g.epic.chat.id === currentChat}
                 onOpen={onOpenEpic}
                 actions={epicActions?.(g.epic.chat) ?? []}
                 color={g.epic.color}
                 icon={g.epic.icon}
                 autopilot={!!g.epic.autopilot}
+                waiting={needCount(g.epic.features)}
               >
-                {g.epic.features.map((x) => row(x.feature, (f) => featureStateWords(f, !!x.locked), !!x.locked))}
+                {g.epic.features.length > 0 ? list(g.epic.chat.id, g.epic.chat.title, g.epic.features) : undefined}
               </SidebarEpicCard>
             ) : (
-              <OtherFeaturesCard label="Other features">{g.features.map((f) => row(f, (it) => featureStateWords(it)))}</OtherFeaturesCard>
+              <OtherFeaturesCard label="Other features">{list('other', 'Other features', g.features.map((feature) => ({ feature })))}</OtherFeaturesCard>
             )}
           </li>
         ))}
