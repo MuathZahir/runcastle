@@ -62,3 +62,19 @@ export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
     need: null,
   } as unknown as FeatureFull
 }
+
+/**
+ * Opens every fold the sidebar remembers (an epic's features, a feature's
+ * workers) for the length of `run`, by answering "open" for every key a
+ * static render reads from localStorage. Folds start closed without it.
+ */
+export function withFoldsOpen<T>(run: () => T): T {
+  const g = globalThis as { localStorage?: unknown }
+  const before = g.localStorage
+  g.localStorage = { getItem: () => '1', setItem: () => {}, removeItem: () => {} }
+  try {
+    return run()
+  } finally {
+    g.localStorage = before
+  }
+}

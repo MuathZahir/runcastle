@@ -6,7 +6,7 @@ import { featureStateWords } from '../src/components/SidebarParts'
 import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
 import { epicIsYellow, epicsFrom } from '../src/lib/feature-ui/epics'
-import { listItem, need } from './fixtures'
+import { listItem, need, withFoldsOpen } from './fixtures'
 
 /**
  * The sidebar on autopilot (docs/features/epics-on-autopilot decisions 7, 14,
@@ -121,34 +121,36 @@ describe('a locked feature row', () => {
   const on = chat('pay', 'Checkout flow', { autopilot: true, state: 'working' })
   const lock = locked('pay', 'Checkout flow')
 
-  it('wears the lock and says Working while it works', () => {
-    const html = render([on], [feature('Checkout page', 'pay', { ...lock, working: true })])
+  it('folds with the rest, and opened wears the lock with no status words', () => {
+    const features = [feature('Checkout page', 'pay', { ...lock, working: true })]
+    expect(render([on], features)).toContain('>1 working<')
+    const html = withFoldsOpen(() => render([on], features))
     expect(html).toContain('aria-label="On autopilot"')
-    expect(html).toContain('title="Checkout page — on autopilot"')
-    expect(html).toContain('>Working<')
+    expect(html).toContain('title="Checkout page — on autopilot')
+    expect(html).not.toContain('>Working<')
   })
 
-  it('says Idle, never Needs you, even with a need of its own on the wire', () => {
-    const html = render([on], [feature('Saved cards', 'pay', { ...lock, status: 'active', need: need('Design to approve') })])
-    expect(html).toContain('>Idle<')
+  it('never needs you, even with a need of its own on the wire', () => {
+    const features = [feature('Saved cards', 'pay', { ...lock, status: 'active', need: need('Design to approve') })]
+    const html = withFoldsOpen(() => render([on], features))
+    expect(html).toContain('>1 idle<')
     expect(html).not.toContain('Design to approve')
-    expect(html).not.toContain('Needs you')
+    expect(html).not.toContain('data-needs-you')
+    expect(html).not.toContain('needs you"')
   })
 
-  it('a feature left for the grill sits locked and Idle with the rest (decision 14)', () => {
-    const html = render(
-      [on],
-      [feature('Checkout page', 'pay', { ...lock, working: true }), feature('Refunds', 'pay', lock)],
-    )
-    expect(html.match(/aria-label="On autopilot"/g)).toHaveLength(2)
-    expect(html).toContain('>Idle<')
+  it('a feature left for the grill sits locked and idle with the rest (decision 14)', () => {
+    const features = [feature('Checkout page', 'pay', { ...lock, working: true }), feature('Refunds', 'pay', lock)]
+    expect(render([on], features)).toContain('>1 working · 1 idle<')
+    expect(withFoldsOpen(() => render([on], features)).match(/aria-label="On autopilot"/g)).toHaveLength(2)
   })
 
-  it('a feature off autopilot keeps its own Needs you and no lock', () => {
+  it('a feature off autopilot keeps its own needs-you row and no lock', () => {
     const off = chat('ship', 'Shipping')
     const html = render([off], [feature('Status chip', 'ship', { status: 'active', need: need('Design to approve') })])
     expect(html).not.toContain('aria-label="On autopilot"')
-    expect(html).toContain('Needs you · Design to approve')
+    expect(html).toContain('data-needs-you=""')
+    expect(html).toContain('title="Status chip — Design to approve')
   })
 
   it('the words: Merged once shipped, Working or Idle otherwise', () => {

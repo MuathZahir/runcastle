@@ -14,7 +14,7 @@ import { openRowMenu, SIDEBAR_CARD, type FeatureWorkers } from './SidebarParts'
  * The features inside an epic's card (docs/features/a-calmer-sidebar): what
  * needs you stands out, the rest folds away. Each feature is one line — its
  * mark in front, its title, and an arrow at the end when it has live workers —
- * with no status words, no dots and no progress ring (decisions 2, 5, 7, 8). Features that need you come
+ * with no status words and no progress ring (decisions 2, 5, 9). Features that need you come
  * first; every other one folds into one quiet line, "3 working · 1 idle",
  * opened per epic (decision 3). The feature in front always shows, folded or not.
  */
@@ -59,14 +59,14 @@ function useStoredOpen(key: string): [boolean, () => void] {
   return [open, toggle]
 }
 
-export const EPIC_FOLD_KEY = (epicId: string) => `runcastle.sidebar.epicOpen:${epicId}`
-export const WORKERS_OPEN_KEY = (featureId: string) => `runcastle.sidebar.workersOpen:${featureId}`
+const EPIC_FOLD_KEY = (epicId: string) => `runcastle.sidebar.epicOpen:${epicId}`
+const WORKERS_OPEN_KEY = (featureId: string) => `runcastle.sidebar.workersOpen:${featureId}`
 
 // ---------------------------------------------------------------------------
 // The marks: one icon at the front of a row, in the app's own line style
 // ---------------------------------------------------------------------------
 
-/** What a row is waiting on: go test it, go answer it, or something broke (decision 7). */
+/** What a row is waiting on: go test it, go answer it, or something broke (decision 10). */
 export type NeedKind = 'ready' | 'question' | 'failed' | 'stuck'
 
 /**
@@ -113,7 +113,7 @@ export function needCount(items: readonly EpicFeatureItem[]): number {
 }
 
 /** A working row's mark: a small spinner, the one thing in the block that moves. */
-export function WorkingMark() {
+function WorkingMark() {
   return (
     <span aria-label="Working" role="img" className="inline-flex size-4 shrink-0 items-center justify-center">
       <span className="size-3 rounded-full border-[1.5px] border-[color-mix(in_oklab,var(--color-text-tertiary)_30%,transparent)] border-t-text-tertiary [animation:spin_1.1s_linear_infinite]" />
@@ -121,7 +121,7 @@ export function WorkingMark() {
   )
 }
 
-/** A feature's leading mark: its autopilot lock, ready to test, a question, a stuck up-next, the meter while it works, or none. */
+/** A feature's leading mark: its autopilot lock, ready to test, a question, a stuck up-next, the spinner while it works, or none. */
 function featureMark(f: FeatureListItem, lock: ReactNode | undefined): ReactNode {
   if (lock !== undefined) return <span className="inline-flex size-4 shrink-0 items-center justify-center">{lock}</span>
   const need = needsMe(f)
@@ -146,7 +146,7 @@ function featureTooltip(f: FeatureListItem, locked: boolean): string {
 // One feature, one line: [mark] title ……… [arrow]
 // ---------------------------------------------------------------------------
 
-/** The arrow at a row's end that opens its live workers (decision 8). */
+/** The arrow at a row's end that opens its live workers (decision 9). */
 function Disclosure({ open, onToggle, label }: { open: boolean; onToggle: () => void; label: string }) {
   return (
     <button
@@ -183,7 +183,7 @@ function RowActions({ children, beforeArrow }: { children: ReactNode; beforeArro
  * live workers at the end. No time and no status words; the hover says both.
  * The whole row opens it; "+" and "…" show on hover.
  */
-export function EpicFeatureRow({
+function EpicFeatureRow({
   f,
   active,
   onSelect,
@@ -313,7 +313,7 @@ function EpicWorkerRow({
   )
 }
 
-/** A feature and, opened, its live workers under it on a guide line. Finished workers are not drawn (decision 6); the arrow opens them (decision 8). */
+/** A feature and, opened, its live workers under it on a guide line. Finished workers are not drawn (decision 6); the arrow opens them (decision 9). */
 function EpicFeature({
   item,
   active,
@@ -377,7 +377,7 @@ function EpicFeature({
 // ---------------------------------------------------------------------------
 
 /** How the folded features read: "3 working · 1 idle · 1 up next", the empty counts left out. */
-export function foldWords(items: readonly EpicFeatureItem[]): { working: number; idle: number; upNext: number } {
+function foldWords(items: readonly EpicFeatureItem[]): { working: number; idle: number; upNext: number } {
   let working = 0
   let idle = 0
   let upNext = 0
@@ -390,7 +390,7 @@ export function foldWords(items: readonly EpicFeatureItem[]): { working: number;
   return { working, idle, upNext }
 }
 
-/** The fold as a row like the others: the meter in front while any work, the counts, and its arrow at the end. */
+/** The fold as a row like the others: the spinner in front while any work and it is closed, the counts, and its arrow at the end. */
 function FoldLine({ items, open, onToggle, label }: { items: readonly EpicFeatureItem[]; open: boolean; onToggle: () => void; label: string }) {
   const { working, idle, upNext } = foldWords(items)
   const stuck = items.some((x) => !x.locked && upNextProblem(x.feature))
@@ -418,7 +418,7 @@ function FoldLine({ items, open, onToggle, label }: { items: readonly EpicFeatur
 // The card's body
 // ---------------------------------------------------------------------------
 
-export interface EpicFeatureListProps {
+interface EpicFeatureListProps {
   /** Whose fold this is: the epic's chat id, or "other" for Other features. */
   foldId: string
   label: string

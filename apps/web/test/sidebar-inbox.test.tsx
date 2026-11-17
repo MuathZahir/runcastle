@@ -172,7 +172,11 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
     data.features = [titled('Retry policy', { chatId: 'pay' })]
     rail({ view: 'feature', onOpenChat })
     expect(within(epics()).getByText('Payment System')).toBeTruthy()
-    expect(within(screen.getByRole('group', { name: 'Payment System' })).getByText('Retry policy')).toBeTruthy()
+    // An idle feature folds away; its fold line opens it (a-calmer-sidebar decision 3).
+    const group = screen.getByRole('group', { name: 'Payment System' })
+    expect(within(group).queryByText('Retry policy')).toBeNull()
+    fireEvent.click(within(group).getByRole('button', { name: 'Payment System: 1 more feature' }))
+    expect(within(group).getByText('Retry policy')).toBeTruthy()
     for (const gone of ['Needs you', 'Working', 'Up next'])
       expect(screen.queryByRole('region', { name: gone })).toBeNull()
     expect(screen.queryByText(/Orchestrator/)).toBeNull()
@@ -180,7 +184,7 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
     expect(onOpenChat).toHaveBeenCalledWith('pay')
   })
 
-  it('reads each nested feature in the four words, with no owner prefix, and puts Needs you first', () => {
+  it('puts what needs you first with no status words, and folds the rest into one line (a-calmer-sidebar decisions 2, 3)', () => {
     data.threads = [epic('pay', 'Payment System', { state: 'working' }), epic('notes', 'Notes triage', { state: 'working' })]
     data.features = [
       titled('Billing emails', { chatId: 'pay', working: true }),
@@ -188,17 +192,21 @@ describe('the epics (orchestrator-chats-become-epics)', () => {
     ]
     rail()
     const nested = screen.getByRole('group', { name: 'Payment System' })
-    expect(within(nested).getByText('Working')).toBeTruthy()
-    expect(within(nested).getByText('Needs you · May I run git push?')).toBeTruthy()
-    // Needs you first inside the epic (decision 8).
-    expect(nested.textContent!.indexOf('Export to CSV')).toBeLessThan(nested.textContent!.indexOf('Billing emails'))
+    const asking = within(nested).getByRole('group', { name: 'Needs you' })
+    expect(within(asking).getByRole('button', { name: 'Export to CSV' }).title).toContain('May I run git push?')
+    expect(within(asking).getByRole('img', { name: 'Asks you' })).toBeTruthy()
+    expect(within(nested).queryByText(/May I run git push/)).toBeNull()
+    expect(within(nested).queryByText('Billing emails')).toBeNull()
+    expect(within(nested).getByText('1 working')).toBeTruthy()
+    // The epic's head counts what needs you.
+    expect(screen.getByLabelText('1 needs you')).toBeTruthy()
   })
 
   it('opens the exact chat a needs-you row waits in, a worker’s included (needs-you decision 12)', () => {
     const onOpenWorkerChat = vi.fn()
     data.features = [titled('Loose', { need: need('Which header?', { threadId: 'worker-7' }) })]
     rail({ onOpenWorkerChat })
-    fireEvent.click(within(screen.getByRole('group', { name: 'Other features' })).getByText('Loose'))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Other features' })).getByRole('button', { name: 'Loose' }))
     expect(onOpenWorkerChat).toHaveBeenCalledWith('Loose', 'worker-7')
   })
 
@@ -301,6 +309,8 @@ describe('the folded shelves', () => {
 describe('the row menus', () => {
   it('archive a feature and unarchive an archived one', () => {
     localStorage.setItem('runcastle.sidebar.showArchived', '1')
+    // Other features' fold left open, so its idle row shows.
+    localStorage.setItem('runcastle.sidebar.epicOpen:other', '1')
     data.features = [titled('Coupons', { id: 'f1' }), titled('Old', { id: 'f2', status: 'archived' })]
     rail()
     const [first, second] = screen.getAllByRole('button', { name: 'Feature actions' })

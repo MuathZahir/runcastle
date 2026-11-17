@@ -7,7 +7,7 @@ import type { FeatureListItem } from '../src/lib/api'
 import type { ThreadEntry } from '../src/lib/chat-thread'
 import { epicsFrom } from '../src/lib/feature-ui/epics'
 import { takesNewWorkers, type WorkerEntry } from '../src/lib/workers'
-import { listItem, need } from './fixtures'
+import { listItem, need, withFoldsOpen } from './fixtures'
 
 /**
  * Workers nest under their feature (docs/features/workers-nest-under-their-
@@ -138,10 +138,11 @@ describe('workers nested under their feature', () => {
     expect(row()).not.toContain('New worker')
   })
 
-  it('locks the worker rows of a feature on autopilot, with no amber dot', () => {
+  it('locks the worker rows of a feature on autopilot, with nothing that says needs you', () => {
     const epic: ThreadEntry = { id: 'chat_1', title: 'Checkout flow', role: 'project', state: 'working', createdAt: 0, updatedAt: 0, runtime: 'claude-code', need: null, autopilot: true }
     const locked = f({ chatId: epic.id, autopilot: { epicId: epic.id, epicName: epic.title } })
-    const html = renderToStaticMarkup(
+    // Its epic's fold and its workers opened, as the human would open them.
+    const html = withFoldsOpen(() => renderToStaticMarkup(
       createElement(SidebarEpics, {
         epics: epicsFrom([epic], [locked], () => true).epics,
         total: 1,
@@ -152,11 +153,12 @@ describe('workers nested under their feature', () => {
         onAllEpics: () => {},
         workersFor: () => workers(),
       }),
-    )
+    ))
     // The feature and each of its five live workers wear the lock.
     expect(html.match(/aria-label="On autopilot"/g)).toHaveLength(6)
     expect(html).not.toContain('bg-warning')
-    expect(html).not.toContain('Needs you')
+    expect(html).not.toContain('data-needs-you')
+    expect(html).not.toContain('aria-label="Asks you"')
     expect(order(html)).toContain('Asking one')
   })
 })
