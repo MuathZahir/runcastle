@@ -38,6 +38,7 @@ import {
 import { autopilotReader, type FeatureAutopilot, isLocked, tellEpicInstead } from './autopilot'
 import { emit, emitProject, latestEventTs, latestTsByFeature, upNextProblems } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
+import { removeFeatureReviewCaptures } from './review-capture-expiry'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
@@ -809,6 +810,7 @@ export async function deleteFeature(
   } catch {
     // best-effort, as above
   }
+  removeFeatureReviewCaptures(ctx.db, featureId)
   deleteFeatureRows(ctx, featureId)
 
   return { ok: true, slug: feature.slug }

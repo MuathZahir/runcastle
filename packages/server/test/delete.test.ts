@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { scenarioDataDir, sessionDir } from '@runcastle/core/paths'
+import { reviewDir, scenarioDataDir, sessionDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -213,6 +213,24 @@ describe('feature delete', () => {
     await deleteFeature(ctx, feature.id)
 
     expect(existsSync(dataDir)).toBe(false)
+  })
+
+  // Review captures go with a deleted feature at once (cleanup decision 10).
+  it('removes the feature’s review capture folders', async () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'del-caps' })
+    await createFeatureBranch(project, feature.slug, 'main')
+    const ticketId = newId('tkt')
+    ctx.db
+      .insert(tickets)
+      .values({ id: ticketId, featureId: feature.id, seq: 1, title: 't', goal: 'g', context: 'c', acceptanceCriteria: [], seams: [], blockedBy: [], status: 'done', commits: [] })
+      .run()
+    const captures = reviewDir(ticketId)
+    mkdirSync(captures, { recursive: true })
+    writeFileSync(join(captures, 'walkthrough.webm'), 'video')
+
+    await deleteFeature(ctx, feature.id)
+
+    expect(existsSync(captures)).toBe(false)
   })
 
   it('deletes matching runcastle temp branches, keeps unrelated branches', async () => {
