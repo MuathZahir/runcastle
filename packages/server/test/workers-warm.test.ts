@@ -2,16 +2,16 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
-import { sessionDir } from '@runcastle/core/paths'
+import { dataDir, sessionDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { toolDropWorker, toolStartWorker } from '../src/mcp/server'
 import { composeOutcomeDoc } from '../src/services/outcome'
 import { setAgentHostForTests } from '../src/threads/host'
 import { setSandboxEngineForTests } from '../src/workers/engine'
-import { IN, guardInstallScript, runArgs } from '../src/workers/sandbox'
+import { IN, cachePrepareScript, cacheTmpSweepScript, guardInstallScript, runArgs } from '../src/workers/sandbox'
 import { getWorker, keptConversationPath, listWorkers, withWorkers } from '../src/workers/service'
-import { workerBriefing } from '../src/workers/worker'
+import { workerBriefing, workerLabels } from '../src/workers/worker'
 import { createFakeAcp } from './support/fake-acp-agent'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -112,11 +112,34 @@ describe('the start', () => {
       engine: 'docker', container: 'c', image: 'img', port: 41000, originDir: '/o', runtimeDir: '/r', uid: 1, gid: 2,
       cache: { volume: 'runcastle-proj', env: { BUN_INSTALL_CACHE_DIR: '/home/agent/cache/store/bun' } },
       cpus: 1.5,
+      labels: {},
     })
     expect(args.join(' ')).toContain('--cpus 1.5')
     expect(args.join(' ')).toContain('-v runcastle-proj:/home/agent/cache')
     expect(args.join(' ')).toContain('-e BUN_INSTALL_CACHE_DIR=/home/agent/cache/store/bun')
-    expect(runArgs({ engine: 'docker', container: 'c', image: 'img', port: 1, originDir: '/o', runtimeDir: '/r', uid: 1, gid: 2 }).join(' ')).not.toMatch(/--cpus|cache/)
+    expect(runArgs({ engine: 'docker', container: 'c', image: 'img', port: 1, originDir: '/o', runtimeDir: '/r', uid: 1, gid: 2, labels: {} }).join(' ')).not.toMatch(/--cpus|cache/)
+  })
+
+  it('labels the container with runcastle, this data folder, its worker and its project (cleans-up decision 5)', () => {
+    const args = runArgs({
+      engine: 'docker', container: 'c', image: 'img', port: 1, originDir: '/o', runtimeDir: '/r', uid: 1, gid: 2,
+      labels: workerLabels('sess_w1', 'proj_p1'),
+    })
+    const labels = args.flatMap((a, i) => (args[i - 1] === '--label' ? [a] : []))
+    expect(labels).toEqual([
+      'runcastle.owner=runcastle',
+      `runcastle.data-dir=${dataDir()}`,
+      'runcastle.worker=sess_w1',
+      'runcastle.project=proj_p1',
+    ])
+    // Before the image, which ends the options.
+    expect(args.lastIndexOf('--label')).toBeLessThan(args.indexOf('img'))
+  })
+
+  it('deletes only temp files older than a day, in the cache volume’s temp folder, before the agent starts (cleans-up decision 9)', async () => {
+    expect(cacheTmpSweepScript()).toBe('[ -d /home/agent/cache/tmp ] && find /home/agent/cache/tmp -mindepth 1 -mtime +1 -delete 2>/dev/null; true')
+    // The setup runs it right after making the cache's dirs, long before the agent's first turn.
+    expect(cachePrepareScript(['/home/agent/cache/store/bun'])).toBe(`mkdir -p '/home/agent/cache/store/bun' && ${cacheTmpSweepScript()}`)
   })
 })
 

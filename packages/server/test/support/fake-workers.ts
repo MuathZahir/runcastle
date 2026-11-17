@@ -5,9 +5,10 @@ import type { PromptDisplay } from '@runcastle/core'
 import type { AgentTransport } from '../../src/threads/host'
 import type { AgentHost } from '../../src/threads/types'
 import type { SandboxEngine } from '../../src/workers/engine'
+import type { ContainerFacts, VolumeFacts } from '../../src/workers/ownership'
 import type { PrepareInput } from '../../src/workers/prepare'
 import type { WorkerSetup } from '../../src/workers/setup-copy'
-import { type HandbackNote, type NewSandboxInput, type WorkerLaunch, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLaunch } from '../../src/workers/worker'
+import { type HandbackNote, type NewSandboxInput, type WorkerLaunch, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLabels, workerLaunch } from '../../src/workers/worker'
 import { tmpRepo } from '../helpers/fixtures'
 
 /**
@@ -76,6 +77,20 @@ export type FakeEngine = SandboxEngine & {
   launches: WorkerLaunch[]
   /** Where the agent's process comes from; none by default. */
   transport?: AgentTransport
+  /** Each held container's labels, as `run` set them (a test may put another install's). */
+  labels: Map<string, Record<string, string>>
+  /** Each held container's mounts, for the unlabelled-worker ownership rule; none by default. */
+  mounts: Map<string, ContainerFacts['mounts']>
+  /** Each held container's writable layer size, for the sweep's freed-space figure. */
+  sizes: Map<string, number>
+  /** The volumes the engine holds. */
+  volumes: VolumeFacts[]
+  /** Volumes removed, oldest first. */
+  removedVolumes: string[]
+  /** When set, `create` throws it after the container runs: a clone, install or setup command that failed. */
+  setupFailure?: string
+  /** When set, `create` waits on it after the container runs, so a test can act while setup is under way. */
+  setupGate?: Promise<void>
 }
 
 /** A sandbox engine with no container: handbacks are put in by the test, a removal deletes the host branch as the real one does. */
@@ -101,6 +116,11 @@ export function fakeEngine(): FakeEngine {
     sandboxFiles: new Map(),
     processes: [],
     launches: [],
+    labels: new Map(),
+    mounts: new Map(),
+    sizes: new Map(),
+    volumes: [],
+    removedVolumes: [],
     async available() {
       return engine.up
     },
@@ -113,8 +133,13 @@ export function fakeEngine(): FakeEngine {
     create: async (input) => {
       engine.order.push('create')
       engine.created.push(input)
-      git(input.repoPath, 'branch', input.branch, input.featureBranch)
+      // The container runs first, labelled as the real `run` labels it; the clone and setup follow.
       engine.held.set(input.container, true)
+      engine.labels.set(input.container, workerLabels(input.id, input.projectId))
+      input.onContainer?.(input.container, 41001)
+      if (engine.setupGate) await engine.setupGate
+      if (engine.setupFailure) throw new Error(engine.setupFailure)
+      git(input.repoPath, 'branch', input.branch, input.featureBranch)
       return {
         id: input.id,
         engine: input.engine,
@@ -136,7 +161,24 @@ export function fakeEngine(): FakeEngine {
       if (engine.held.has(sb.container)) engine.held.set(sb.container, true)
       return true
     },
-    containers: async () => new Map(engine.held),
+    inspect: async (name) => (engine.held.has(name) ? facts(name) : undefined),
+    listContainers: async () => [...engine.held.keys()].map(facts),
+    listVolumes: async () => [...engine.volumes],
+    removeContainer: async (name) => {
+      engine.removed.push(name)
+      engine.held.delete(name)
+    },
+    stopContainers: async (names) => {
+      for (const name of names) {
+        engine.stopped.push(name)
+        if (engine.held.has(name)) engine.held.set(name, false)
+      }
+    },
+    removeStaleImages: async () => ({ removed: [], freedBytes: 0, failed: [] }),
+    removeVolume: async (name) => {
+      engine.removedVolumes.push(name)
+      engine.volumes = engine.volumes.filter((v) => v.name !== name)
+    },
     // Like the real one, removing what is already gone is no error.
     remove: async (sb: WorkerSandbox) => {
       engine.order.push('remove')
@@ -186,6 +228,16 @@ export function fakeEngine(): FakeEngine {
         ...permissionHooks(opts.onMode, sb.runtime),
       }
     },
+  }
+  function facts(name: string): ContainerFacts {
+    const size = engine.sizes.get(name)
+    return {
+      name,
+      running: engine.held.get(name) === true,
+      labels: engine.labels.get(name) ?? {},
+      mounts: engine.mounts.get(name) ?? [],
+      ...(size !== undefined ? { sizeBytes: size } : {}),
+    }
   }
   return engine
 }

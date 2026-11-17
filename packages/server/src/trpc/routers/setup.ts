@@ -5,7 +5,8 @@ import {
   resolveSandboxImage,
   type Project,
 } from '@runcastle/core'
-import { isNotNull } from 'drizzle-orm'
+import { dataDir } from '@runcastle/core/paths'
+import { isNotNull, sql } from 'drizzle-orm'
 import * as z from 'zod'
 import { projects } from '../../db/schema'
 import type { AppCtx } from '../../db/types'
@@ -18,13 +19,16 @@ import { ptyRegistry } from '../../pty/registry'
 import { isOverwritable } from '../../services/findings'
 import { rosterConfig } from '../../services/model-discovery'
 import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
+import { emitProject } from '../../services/events'
 import { allProjects, requireProjectById } from '../../services/repo'
 import { prepareImageBuild, tryImageBuildSlot } from '../../services/image-build'
 import {
+  buildCacheKept,
   imageBuildTarget,
   imageBuildTerminal,
   type ImageBuildTerminal,
 } from '../../services/sandbox-image'
+import { removeStaleSandboxImages } from '../../services/sandbox-image-cleanup'
 import {
   fileAfkTokenIo,
   runtimeInstallGuide,
@@ -265,8 +269,9 @@ async function buildImageTerminal(
   }
   try {
     const project = projectId ? requireProjectById(ctx, projectId) : null
-    const { runtime, plan, notices } = await prepareImageBuild({
-      exec: createSystemExec(),
+    const exec = createSystemExec()
+    const { runtime, plan, mode, notices } = await prepareImageBuild({
+      exec,
       config: ctx.config,
       project: project
         ? {
@@ -278,14 +283,28 @@ async function buildImageTerminal(
         : null,
     })
     if (plan.kind === 'refused') throw new InvalidInputError(plan.reason)
+    const cacheKept = buildCacheKept(plan, mode)
     return {
-      spec: imageBuildTerminal(runtime, plan),
-      notices,
+      spec: imageBuildTerminal(runtime, plan, process.platform, mode),
+      notices: [...notices, ...(cacheKept ? [`This build keeps its build cache: ${cacheKept}.`] : [])],
       onExit: ({ exitCode }) => {
         release()
-        if (exitCode === 0 && plan.kind === 'chain' && project) {
-          adoptProjectImage(ctx, project.id, plan.projectTag)
-        }
+        if (exitCode !== 0) return
+        if (plan.kind === 'chain' && project) adoptProjectImage(ctx, project.id, plan.projectTag)
+        // The image this build replaced is untagged now; it goes unless a container uses it,
+        // and the timeline says so (on the oldest project for the stock image, like the sweep).
+        void removeStaleSandboxImages({ engine: runtime, exec, dataDir: dataDir() }).then((out) => {
+          if (out.removed.length === 0) return
+          const on =
+            project?.id ?? ctx.db.select({ id: projects.id }).from(projects).orderBy(sql`rowid`).limit(1).get()?.id
+          if (!on) return
+          const n = out.removed.length
+          emitProject(ctx, on, {
+            type: 'cleanup.swept',
+            message: `Removed ${n} old image${n === 1 ? '' : 's'} (${(out.freedBytes / 1e9).toFixed(1)} GB)`,
+            data: { removed: { 'old images': n }, freedBytes: out.freedBytes, sizeUnknown: 0 },
+          })
+        })
       },
     }
   } catch (error) {

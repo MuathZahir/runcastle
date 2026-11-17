@@ -1,4 +1,6 @@
 import type { ExecFn } from '../doctor/doctor'
+import { dataDir } from '@runcastle/core/paths'
+import { LABEL_PROJECT, labelArgs, ownerLabels } from '@runcastle/core'
 import { type BurnUser, burnUserSpec, resolveBurnUser } from './burn-user'
 import type { PackageManager } from '../services/repo-toolchain'
 
@@ -119,14 +121,17 @@ export function burnCacheEnv(pm: PackageManager): Record<string, string> {
 // Volume lifecycle (host side)
 // ---------------------------------------------------------------------------
 
-/** Refusal to drop a cache volume that burns are still working out of. */
+/** Refusal to drop a cache volume that containers still mount. */
 export class BurnCacheBusyError extends Error {
-  /** The slot numbers held when the clear was attempted. */
-  readonly slots: readonly number[]
-  constructor(slots: readonly number[]) {
-    super(`worker cache is in use — slots ${slots.join(', ')} are held; stop those burns before clearing it`)
+  /** The containers (running or stopped) mounting the volume when the clear was attempted. */
+  readonly containers: readonly string[]
+  constructor(containers: readonly string[]) {
+    super(
+      `worker cache is in use by ${containers.length === 1 ? 'container' : 'containers'} ${containers.join(', ')}; ` +
+        'drop or land those workers before clearing it',
+    )
     this.name = 'BurnCacheBusyError'
-    this.slots = slots
+    this.containers = containers
   }
 }
 
@@ -161,6 +166,8 @@ export interface EnsureBurnCacheVolumeOptions {
   burnUser?: BurnUser
   /** Told when a volume the worker user cannot write to is about to be replaced. */
   onRepair?: (found: Extract<BurnCacheAccess, { state: 'unwritable' }>) => void
+  /** The data folder the ownership label names; this install's when omitted. */
+  dataDir?: string
 }
 
 /**
@@ -340,6 +347,8 @@ export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions):
     'create',
     '--label',
     `${BURN_CACHE_VOLUME_LABEL}=${BURN_CACHE_VOLUME_VERSION}`,
+    // Who made it (decision 5): the sweep and a drive's stop read these.
+    ...labelArgs(ownerLabels(opts.dataDir ?? dataDir(), { [LABEL_PROJECT]: opts.projectId })),
     name,
   ])
   try {
@@ -361,17 +370,43 @@ export interface RemoveBurnCacheVolumeOptions {
   engine: BurnCacheEngine
   projectId: string
   exec: ExecFn
-  /** Slots held right now — from the allocator's `held()`. */
-  slots: readonly number[]
 }
 
 /**
- * Drop the project's cache volume. Refused while any slot is held: the
- * checkouts on the volume are those burns' working trees, and pulling it out
- * from under a running container leaves the agent writing into a deleted mount.
+ * The containers, running or stopped, that mount the project's cache volume.
+ * Throws when the engine cannot say: a clear must not go ahead on a guess.
+ */
+export async function containersMountingBurnCache(opts: RemoveBurnCacheVolumeOptions): Promise<string[]> {
+  const out = await opts.exec(opts.engine, [
+    'ps',
+    '-a',
+    '--filter',
+    `volume=${burnCacheVolumeName(opts.projectId)}`,
+    '--format',
+    '{{.Names}}',
+  ])
+  if (!out.ok || out.code !== 0) {
+    throw new Error(
+      `could not ask ${opts.engine} which containers use the worker cache: ${out.stderr.trim() || `exit ${out.code}`}`,
+    )
+  }
+  return out.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .sort()
+}
+
+/**
+ * Drop the project's cache volume. Refused while any container mounts it: a
+ * worker's container holds its checkout and caches there, and pulling the
+ * volume out from under it leaves the agent writing into a deleted mount. The
+ * workers' containers are what count; the retired burner's slot allocator,
+ * which this used to ask, is never claimed by a worker.
  */
 export async function removeBurnCacheVolume(opts: RemoveBurnCacheVolumeOptions): Promise<void> {
-  if (opts.slots.length > 0) throw new BurnCacheBusyError([...opts.slots].sort((a, b) => a - b))
+  const users = await containersMountingBurnCache(opts)
+  if (users.length > 0) throw new BurnCacheBusyError(users)
   await execOrThrow(opts.exec, opts.engine, ['volume', 'rm', burnCacheVolumeName(opts.projectId)])
 }
 

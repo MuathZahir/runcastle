@@ -43,7 +43,7 @@ export function toTRPCError(e: unknown): TRPCError {
   if (e instanceof GateError)
     return new TRPCError({ code: 'PRECONDITION_FAILED', message: e.message, cause: e })
   // Clearing the worker cache while a round is working out of it is a precondition
-  // failure, not a server fault — the message already names the held slots, and
+  // failure, not a server fault — the message already names the containers, and
   // the AFK card renders it verbatim.
   if (e instanceof BurnCacheBusyError)
     return new TRPCError({ code: 'PRECONDITION_FAILED', message: e.message, cause: e })

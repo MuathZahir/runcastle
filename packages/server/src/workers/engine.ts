@@ -1,4 +1,10 @@
+import { LABEL_DATA_DIR } from '@runcastle/core'
+import { dataDir } from '@runcastle/core/paths'
+import { createSystemExec } from '../doctor/system-exec'
+import { removeLeftoverBuilders, removeStaleSandboxImages, type StaleImagesResult } from '../services/sandbox-image-cleanup'
 import type { AgentProcess } from '../threads/host'
+import { inspectContainer, listContainers, listVolumes, removeContainer, removeVolume, stopContainers } from './containers'
+import { type ContainerFacts, ForeignContainerError, type VolumeFacts, ownershipOf } from './ownership'
 import { type PrepareInput, prepareSandbox } from './prepare'
 import { type Engine, engineRun } from './sandbox'
 import type { WorkerSetup } from './setup-copy'
@@ -19,7 +25,6 @@ import {
   refreshWorkerFeatureBranch,
   removeSandbox,
   stopSandbox,
-  workerContainers,
   takeHandbackNote,
   devServerRecorded,
   workerProcess,
@@ -47,8 +52,23 @@ export interface SandboxEngine {
   conversationOnDisk(sb: WorkerSandbox, conversationId: string): Promise<boolean>
   /** Where inside the sandbox the agent keeps its own record of `conversationId` (Claude's session file, Codex's rollout), waking it if need be; undefined when there is none. */
   conversationPath(sb: WorkerSandbox, conversationId: string): Promise<string | undefined>
-  /** Every worker container the engine holds, stopped ones too, by name: true when it runs. */
-  containers(): Promise<Map<string, boolean>>
+  /** One container's labels, mounts and state; undefined when the engine holds none of that name. */
+  inspect(container: string): Promise<ContainerFacts | undefined>
+  /** Every container the engine holds, whoever made it, stopped ones too (the sweep sorts them by {@link ownershipOf}). */
+  listContainers(): Promise<ContainerFacts[]>
+  /** Every volume the engine holds. */
+  listVolumes(): Promise<VolumeFacts[]>
+  /** Remove a container by name (the sweep's, for one no worker row reaches); one already gone is no error. */
+  removeContainer(container: string): Promise<void>
+  /** Stop containers by name at once, giving each `seconds` (the shutdown's and the sweep's). */
+  stopContainers(containers: string[], seconds?: number): Promise<void>
+  removeVolume(volume: string): Promise<void>
+  /**
+   * Remove runcastle's sandbox images nothing needs (replaced ones, and those of
+   * projects not in `liveProjectIds`) and this install's leftover buildx
+   * builders (decision 8). Never throws.
+   */
+  removeStaleImages(input: { dataDir: string; liveProjectIds: readonly string[] }): Promise<StaleImagesResult>
   /** Remove the container, the worker branch on the host and its bare copy. */
   remove(sb: WorkerSandbox): Promise<void>
   /** The handback the worker wrote since the last one taken, if any. */
@@ -84,7 +104,17 @@ export function containerEngine(name: Engine): SandboxEngine {
     wake: async (sb) => (await ensureSandboxRunning(sb)) > 0,
     conversationOnDisk: (sb, conversationId) => conversationInSandbox(sb, conversationId),
     conversationPath: (sb, conversationId) => conversationPathInSandbox(sb, conversationId),
-    containers: () => workerContainers(name),
+    inspect: (container) => inspectContainer(name, container),
+    listContainers: () => listContainers(name),
+    listVolumes: () => listVolumes(name),
+    removeContainer: (container) => removeContainer(name, container),
+    stopContainers: (containers, seconds) => stopContainers(name, containers, seconds),
+    removeVolume: (volume) => removeVolume(name, volume),
+    removeStaleImages: async ({ dataDir: dir, liveProjectIds }) => {
+      const exec = createSystemExec()
+      if (name === 'docker') await removeLeftoverBuilders({ exec, dataDir: dir })
+      return removeStaleSandboxImages({ engine: name, exec, dataDir: dir, liveProjectIds })
+    },
     remove: (sb) => removeSandbox(sb),
     takeHandback: (sb) => takeHandbackNote(sb),
     devServerStarted: (sb) => devServerRecorded(sb),
@@ -104,7 +134,76 @@ export function setSandboxEngineForTests(engine: SandboxEngine | undefined): voi
   testEngine = engine
 }
 
-/** The engine workers run on, from `config.sandbox`. */
+/** The engine workers run on, from `config.sandbox`, behind the ownership check. */
 export function sandboxEngine(sandbox: string | undefined): SandboxEngine {
-  return testEngine ?? containerEngine(sandbox === 'podman' ? 'podman' : 'docker')
+  return ownedOnly(testEngine ?? containerEngineOnce(sandbox === 'podman' ? 'podman' : 'docker'))
+}
+
+const guarded = new WeakMap<SandboxEngine, SandboxEngine>()
+const realEngines = new Map<Engine, SandboxEngine>()
+
+/** The real engine, one per name, so its ownership checks are remembered. */
+function containerEngineOnce(name: Engine): SandboxEngine {
+  let e = realEngines.get(name)
+  if (!e) realEngines.set(name, (e = containerEngine(name)))
+  return e
+}
+
+/**
+ * `base` refusing to stop, remove or exec into a container this install does
+ * not own (runcastle-cleans-up-after-itself decision 5): a test drive's
+ * runcastle runs on a copy of the real database, whose worker rows name the
+ * real install's containers. A container is checked once, then remembered
+ * until it is removed; one the engine does not hold passes (there is nothing
+ * of another install's to harm, and its origin and branch are this one's).
+ */
+export function ownedOnly(base: SandboxEngine): SandboxEngine {
+  const known = guarded.get(base)
+  if (known) return known
+  const verified = new Set<string>()
+  const check = async (container: string): Promise<void> => {
+    if (verified.has(container)) return
+    const facts = await base.inspect(container)
+    if (!facts) return
+    if (ownershipOf(facts, dataDir()) !== 'own') throw new ForeignContainerError(container, facts.labels[LABEL_DATA_DIR])
+    verified.add(container)
+  }
+  const on =
+    <A extends unknown[], R>(fn: (sb: WorkerSandbox, ...rest: A) => Promise<R>) =>
+    async (sb: WorkerSandbox, ...rest: A): Promise<R> => {
+      await check(sb.container)
+      return fn(sb, ...rest)
+    }
+  const engine: SandboxEngine = {
+
+    name: base.name,
+    available: () => base.available(),
+    prepare: (input) => base.prepare(input),
+    create: (input) => base.create(input),
+    stop: on((sb) => base.stop(sb)),
+    wake: on((sb) => base.wake(sb)),
+    conversationOnDisk: on((sb, id: string) => base.conversationOnDisk(sb, id)),
+    conversationPath: on((sb, id: string) => base.conversationPath(sb, id)),
+    inspect: (container) => base.inspect(container),
+    listContainers: () => base.listContainers(),
+    listVolumes: () => base.listVolumes(),
+    removeContainer: (container) => base.removeContainer(container),
+    stopContainers: (containers, seconds) => base.stopContainers(containers, seconds),
+    removeVolume: (volume) => base.removeVolume(volume),
+    removeStaleImages: (input) => base.removeStaleImages(input),
+    remove: on(async (sb) => {
+      await base.remove(sb)
+      verified.delete(sb.container)
+    }),
+    takeHandback: on((sb) => base.takeHandback(sb)),
+    devServerStarted: on((sb) => base.devServerStarted(sb)),
+    fetchBranch: (sb) => base.fetchBranch(sb),
+    refreshFeatureBranch: (sb) => base.refreshFeatureBranch(sb),
+    copySetup: on((sb, setup: WorkerSetup, fingerprint: string, opts?: { guard?: boolean }) => base.copySetup(sb, setup, fingerprint, opts)),
+    setupFingerprint: on((sb) => base.setupFingerprint(sb)),
+    copyOut: on((sb, containerPath: string, hostPath: string) => base.copyOut(sb, containerPath, hostPath)),
+    process: on((sb, brief: WorkerBrief, opts: WorkerProcessOptions) => base.process(sb, brief, opts)),
+  }
+  guarded.set(base, engine)
+  return engine
 }

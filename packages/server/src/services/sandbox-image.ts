@@ -1,16 +1,20 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AGENT_RUNTIMES,
   type AgentRuntime,
   DEFAULT_SANDBOX_IMAGE,
+  LABEL_DOCKERFILE_HASH,
+  LABEL_PROJECT,
+  ownerLabels,
   resolveSandboxImage,
   type RuncastleConfig,
 } from '@runcastle/core'
 import { type ExecFn, RUNTIME_SPECS } from '../doctor/doctor'
 import { type BurnUser, resolveBurnUser } from '../workers/burn-user'
 import type { HostAgentVersions } from './agent-cli-versions'
+import { dataDir } from '@runcastle/core/paths'
 import type { Runtime } from './setup'
 
 /**
@@ -37,7 +41,7 @@ import type { Runtime } from './setup'
  */
 
 /** Image label carrying the sha256 of the Dockerfile an image was built from. */
-export const DOCKERFILE_HASH_LABEL = 'runcastle.dockerfile-hash'
+export const DOCKERFILE_HASH_LABEL = LABEL_DOCKERFILE_HASH
 
 /**
  * Image labels carrying the agent CLI versions the stock build was asked to
@@ -270,8 +274,17 @@ export interface ImageBuildStep {
   /** sha256 of that Dockerfile, published as {@link DOCKERFILE_HASH_LABEL}. */
   dockerfileHash: string
   buildArgs: Record<string, string>
-  /** Labels stamped next to {@link DOCKERFILE_HASH_LABEL} — the stock step's CLI versions. */
+  /**
+   * Labels stamped next to {@link DOCKERFILE_HASH_LABEL}: the ownership marks
+   * (`@runcastle/core` labels) on every step, and the stock step's CLI versions.
+   */
   labels: Record<string, string>
+  /**
+   * The Dockerfile builds `FROM` an image in the local store (a project image is
+   * `FROM` the stock one). Runcastle's own buildx builder cannot read the local
+   * store, so such a step goes through the engine's own builder instead.
+   */
+  fromLocalImage?: boolean
 }
 
 /**
@@ -423,6 +436,8 @@ export interface PlanImageBuildInput {
   buildArgs: Record<string, string>
   /** The host's agent CLI versions the stock build pins to and stamps as labels. */
   hostVersions: HostAgentVersions
+  /** The data folder the ownership label names; this install's when omitted. */
+  dataDir?: string
 }
 
 export type ImageBuildTarget =
@@ -528,7 +543,10 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
     context: stockContext,
     dockerfileHash: stockHash,
     buildArgs: { ...buildArgs, ...Object.fromEntries(pins.map((p) => [p.buildArg, p.version])) },
-    labels: Object.fromEntries(pins.map((p) => [p.label, p.version])),
+    labels: {
+      ...ownerLabels(input.dataDir ?? dataDir()),
+      ...Object.fromEntries(pins.map((p) => [p.label, p.version])),
+    },
   }
 
   const target = imageBuildTarget({
@@ -550,7 +568,8 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
           context: projectSandboxDir(project.repoPath),
           dockerfileHash: hashDockerfile(target.dockerfile) ?? '',
           buildArgs: {},
-          labels: {},
+          labels: ownerLabels(input.dataDir ?? dataDir(), { [LABEL_PROJECT]: project.id }),
+          fromLocalImage: true,
         },
       ],
     }
@@ -562,10 +581,85 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
   return { kind: 'stock', steps: [stockStep] }
 }
 
-/** The argv (after the runtime binary) for one build step. */
-export function buildStepArgs(step: ImageBuildStep): string[] {
+/**
+ * How a build runs on this machine (decision 8: a build keeps no cache).
+ *
+ * - `buildx`: Docker, through a builder of runcastle's own (docker-container
+ *   driver, `--load` into the image store), created before the build and
+ *   removed after it, which takes its cache with it.
+ * - `plain`: Docker's own builder, which keeps its cache; `cacheKept` says why
+ *   (no buildx on this machine), so the caller can tell the timeline.
+ * - `podman`: `podman build --layers=false`, which keeps no layer images.
+ */
+export type ImageBuildMode =
+  | { kind: 'buildx'; builder: string }
+  | { kind: 'plain'; cacheKept: string }
+  | { kind: 'podman' }
+
+/** Every runcastle builder's name starts with this, then a hash of the data folder. */
+export const BUILDER_PREFIX = 'runcastle-build-'
+
+/** The part of a builder's name that says which install made it. */
+export function builderNamePrefix(dataDir: string): string {
+  return `${BUILDER_PREFIX}${createHash('sha256').update(dataDir).digest('hex').slice(0, 8)}-`
+}
+
+/** A fresh builder name for one build of this install. */
+export function newBuilderName(dataDir: string): string {
+  return `${builderNamePrefix(dataDir)}${randomBytes(4).toString('hex')}`
+}
+
+/** Why a plain Docker build keeps its cache. */
+export const NO_BUILDX_CACHE_KEPT =
+  "docker buildx is not available on this machine, so the sandbox image was built with Docker's own builder and its build cache was kept"
+
+/** Why a project image's build keeps its cache even when buildx is there. */
+export const LOCAL_BASE_CACHE_KEPT =
+  "the project image is built FROM the local stock image, which runcastle's own builder cannot read, so its build cache stays in Docker's builder"
+
+/** The argv (after the runtime binary) that creates runcastle's own builder. */
+export function createBuilderArgs(builder: string): string[] {
+  return ['buildx', 'create', '--name', builder, '--driver', 'docker-container']
+}
+
+/** The argv that removes runcastle's own builder, its cache volume included. */
+export function removeBuilderArgs(builder: string): string[] {
+  return ['buildx', 'rm', builder]
+}
+
+/** The mode a step actually runs in: a step FROM a local image cannot use the own builder. */
+function stepMode(step: ImageBuildStep, mode: ImageBuildMode): ImageBuildMode['kind'] {
+  if (mode.kind === 'buildx' && step.fromLocalImage) return 'plain'
+  return mode.kind
+}
+
+/** The builder to create and remove around this plan, or null when no step uses one. */
+export function ownBuilder(plan: { steps: ImageBuildStep[] }, mode: ImageBuildMode): string | null {
+  if (mode.kind !== 'buildx') return null
+  return plan.steps.some((step) => stepMode(step, mode) === 'buildx') ? mode.builder : null
+}
+
+/** Why this plan, in this mode, leaves build cache behind; null when it leaves none. */
+export function buildCacheKept(plan: { steps: ImageBuildStep[] }, mode: ImageBuildMode): string | null {
+  if (mode.kind === 'plain') return mode.cacheKept
+  if (mode.kind === 'buildx' && plan.steps.some((step) => step.fromLocalImage)) return LOCAL_BASE_CACHE_KEPT
+  return null
+}
+
+/**
+ * The argv (after the runtime binary) for one build step. Without a mode it is
+ * the plain `build` every engine understands.
+ */
+export function buildStepArgs(step: ImageBuildStep, mode?: ImageBuildMode): string[] {
+  const kind = mode ? stepMode(step, mode) : 'plain'
+  const head =
+    mode?.kind === 'buildx' && kind === 'buildx'
+      ? ['buildx', 'build', '--builder', mode.builder, '--load']
+      : kind === 'podman'
+        ? ['build', '--layers=false']
+        : ['build']
   return [
-    'build',
+    ...head,
     '-t',
     step.tag,
     '--label',
@@ -607,6 +701,7 @@ export function imageBuildTerminal(
   runtime: Runtime,
   plan: Extract<ImageBuildPlan, { steps: ImageBuildStep[] }>,
   platform: NodeJS.Platform = process.platform,
+  mode?: ImageBuildMode,
 ): ImageBuildTerminal {
   const steps = plan.steps
   const last = steps[steps.length - 1]
@@ -614,11 +709,24 @@ export function imageBuildTerminal(
   // The context of the image this build is FOR — the stock one when that is all
   // there is, the project's `.runcastle/sandbox/` when the chain ends there.
   const cwd = last.context
-  if (steps.length === 1) return { cmd: runtime, args: buildStepArgs(last), cwd }
+  const builder = mode ? ownBuilder(plan, mode) : null
+  if (steps.length === 1 && !builder) return { cmd: runtime, args: buildStepArgs(last, mode), cwd }
 
-  const line = steps
-    .map((step) => [runtime, ...buildStepArgs(step)].map((a) => shellQuote(a, platform)).join(' '))
-    .join(' && ')
+  const quote = (args: string[]) => [runtime, ...args].map((a) => shellQuote(a, platform)).join(' ')
+  const builds = [
+    ...(builder ? [quote(createBuilderArgs(builder))] : []),
+    ...steps.map((step) => quote(buildStepArgs(step, mode))),
+  ].join(' && ')
+  // The builder goes whatever the build did, and the line still exits with the
+  // build's own status: the Build button adopts a project image only on 0.
+  let line = builds
+  if (builder) {
+    const remove = quote(removeBuilderArgs(builder))
+    line =
+      platform === 'win32'
+        ? `${builds} && (${remove} & exit 0) || (${remove} & exit 1)`
+        : `${builds}; s=$?; ${remove}; exit $s`
+  }
   return platform === 'win32'
     ? { cmd: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', line], cwd }
     : { cmd: '/bin/sh', args: ['-c', line], cwd }

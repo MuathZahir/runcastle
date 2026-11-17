@@ -8,7 +8,6 @@ import {
   type BurnCacheEngine,
   burnCacheVolumeName,
   burnCacheVolumeSize,
-  getBurnSlotAllocator,
   removeBurnCacheVolume,
 } from '../../workers/burn-cache'
 import { runcastleVersion } from '../../version'
@@ -69,9 +68,9 @@ export const systemRouter = router({
     }),
 
     /**
-     * Drop the volume. Refused while a round holds a slot — those slots ARE the
-     * checkouts on the volume — which `removeBurnCacheVolume` decides from the
-     * allocator's `held()`, so no `volume rm` is issued in that case.
+     * Drop the volume. Refused while any container, running or stopped, mounts
+     * it — a worker's container keeps its checkout and caches there — which
+     * `removeBurnCacheVolume` asks the engine, so no `volume rm` is issued then.
      *
      * Deliberately allowed while `burnCache` is `off`: an operator who turned
      * the cache off is exactly the one who wants the disk back.
@@ -88,7 +87,6 @@ export const systemRouter = router({
         engine,
         projectId: input.projectId,
         exec: createSystemExec(),
-        slots: getBurnSlotAllocator(ctx.config.burnConcurrency).held(),
       })
       emitProject(ctx, input.projectId, {
         type: 'burn-cache.cleared',

@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { and, count, eq, inArray, isNull, ne } from 'drizzle-orm'
@@ -82,7 +82,8 @@ import {
 } from './review'
 import { listByFeature as listFindings } from '../services/review-findings'
 import { DRIVE_WORKER_REFUSAL, deliverDriveHandback, isHostWorker, recordDriveTurnCommits } from './drive'
-import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workersDir } from './worker'
+import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workerOrigin, workersDir } from './worker'
+import { WORKER_CONTAINER_PREFIX } from './ownership'
 
 /**
  * Interactive workers (docs/features/interactive-workers): a feature's lead
@@ -232,7 +233,7 @@ export function isWorkerThread(ctx: AppCtx, id: string): boolean {
 }
 
 /** The worker's sandbox, once it is up. */
-function sandboxOf(ctx: AppCtx, w: WorkerRow): WorkerSandbox | null {
+export function sandboxOf(ctx: AppCtx, w: WorkerRow): WorkerSandbox | null {
   if (!w.container || !w.branch || w.previewPort === null) return null
   const feature = getFeatureRow(ctx, workerFeatureId(w))
   return {
@@ -452,16 +453,20 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
     .run()
   if (input.review) keepReviewAssignment(session.id, input.review.assignment)
   const short = shortId(session.id)
+  const planned = { container: `${WORKER_CONTAINER_PREFIX}${short}`, branch: `runcastle/worker/${short}` }
   let sb: WorkerSandbox
+  settingUp.add(session.id)
   try {
     // The image first: a build that fails fails this start like a setup failure (decision 11).
     await engine.prepare({ image: imageBuildCtx(ctx, feature, session.id), config: ctx.config })
     sb = await engine.create({
       id: session.id,
+      projectId: feature.projectId,
+      // Recorded the moment it runs, before the clone and setup, so nothing can leak it (cleans-up decision 4).
+      onContainer: (container, port) => void updateWorker(ctx, session.id, { container, previewPort: port }),
       engine: engine.name,
       runtime: model.runtime,
-      container: `runcastle-worker-${short}`,
-      branch: `runcastle/worker/${short}`,
+      ...planned,
       // Read again: the build may have adopted a new project image.
       image: resolveSandboxImage(ctx.config, projectForFeature(ctx, feature)),
       repoPath: project.repoPath,
@@ -472,12 +477,22 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
       ...sandboxSetup(ctx, project),
     })
   } catch (err) {
+    settingUp.delete(session.id)
     const failure = err instanceof Error ? err.message : String(err)
+    // The worker did no work: what its setup made goes at once (cleans-up decision 4).
+    await removeHalfMade(ctx, requireWorker(ctx, session.id), planned.branch)
+    if (requireWorker(ctx, session.id).status === 'dropped') throw new GateError(`worker "${input.label}" was dropped while its sandbox was being set up`)
     const failed = updateWorker(ctx, session.id, { status: 'failed', failure: failure.slice(0, 2000) })
     // Its row in the lead's chat lands with the event that lists it, so the card never names a worker the list lacks.
     recordLeadStart(ctx, failed, mainChat?.id)
     emitWorker(ctx, failed, 'worker.failed', `worker "${input.label}" could not start its sandbox`, { failure })
     throw new GateError(`worker "${input.label}" could not start its sandbox: ${failure}`)
+  }
+  settingUp.delete(session.id)
+  // A drop that came while setup ran is honoured now: what setup made goes, and no kickoff is sent.
+  if (requireWorker(ctx, session.id).status === 'dropped') {
+    await engine.remove(sb).catch((err) => console.error(`worker ${session.id}: removing a sandbox dropped during setup`, err))
+    throw new GateError(`worker "${input.label}" was dropped while its sandbox was being set up`)
   }
   const started = updateWorker(ctx, session.id, { container: sb.container, branch: sb.branch, previewPort: sb.port })
   recordLeadStart(ctx, started, mainChat?.id)
@@ -490,6 +505,46 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
   })
   await agentHost(ctx).prompt(session.id, { text: workerKickoff(ctx, started) }, { source: 'runcastle' })
   return { workerId: session.id, branch: sb.branch, previewUrl: humanPreviewUrl(ctx, session.id) }
+}
+
+/**
+ * Workers whose sandbox is being set up by this server: a drop meanwhile only
+ * marks them, and the setup removes what it made when it finishes. A row with
+ * a container but no branch that is not in here had its setup cut off (a
+ * server killed mid-setup), which the sweep cleans up.
+ */
+const settingUp = new Set<string>()
+
+/** Whether this server is setting up `id`'s sandbox right now. */
+export function isSettingUp(id: string): boolean {
+  return settingUp.has(id)
+}
+
+/**
+ * Remove what a setup that did not finish made: the container (when it ran),
+ * the bare copy and the worker branch. Best effort: a failure is logged, and
+ * the sweep catches whatever is left.
+ */
+export async function removeHalfMade(ctx: AppCtx, w: WorkerRow, branch: string): Promise<void> {
+  try {
+    if (w.container) {
+      const repoPath = projectForFeature(ctx, getFeatureRow(ctx, workerFeatureId(w))).repoPath
+      const port = w.previewPort ?? 0
+      await sandboxEngine(w.engine).remove({
+        id: w.id,
+        engine: w.engine,
+        runtime: w.runtime,
+        container: w.container,
+        repoPath,
+        featureBranch: w.featureBranch,
+        branch,
+        port,
+        previewUrl: humanPreviewUrl(ctx, w.id),
+      })
+    } else rmSync(workerOrigin(w.id), { recursive: true, force: true })
+  } catch (err) {
+    console.error(`worker ${w.id}: removing what its setup made`, err)
+  }
 }
 
 /** The image build's view of a worker start: events on the feature's timeline, the project as the build leaves it, no way to stop it. */
@@ -1092,7 +1147,7 @@ export async function workerStopped(ctx: AppCtx, row: Pick<SessionRow, 'id'>, re
   await giveDriveBack(ctx, w)
   if (reason !== 'idle' && reason !== 'archived') return
   const sb = sandboxOf(ctx, w)
-  if (!sb || w.status === 'dropped') return
+  if (!sb || w.status === 'dropped' || w.status === 'landed') return
   await sandboxEngine(w.engine).stop(sb)
   if (featureOf(ctx, w)) emitWorker(ctx, w, 'worker.stopped', `worker "${w.label}" sandbox stopped (${reason})`, { reason })
 }
@@ -1116,6 +1171,9 @@ async function failWorker(ctx: AppCtx, w: WorkerRow, failure: string, held?: str
   const short = failure.slice(0, 2000)
   const failed = updateWorker(ctx, w.id, { status: 'failed', failure: short })
   emitWorker(ctx, failed, 'worker.failed', `worker "${w.label}" failed: ${short}`, { failure: short, from: w.status })
+  // Its container is stopped, not removed: it may hold commits the lead wants to look at (cleans-up decision 4).
+  const sb = sandboxOf(ctx, failed)
+  if (sb) await sandboxEngine(w.engine).stop(sb).catch((err) => console.error(`worker ${w.id}: stopping its failed sandbox`, err))
   // The lead hears of it and decides whether the human does; a failed worker sets no need (needs-you decision 9).
   const feature = featureOf(ctx, w)
   if (!feature) return
@@ -1138,6 +1196,7 @@ function refuseDriveWorker(w: WorkerRow): void {
 
 function requireOpen(w: WorkerRow): void {
   if (w.status === 'dropped') throw new GateError(`worker "${w.label}" was dropped`)
+  if (w.status === 'landed') throw new GateError(`worker "${w.label}" already landed: its sandbox is gone, so it cannot answer`)
   if (w.status === 'failed') throw new GateError(`worker "${w.label}" failed: ${w.failure ?? 'its sandbox is gone'}`)
 }
 
@@ -1232,6 +1291,14 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
   }
   const landed = updateWorker(ctx, w.id, { status: 'landed', outcome: 'landed', outcomeNote: null })
   clearWait(ctx, w.id, 'closed')
+  // Its work is on the feature branch: its conversation is kept, then its container and bare copy go, as a drop's do (cleans-up decision 2).
+  try {
+    await removeWorkerSandbox(ctx, w)
+  } catch (err) {
+    emitWorker(ctx, landed, 'worker.remove_failed', `worker "${w.label}" landed, but its sandbox could not be removed`, {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
   emitWorker(ctx, landed, 'worker.landed', `worker "${w.label}" landed ${changes.commits.length} commit(s) on ${feature.branch}`, {
     commits: changes.commits.length,
     files: changes.files.length,
@@ -1305,12 +1372,25 @@ async function retireWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
   const drops = w.status !== 'dropped' && w.status !== 'landed'
   const dropped = drops ? updateWorker(ctx, w.id, { status: 'dropped', outcome: 'dropped', outcomeNote: null }) : w
   clearWait(ctx, w.id, 'closed')
+  // Mid-setup, the setup removes what it made when it finishes and sends no kickoff (cleans-up decision 4).
+  if (!settingUp.has(w.id)) await removeWorkerSandbox(ctx, w)
+  if (drops) emitWorker(ctx, dropped, 'worker.dropped', `worker "${w.label}" was dropped`)
+}
+
+/**
+ * Stop a worker's process, keep its conversation, then remove its container,
+ * branch and bare copy. A worker already landed or dropped had its
+ * conversation kept then; only a container its removal missed is removed again.
+ */
+async function removeWorkerSandbox(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  const retired = w.status === 'landed' || w.status === 'dropped'
   await agentHost(ctx).stop(w.id, 'archived')
   await giveDriveBack(ctx, w)
-  if (hasConversation(w)) await keepConversation(ctx, w)
   const sb = sandboxOf(ctx, w)
-  if (sb) await sandboxEngine(w.engine).remove(sb)
-  if (drops) emitWorker(ctx, dropped, 'worker.dropped', `worker "${w.label}" was dropped`)
+  const engine = sandboxEngine(w.engine)
+  if (retired && sb && !(await engine.inspect(sb.container).catch(() => undefined))) return
+  if (hasConversation(w)) await keepConversation(ctx, w)
+  if (sb) await engine.remove(sb)
 }
 
 /** Where a worker's own copy of its agent's conversation file is kept: beside its thread log. */
@@ -1374,7 +1454,8 @@ function hasConversation(w: WorkerRow): boolean {
 
 /** Keep every worker's conversation of a feature, so a record written before its sandboxes go (the outcome) carries their tokens. */
 export async function keepFeatureConversations(ctx: AppCtx, featureId: string): Promise<void> {
-  for (const w of listWorkers(ctx, featureId)) if (hasConversation(w) && w.status !== 'dropped') await keepConversation(ctx, w)
+  // A landed or dropped worker's was kept when it went, and its sandbox is gone.
+  for (const w of listWorkers(ctx, featureId)) if (hasConversation(w) && w.status !== 'dropped' && w.status !== 'landed') await keepConversation(ctx, w)
 }
 
 /**
@@ -1415,42 +1496,6 @@ export function workersHoldingReady(ctx: AppCtx, featureId: string): WorkerRow[]
   )
 }
 
-/**
- * Server boot: the idle stops that would have stopped worker sandboxes lived in
- * the last server's memory, so every sandbox it left running (an agent's, or one
- * woken only for its preview) would run on forever. Each worker's running
- * container is stopped, to wake at its next message or preview as usual; one of
- * a landed or dropped worker, which should be gone, is removed. Only this data
- * dir's workers are touched, never another install's containers on the same
- * engine, and none whose agent still runs (a `bun --hot` reload keeps them).
- */
-export async function stopLeftoverWorkerSandboxes(ctx: AppCtx): Promise<{ stopped: number; removed: number }> {
-  const done = { stopped: 0, removed: 0 }
-  const rows = ctx.db.select().from(workers).all().filter((w) => w.container)
-  const host = agentHost(ctx)
-  const containersOf = new Map<string, Promise<Map<string, boolean>>>()
-  for (const w of rows) {
-    const engine = sandboxEngine(w.engine)
-    if (!containersOf.has(w.engine)) containersOf.set(w.engine, engine.containers().catch(() => new Map<string, boolean>()))
-    const running = (await containersOf.get(w.engine)!).get(w.container!)
-    if (running === undefined || host.isRunning(w.id)) continue
-    try {
-      const sb = sandboxOf(ctx, w)
-      if (!sb) continue
-      const terminal = w.status === 'landed' || w.status === 'dropped'
-      if (!terminal && !running) continue
-      if (terminal) await engine.remove(sb)
-      else await engine.stop(sb)
-      done[terminal ? 'removed' : 'stopped']++
-      if (!featureOf(ctx, w)) continue
-      if (terminal) emitWorker(ctx, w, 'worker.sandbox_removed', `worker "${w.label}" leftover sandbox removed at server start`)
-      else emitWorker(ctx, w, 'worker.stopped', `worker "${w.label}" sandbox stopped (server restart)`, { reason: 'restart' })
-    } catch (err) {
-      console.error(`worker ${w.id}: leftover sandbox`, err)
-    }
-  }
-  return done
-}
 
 // --- the preview ----------------------------------------------------------------
 
@@ -1466,6 +1511,11 @@ interface PreviewWake {
 }
 
 const previewWakes = new Map<string, PreviewWake>()
+
+/** Whether a worker's sandbox is up for a preview someone opened lately: its own idle stop stops it, not the sweep. */
+export function previewAwake(id: string): boolean {
+  return previewWakes.has(id)
+}
 
 /** A worker whose sandbox may serve a preview: started, and neither dropped nor failed. */
 function previewSandbox(ctx: AppCtx, id: string): { w: WorkerRow; sb: WorkerSandbox } | undefined {

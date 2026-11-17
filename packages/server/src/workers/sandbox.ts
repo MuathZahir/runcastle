@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { promisify } from 'node:util'
+import { labelArgs } from '@runcastle/core'
 
 /**
  * A worker's sandbox (workers spike, decisions 7, 8 and 23): a long-lived
@@ -56,6 +57,8 @@ export interface SandboxSpec {
   cache?: { volume: string; env: Record<string, string> }
   /** `--cpus` for the container (`burnCpus`, ADR-0008); absent leaves it unbounded. */
   cpus?: number
+  /** The ownership labels (runcastle-cleans-up-after-itself decision 5): owner, data folder, worker, project. */
+  labels: Record<string, string>
 }
 
 export function runArgs(s: SandboxSpec): string[] {
@@ -64,6 +67,7 @@ export function runArgs(s: SandboxSpec): string[] {
     '-d',
     '--name',
     s.container,
+    ...labelArgs(s.labels),
     '--user',
     `${s.uid}:${s.gid}`,
     ...(s.cpus !== undefined ? ['--cpus', String(s.cpus)] : []),
@@ -134,6 +138,23 @@ export function projectSetupScript(command: string): string {
  */
 export function cacheDirsScript(dirs: readonly string[]): string {
   return `mkdir -p ${dirs.map(q).join(' ')}`
+}
+
+/** The temp folder on the cache volume, where `TMPDIR` points (the burn cache's env). */
+export const CACHE_TMP = `${BURN_CACHE_MOUNT}/tmp`
+
+/**
+ * Delete what has sat in the cache volume's temp folder for more than a day
+ * (runcastle-cleans-up-after-itself decision 9), before the agent starts.
+ * Scoped to that folder alone; the cache store beside it is never touched.
+ */
+export function cacheTmpSweepScript(): string {
+  return `[ -d ${CACHE_TMP} ] && find ${CACHE_TMP} -mindepth 1 -mtime +1 -delete 2>/dev/null; true`
+}
+
+/** What a worker's setup runs on the cache volume first: its dirs made, its stale temp files gone. */
+export function cachePrepareScript(dirs: readonly string[]): string {
+  return `${cacheDirsScript(dirs)} && ${cacheTmpSweepScript()}`
 }
 
 /**

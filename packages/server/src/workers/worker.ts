@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { promisify } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk/unstable'
-import { type AgentRuntime, type DriveWorkerKind, type WorkerKind, isDriveWorkerKind } from '@runcastle/core'
+import { type AgentRuntime, type DriveWorkerKind, LABEL_PROJECT, LABEL_WORKER, type WorkerKind, isDriveWorkerKind, ownerLabels } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
 import type { AgentProcess } from '../threads/host'
 import { CODEX_SETUP_MANAGED } from './codex-setup'
@@ -22,7 +22,7 @@ import {
   codexAdapterExecArgs,
   codexAdapterVersion,
   containerState,
-  cacheDirsScript,
+  cachePrepareScript,
   devRestartScript,
   engineRun,
   guardInstallScript,
@@ -98,13 +98,23 @@ const ADAPTER_BUNDLES: Record<AgentRuntime, { file: string; entry: () => string 
   codex: { file: 'codex-acp.mjs', entry: codexAdapterEntry },
 }
 
+/** The runtime dir this version of runcastle mounts, named by both adapters' versions; older ones are the sweep's. */
+export function runtimeDirName(): string {
+  return `${adapterVersion()}-codex${codexAdapterVersion()}`
+}
+
+/** The labels on a worker's container (runcastle-cleans-up-after-itself decision 5): runcastle's, this data folder's, its worker's and project's. */
+export function workerLabels(workerId: string, projectId: string): Record<string, string> {
+  return ownerLabels(dataDir(), { [LABEL_WORKER]: workerId, [LABEL_PROJECT]: projectId })
+}
+
 /**
  * The `runtime`'s adapter bundled to one file plus the worker's MCP script,
  * mounted read-only. The dir is named by both adapters' versions; each bundle
  * is built once, when a worker on its runtime first needs it.
  */
 export async function ensureRuntimeDir(runtime: AgentRuntime): Promise<string> {
-  const dir = join(workersDir(), 'runtime', `${adapterVersion()}-codex${codexAdapterVersion()}`)
+  const dir = join(workersDir(), 'runtime', runtimeDirName())
   const adapter = ADAPTER_BUNDLES[runtime]
   const bundle = join(dir, adapter.file)
   if (!existsSync(bundle)) {
@@ -125,6 +135,13 @@ async function git(repo: string, args: string[]): Promise<string> {
 
 export interface NewSandboxInput {
   id: string
+  /** The project the worker works on: labelled on its container. */
+  projectId: string
+  /**
+   * Called the moment the container runs, before the clone, install and setup,
+   * so the worker's record names it before anything can leak it (decision 4).
+   */
+  onContainer?: (container: string, port: number) => void
   engine: Engine
   runtime: AgentRuntime
   container: string
@@ -194,10 +211,12 @@ export async function createWorkerSandbox(input: NewSandboxInput): Promise<Worke
         gid: process.getgid?.() ?? 1000,
         ...(input.cache ? { cache: { volume: input.cache.volume, env: input.cache.env } } : {}),
         ...(input.cpus !== undefined ? { cpus: input.cpus } : {}),
+        labels: workerLabels(sb.id, input.projectId),
       }),
     ),
   )
-  if (input.cache) await execSh(sb.engine, sb.container, cacheDirsScript(input.cache.dirs))
+  input.onContainer?.(sb.container, port)
+  if (input.cache) await execSh(sb.engine, sb.container, cachePrepareScript(input.cache.dirs))
   await timed('clone', () =>
     execSh(sb.engine, sb.container, setupScript({ featureBranch: input.featureBranch, workerBranch: sb.branch, gitName, gitEmail })),
   )
@@ -221,17 +240,6 @@ export async function ensureSandboxRunning(sb: WorkerSandbox): Promise<number> {
 /** Stop the sandbox, keeping its filesystem (decision 8). */
 export async function stopSandbox(sb: WorkerSandbox): Promise<void> {
   await engineRun(sb.engine, ['stop', '-t', '5', sb.container]).catch(() => {})
-}
-
-/** Every worker container on the engine, stopped ones too, by name: true when it runs. */
-export async function workerContainers(engine: Engine): Promise<Map<string, boolean>> {
-  const out = await engineRun(engine, ['ps', '-a', '--filter', 'name=runcastle-worker-', '--format', '{{.Names}}\t{{.State}}'])
-  const found = new Map<string, boolean>()
-  for (const line of out.split('\n')) {
-    const [name, state] = line.trim().split('\t')
-    if (name) found.set(name, state === 'running')
-  }
-  return found
 }
 
 /** Remove the sandbox, the worker branch on the host and its bare copy (decision 18). */

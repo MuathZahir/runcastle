@@ -9,7 +9,7 @@ import {
   type RuncastleConfig,
   type Project,
 } from '@runcastle/core'
-import { logsDir } from '@runcastle/core/paths'
+import { dataDir, logsDir } from '@runcastle/core/paths'
 import type { ExecFn } from '../doctor/doctor'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
 import {
@@ -28,7 +28,15 @@ import {
   inspectBuiltImage,
   projectDockerfilePath,
 } from '../services/sandbox-image'
+import { removeStaleSandboxImages } from '../services/sandbox-image-cleanup'
 import { type BurnUser, resolveBurnUser } from './burn-user'
+
+/**
+ * The timeline event for leftovers runcastle chose to keep (decision 8): here, a
+ * build whose cache stays behind. The sweep emits the same type; the lead may
+ * move the constant into `@runcastle/core`.
+ */
+export const CLEANUP_KEPT_EVENT = 'cleanup.kept'
 
 /**
  * A round builds its own image (feature `burns-build-their-own-image`). This runs
@@ -180,7 +188,7 @@ export async function ensureBurnImage(
       return { status: 'ready' }
     }
 
-    const { runtime, plan, notices } = await prepareImageBuild({ exec, config, project: buildable() })
+    const { runtime, plan, mode, notices } = await prepareImageBuild({ exec, config, project: buildable() })
     // Refused here means the setting changed underneath this run: nothing to build.
     if (plan.kind === 'refused') return { status: 'ready' }
     for (const notice of notices) {
@@ -189,6 +197,7 @@ export async function ensureBurnImage(
 
     const result = await runImageBuild(plan, {
       runtime,
+      mode,
       logPath,
       signal: ctx.signal,
       runStep: deps.runStep,
@@ -206,11 +215,26 @@ export async function ensureBurnImage(
 
     if (plan.kind === 'chain') columns.adopt(plan.projectTag)
     const seconds = secondsSince(startedAt)
+    // The image this build replaced is untagged now; it goes unless a container still uses it.
+    const replaced = await removeStaleSandboxImages({ engine: runtime, exec, dataDir: dataDir() })
     ctx.emitEvent({
       type: IMAGE_BUILT_EVENT,
       message: `Built ${tag} in ${seconds}s.`,
-      data: { image: tag, seconds },
+      data: {
+        image: tag,
+        seconds,
+        ...(replaced.removed.length > 0
+          ? { removedImages: replaced.removed.map((i) => i.id), freedBytes: replaced.freedBytes }
+          : {}),
+      },
     })
+    if (result.cacheKept) {
+      ctx.emitEvent({
+        type: CLEANUP_KEPT_EVENT,
+        message: `Kept the build cache of ${tag}: ${result.cacheKept}.`,
+        data: { image: tag, reason: result.cacheKept },
+      })
+    }
     return { status: 'ready' }
   } finally {
     release()

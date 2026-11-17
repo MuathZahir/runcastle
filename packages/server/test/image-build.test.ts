@@ -5,12 +5,18 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   type BuildStepCall,
   type BuildStepOutcome,
+  resolveImageBuildMode,
   runImageBuild,
   spawnBuildStep,
   tryImageBuildSlot,
   waitForImageBuildSlot,
 } from '../src/services/image-build'
-import type { ImageBuildPlan, ImageBuildStep } from '../src/services/sandbox-image'
+import {
+  builderNamePrefix,
+  type ImageBuildPlan,
+  type ImageBuildStep,
+  NO_BUILDX_CACHE_KEPT,
+} from '../src/services/sandbox-image'
 
 type StepsPlan = Extract<ImageBuildPlan, { steps: ImageBuildStep[] }>
 
@@ -46,7 +52,7 @@ describe('runImageBuild', () => {
 
     const result = await runImageBuild(chain, { runtime: 'docker', runStep })
 
-    expect(result).toEqual({ ok: true })
+    expect(result).toEqual({ ok: true, cacheKept: null })
     expect(calls.map((c) => c.command)).toEqual(['docker', 'docker'])
     expect(calls[0]?.args).toEqual([
       'build',
@@ -128,7 +134,7 @@ describe('runImageBuild', () => {
       dirs.push(dir)
       const { runStep } = scripted([{ outcome: { code: 0 } }, { outcome: { code: 0 } }])
       // A directory, so the open fails.
-      expect(await runImageBuild(chain, { runtime: 'docker', runStep, logPath: dir })).toEqual({ ok: true })
+      expect(await runImageBuild(chain, { runtime: 'docker', runStep, logPath: dir })).toEqual({ ok: true, cacheKept: null })
     })
   })
 })
@@ -236,5 +242,71 @@ describe('the image build slot', () => {
     const free = tryImageBuildSlot()
     expect(free).not.toBeNull()
     free?.()
+  })
+})
+
+describe('how a build keeps no cache (decision 8)', () => {
+  const stockOnly: StepsPlan = { kind: 'stock', steps: [step('sandcastle:runcastle')] }
+  const exec = (code: number) => async () => ({ ok: true, code, stdout: '', stderr: '' })
+
+  it('uses a builder of its own when docker has buildx, named after this install', async () => {
+    const mode = await resolveImageBuildMode(exec(0), 'docker', '/data/a')
+    const other = await resolveImageBuildMode(exec(0), 'docker', '/data/b')
+    if (mode.kind !== 'buildx' || other.kind !== 'buildx') throw new Error('expected buildx')
+    expect(mode.builder.startsWith(builderNamePrefix('/data/a'))).toBe(true)
+    expect(other.builder.startsWith(builderNamePrefix('/data/a'))).toBe(false)
+  })
+
+  it('falls back to the plain build without buildx, and says the cache stays', async () => {
+    expect(await resolveImageBuildMode(exec(1), 'docker', '/data/a')).toEqual({
+      kind: 'plain',
+      cacheKept: NO_BUILDX_CACHE_KEPT,
+    })
+    expect(await resolveImageBuildMode(exec(1), 'podman', '/data/a')).toEqual({ kind: 'podman' })
+  })
+
+  it('builds plainly and keeps the cache when its builder cannot be created', async () => {
+    const { calls, runStep } = scripted([
+      { lines: ['ERROR: no driver'], outcome: { code: 1 } },
+      { outcome: { code: 0 } },
+    ])
+
+    const result = await runImageBuild(stockOnly, {
+      runtime: 'docker',
+      mode: { kind: 'buildx', builder: 'runcastle-build-x' },
+      runStep,
+    })
+
+    expect(result).toEqual({ ok: true, cacheKept: NO_BUILDX_CACHE_KEPT })
+    expect(calls.map((c) => c.args.slice(0, 2))).toEqual([
+      ['buildx', 'create'],
+      ['build', '-t'],
+    ])
+  })
+
+  it('builds with Podman without keeping layers', async () => {
+    const { calls, runStep } = scripted([{ outcome: { code: 0 } }])
+
+    expect(
+      await runImageBuild(stockOnly, { runtime: 'podman', mode: { kind: 'podman' }, runStep }),
+    ).toEqual({ ok: true, cacheKept: null })
+    expect(calls[0]?.args.slice(0, 3)).toEqual(['build', '--layers=false', '-t'])
+  })
+
+  it('removes its builder after a stopped build too', async () => {
+    const { calls, runStep } = scripted([
+      { outcome: { code: 0 } },
+      { outcome: { code: null, stopped: 'aborted' } },
+      { outcome: { code: 0 } },
+    ])
+
+    const result = await runImageBuild(stockOnly, {
+      runtime: 'docker',
+      mode: { kind: 'buildx', builder: 'runcastle-build-x' },
+      runStep,
+    })
+
+    expect(result).toMatchObject({ ok: false, aborted: true })
+    expect(calls.at(-1)?.args).toEqual(['buildx', 'rm', 'runcastle-build-x'])
   })
 })

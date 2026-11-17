@@ -10,6 +10,8 @@ export const SHUTDOWN_TIMEOUT_MS = 5000
 export interface ShutdownDeps {
   /** Tear down every live PTY's process TREE (`ptyRegistry().killAllTrees`). */
   killAllTrees: () => Promise<void>
+  /** Stop every running worker container this install owns (best effort, same budget); absent stops none. */
+  stopWorkerContainers?: () => Promise<void>
   /** Stop accepting connections (`Bun.serve`'s handle). */
   stop: () => void
   exit: (code: number) => void
@@ -38,7 +40,8 @@ export function createShutdown(deps: ShutdownDeps, timeoutMs = SHUTDOWN_TIMEOUT_
         const timer = setTimeout(resolve, timeoutMs)
         timer.unref?.()
       })
-      await Promise.race([deps.killAllTrees().catch(() => {}), deadline])
+      const teardown = Promise.all([deps.killAllTrees().catch(() => {}), deps.stopWorkerContainers?.().catch(() => {})])
+      await Promise.race([teardown, deadline])
       deps.stop()
       deps.exit(0)
     })()
