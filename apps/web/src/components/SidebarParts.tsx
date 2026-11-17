@@ -1171,7 +1171,7 @@ export function FeatureDriveSlot({
         title={workerId ? `${driver.name} is driving ${driving.branch} — open its chat` : `${driver.name} is driving ${driving.branch}`}
         onOpen={() => (workerId ? onOpenWorker(driving.featureId, workerId) : onOpenDrive(driving.featureId))}
         onStop={() => setConfirming(true)}
-        stopLabel="Stop the review’s drive"
+        stopLabel={driver.lead ? 'Stop the lead’s drive' : 'Stop the review’s drive'}
         stopping={stopping}
       />
       <Dialog open={confirming} onClose={() => setConfirming(false)} size="sm" label={ask.title}>
