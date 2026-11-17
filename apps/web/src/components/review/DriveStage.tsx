@@ -19,6 +19,8 @@ export interface StageDrive {
   /** The scenario the drive is in, and its chat (drive-scenarios). */
   scenario?: DriveScenario
   scenarioSessionId?: string
+  /** Whose drive it is: the lead's own drive proves scenarios, a review's drives the feature. */
+  purpose?: 'human' | 'review' | 'lead'
 }
 
 /**
@@ -162,10 +164,12 @@ export function DriveStage({
     // head's Stop drive is purpose-blind, so it takes the wheel back.
     case 'agent':
       if (featureId) {
+        const lead = drive?.purpose === 'lead'
+        const label = lead ? 'Lead driving' : 'Review agent driving'
         return drive?.devUrl ? (
           <DrivePanel
             url={drive.devUrl}
-            agentDriving
+            agentDriving={label}
             leading={leading}
             trailing={trailing}
             footer={footer}
@@ -173,11 +177,17 @@ export function DriveStage({
           />
         ) : (
           frame(
-            <StatusLabel tone="live">Review agent driving</StatusLabel>,
+            <StatusLabel tone="live">{label}</StatusLabel>,
             <EmptyState
             icon={<IconClock />}
             title="No dev server answered"
-            hint={<>The review agent is driving this branch. Its notes land as it finds things.</>}
+            hint={
+              lead ? (
+                <>The lead is proving this feature’s scenarios on this branch.</>
+              ) : (
+                <>The review agent is driving this branch. Its notes land as it finds things.</>
+              )
+            }
           />,
           )
         )
