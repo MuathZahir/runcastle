@@ -90,5 +90,6 @@ Capture folders are keyed by review id. Each is mapped to its feature through th
 
 ## Open questions
 
-- Whether `docker buildx … --load` adds noticeable time to a 3.5 GB image build; if it does, keep the plain build and prune its own cache records by ID.
-- How Podman reports per-container size on macOS and Windows machines (needed only for the freed-space figure; the line can say "space freed: unknown").
+- Settled 2026-11-17: `docker buildx … --load` through runcastle's own builder adds about 14 s per build (mostly starting the builder) and leaves nothing behind but Docker's ~200 MB BuildKit program image, which every later build reuses. Measured on a real Docker 29.9 with buildx 0.38.
+- Not done: a project image is built `FROM` the local stock image, which a builder of runcastle's own cannot read, so project image builds still go through Docker's own builder and keep their cache (said on the timeline as `cleanup.kept`). Closing it means exporting the stock image into the builder first; left for the human to decide.
+- How Podman reports per-container size on macOS and Windows machines (needed only for the freed-space figure; the line says "space freed unknown" when it cannot).
