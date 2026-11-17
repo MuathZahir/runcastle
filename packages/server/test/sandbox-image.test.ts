@@ -3,8 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SANDBOX_IMAGE, resolveSandboxImage, type RuncastleConfig } from '@runcastle/core'
+import { dataDir } from '@runcastle/core/paths'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
+  buildCacheKept,
+  LOCAL_BASE_CACHE_KEPT,
   type BuiltImage,
   describeFreshnessReason,
   DOCKERFILE_HASH_LABEL,
@@ -271,6 +274,10 @@ describe('the build the terminal runs', () => {
         '--label',
         `${DOCKERFILE_HASH_LABEL}=${hashDockerfileContents(STOCK_DOCKERFILE)}`,
         '--label',
+        'runcastle.owner=runcastle',
+        '--label',
+        `runcastle.data-dir=${dataDir()}`,
+        '--label',
         'runcastle.claude-code-version=2.1.280',
         '--label',
         'runcastle.codex-version=0.46.0',
@@ -348,11 +355,23 @@ describe('the build the terminal runs', () => {
     )
     const [stock, project] = plan.steps
     expect(stock?.labels).toEqual({
+      'runcastle.owner': 'runcastle',
+      'runcastle.data-dir': dataDir(),
       'runcastle.claude-code-version': '2.1.280',
       'runcastle.codex-version': '0.46.0',
     })
     expect(stock?.buildArgs).toEqual({ CLAUDE_CODE_VERSION: '2.1.280', CODEX_VERSION: '0.46.0' })
-    expect(project).toMatchObject({ tag: 'sandcastle:runcastle-proj_java', labels: {}, buildArgs: {} })
+    // Only the ownership marks: the project image inherits the version labels.
+    expect(project).toMatchObject({
+      tag: 'sandcastle:runcastle-proj_java',
+      labels: {
+        'runcastle.owner': 'runcastle',
+        'runcastle.data-dir': dataDir(),
+        'runcastle.project': 'proj_java',
+      },
+      buildArgs: {},
+      fromLocalImage: true,
+    })
   })
 
   it('chains the stock image then the project one when the base is stale', () => {
@@ -393,18 +412,70 @@ describe('the build the terminal runs', () => {
       buildArgs: {},
       hostVersions: NO_HOST_CLIS,
     })
-    expect(imageBuildTerminal('podman', buildable(plan), 'linux')).toEqual({
+    expect(imageBuildTerminal('podman', buildable(plan), 'linux', { kind: 'podman' })).toEqual({
       cmd: 'podman',
       args: [
         'build',
+        '--layers=false',
         '-t',
         'sandcastle:runcastle-proj_java',
         '--label',
         `${DOCKERFILE_HASH_LABEL}=${hashDockerfileContents(PROJECT_DOCKERFILE)}`,
+        '--label',
+        'runcastle.owner=runcastle',
+        '--label',
+        `runcastle.data-dir=${dataDir()}`,
+        '--label',
+        'runcastle.project=proj_java',
         join(repo, '.runcastle', 'sandbox'),
       ],
       cwd: join(repo, '.runcastle', 'sandbox'),
     })
+  })
+
+  // Decision 8: the stock image builds in a builder of runcastle's own, made
+  // and removed around the build; the line exits with the build's own status.
+  it('wraps a docker build in its own buildx builder and removes it whatever happens', () => {
+    const repo = repoWithDockerfile()
+    const plan = buildable(
+      planImageBuild({
+        config: config(),
+        project: { id: 'proj_java', repoPath: repo, sandboxImageOverwritable: true },
+        stockContext: stockContext(),
+        stockFresh: false,
+        buildArgs: {},
+        hostVersions: NO_HOST_CLIS,
+      }),
+    )
+    const mode = { kind: 'buildx', builder: 'runcastle-build-abc' } as const
+    const line = imageBuildTerminal('docker', plan, 'linux', mode).args[1] as string
+    expect(line.startsWith('docker buildx create --name runcastle-build-abc --driver docker-container && ')).toBe(true)
+    expect(line).toContain(
+      `&& docker buildx build --builder runcastle-build-abc --load -t ${DEFAULT_SANDBOX_IMAGE} `,
+    )
+    // The project image is FROM the local stock one, which the own builder cannot read.
+    expect(line).toContain('&& docker build -t sandcastle:runcastle-proj_java ')
+    expect(line.endsWith('; s=$?; docker buildx rm runcastle-build-abc; exit $s')).toBe(true)
+
+    const win = imageBuildTerminal('docker', plan, 'win32', mode).args[3] as string
+    expect(win).toContain('&& (docker buildx rm runcastle-build-abc & exit 0) || (docker buildx rm runcastle-build-abc & exit 1)')
+    expect(buildCacheKept(plan, mode)).toBe(LOCAL_BASE_CACHE_KEPT)
+  })
+
+  it('needs no builder of its own when only the project image builds', () => {
+    const plan = buildable(
+      planImageBuild({
+        config: config(),
+        project: { id: 'proj_java', repoPath: repoWithDockerfile(), sandboxImageOverwritable: true },
+        stockContext: stockContext(),
+        stockFresh: true,
+        buildArgs: {},
+        hostVersions: NO_HOST_CLIS,
+      }),
+    )
+    const spec = imageBuildTerminal('docker', plan, 'linux', { kind: 'buildx', builder: 'b' })
+    expect(spec.cmd).toBe('docker')
+    expect(spec.args.slice(0, 2)).toEqual(['build', '-t'])
   })
 
   it('quotes a context path with spaces, and hosts the chain in each platform shell', () => {

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, writeSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { DEFAULT_SANDBOX_IMAGE, type RuncastleConfig } from '@runcastle/core'
+import { dataDir } from '@runcastle/core/paths'
 import type { ExecFn } from '../doctor/doctor'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { killProcessTree } from '../pty/kill-tree'
@@ -12,13 +13,20 @@ import { resolveBurnUser } from '../workers/burn-user'
 import { resolveHostAgentVersions } from './agent-cli-versions'
 import {
   type BuildableProject,
+  buildCacheKept,
   buildStepArgs,
+  createBuilderArgs,
   hashDockerfile,
+  type ImageBuildMode,
   type ImageBuildPlan,
   type ImageBuildStep,
   imageFreshness,
   inspectBuiltImage,
+  newBuilderName,
+  NO_BUILDX_CACHE_KEPT,
+  ownBuilder,
   planImageBuild,
+  removeBuilderArgs,
   stockBuildArgs,
 } from './sandbox-image'
 import { prepareSandboxBuildContext, resolveRuntime, type Runtime } from './setup'
@@ -34,8 +42,27 @@ import { prepareSandboxBuildContext, resolveRuntime, type Runtime } from './setu
 export interface PreparedImageBuild {
   runtime: Runtime
   plan: ImageBuildPlan
+  /** How the build runs: runcastle's own buildx builder, Docker's own, or Podman. */
+  mode: ImageBuildMode
   /** Things a person should hear about a build that goes ahead anyway. */
   notices: string[]
+}
+
+/**
+ * How builds run on this machine (decision 8). Docker with buildx gets a fresh
+ * builder of runcastle's own, named after this install so a later sweep can
+ * tell its leftovers apart; Docker without buildx falls back to its own builder
+ * and keeps the cache, which the result says.
+ */
+export async function resolveImageBuildMode(
+  exec: ExecFn,
+  runtime: Runtime,
+  dir: string = dataDir(),
+): Promise<ImageBuildMode> {
+  if (runtime === 'podman') return { kind: 'podman' }
+  const buildx = await exec(runtime, ['buildx', 'version'])
+  if (buildx.ok && buildx.code === 0) return { kind: 'buildx', builder: newBuilderName(dir) }
+  return { kind: 'plain', cacheKept: NO_BUILDX_CACHE_KEPT }
 }
 
 export interface PrepareImageBuildInput {
@@ -71,7 +98,8 @@ export async function prepareImageBuild(input: PrepareImageBuildInput): Promise<
     buildArgs: stockBuildArgs(runtime),
     hostVersions: host.versions,
   })
-  return { runtime, plan, notices: Object.values(host.problems) }
+  const mode = await resolveImageBuildMode(exec, runtime)
+  return { runtime, plan, mode, notices: Object.values(host.problems) }
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +257,11 @@ export const spawnBuildStep: BuildStepRunner = ({ command, args, cwd, quietMs, s
   })
 
 export type ImageBuildResult =
-  | { ok: true }
+  | {
+      ok: true
+      /** Why this build left build cache behind; null when it left none (decision 8). */
+      cacheKept: string | null
+    }
   | {
       ok: false
       /** A stop asked for it, as opposed to the build failing. */
@@ -242,6 +274,8 @@ export type ImageBuildResult =
 
 export interface RunImageBuildOptions {
   runtime: Runtime
+  /** From {@link prepareImageBuild}; omitted, the engine's plain `build` (Podman's without layers). */
+  mode?: ImageBuildMode | undefined
   /** Every line of output is appended here; omitted, nothing is written. */
   logPath?: string | undefined
   signal?: AbortSignal | undefined
@@ -301,11 +335,33 @@ export async function runImageBuild(
     log.write(line)
     onLine?.(line)
   }
+  const run = (args: string[], cwd: string, stepSignal: AbortSignal | undefined) => {
+    record(`$ ${runtime} ${args.join(' ')}`)
+    return runStep({ command: runtime, args, cwd, quietMs, signal: stepSignal, onLine: record })
+  }
+  let mode: ImageBuildMode =
+    options.mode ?? (runtime === 'podman' ? { kind: 'podman' } : { kind: 'plain', cacheKept: '' })
+  const first = plan.steps[0]
+  let builder = ownBuilder(plan, mode)
   try {
+    if (builder && first) {
+      const created = await run(createBuilderArgs(builder), first.context, signal)
+      if (created.stopped === 'aborted') {
+        return { ok: false, aborted: true, cause: 'the image build was stopped', tail }
+      }
+      if (created.code !== 0) {
+        // No builder of our own after all: build plainly and say the cache stays.
+        // Said in the log, kept out of the tail a failure's cause is read from.
+        const note = "runcastle: could not create its own builder; building with Docker's own builder"
+        log.write(note)
+        onLine?.(note)
+        tail.length = 0
+        builder = null
+        mode = { kind: 'plain', cacheKept: NO_BUILDX_CACHE_KEPT }
+      }
+    }
     for (const step of plan.steps) {
-      const args = buildStepArgs(step)
-      record(`$ ${runtime} ${args.join(' ')}`)
-      const outcome = await runStep({ command: runtime, args, cwd: step.context, quietMs, signal, onLine: record })
+      const outcome = await run(buildStepArgs(step, mode), step.context, signal)
       if (outcome.stopped === 'aborted') {
         return { ok: false, aborted: true, cause: 'the image build was stopped', tail }
       }
@@ -313,8 +369,11 @@ export async function runImageBuild(
         return { ok: false, aborted: false, cause: stepFailure(outcome, step, tail, quietMs), tail }
       }
     }
-    return { ok: true }
+    return { ok: true, cacheKept: buildCacheKept(plan, mode) || null }
   } finally {
+    // The builder goes whatever happened, and takes its cache with it. Not
+    // under the stop signal: a stopped build must still clean up.
+    if (builder && first) await run(removeBuilderArgs(builder), first.context, undefined)
     log.close()
   }
 }
