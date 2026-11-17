@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   IconAlert,
+  IconArrowRight,
   IconBranchFrom,
   IconCheck,
   IconChevronRight,
@@ -416,6 +417,16 @@ export function RuncastleNote({ summary, agentText }: { summary: string; agentTe
 }
 
 // ---- the orchestrator in a feature's chat ----
+
+/** Under a message that went into the agent's running turn: the human's own, or an epic's (epic-messages-reach-a-busy-agent-at-once decision 4). */
+export function SteeredNote() {
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
+      <IconArrowRight size={12} className="text-icon" />
+      Sent into the running turn
+    </span>
+  )
+}
 
 /**
  * A message the project's orchestrator sent a feature's agent, in that feature's

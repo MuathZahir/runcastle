@@ -745,7 +745,9 @@ class Host implements AgentHost {
       logged: false,
     }
     const t = this.threads.get(threadId)
-    if (t?.turn && opts.source === 'runcastle') {
+    // A runcastle prompt sent with `steer` takes the steering path only when the
+    // runtime steers; otherwise it queues, unlogged, as runcastle's own do.
+    if (t?.turn && opts.source === 'runcastle' && !(opts.steer && t.steering)) {
       t.queue.push(item)
       return { promptId: item.id }
     }
@@ -1843,7 +1845,7 @@ class Host implements AgentHost {
     this.pump(t)
   }
 
-  /** Steer a human prompt into the running turn; when the turn has just ended, it is the next prompt. */
+  /** Steer a human prompt (or a runcastle one sent with `steer`) into the running turn; when the turn has just ended, it is the next prompt. */
   private async steer(t: Thread, item: Queued): Promise<void> {
     this.takeHeld(t.id, item)
     try {

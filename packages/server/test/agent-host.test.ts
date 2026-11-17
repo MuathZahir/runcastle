@@ -288,6 +288,40 @@ describe('a turn', () => {
     expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Start', 'Round ended'])
   })
 
+  it('steers a runcastle prompt sent with steer into the running turn, keeping its source (epic-messages-reach-a-busy-agent-at-once decision 1)', async () => {
+    setup({
+      turn: async (t) => {
+        const steer = await t.nextSteer()
+        await t.say(`Heard: ${steer[0].type === 'text' ? steer[0].text : ''}`)
+      },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'Start' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    await host.prompt(id, { text: 'From the epic' }, { source: 'runcastle', steer: true, display: { orchestrator: [{ text: 'From the epic' }] } })
+    const events = await logUntil(id, turnsEnded(1))
+    expect(events.find((e) => e.type === 'prompt' && e.text === 'From the epic')).toMatchObject({ source: 'runcastle', steered: true })
+    expect(methods().filter((m) => m === 'session/prompt')).toHaveLength(1)
+    expect(foldThread(events).items.find((i) => i.kind === 'user' && i.text === 'From the epic')).toMatchObject({ from: 'runcastle', steered: true })
+    expect(foldThread(events).items.at(-1)).toMatchObject({ kind: 'agent', text: 'Heard: From the epic' })
+  })
+
+  it('queues a runcastle prompt sent with steer as the next turn when the agent does not steer', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    setup({ steering: false, turn: async (t) => void (t.prompt[0].type === 'text' && t.prompt[0].text === 'Start' ? await gate : undefined) })
+    const id = thread()
+    await host.prompt(id, { text: 'Start' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    const { promptId } = await host.prompt(id, { text: 'From the epic' }, { source: 'runcastle', steer: true })
+    expect(methods()).not.toContain('_session/steering')
+    // Queued as runcastle's own are: not in the log until it is sent.
+    expect(readThreadEvents(id).some((e) => e.type === 'prompt' && e.id === promptId)).toBe(false)
+    release()
+    await logUntil(id, turnsEnded(2))
+    expect(prompts().map((p) => p.prompt[0].text)).toEqual(['Start', 'From the epic'])
+  })
+
   it('a held prompt alone is logged and starts nothing', async () => {
     setup()
     const id = thread()
@@ -721,6 +755,31 @@ describe('automatic compaction', () => {
     release()
     await logUntil(id, turnsEnded(4))
     expect(prompts().map(textOf).map((s) => s.split(' ')[0])).toEqual(['First', '/compact', 'Second', 'Third'])
+  })
+
+  it('queues a runcastle prompt sent with steer during a compaction behind it (epic-messages-reach-a-busy-agent-at-once decision 5)', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const base = compacting()
+    setup({
+      turn: async (t) => {
+        if (textOf({ prompt: t.prompt as { text?: string }[] }).startsWith('/compact')) await gate
+        await base.turn!(t)
+      },
+    }, { autoCompact: { resumeGapMs: 30 } })
+    const id = thread()
+    await host.prompt(id, { text: 'First' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await new Promise((r) => setTimeout(r, 40))
+    await host.prompt(id, { text: 'Second' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await vi.waitFor(() => expect(compactions()).toHaveLength(1))
+    const { promptId } = await host.prompt(id, { text: 'Epic' }, { source: 'runcastle', steer: true })
+    expect(readThreadEvents(id).find((e) => e.type === 'prompt' && e.id === promptId)).not.toHaveProperty('steered')
+    expect(methods()).not.toContain('_session/steering')
+    release()
+    await logUntil(id, turnsEnded(4))
+    expect(prompts().map(textOf).map((s) => s.split(' ')[0])).toEqual(['First', '/compact', 'Second', 'Epic'])
   })
 
   it('stays up when a message arrives during the idle compaction, and the idle stop counts from its end', async () => {
@@ -1523,6 +1582,18 @@ describe('held prompts and the usage limit (agents-are-woken-only-when-it-matter
     const events = await logUntil(id, turnsEnded(2), 5000)
     expect(texts()[1]).toBe('News\n\nMore news\n\n[runcastle] The usage limit has reset. Carry on where you were.')
     expect(events.filter((e) => e.type === 'prompt').map((e) => (e as { held?: boolean }).held ?? false)).toEqual([false, true, false])
+  })
+
+  it('holds a runcastle prompt sent with steer over the limit, as runcastle’s own (epic-messages-reach-a-busy-agent-at-once)', async () => {
+    carryOn(false)
+    setup(limited(), { readUsage: spentUntil(Date.now() + 200), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'notice'))
+    await host.prompt(id, { text: 'From the epic' }, { source: 'runcastle', steer: true })
+    await new Promise((r) => setTimeout(r, 300))
+    expect(texts()).toEqual(['News'])
+    expect(methods()).not.toContain('_session/steering')
   })
 
   it('with the setting on, wakes a turn the human’s own message started too, keeping what rode ahead of it', async () => {

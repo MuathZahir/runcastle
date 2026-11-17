@@ -64,6 +64,8 @@ export async function toolSendToFeature(
     text: parts.join('\n\n'),
     source: 'human',
     orchestrator: { text: shown },
+    // Into the lead's running turn at once, as the human's own typing goes (epic-messages-reach-a-busy-agent-at-once decisions 1, 2).
+    steer: true,
   })
   recordFeatureAction(ctx, session, feature.id, 'messaged', { quote: firstLine(message || human) })
   return { deliveredToLead: true }

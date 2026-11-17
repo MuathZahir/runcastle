@@ -46,6 +46,12 @@ export interface LeadMessage {
    */
   reason?: WakeReason
   /**
+   * Steer it into the lead's running turn instead of queueing it to the turn's
+   * end: an epic's message (epic-messages-reach-a-busy-agent-at-once decision 1).
+   * Runcastle's own notices never set it (decision 3).
+   */
+  steer?: boolean
+  /**
    * A wake no click asked for (a round's end, a restart's cut-off round). On a
    * copied database (a test drive) it reaches only a lead whose conversation
    * began there; otherwise it is dropped, not held
@@ -65,7 +71,7 @@ interface HeldLine {
 /**
  * Deliver `msg` to the feature's lead (decision 12; chat-as-web-components
  * decision 6): a runcastle prompt into the feature's main-chat thread, queued
- * to the end of a running turn and starting the chat when no process runs —
+ * to the end of a running turn (steered into it with `steer`) and starting the chat when no process runs —
  * the human sees it work and can answer or type. A feature with no chat thread
  * yet gets one opened from the docs first.
  *
@@ -100,7 +106,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     await agentHost(ctx).prompt(
       threadId,
       { text: lines.map((l) => l.text).join('\n\n') },
-      { source: 'runcastle', ...(hold ? { hold: true } : {}), ...(display ? { display } : {}) },
+      { source: 'runcastle', ...(hold ? { hold: true } : {}), ...(msg.steer ? { steer: true } : {}), ...(display ? { display } : {}) },
     )
     held.delete(feature.id)
     failures.delete(feature.id)
@@ -118,6 +124,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     delete data.orchestrator
     delete data.reason
     delete data.display
+    delete data.steer
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
     // The lead cannot run, so only the human can start it again: runcastle says so on its chat (needs-you decision 9).
     // On autopilot its epic hears it as a message instead, and the feature needs nobody (epics-on-autopilot decision 17).

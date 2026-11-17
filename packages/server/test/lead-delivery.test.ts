@@ -10,6 +10,7 @@ import { stopFeature } from '../src/services/features'
 import { deliverToLead, leadDeliveryState } from '../src/services/lead-delivery'
 import { isRuncastlePrompt, tagRuncastlePrompt } from '../src/services/lead-prompt'
 import { getFeatureRow } from '../src/services/repo'
+import { setWait, waitOf } from '../src/services/waits'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -180,6 +181,39 @@ describe('deliverToLead', () => {
     release()
     await logUntil(id, turnsEnded(2))
     expect(promptsOf(id).map((p) => p.text)).toEqual(['[runcastle] first', '[runcastle] second'])
+  })
+
+  it('steers a message sent with steer into the running turn, as runcastle’s, leaving the lead’s wait standing (epic-messages-reach-a-busy-agent-at-once decisions 1, 4)', async () => {
+    let release!: () => void
+    const released = new Promise<void>((r) => {
+      release = r
+    })
+    let heard = ''
+    fake.script.turn = async (t) => {
+      if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] first')) {
+        const steer = await t.nextSteer()
+        heard = steer[0].type === 'text' ? steer[0].text : ''
+        await released
+      }
+    }
+    const f = feature()
+    const id = chat(f.id)
+
+    await deliverToLead(ctx, f, { text: 'first', source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'turn_started'))
+    setWait(ctx, id, 'Which currency?')
+    await deliverToLead(ctx, f, { text: 'Euros.', source: 'human', orchestrator: { text: 'Euros.' }, steer: true })
+
+    // In the log at once, steered, still runcastle's: shown as the epic's message.
+    expect(promptsOf(id).at(-1)).toMatchObject({ text: '[runcastle] Euros.', source: 'runcastle', steered: true, display: { orchestrator: [{ text: 'Euros.' }] } })
+    await vi.waitFor(() => expect(heard).toBe('[runcastle] Euros.'))
+    // Runcastle's own notice in the same turn still waits for its end (decision 3).
+    await deliverToLead(ctx, f, { text: 'Worker handed back', source: 'runcastle' })
+    expect(promptsOf(id).map((p) => p.text)).not.toContain('[runcastle] Worker handed back')
+    expect(waitOf(ctx, id)?.why).toBe('Which currency?')
+    release()
+    await logUntil(id, turnsEnded(2))
+    expect(sentToAgent()).toEqual(['[runcastle] first', '[runcastle] Worker handed back'].map((t) => expect.stringContaining(t)))
   })
 
   it('stamps the human’s mark for a human message, still said as runcastle’s prompt', async () => {
