@@ -4,6 +4,8 @@ Planned with nobody present (2026-11-16). Decisions 1–3 are the human's, from 
 
 Check first: 4, 7, 8, 10, 12
 
+The human said "Yes, start the work" to this plan on 2026-11-17, after asking what decision 8 means (the worker sandbox images).
+
 ## 1. Everything runcastle makes is removed once it is no longer needed
 **Decision:** Worker containers, sandbox images and their build cache, volumes, drive data folders, worker origins and branches, worktrees and review captures are removed once nothing needs them, including after a crash, a kill, a usage limit, a server restart or a test drive. Nothing runcastle did not create is touched, and nothing that holds work not yet on a branch is removed.
 **Why:** On 2026-11-16 runcastle filled the human's disk (96 GB, 192 MB free); about 40 GB of it was runcastle's leftovers. The human: "I don't want runcastle filling people's disks."
