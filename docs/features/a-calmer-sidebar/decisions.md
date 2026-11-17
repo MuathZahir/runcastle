@@ -31,3 +31,17 @@
 ## 8. An arrow before the title opens a feature's workers
 **Decision:** Replaces the clickable count in decision 6. A feature with live workers shows a collapse arrow before its title, and the arrow opens its workers under it; there is no worker count. Every feature title keeps the same left edge, so rows without workers leave the arrow's space empty. The fold line's arrow moves after its words ("2 working · 1 idle ›"), so the left column only ever means workers.
 **Why:** The human: "I don't want to have to click on the worker number to expand the thing… a collapse arrow would be more intuitive."
+
+## 9. A feature row: mark, title, and the workers arrow at its end
+**Decision:** Every feature row is one line: its mark in front, its title, and, when it has live workers, the collapse arrow at the row's end. No time on the row; hover shows it with the full reason. Every feature that doesn't need you folds, even a lone one.
+**Why:** The human liked this layout ("much better") over the arrow before the title, and asked why a lone working feature sat unfolded and faded.
+Supersedes: 8
+
+## 10. Needs-you rows are still and wear the epic's colour
+**Decision:** A row that needs you sits on a faint tint of its epic's colour, with its mark (a play for ready to test, a speech bubble for a question) in a small tile of that colour and an unread dot at its end. Hover deepens the tint. The epic's head shows a count of them in its colour. A failed worker or a feature that can't start keeps a red "!". Nothing amber or yellow is left in the block; Other features, with no colour, uses grey.
+**Why:** The human turned down amber ("it doesn't look right"), an outlined tray, a travelling light ("will always look like it's working"), a ripple and a Test/Reply pill, then approved this mix on the design page.
+Supersedes: 4, 7
+
+## 11. Only working rows move: a small spinner
+**Decision:** A working feature or worker wears a small grey spinner in front, the one moving thing in the block. The fold line ("2 working · 1 idle") shows the spinner only while closed; open, it has no mark, so it doesn't repeat the rows under it.
+**Why:** The human: anything that moves reads as busy, and the fold line "has the same icon as the rows below". Chosen over the level meter and three dots.
