@@ -2895,11 +2895,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Drive your feature branch to prove scenarios',
         description:
-          "A drive of YOUR feature branch, as committed, on the human's checkout: commit first, then `start`, " +
-          '`status` until `drive.devReady`, `scenario` with `file` to run one scenario through the project runner ' +
-          '(it replies `entryUrl` and maybe `token`, or the scenario `failure`), and `stop` when done. Hand the ' +
-          'entry URL to a subagent with a browser to confirm the landing. The project has one drive slot: a ' +
-          'refusal with `retriable: true` means another drive holds it, so wait and try again. The human may stop it.',
+          "Drive YOUR feature branch as committed, on the human's checkout: commit, `start`, `status` until " +
+          '`drive.devReady`, `scenario` with `file` (replies `entryUrl`, maybe `token`, or `failure`), then `stop`. ' +
+          'Have a browser subagent confirm the landing. `retriable: true` means another drive holds the slot: wait, retry.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop', 'scenario'])

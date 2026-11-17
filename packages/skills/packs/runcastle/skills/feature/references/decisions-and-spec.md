@@ -106,21 +106,18 @@ set up (`setUp`: a runner recorded and the folder on the base branch).
   the `_fixtures` ladder (`./scenario-setup.md`). An API change also ships a
   sibling `.http` request, and prints `TOKEN=` when authenticated.
 - **When `setUp` is false and the feature has a slow state**, you set scenarios
-  up yourself, after the code that builds the state and before the first
-  review, by `./scenario-setup.md`. Say so in the Plan's who builds what. Never
-  hand setup to a worker: it needs a drive, and only you can start one.
-- **Prove each new scenario** before any review: `feature_drive` starts a drive
-  of your committed branch and runs it; a subagent with `agent-browser` opens the
-  `ENTRY_URL` and confirms the state, signed in where the app has sign-in. Stop
-  the drive when done.
+  up yourself before the first review, by `./scenario-setup.md`, and say so in
+  the Plan's who builds what. Never hand setup to a worker: it needs a drive.
+- **Prove each new scenario** before any review: run it on `feature_drive`
+  and have an `agent-browser` subagent confirm the `ENTRY_URL` shows the state,
+  signed in. Stop the drive when done.
 - **After the full review**, write and prove a scenario for every "No scenario
-  reaches <state>" it reported before you start the verify review, so the
-  verify walkthrough starts at the fixed state.
+  reaches <state>" it reported before you start the verify review.
 - **When the drive cannot carry scenarios** (it will not start, or its
   `drive.env` does not hand over the database the scenario must seed), say so
   once (`wait_for_you`, or `hand_back` on autopilot), recommend the
   orchestrator's project preparation, and go on: the review sets the state up by
-  hand. Never edit the project's drive setup yourself.
+  hand. Never edit the drive setup yourself.
 - Pass the scenario that fits as the `scenario` of `declare_ready`.
 - A copy of drive data lives in `scenarios.dataDir`, outside git (it can hold
   passwords), read through `RUNCASTLE_SCENARIO_DATA`; copy only from this
