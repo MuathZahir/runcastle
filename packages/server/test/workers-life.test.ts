@@ -7,7 +7,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { designPassFetch } from '../src/routes/design-pass'
 import { agentSlots, resetAgentSlotsForTests } from '../src/services/agent-slots'
-import { listAfter } from '../src/services/events'
+import { listAfter, listByProject } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
 import { archiveFeature, deleteFeature, markHumanMessage, stopFeature } from '../src/services/features'
 import { mergeFeatureFlow } from '../src/services/merge'
@@ -17,11 +17,12 @@ import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import { workerTools } from '../src/workers/tools'
+import { sweepLeftovers } from '../src/workers/sweep'
 import {
   getWorker,
   workerPrompted,
   startUnassignedWorker,
-  stopLeftoverWorkerSandboxes,
+
   withWorkers,
   workerPreviews,
   workerStopped,
@@ -477,26 +478,25 @@ describe('a server restart', () => {
     engine.stopped.length = 0
     engine.removed.length = 0
 
-    expect(await stopLeftoverWorkerSandboxes(ctx)).toEqual({ stopped: 1, removed: 1 })
+    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 1, removed: 1, failed: 0 })
     expect(engine.stopped).toEqual([containerOf(running)])
     expect(engine.removed).toEqual([containerOf(gone)])
     expect(engine.held.get('runcastle-worker-elsewhere')).toBe(true)
     expect(getWorker(ctx, running)?.status).toBe('working')
-    const swept = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'worker.stopped' || e.type === 'worker.sandbox_removed')
-    expect(swept.map((e) => [e.type, (e.data as { workerId: string }).workerId])).toEqual([
-      ['worker.stopped', running],
-      ['worker.sandbox_removed', gone],
-    ])
+    const stopped = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'worker.stopped')
+    expect(stopped.map((e) => (e.data as { workerId: string }).workerId)).toEqual([running])
+    const swept = listByProject(ctx, feature.projectId).filter((e) => e.type === 'cleanup.swept')
+    expect(swept.map((e) => e.message)).toEqual([expect.stringMatching(/^Removed 1 leftover container \(/)])
 
     // A second boot finds nothing left to do.
-    expect(await stopLeftoverWorkerSandboxes(ctx)).toEqual({ stopped: 0, removed: 0 })
+    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 0, removed: 0 })
   })
 
   it('leaves a sandbox whose agent still runs (a hot reload kept it)', async () => {
     const host = fakeHost()
     setAgentHostForTests({ ...host.host, isRunning: () => true } as AgentHost)
     const id = await startWorker()
-    expect(await stopLeftoverWorkerSandboxes(ctx)).toEqual({ stopped: 0, removed: 0 })
+    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 0, removed: 0 })
     expect(engine.held.get(getWorker(ctx, id)!.container!)).toBe(true)
   })
 

@@ -40,7 +40,8 @@ import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { agentHost } from './threads/types'
-import { resumeDriveReviewWaits, stopLeftoverWorkerSandboxes, workerPreviews } from './workers/service'
+import { resumeDriveReviewWaits, workerPreviews } from './workers/service'
+import { startHourlySweep, stopOwnWorkerContainers, sweepLeftovers } from './workers/sweep'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
 import { freezeStaleRuns } from './services/runs'
@@ -198,15 +199,19 @@ export async function startServer(): Promise<void> {
     }
   })
 
-  // Worker sandboxes the last server left running: their idle stops died with it,
-  // so each is stopped now and wakes at its next message or preview. A copied
-  // database's workers are the live install's, never this server's to stop.
+  // The leftover sweep (runcastle-cleans-up-after-itself decision 6): worker
+  // sandboxes the last server left running are stopped (their idle stops died
+  // with it), and whatever this install owns and no longer needs is removed;
+  // then once an hour. A copied database's workers and projects are the live
+  // install's, never this server's to sweep.
+  let stopHourlySweep = (): void => {}
   if (!isDatabaseCopy()) {
-    void stopLeftoverWorkerSandboxes(ctx)
-      .then((s) => {
-        if (s.stopped + s.removed > 0) console.log(`worker sweep: stopped ${s.stopped} sandbox(es) left running, removed ${s.removed} leftover(s)`)
-      })
-      .catch((err) => console.error('worker sweep failed', err))
+    void sweepLeftovers(ctx).then((s) => {
+      if (s.stopped + s.removed + s.failed > 0) {
+        console.log(`leftover sweep: stopped ${s.stopped} sandbox(es) left running, removed ${s.removed} leftover(s), ${s.failed} failed`)
+      }
+    })
+    stopHourlySweep = startHourlySweep(ctx)
   }
 
   // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`
@@ -306,6 +311,11 @@ export async function startServer(): Promise<void> {
       // The PTYs, and every thread's ACP adapter process (ADR-0015).
       killAllTrees: async () => {
         await Promise.all([ptyRegistry().killAllTrees(), agentHost(ctx).stopAll('shutdown')])
+      },
+      // Every running worker container this install owns, within the same budget (cleans-up decision 4).
+      stopWorkerContainers: async () => {
+        stopHourlySweep()
+        await stopOwnWorkerContainers(ctx)
       },
       stop: () => {
         void designPass?.stop()

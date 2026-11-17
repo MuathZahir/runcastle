@@ -148,6 +148,7 @@ async function sandboxRun(i: number, scratch: string, model: string, dev: string
   const brief: WorkerBrief = { label: `spike ${i}`, kind: 'on-its-own', goal: 'measure', doneWhen: 'measured' }
   const rec = await createWorkerSandbox({
     id,
+    projectId: 'spike',
     engine: 'docker',
     runtime: 'claude-code',
     container: `runcastle-worker-${id.slice(-10)}`,
