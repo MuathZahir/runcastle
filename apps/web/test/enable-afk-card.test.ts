@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -497,14 +497,16 @@ describe('EnableAfkCard image build terminal', () => {
   afterEach(cleanup)
 
   /** Open the card and start the build, so its terminal is mounted. */
-  const build = () => {
+  /** Starts a build and waits for its terminal, which loads on first use (a-faster-web-app decision 9). */
+  const build = async () => {
     const rendered = render(createElement(EnableAfkCard, {}))
     fireEvent.click(screen.getByRole('button', { name: 'Build image' }))
+    await waitFor(() => expect(rendered.container.querySelector('[data-terminal]')).toBeTruthy())
     return rendered
   }
 
   it('re-checks the doctor report when the build process exits, without a click', async () => {
-    build()
+    await build()
     expect(server.terminal?.sessionId).toBe('build-image-1')
     expect(server.refetches).toBe(0)
 
@@ -519,7 +521,7 @@ describe('EnableAfkCard image build terminal', () => {
   // The build output is what says *why* a build failed, so an exit re-checks in
   // place and leaves the log up; dismissing it stays the operator's call.
   it('keeps the terminal and its manual re-check up after the exit', async () => {
-    const { container } = build()
+    const { container } = await build()
 
     await act(async () => {
       server.terminal?.onEnded?.()
@@ -535,9 +537,9 @@ describe('EnableAfkCard image build terminal', () => {
 
   // A host CLI version the server could not read does not stop the build — it
   // goes ahead unpinned — but the human hears why, next to the build they started.
-  it('names each build notice as a toast while the build still starts', () => {
+  it('names each build notice as a toast while the build still starts', async () => {
     server.notices = ["Could not read the host's Codex version (`codex --version` exited 1)"]
-    build()
+    await build()
     expect(server.terminal?.sessionId).toBe('build-image-1')
     expect(server.toasts).toEqual(server.notices)
   })

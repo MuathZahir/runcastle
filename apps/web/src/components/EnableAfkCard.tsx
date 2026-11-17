@@ -29,7 +29,7 @@ import {
 import { ErrorBoundary } from './ErrorBoundary'
 import { HIGHLIGHT_RING, useHighlight } from './settings/highlight'
 import { showsSetting, type FilterState } from './settings/types'
-import { TerminalView } from './TerminalView'
+import { TerminalView } from './lazy'
 
 /**
  * The prerequisites for unattended burns, as a checklist (flow-redesign-settings

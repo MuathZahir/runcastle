@@ -88,7 +88,12 @@ export interface LiveSessionState {
   awaitingInput: boolean
 }
 
-export interface FeatureListItem extends Feature {
+/**
+ * A feature as the list carries it: everything but the brief. The brief is the
+ * one long field (a project's briefs are hundreds of KB together), only the
+ * draft page shows it, and that page reads the feature itself (`feature.get`).
+ */
+export interface FeatureListItem extends Omit<Feature, 'brief'> {
   /** Every ticket of its frozen history, by status: the progress pie of a feature built before workers. */
   ticketCounts: TicketCounts
   /** How many of its workers are working or queued right now. */
@@ -484,7 +489,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   )
   const autopilotOf = autopilotReader(ctx, projectId)
 
-  return projectFeatures.map((feature) => {
+  return projectFeatures.map(({ brief: _brief, ...feature }) => {
     const byStatus = ticketStatuses.get(feature.id)
     const counts: TicketCounts = {
       total: [...(byStatus?.values() ?? [])].reduce((sum, n) => sum + n, 0),

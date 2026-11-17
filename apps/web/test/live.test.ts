@@ -3,7 +3,11 @@ import {
   PULSE_TIMEOUT_MS,
   RESYNC_HOLD_MS,
   getLiveStatus,
+  liveCovers,
   livePollMs,
+  JUST_READ_MS,
+  refetchOnFocus,
+  staleTimeOf,
   startLiveSync,
   type LiveSyncHandlers,
 } from '../src/lib/live'
@@ -140,8 +144,41 @@ describe('startLiveSync', () => {
 
     current().emit('ready')
     expect(getLiveStatus()).toBe('live')
+    // The page load just fetched everything: the first connect resyncs nothing.
+    expect(handlers.resyncAll).not.toHaveBeenCalled()
+    expect(handlers.resyncTranscript).not.toHaveBeenCalled()
+  })
+
+  it('resyncs everything when the browser reconnects the same stream after a drop', () => {
+    start()
+    current().emit('ready')
+    current().emit('error')
+    current().emit('ready')
+    expect(StubEventSource.instances).toHaveLength(1)
     expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
     expect(handlers.resyncTranscript).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips the focus refetch for queries the live stream covers, only while it is live', () => {
+    const covered = { queryKey: [['feature', 'list'], { type: 'query' }] }
+    const router = { queryKey: [['events', 'list'], { input: { afterId: 3 }, type: 'query' }] }
+    const uncovered = { queryKey: [['setup', 'doctor'], { type: 'query' }] }
+    expect(liveCovers(covered.queryKey)).toBe(true)
+    expect(liveCovers(router.queryKey)).toBe(true)
+    expect(liveCovers(uncovered.queryKey)).toBe(false)
+
+    start()
+    expect(refetchOnFocus(covered)).toBe(true)
+    current().emit('ready')
+    expect(refetchOnFocus(covered)).toBe(false)
+    expect(refetchOnFocus(router)).toBe(false)
+    expect(refetchOnFocus(uncovered)).toBe(true)
+  })
+
+  it('keeps a covered list fresh for a moment, so a reader switching on after it does not reread it', () => {
+    expect(staleTimeOf({ queryKey: [['feature', 'driveInfo'], { type: 'query' }] })).toBe(JUST_READ_MS)
+    expect(staleTimeOf({ queryKey: [['thread', 'list'], { type: 'query' }] })).toBe(JUST_READ_MS)
+    expect(staleTimeOf({ queryKey: [['setup', 'doctor'], { type: 'query' }] })).toBe(0)
   })
 
   it('keeps a quiet stream live — and its polls backed off — while pings arrive', () => {
@@ -331,9 +368,10 @@ describe('startLiveSync', () => {
     handlers.resyncAll.mockImplementation(() => new Promise<void>((resolve) => settle.push(resolve)))
     start()
     current().emit('ready')
+    current().emit('live', JSON.stringify({ kind: 'event', projectId: 'p', eventId: 0 }))
     expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
 
-    for (let i = 0; i < 5; i++) current().emit('live', JSON.stringify({ kind: 'event', projectId: 'p', eventId: i }))
+    for (let i = 1; i < 5; i++) current().emit('live', JSON.stringify({ kind: 'event', projectId: 'p', eventId: i }))
     expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
 
     settle[0]?.()
@@ -350,6 +388,7 @@ describe('startLiveSync', () => {
     start()
     current().emit('ready')
     current().emit('live', JSON.stringify({ kind: 'event', projectId: 'p', eventId: 1 }))
+    current().emit('live', JSON.stringify({ kind: 'event', projectId: 'p', eventId: 2 }))
     expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(RESYNC_HOLD_MS)

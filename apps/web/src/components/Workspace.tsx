@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RefObject } from 'react'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
@@ -62,7 +62,7 @@ import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { PlanBody } from './bodies/PlanBody'
 import { HistoryView } from './bodies/history/HistoryView'
-import { DesignTab } from './design/DesignTab'
+import { DesignTab, PhoneDesignView } from './lazy'
 import { ThreadCardsContext, type ThreadCardsTarget } from './design/ThreadCards'
 import { useDesignRecord, useMarkSeen } from '../lib/use-designs'
 import { newestDesign, oldestWaiting } from '../lib/feature-ui/designs'
@@ -95,7 +95,6 @@ import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 import { useIsPhone } from '../lib/use-phone'
 import { PhoneChatBar, PhoneViewScreen } from './phone/PhoneChatBar'
 import { backInApp } from '../lib/use-history-sync'
-import { PhoneDesignView } from './phone/PhoneDesignView'
 import { featurePhoneStatus, phoneViewChoices, phoneViewOf } from './phone/phone-views'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
@@ -304,15 +303,24 @@ export function Workspace({
     // A drive is the page: the agent does not take the human away from it.
     if (offered && panel.state.view !== 'drive') panel.dispatch({ type: 'open', ...request, origin: 'agent' })
   })
-  // What the plan and design cards in the chat open.
-  const cardsTarget: ThreadCardsTarget = {
-    featureId,
-    oneLiner: q.data?.feature.oneLiner ?? '',
-    onOpenPlan: () => panel.dispatch({ type: 'open', view: 'plan', origin: 'human' }),
-    onOpenDesign: (path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' }),
-    // The phone has no design list (decision 16): its cards open designs only.
-    ...(phone ? {} : { onOpenDesignList: () => panel.dispatch({ type: 'designList' }) }),
-  }
+  // What the plan and design cards in the chat open. One value while nothing
+  // it names changes: a fresh object each render changed this context above
+  // the whole chat, and React walked every message for its readers on each
+  // streamed chunk (a-faster-web-app).
+  const dispatchPanel = useRef(panel.dispatch)
+  dispatchPanel.current = panel.dispatch
+  const oneLiner = q.data?.feature.oneLiner ?? ''
+  const cardsTarget = useMemo<ThreadCardsTarget>(
+    () => ({
+      featureId,
+      oneLiner,
+      onOpenPlan: () => dispatchPanel.current({ type: 'open', view: 'plan', origin: 'human' }),
+      onOpenDesign: (path) => dispatchPanel.current({ type: 'open', view: 'design', path, origin: 'human' }),
+      // The phone has no design list (decision 16): its cards open designs only.
+      ...(phone ? {} : { onOpenDesignList: () => dispatchPanel.current({ type: 'designList' }) }),
+    }),
+    [featureId, oneLiner, phone],
+  )
   // The chat column (chat-as-web-components decision 7): every thread of the
   // feature, one in front — the drive errand's scenario chat comes to the
   // front when an errand opens it.

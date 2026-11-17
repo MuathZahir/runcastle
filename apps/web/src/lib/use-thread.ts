@@ -1,9 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { trpc } from '../trpc'
-import { EMPTY_THREAD_VIEW, foldThread } from './chat-thread'
+import { EMPTY_THREAD_VIEW, foldThread, keepItemIdentity } from './chat-thread'
 import type { Ask, AskAnswer, Attachment, Effort, ModelChoice, ThreadEvent, ThreadItem, ThreadView } from './chat-thread'
-import { useLivePoll } from './live'
+import { flushDraft, readDraft, writeDraft } from './drafts'
+import { refetchOnFocus, useLivePoll } from './live'
 import { attachmentsAt, loadAttachments, moveAttachments, pendingAttachment, subscribeAttachments, updateAttachments } from './pending-attachments'
 import { useToast } from './toast'
 
@@ -53,29 +54,14 @@ const OUT_OF_DATE = 'Could not reach the server — this may be out of date'
 /** How soon a thread with nothing held asks again after its opening read failed. */
 export const OPEN_RETRY_MS = 2_000
 
-const DRAFT_KEY = 'runcastle.thread.draft:'
 const AT_FILE = /(?:^|\s)@(\S*)$/
+
+/** How long the `@` file lookup waits after the last key before it asks the server. */
+export const FILE_LOOKUP_AFTER_MS = 150
 
 /** Whether the human left words unsent in the thread's composer: such a thread is not an empty one to forget. */
 export function hasDraft(threadId: string): boolean {
   return readDraft(threadId).trim() !== ''
-}
-
-function readDraft(key: string): string {
-  try {
-    return localStorage.getItem(DRAFT_KEY + key) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function writeDraft(key: string, text: string): void {
-  try {
-    if (text) localStorage.setItem(DRAFT_KEY + key, text)
-    else localStorage.removeItem(DRAFT_KEY + key)
-  } catch {
-    // Storage full or refused: the draft lives on in memory only.
-  }
 }
 
 /** A blob as base64 with no `data:` prefix, the shape `thread.send` takes images in. */
@@ -152,7 +138,9 @@ export function useThread({
       // A read after a cursor never changes by itself: only a live signal (or
       // the stream being down) says there is more after it.
       staleTime: Infinity,
-      refetchOnWindowFocus: 'always',
+      // Coming back to the tab skips the read while the stream is live (it
+      // pushes every new event); with the stream down it is the safety net.
+      refetchOnWindowFocus: (query) => (refetchOnFocus(query) ? 'always' : false),
       refetchOnReconnect: 'always',
       refetchInterval: poll,
     },
@@ -216,7 +204,17 @@ export function useThread({
     }
   }, [threadId, utils, queryClient, take])
 
-  const folded = useMemo((): ThreadView => (threadId && log ? foldThread(log) : EMPTY_THREAD_VIEW), [threadId, log])
+  // Items that did not change since the last fold keep their identity, so a
+  // streamed chunk redraws the one item it changed.
+  const lastItems = useRef<{ threadId: string | null; items: ThreadItem[] }>({ threadId: null, items: [] })
+  const folded = useMemo((): ThreadView => {
+    if (!threadId || !log) return EMPTY_THREAD_VIEW
+    const fresh = foldThread(log)
+    const before = lastItems.current.threadId === threadId ? lastItems.current.items : []
+    const items = keepItemIdentity(before, fresh.items)
+    lastItems.current = { threadId, items }
+    return items === fresh.items ? fresh : { ...fresh, items }
+  }, [threadId, log])
   /** A read from this opening has answered: the thread may be drawn. */
   const current = enabled && readFor === threadId
   /** The thread's history is still on its way: show neither it nor the empty-thread welcome. */
@@ -226,13 +224,17 @@ export function useThread({
 
   // ---- sending ----
   const [pending, setPending] = useState<Pending[]>([])
-  const shownPending = pending.filter((p) => {
-    if (p.threadId !== threadId) return false
-    if (!log) return true
-    return !log.some(
-      (e) => e.type === 'prompt' && (p.promptId ? e.id === p.promptId : e.source === 'human' && e.i > p.after && e.text === p.text),
-    )
-  })
+  const shownPending = useMemo(
+    () =>
+      pending.filter((p) => {
+        if (p.threadId !== threadId) return false
+        if (!log) return true
+        return !log.some(
+          (e) => e.type === 'prompt' && (p.promptId ? e.id === p.promptId : e.source === 'human' && e.i > p.after && e.text === p.text),
+        )
+      }),
+    [pending, threadId, log],
+  )
   const view = useMemo((): ThreadView => {
     const shown = current || !enabled ? folded : EMPTY_THREAD_VIEW
     const working = shown.state === 'working'
@@ -248,16 +250,9 @@ export function useThread({
   }, [folded, current, enabled, outOfDate, shownPending])
 
   // ---- the draft ----
+  // The words themselves are the composer's (`useDraft`): a key redraws it
+  // alone. This hook reads them only to send them.
   const draftAt = threadId ?? draftKey ?? 'new'
-  const [draft, setDraftState] = useState(() => ({ at: draftAt, text: readDraft(draftAt) }))
-  const text = draft.at === draftAt ? draft.text : readDraft(draftAt)
-  const setDraft = useCallback(
-    (next: string) => {
-      setDraftState({ at: draftAt, text: next })
-      writeDraft(draftAt, next)
-    },
-    [draftAt],
-  )
   // Pending images are the thread's as its draft is: kept under the same key.
   const waiting = () => attachmentsAt(draftAt)
   const attachments = useSyncExternalStore(subscribeAttachments, waiting, waiting)
@@ -283,9 +278,8 @@ export function useThread({
     if (words) {
       const kept = readDraft(threadId)
       const joined = kept ? `${kept}\n\n${words}` : words
-      writeDraft(unstartedAt, '')
-      writeDraft(threadId, joined)
-      setDraftState({ at: threadId, text: joined })
+      writeDraft(unstartedAt, '', true)
+      writeDraft(threadId, joined, true)
     }
     void moveAttachments(unstartedAt, threadId)
   }, [threadId, unstartedAt])
@@ -359,7 +353,7 @@ export function useThread({
   const sendM = trpc.thread.send.useMutation()
   /** Send the composer's message. */
   const send = async (): Promise<void> => {
-    const words = text.trim()
+    const words = readDraft(draftAt).trim()
     const sent = attachments
     if (!words && sent.length === 0) return
     const local: Pending = {
@@ -370,7 +364,7 @@ export function useThread({
       after: cursor ?? -1,
     }
     setPending((ps) => [...ps, local])
-    setDraft('')
+    writeDraft(draftAt, '', true)
     updateAttachments(draftAt, () => [])
     let to = threadId
     // Only what the human picked rides the message: an untouched control is
@@ -399,8 +393,8 @@ export function useThread({
       setPending((ps) => ps.filter((p) => p.localId !== local.localId))
       // Give the words and images back to the thread they came from, so nothing is lost.
       const back = to ?? draftAt
-      setDraftState((d) => (d.text ? d : { at: back, text: words }))
-      writeDraft(back, words)
+      flushDraft(back)
+      if (!readDraft(back)) writeDraft(back, words, true)
       updateAttachments(back, (as) => [...sent, ...as])
       toast.push(e instanceof Error ? e.message : 'the message could not be sent')
     }
@@ -432,15 +426,13 @@ export function useThread({
     if (wasWorking.current && !working && enabled) void refetchUsage()
     wasWorking.current = working
   }, [folded.state, enabled, refetchUsage])
-  const fileQuery = AT_FILE.exec(text)?.[1]
-  const filesQ = trpc.thread.files.useQuery({ threadId: id, query: fileQuery ?? '', limit: 8 }, { enabled: enabled && fileQuery !== undefined })
 
   return {
     view,
     /** The thread's history is still on its way: show neither it nor the empty-thread welcome. */
     loading,
-    draft: text,
-    setDraft,
+    /** Where the composer keeps this thread's draft (`useDraft`). */
+    draftAt,
     attachments: attachments as Attachment[],
     attach,
     removeAttachment,
@@ -473,8 +465,6 @@ export function useThread({
     refreshUsage: () => {
       if (enabled) void refetchUsage()
     },
-    /** The worktree's files matching the `@` being typed; none while that read is refused. */
-    files: filesQ.data ?? [],
     edit: (promptId: string, next: string, undoFiles: boolean) => {
       if (threadId) editM.mutate({ threadId, promptId, text: next, undoFiles })
     },
@@ -491,6 +481,32 @@ export function useThread({
 }
 
 export type ThreadApi = ReturnType<typeof useThread>
+
+/**
+ * The worktree's files matching the `@` being typed in `text`; none while that
+ * read is refused, or for a thread not started. The server is asked once the
+ * typing pauses ({@link FILE_LOOKUP_AFTER_MS}), not on every key; the last
+ * answer stays meanwhile.
+ */
+export function useFileLookup(threadId: string | null, text: string): string[] {
+  const typed = AT_FILE.exec(text)?.[1]
+  const [query, setQuery] = useState(typed)
+  useEffect(() => {
+    if (typed === undefined) {
+      setQuery(undefined)
+      return
+    }
+    const wait = setTimeout(() => setQuery(typed), FILE_LOOKUP_AFTER_MS)
+    return () => clearTimeout(wait)
+  }, [typed])
+  const filesQ = trpc.thread.files.useQuery(
+    { threadId: threadId ?? '', query: query ?? '', limit: 8 },
+    { enabled: !!threadId && query !== undefined && typed !== undefined, placeholderData: (held) => held },
+  )
+  return typed === undefined ? NO_FILES : (filesQ.data ?? NO_FILES)
+}
+
+const NO_FILES: string[] = []
 
 /** A Markdown file's name from a thread's title, without what file systems refuse. */
 export function markdownFileName(title: string): string {

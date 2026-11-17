@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
 import type { FileChange, ThreadItem, ThreadState } from '../../../lib/chat-thread'
 import {
@@ -183,23 +183,7 @@ export function ChatThread({
               {empty ?? <EmptyState icon={<IconMessage />} title="New chat" hint={emptyHint} />}
             </div>
           ) : (
-            items.map((item, i) => {
-              // A changes card belongs to the answer before it: the answer draws it,
-              // so its hover actions hang under the card, not over it.
-              if (item.kind === 'changes' && items[i - 1]?.kind === 'agent') return null
-              const next = items[i + 1]
-              return (
-                <div key={item.id} className={cx('flex min-w-0 flex-col', i > 0 && (opensTurn(item) ? 'mt-10' : 'mt-3'))}>
-                  <Item
-                    item={item}
-                    actions={actions}
-                    locked={state !== 'idle'}
-                    {...(item.kind === 'agent' && lastWordsOfTurn(items, i) ? { turnWords: turnWords(items, i) } : {})}
-                    {...(item.kind === 'agent' && next?.kind === 'changes' ? { changes: next.files } : {})}
-                  />
-                </div>
-              )
-            })
+            <ThreadItems items={items} actions={actions} locked={state !== 'idle'} />
           )}
           {tail && items.length > 0 && <div className="mt-3 flex min-w-0 flex-col">{tail}</div>}
         </div>
@@ -239,6 +223,59 @@ export function ChatThread({
     </div>
   )
 }
+
+/**
+ * The thread's items, drawn once per change to them: memoised on the list, its
+ * actions and whether a turn runs, so a key in the composer redraws none of
+ * them, and each item is memoised on its own identity, so a streamed chunk
+ * redraws only the item it changed.
+ */
+const ThreadItems = memo(function ThreadItems({
+  items,
+  actions,
+  locked,
+}: {
+  items: ThreadItem[]
+  actions: MessageActions | undefined
+  locked: boolean
+}) {
+  return items.map((item, i) => {
+    // A changes card belongs to the answer before it: the answer draws it,
+    // so its hover actions hang under the card, not over it.
+    if (item.kind === 'changes' && items[i - 1]?.kind === 'agent') return null
+    const next = items[i + 1]
+    return (
+      <ItemRow
+        key={item.id}
+        item={item}
+        gap={i === 0 ? undefined : opensTurn(item) ? 'mt-10' : 'mt-3'}
+        actions={actions}
+        locked={locked}
+        {...(item.kind === 'agent' && lastWordsOfTurn(items, i) ? { turnWords: turnWords(items, i) } : {})}
+        {...(item.kind === 'agent' && next?.kind === 'changes' ? { changes: next.files } : {})}
+      />
+    )
+  })
+})
+
+/** One item in its row, redrawn only when something it shows changed. */
+const ItemRow = memo(function ItemRow({
+  gap,
+  ...props
+}: {
+  item: ThreadItem
+  gap: 'mt-10' | 'mt-3' | undefined
+  actions: MessageActions | undefined
+  locked: boolean
+  changes?: FileChange[]
+  turnWords?: string
+}) {
+  return (
+    <div className={cx('flex min-w-0 flex-col', gap)}>
+      <Item {...props} />
+    </div>
+  )
+})
 
 function Item({
   item,

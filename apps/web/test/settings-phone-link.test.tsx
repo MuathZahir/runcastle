@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RouterOutputs } from '../src/lib/api'
@@ -111,7 +111,7 @@ describe('On your phone', () => {
     expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull()
   })
 
-  it('turns the link on for this project and shows it with its QR code at once', () => {
+  it('turns the link on for this project and shows it with its QR code at once', async () => {
     setStatus(running())
     show()
     expect(screen.queryByRole('img', { name: /QR code/ })).toBeNull()
@@ -121,7 +121,8 @@ describe('On your phone', () => {
 
     expect(server.calls).toEqual([{ procedure: 'turnOn', input: { projectId: 'proj_1' } }])
     expect(screen.getByText(URL)).toBeTruthy()
-    const qr = screen.getByRole('img', { name: `QR code for ${URL}` })
+    // The QR encoder loads on first use (a-faster-web-app decision 9).
+    const qr = await screen.findByRole('img', { name: `QR code for ${URL}` })
     // A scannable code: a light ground under dark modules, and modules drawn.
     expect(qr.querySelector('rect')?.getAttribute('fill')).toBe('#fff')
     expect(qr.querySelector('path')?.getAttribute('d')).toMatch(/^M\d+,\d+h1v1h-1z/)
@@ -163,7 +164,7 @@ describe('On your phone', () => {
     expect(screen.getByText('Add it to your home screen')).toBeTruthy()
   })
 
-  it('asks for HTTPS on the tailnet once, links to Tailscale, and tries again from there', () => {
+  it('asks for HTTPS on the tailnet once, links to Tailscale, and tries again from there', async () => {
     const page = 'https://login.tailscale.com/f/serve?node=nT8fKz2CNTRL'
     setStatus(running())
     show()
@@ -180,7 +181,7 @@ describe('On your phone', () => {
     act(() => fireEvent.click(screen.getByRole('button', { name: 'Try again' })))
 
     expect(server.calls.map((c) => c.procedure)).toEqual(['turnOn', 'turnOn'])
-    expect(screen.getByRole('img', { name: `QR code for ${URL}` })).toBeTruthy()
+    expect(await screen.findByRole('img', { name: `QR code for ${URL}` })).toBeTruthy()
     expect(screen.queryByText('Turn on HTTPS for your tailnet, once')).toBeNull()
   })
 })

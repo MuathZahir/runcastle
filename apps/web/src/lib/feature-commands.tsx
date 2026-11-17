@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { shiftShortcut } from './platform'
+import { createPublished } from './published'
 
 /**
  * The open feature's actions, for the ⌘K palette (you-always-know-what-s-waiting
@@ -27,40 +27,25 @@ export interface FeatureCommands {
   commands: FeatureCommand[]
 }
 
-const Published = createContext<FeatureCommands | null>(null)
-const Publish = createContext<(commands: FeatureCommands | null) => void>(() => {})
+const published = createPublished<FeatureCommands>()
 
 /**
  * Under the project shell: what the open feature page publishes, for the
- * palette beside it. The state lives here, not in the shell, so a publish
- * re-renders only the palette, never the page that published it.
+ * palette beside it. A publish wakes only the palette, never the page.
  */
-export function FeatureCommandsProvider({ children }: { children: ReactNode }) {
-  const [commands, setCommands] = useState<FeatureCommands | null>(null)
-  return (
-    <Publish.Provider value={setCommands}>
-      <Published.Provider value={commands}>{children}</Published.Provider>
-    </Publish.Provider>
-  )
-}
+export const FeatureCommandsProvider = published.Provider
 
 /** A fixed set of the open feature's commands: a palette rendered on its own, in a test. */
-export const FeatureCommandsValue = Published.Provider
+export const FeatureCommandsValue = published.Value
 
 /** The feature page's side: publish its commands while mounted (null for none). */
 export function PublishFeatureCommands({ commands }: { commands: FeatureCommands | null }): null {
-  const publish = useContext(Publish)
-  useEffect(() => {
-    publish(commands)
-  })
-  useEffect(() => () => publish(null), [publish])
+  published.usePublish(commands)
   return null
 }
 
 /** The palette's side: what the open feature page published, or null. */
-export function useFeatureCommands(): FeatureCommands | null {
-  return useContext(Published)
-}
+export const useFeatureCommands: () => FeatureCommands | null = published.useValue
 
 /** The New thread shortcut (decision 7): Ctrl+Shift+O, ⌘⇧O on a Mac. */
 export function isNewThreadHotkey(e: Pick<KeyboardEvent, 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'key'>): boolean {
