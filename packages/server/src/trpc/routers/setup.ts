@@ -6,7 +6,7 @@ import {
   type Project,
 } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
-import { isNotNull } from 'drizzle-orm'
+import { isNotNull, sql } from 'drizzle-orm'
 import * as z from 'zod'
 import { projects } from '../../db/schema'
 import type { AppCtx } from '../../db/types'
@@ -19,6 +19,7 @@ import { ptyRegistry } from '../../pty/registry'
 import { isOverwritable } from '../../services/findings'
 import { rosterConfig } from '../../services/model-discovery'
 import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
+import { emitProject } from '../../services/events'
 import { allProjects, requireProjectById } from '../../services/repo'
 import { prepareImageBuild, tryImageBuildSlot } from '../../services/image-build'
 import {
@@ -290,8 +291,20 @@ async function buildImageTerminal(
         release()
         if (exitCode !== 0) return
         if (plan.kind === 'chain' && project) adoptProjectImage(ctx, project.id, plan.projectTag)
-        // The image this build replaced is untagged now; it goes unless a container uses it.
-        void removeStaleSandboxImages({ engine: runtime, exec, dataDir: dataDir() })
+        // The image this build replaced is untagged now; it goes unless a container uses it,
+        // and the timeline says so (on the oldest project for the stock image, like the sweep).
+        void removeStaleSandboxImages({ engine: runtime, exec, dataDir: dataDir() }).then((out) => {
+          if (out.removed.length === 0) return
+          const on =
+            project?.id ?? ctx.db.select({ id: projects.id }).from(projects).orderBy(sql`rowid`).limit(1).get()?.id
+          if (!on) return
+          const n = out.removed.length
+          emitProject(ctx, on, {
+            type: 'cleanup.swept',
+            message: `Removed ${n} old image${n === 1 ? '' : 's'} (${(out.freedBytes / 1e9).toFixed(1)} GB)`,
+            data: { removed: { 'old images': n }, freedBytes: out.freedBytes, sizeUnknown: 0 },
+          })
+        })
       },
     }
   } catch (error) {

@@ -2,8 +2,10 @@ import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
+import { lstat, readdir } from 'node:fs/promises'
 import { LABEL_DATA_DIR, LABEL_PROJECT, LABEL_WORKER, type WorkerRow } from '@runcastle/core'
 import { dataDir as installDataDir, sameDataDir } from '@runcastle/core/paths'
+import { sql } from 'drizzle-orm'
 import { projects, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { emitProject } from '../services/events'
@@ -233,7 +235,7 @@ function sweepReviewCaptures(ctx: AppCtx, tally: Tally, project: (id: string | u
 function report(ctx: AppCtx, tally: Tally): SweepResult {
   const result: SweepResult = { removed: 0, stopped: tally.stopped, failed: 0, freedBytes: 0 }
   // What no project of this install made (another install's orphans, the burn engine's) goes on its oldest project.
-  const fallback = ctx.db.select({ id: projects.id }).from(projects).limit(1).get()?.id
+  const fallback = ctx.db.select({ id: projects.id }).from(projects).orderBy(sql`rowid`).limit(1).get()?.id
   const merged = new Map<string, ProjectTally>()
   for (const [id, t] of tally.byProject) {
     const to = id ?? fallback
@@ -399,15 +401,26 @@ async function sweepVolumes(engine: SandboxEngine, containers: ContainerFacts[],
   }
 }
 
-/** Bytes under `path` by `du`, best effort: undefined where it cannot say. */
+/** Bytes under `path`, walked without following links (no `du`, so Windows says too); undefined when it cannot be read at all. */
 export async function folderBytes(path: string): Promise<number | undefined> {
+  let bytes = 0
+  const pending = [path]
   try {
-    const { stdout } = await execFileP('du', ['-sk', path], { maxBuffer: 1024 * 1024 })
-    const kb = Number(stdout.trim().split(/\s+/)[0])
-    return Number.isFinite(kb) ? kb * 1024 : undefined
+    await lstat(path)
   } catch {
     return undefined
   }
+  while (pending.length > 0) {
+    const current = pending.pop() as string
+    try {
+      const st = await lstat(current)
+      if (st.isDirectory()) for (const name of await readdir(current)) pending.push(join(current, name))
+      else bytes += st.size
+    } catch {
+      // What could not be read counts as nothing.
+    }
+  }
+  return bytes
 }
 
 function isUnder(path: string, dir: string): boolean {
@@ -568,44 +581,4 @@ export async function stopOwnWorkerContainers(ctx: AppCtx, seconds = 3): Promise
     console.error('shutdown: could not stop the worker containers', err)
     return 0
   }
-}
-
-/**
- * Remove every container and volume labelled with `dataDir` (a drive's stop
- * hook, decision 6, before it deletes that data folder). Containers go first,
- * so their volumes are no longer mounted. Never throws; returns what went and
- * what would not.
- */
-export async function removeInstallResources(
-  engine: Pick<SandboxEngine, 'listContainers' | 'listVolumes' | 'removeContainer' | 'removeVolume'>,
-  dataDir: string,
-): Promise<{ containers: string[]; volumes: string[]; failed: string[] }> {
-  const out = { containers: [] as string[], volumes: [] as string[], failed: [] as string[] }
-  const ours = (labels: Record<string, string>): boolean => {
-    const d = labels[LABEL_DATA_DIR]
-    return d !== undefined && sameDataDir(d, dataDir)
-  }
-  try {
-    for (const c of await engine.listContainers()) {
-      if (!ours(c.labels)) continue
-      try {
-        await engine.removeContainer(c.name)
-        out.containers.push(c.name)
-      } catch (err) {
-        out.failed.push(`container ${c.name}: ${err instanceof Error ? err.message : String(err)}`)
-      }
-    }
-    for (const v of await engine.listVolumes()) {
-      if (!ours(v.labels)) continue
-      try {
-        await engine.removeVolume(v.name)
-        out.volumes.push(v.name)
-      } catch (err) {
-        out.failed.push(`volume ${v.name}: ${err instanceof Error ? err.message : String(err)}`)
-      }
-    }
-  } catch (err) {
-    out.failed.push(err instanceof Error ? err.message : String(err))
-  }
-  return out
 }

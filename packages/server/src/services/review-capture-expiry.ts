@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, rmSync } from 'node:fs'
+import { lstatSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { dataDir } from '@runcastle/core/paths'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -24,6 +24,13 @@ export const REVIEW_CAPTURE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 /** The ids runcastle names capture folders with; anything else is never treated as one. */
 const CAPTURE_ID = /^[\w-]+$/
+
+/**
+ * A deleted feature's capture folder that would not go is renamed to this
+ * prefix, since its rows (the only map to its feature) go with the delete; the
+ * next sweep removes such a folder at once.
+ */
+export const DELETED_CAPTURE_PREFIX = 'deleted-'
 
 export type CaptureExpiryReason = 'feature-deleted' | 'feature-closed' | 'unmapped'
 
@@ -160,7 +167,7 @@ export function expireReviewCaptures(input: ExpireReviewCapturesInput): ReviewCa
     const old = now - newest > REVIEW_CAPTURE_TTL_MS
 
     let reason: CaptureExpiryReason | null = null
-    if (featureId && !feature) reason = 'feature-deleted'
+    if (id.startsWith(DELETED_CAPTURE_PREFIX) || (featureId && !feature)) reason = 'feature-deleted'
     else if (feature && (feature.status === 'shipped' || feature.status === 'archived')) {
       if (!closedCache.has(feature.id)) closedCache.set(feature.id, closedAt(db, feature.id))
       const closed = closedCache.get(feature.id) ?? null
@@ -196,10 +203,16 @@ export function removeFeatureReviewCaptures(db: Db, featureId: string, dir: stri
   ].map((row) => row.id)
   for (const id of ids) {
     if (!CAPTURE_ID.test(id)) continue
+    const path = join(dir, 'reviews', id)
     try {
-      rmSync(join(dir, 'reviews', id), { recursive: true, force: true })
+      rmSync(path, { recursive: true, force: true })
     } catch {
-      // Left for the sweep, which removes a deleted feature's folders.
+      // Marked for the next sweep: once the rows go, nothing else says whose it was.
+      try {
+        renameSync(path, join(dir, 'reviews', `${DELETED_CAPTURE_PREFIX}${id}`))
+      } catch {
+        // Left as it is: the 30-day rule for folders nothing maps still takes it.
+      }
     }
   }
 }

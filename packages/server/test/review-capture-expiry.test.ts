@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { events, features, runs, tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import {
+  DELETED_CAPTURE_PREFIX,
   expireReviewCaptures,
   removeFeatureReviewCaptures,
   REVIEW_CAPTURE_TTL_MS,
@@ -131,6 +132,12 @@ describe('expireReviewCaptures', () => {
     capture(ticket, 0)
 
     expect(expire().removed).toMatchObject([{ id: ticket, reason: 'feature-deleted', projectId: null }])
+  })
+
+  it('removes at once a folder a feature delete marked because it would not go', () => {
+    capture(`${DELETED_CAPTURE_PREFIX}tkt_locked`, 0)
+
+    expect(expire().removed).toMatchObject([{ id: `${DELETED_CAPTURE_PREFIX}tkt_locked`, reason: 'feature-deleted' }])
   })
 
   it('removes a folder nothing maps once it is 30 days old', () => {

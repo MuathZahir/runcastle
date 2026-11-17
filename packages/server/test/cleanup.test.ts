@@ -17,7 +17,6 @@ import { getWorker, keptConversationPath, removeFeatureWorkers, workerStopped, w
 import {
   extraSweepSteps,
   registerSweepStep,
-  removeInstallResources,
   stopOwnWorkerContainers,
   sweepLeftovers,
   sweptMessage,
@@ -444,22 +443,6 @@ describe('the sweep', () => {
     expect(sweptMessage(counts, 11.2e9, 0)).toBe('Removed 3 leftover containers and 1 old image (11.2 GB)')
     expect(sweptMessage(counts, 11.2e9, 1)).toBe('Removed 3 leftover containers and 1 old image (at least 11.2 GB)')
     expect(sweptMessage(counts, 0, 2)).toBe('Removed 3 leftover containers and 1 old image (space freed unknown)')
-  })
-})
-
-describe('a drive’s stop', () => {
-  it('removes every container and volume labelled with the drive’s data folder, nothing else', async () => {
-    const drive = join(other, 'drive')
-    engine.held.set('runcastle-worker-d', true)
-    engine.labels.set('runcastle-worker-d', { [LABEL_DATA_DIR]: drive })
-    engine.held.set('runcastle-worker-mine', true)
-    engine.labels.set('runcastle-worker-mine', { [LABEL_DATA_DIR]: dataDir() })
-    engine.volumes = [
-      { name: 'runcastle-proj_d', labels: { [LABEL_DATA_DIR]: drive } },
-      { name: 'runcastle-proj_mine', labels: { [LABEL_DATA_DIR]: dataDir() } },
-    ]
-    expect(await removeInstallResources(engine, drive)).toEqual({ containers: ['runcastle-worker-d'], volumes: ['runcastle-proj_d'], failed: [] })
-    expect(engine.held.has('runcastle-worker-mine')).toBe(true)
   })
 })
 

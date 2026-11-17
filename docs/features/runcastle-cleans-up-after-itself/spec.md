@@ -51,7 +51,7 @@ One function, `sweepLeftovers`, replaces the start-up `stopLeftoverWorkerSandbox
 | `workers/runtime/<version>` folders | not the current adapter version |
 | Review capture folders | decision 10's rule (below) |
 
-It runs at server start (as today; skipped on a copied database), once an hour, and from the drive stop hook (below). It is serialised so two runs never overlap, never throws (each removal is best effort and a failure becomes a `cleanup.failed` event), and emits one `cleanup.swept` project event per project that lost something, with counts and freed bytes (sizes from `ps --size`, `system df -v` / `volume inspect`, and `du` for folders). Normal land/drop/merge cleanup emits no extra event (decision 11).
+It runs at server start (as today; skipped on a copied database) and once an hour. The drive stop hook does not run it: it removes the drive's own labelled containers and volumes itself (below), and the live install's hourly sweep catches anything a drive left. It is serialised so two runs never overlap, never throws (each removal is best effort and a failure becomes a `cleanup.failed` event), and emits one `cleanup.swept` project event per project that lost something, with counts and freed bytes (sizes from `ps --size`, `system df -v` / `volume inspect`, and a file walk for folders, which works on Windows too). Normal land/drop/merge cleanup emits no extra event (decision 11).
 
 The retired burn engine's `.sandcastle/worktrees/*` inside each project repo are removed once by the first sweep if `git status --porcelain` is empty; dirty ones are listed in one `cleanup.kept` event and left.
 
