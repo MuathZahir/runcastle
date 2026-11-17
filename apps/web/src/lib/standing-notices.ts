@@ -68,7 +68,7 @@ export interface SlotDriveInfo {
   projectId?: string
   projectDrive?: boolean
   dryRun?: boolean
-  purpose?: 'human' | 'review'
+  purpose?: 'human' | 'review' | 'lead'
   workerId?: string
   workerLabel?: string
   branch?: string

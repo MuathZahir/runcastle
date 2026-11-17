@@ -43,7 +43,7 @@ export function holderSentence(holderLabel: string): string {
 
 /** Who a feature drive belongs to, as `feature.driveInfo` reports it. */
 export interface DriveOwner {
-  purpose?: 'human' | 'review'
+  purpose?: 'human' | 'review' | 'lead'
   workerId?: string
   workerLabel?: string
 }
@@ -52,8 +52,10 @@ export interface DriveOwner {
 export interface AgentDriver {
   /** Its chat, to open; absent when the server could not name the worker. */
   workerId?: string
-  /** What to call it: "Review worker". */
+  /** What to call it: "Review worker", or "Lead" for the feature's lead. */
   name: string
+  /** The feature's lead holds it (proving scenarios), not a review. */
+  lead?: true
 }
 
 /**
@@ -68,6 +70,7 @@ export function driverName(label: string | undefined): string {
 
 /** The agent driving, or null when the drive is the human's own (or none). */
 export function agentDriver(drive: DriveOwner | null | undefined): AgentDriver | null {
+  if (drive?.purpose === 'lead') return { name: drive.workerLabel ?? 'Lead', lead: true }
   if (drive?.purpose !== 'review') return null
   return { ...(drive.workerId ? { workerId: drive.workerId } : {}), name: driverName(drive.workerLabel) }
 }
@@ -99,7 +102,7 @@ export function agentDriveRefusal(
   const driver = agentDriver(drive)
   if (!driver || drive?.cutOff) return undefined
   const line = drive?.featureId === featureId ? agentDriveLine(driver) : `${driver.name} is trying ${drive?.branch ?? 'another feature'}`
-  return `${line} — your test drive waits until the review hands back`
+  return `${line} — your test drive waits until ${driver.lead ? 'it stops its drive' : 'the review hands back'}`
 }
 
 /**
@@ -109,6 +112,15 @@ export function agentDriveRefusal(
  * or else to review by reading the branch.
  */
 export function stopAgentDriveConfirm(driver: AgentDriver): { title: string; description: string; confirm: string } {
+  if (driver.lead) {
+    return {
+      title: 'Stop the lead’s drive?',
+      description:
+        'This ends the feature lead’s drive and frees the drive slot for you. The lead itself keeps running, ' +
+        'and may start the drive again.',
+      confirm: 'Stop its drive',
+    }
+  }
   return {
     title: 'Stop the review’s drive?',
     description:
