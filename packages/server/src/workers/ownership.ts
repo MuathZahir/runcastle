@@ -74,8 +74,17 @@ export function ownershipOf(
     const theirs = dirname(dirname(dirname(origin)))
     return /[\\/]workers[\\/]origins[\\/][^\\/]+\.git[\\/]?$/.test(origin) && !exists(theirs) ? 'orphan' : 'foreign'
   }
-  return c.labels[LABEL_DOCKERFILE_HASH] ? 'burn-engine' : 'foreign'
+  return c.labels[LABEL_DOCKERFILE_HASH] && BURN_ENGINE_NAME.test(c.name) ? 'burn-engine' : 'foreign'
 }
+
+/**
+ * The names the retired burn engine gave its containers: sandcastle's own
+ * `sandcastle-<uuid>` and the burner's `runcastle-<runId>-t<n>`. The name is
+ * required, not just the image label: runcastle still runs short `--rm`
+ * helpers from its sandbox images (the cache volume's chown and size check,
+ * doctor's probe), and a sweep must never kill one mid-flight.
+ */
+export const BURN_ENGINE_NAME = /^(sandcastle-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|runcastle-run_[A-Za-z0-9_-]+-t\d+)$/
 
 /** Refused: a container this install does not own (another install's, or not runcastle's). */
 export class ForeignContainerError extends Error {

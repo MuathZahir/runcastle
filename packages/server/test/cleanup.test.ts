@@ -303,13 +303,15 @@ describe('the sweep', () => {
   })
 
   it('removes the retired burn engine’s containers, and never a container runcastle did not make', async () => {
-    hold('sandcastle-1f2e3d4c', { [LABEL_DOCKERFILE_HASH]: 'abc' }, { running: true })
-    hold('runcastle-run_x1y2', { [LABEL_DOCKERFILE_HASH]: 'abc' }, { running: false })
+    hold('sandcastle-7d129771-f47b-4b48-866f-742626918af8', { [LABEL_DOCKERFILE_HASH]: 'abc' }, { running: true })
+    hold('runcastle-run_hoK-NUHR8lJ1-t3', { [LABEL_DOCKERFILE_HASH]: 'abc' }, { running: false })
+    // a short `--rm` helper runcastle runs from its own image right now (the cache chown, doctor's probe)
+    hold('busy_turing', { [LABEL_DOCKERFILE_HASH]: 'abc' }, { running: true })
     hold('postgres', {})
     hold('my-app', { 'com.example': 'x' })
     await sweepLeftovers(ctx)
-    expect(engine.removed.sort()).toEqual(['runcastle-run_x1y2', 'sandcastle-1f2e3d4c'])
-    expect([...engine.held.keys()].sort()).toEqual(['my-app', 'postgres'])
+    expect(engine.removed.sort()).toEqual(['runcastle-run_hoK-NUHR8lJ1-t3', 'sandcastle-7d129771-f47b-4b48-866f-742626918af8'])
+    expect([...engine.held.keys()].sort()).toEqual(['busy_turing', 'my-app', 'postgres'])
   })
 
   it('removes unmounted cache volumes of projects not in this install and the legacy shared one; keeps its own and mounted ones', async () => {
@@ -443,7 +445,8 @@ describe('ownership', () => {
     expect(ownershipOf({ name: 'runcastle-worker-a', labels: {}, mounts: origin('/you/workers/origins/s.git') }, '/me', exists)).toBe('foreign')
     expect(ownershipOf({ name: 'runcastle-worker-a', labels: {}, mounts: origin('/gone/workers/origins/s.git') }, '/me', exists)).toBe('orphan')
     expect(ownershipOf({ name: 'runcastle-worker-a', labels: {}, mounts: [] }, '/me', exists)).toBe('foreign')
-    expect(ownershipOf({ name: 'sandcastle-1', labels: { [LABEL_DOCKERFILE_HASH]: 'h' }, mounts: [] }, '/me', exists)).toBe('burn-engine')
+    expect(ownershipOf({ name: 'sandcastle-7d129771-f47b-4b48-866f-742626918af8', labels: { [LABEL_DOCKERFILE_HASH]: 'h' }, mounts: [] }, '/me', exists)).toBe('burn-engine')
+    expect(ownershipOf({ name: 'busy_turing', labels: { [LABEL_DOCKERFILE_HASH]: 'h' }, mounts: [] }, '/me', exists)).toBe('foreign')
     expect(ownershipOf({ name: 'redis', labels: {}, mounts: [] }, '/me', exists)).toBe('foreign')
   })
 })
