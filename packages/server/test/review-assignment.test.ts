@@ -67,4 +67,14 @@ describe.each([
     expect(section.indexOf('git rev-parse HEAD')).toBeGreaterThan(section.indexOf('bun run test'))
     expect(section.indexOf('git rev-parse HEAD')).toBeLessThan(section.indexOf('\n## ', 5))
   })
+
+  it('asks a drive review with no scenarios for a "No scenario reaches" observation per state set up by hand', async () => {
+    const text = await renderReviewAssignment(ctx, feature, project, { mode: 'drive', passId: 'pass_1' }, v)
+    expect(text).not.toMatch(/\{\{[A-Z_]+\}\}/)
+    expect(text).toContain("**Scenarios:** none — this project has no scenario runner recorded, so set up each criterion's state by hand")
+    expect(text).toContain(
+      "For each criterion's state you had to set up by hand, file a `report_finding` observation titled \"No scenario reaches <state>\".",
+    )
+    expect(text).toContain('Never write or edit a scenario.')
+  })
 })
