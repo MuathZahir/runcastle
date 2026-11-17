@@ -37,6 +37,11 @@ export function readyToTestWhy(scenario: string): string {
   return `Ready to test · ${scenario}`
 }
 
+/** Whether a need is `declare_ready`'s: the feature waits on a test drive, not an answer. */
+export function isReadyToTestWhy(why: string): boolean {
+  return why === 'Ready to test' || why.startsWith('Ready to test · ')
+}
+
 /** The line runcastle sets when an agent's run failed to launch or died in its turn (decision 9). */
 export function wakeFailedWhy(exitCode: number | null): string {
   return exitCode === null ? 'The agent’s run failed' : `The agent’s run failed (exit ${exitCode})`

@@ -250,9 +250,12 @@ const nestedRows = (): string[] => {
   const group = nestedWorkers()
   return group ? within(group).getAllByRole('button').flatMap((b) => (b.title ? [b.title.split(' — ')[0]!] : [])) : []
 }
-/** Unfold the open feature's "N done". */
-const openDone = (): void => {
-  fireEvent.click(within(nestedWorkers()!).getByRole('button', { name: /^\d+ done$/ }))
+/** The arrow at the open feature's row end that shows its live workers (a-calmer-sidebar decision 9). */
+const workersArrow = (): Promise<HTMLElement> => within(sidebar()).findByRole('button', { name: /^Demo: \d+ workers?$/ })
+/** Open the open feature's workers, as the human clicks its arrow. */
+const showWorkers = async (): Promise<void> => {
+  const arrow = await workersArrow()
+  if (arrow.getAttribute('aria-expanded') === 'false') fireEvent.click(arrow)
 }
 /** A nested worker row, by its label. */
 const workerRow = (label: string): HTMLElement => {
@@ -293,22 +296,23 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
     ],
   }
 
-  it('nests the open feature’s workers under its row from worker.list: needs you and failed first, then working and queued, the finished ones folded into "N done"', async () => {
+  it('opens the feature’s live workers from the arrow at its row’s end: needs you and failed first, then working and queued; finished ones leave the sidebar', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
     await within(column()).findByText('said in th_main')
     // Opening the feature keeps the list (clicking-a-feature-opens-its-lead decision 1).
     expect(within(sidebar()).getByRole('region', { name: 'Epics' })).toBeTruthy()
+    // Closed: the arrow counts its live workers, the rows don't show.
+    expect((await workersArrow()).getAttribute('aria-label')).toBe('Demo: 4 workers')
+    expect(nestedWorkers()).toBeNull()
+    await showWorkers()
     await waitFor(() => expect(nestedRows()).toEqual(['Header', 'Search', 'Data', 'Docs']))
     expect(within(openFeature()).getByRole('button', { name: 'New worker' })).toBeTruthy()
-    // Folded: its count shows, its rows do not.
-    expect(within(nestedWorkers()!).getByRole('button', { name: '2 done' })).toBeTruthy()
-    openDone()
-    expect(nestedRows()).toEqual(['Header', 'Search', 'Data', 'Docs', 'Footer', 'An old side thread'])
-    expect(within(nestedWorkers()!).getByText('Old side chat')).toBeTruthy()
+    expect(within(nestedWorkers()!).queryByText(/done/)).toBeNull()
   })
 
   it('opens a worker’s chat from its nested row, and the feature’s row brings its lead back', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await showWorkers()
     await waitFor(() => expect(nestedRows()).toHaveLength(4))
     pickWorker('Header')
     expect(await within(column()).findByText('said in w_ask')).toBeTruthy()
@@ -320,17 +324,21 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
     expect(nestedRows()).toHaveLength(4)
   })
 
-  it('lights the amber dot on a worker that needs the human, and red on a failed one', async () => {
+  it('marks a worker that asks the human, a failed one in red, and a working one with the spinner', async () => {
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await showWorkers()
     await waitFor(() => expect(nestedRows()).toHaveLength(4))
-    expect(workerRow('Header').innerHTML).toContain('bg-warning')
-    expect(workerRow('Search').innerHTML).toContain('bg-danger')
-    expect(workerRow('Data').innerHTML).not.toContain('bg-warning')
+    const mark = (label: string) => within(workerRow(label).parentElement!)
+    expect(mark('Header').getByRole('img', { name: 'Asks you' })).toBeTruthy()
+    expect(mark('Search').getByRole('img', { name: 'Failed' }).className).toContain('text-danger')
+    expect(mark('Data').getByRole('img', { name: 'Working' })).toBeTruthy()
+    expect(mark('Docs').queryByRole('img')).toBeNull()
   })
 
   it('keeps a picked worker in the address, and a reload reopens it', async () => {
     window.history.replaceState(null, '', '/p/proj_1/f/login')
     render(<Page />, { wrapper: server(mixed).Wrapper })
+    await showWorkers()
     await waitFor(() => expect(nestedRows()).toHaveLength(4))
     pickWorker('Data')
     await waitFor(() => expect(window.location.search).toBe('?thread=w_run'))
@@ -365,6 +373,7 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
     const api = server({ threads: [lead, thread('w_run', 'Data', 'worker')], workers: [worker('w_run', 'Data', { status: 'working' })] })
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
+    await showWorkers()
     await waitFor(() => expect(nestedRows()).toEqual(['Data']))
     fireEvent.click(within(openFeature()).getByRole('button', { name: 'New worker' }))
     expect(await within(column()).findByText('said in th_new')).toBeTruthy()
@@ -383,6 +392,7 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
       workers: [worker('w_ask', 'Header', { previewPath: '/__runcastle/open/worker/w_ask', previewPort: 41001, devServer: true })],
     })
     render(<Page />, { wrapper: api.Wrapper })
+    await showWorkers()
     await waitFor(() => expect(nestedRows()).toEqual(['Header']))
     pickWorker('Header')
     const card = await within(column()).findByRole('region', { name: 'Assignment: Header' })
@@ -402,10 +412,9 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
   })
 
   it('offers no Open preview without a preview, and no Hand back once a worker has handed back', async () => {
+    // A finished worker is off the sidebar; its address (or the lead's workers card) still opens it.
+    window.history.replaceState(null, '', '/p/proj_1/f/login?thread=w_back')
     render(<Page />, { wrapper: server(mixed).Wrapper })
-    await waitFor(() => expect(nestedRows()).toHaveLength(4))
-    openDone()
-    pickWorker('Footer')
     await within(column()).findByText('said in w_back')
     await waitFor(() => expect(within(header()).getByRole('status').textContent).toContain('Handed back'))
     expect(within(header()).queryByRole('button', { name: 'Open preview' })).toBeNull()
@@ -415,10 +424,9 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
 
   it('opens an old side chat as a read-only transcript: no composer, the old-side-chat note', async () => {
     const api = server(mixed)
+    // Off the sidebar with the other finished ones; its address still opens it.
+    window.history.replaceState(null, '', '/p/proj_1/f/login?thread=th_old')
     render(<Page />, { wrapper: api.Wrapper })
-    await waitFor(() => expect(nestedRows()).toHaveLength(4))
-    openDone()
-    pickWorker('An old side thread')
     expect(await within(column()).findByText('said in th_old')).toBeTruthy()
     expect(within(column()).getByText('Old side chat — read-only')).toBeTruthy()
     expect(within(column()).queryByLabelText('Message')).toBeNull()
@@ -777,6 +785,7 @@ describe('a Select area crop', () => {
     URL.createObjectURL = vi.fn(() => 'blob:crop')
     render(<Page />, { wrapper: api.Wrapper })
     await within(column()).findByText('said in th_main')
+    await showWorkers()
     await waitFor(() => expect(nestedRows()).toEqual(['A worker']))
     pickWorker('A worker')
     await within(column()).findByText('said in th_old')

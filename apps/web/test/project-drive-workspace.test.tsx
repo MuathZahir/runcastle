@@ -720,8 +720,9 @@ describe('New chat with a chat running', () => {
     mountWithSidebar(talk({ session: liveChat }), { conversations: true })
     // The epic that needs you first, then newest started first (epics decision 8).
     expect(orchestratorChats()).toEqual(['Cut the export idea', 'Audit the journal', 'An older idea'])
-    expect(chatRow('Audit the journal').textContent).toContain('Working')
-    expect(chatRow('Cut the export idea').textContent).toContain('Needs you · Which export first?')
+    // The sidebar's head says it on hover only (a-calmer-sidebar decision 2).
+    expect(chatRow('Audit the journal').querySelector('button')!.title).toBe('Audit the journal — Working')
+    expect(chatRow('Cut the export idea').querySelector('button')!.title).toBe('Cut the export idea — Needs you · Which export first?')
     const groups = ['Active', 'Earlier'].flatMap((name) => screen.queryAllByRole('region', { name }))
     const rows = groups.flatMap((g) => within(g).getAllByRole('button')).map((b) => b.textContent ?? '')
 

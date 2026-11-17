@@ -207,10 +207,11 @@ describe('the list (SidebarEpics, static markup)', () => {
     expect(html).toMatch(/lucide-message-square/)
   })
 
-  it('draws an epic whose chat needs you amber, with its agent’s line (needs-you decisions 3, 6)', () => {
+  it('marks an epic whose chat needs you with a question in its head, its agent’s line on hover (a-calmer-sidebar decision 10)', () => {
     const html = render(epicsFrom([pay], [], everyone).epics)
-    expect(html).toContain('Needs you · Which provider first?')
-    expect(html).toContain('bg-warning')
+    expect(html).toContain('title="Payment System — Needs you · Which provider first?"')
+    expect(html).toContain('aria-label="Asks you"')
+    expect(html).not.toContain('bg-warning')
   })
 
   it('reads a chat that only works or waits on a guess as no need: no amber, no "Asking"', () => {
@@ -220,7 +221,7 @@ describe('the list (SidebarEpics, static markup)', () => {
     expect(html).not.toContain('Asking')
   })
 
-  it('nests the features in the four words, with no owner prefix, then Other features', () => {
+  it('folds the features that don’t need you into one line, with no owner prefix, then Other features', () => {
     const features = [
       feature('Retry policy', 'pay'),
       feature('Labels', 'pay', { working: true }),
@@ -229,8 +230,8 @@ describe('the list (SidebarEpics, static markup)', () => {
     const { epics, other } = epicsFrom([pay, ship], features, everyone)
     const html = render(epics, other)
     expect(html).toContain('role="group" aria-label="Payment System"')
-    expect(html).toContain('Idle')
-    expect(html).toContain('Working')
+    expect(html).toContain('>1 working · 1 idle<')
+    expect(html).not.toContain('>Retry policy<')
     expect(html).not.toContain('Yours ·')
     expect(html).not.toContain('With Shipping')
     expect(html).toContain('Other features')

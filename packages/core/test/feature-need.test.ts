@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Need, needPings, newestNeed, readyToTestWhy, wakeFailedWhy } from '../src/feature-need'
+import { type Need, needPings, newestNeed, isReadyToTestWhy, readyToTestWhy, wakeFailedWhy } from '../src/feature-need'
 
 /** needs-you-is-the-agent-s-call: a feature's need is the newest of its chats' waits. */
 
@@ -46,5 +46,18 @@ describe('needPings', () => {
     expect(needPings({ why: 'x', by: 'agent', featureId: null })).toBe(false)
     // The old shape, with a kind and no thread, is not one.
     expect(needPings({ kind: 'answer', words: 'Needs your answer', held: false, why: null })).toBe(false)
+  })
+})
+
+describe('isReadyToTestWhy (a-calmer-sidebar decision 10: the sidebar tells "go test" from "go answer")', () => {
+  it('reads declare_ready’s line, with or without a scenario, as ready to test', () => {
+    expect(isReadyToTestWhy(readyToTestWhy('Sign in with a magic link'))).toBe(true)
+    expect(isReadyToTestWhy('Ready to test')).toBe(true)
+  })
+
+  it('reads anything else as a question, even one that mentions testing', () => {
+    expect(isReadyToTestWhy('Ready to testify?')).toBe(false)
+    expect(isReadyToTestWhy('Which test runner?')).toBe(false)
+    expect(isReadyToTestWhy(wakeFailedWhy(1))).toBe(false)
   })
 })
