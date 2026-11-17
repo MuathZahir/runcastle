@@ -2,7 +2,12 @@ import { existsSync } from 'node:fs'
 import { DEFAULT_SANDBOX_IMAGE } from '@runcastle/core'
 import type { ExecFn } from '../doctor/doctor'
 import { tryImageBuildSlot } from './image-build'
-import { DATA_DIR_LABEL, OWNER_LABEL, OWNER_VALUE, PROJECT_LABEL } from './owner-labels'
+import {
+  LABEL_DATA_DIR as DATA_DIR_LABEL,
+  LABEL_OWNER as OWNER_LABEL,
+  LABEL_PROJECT as PROJECT_LABEL,
+  OWNER_VALUE,
+} from '../workers/labels-local'
 import { builderNamePrefix, DOCKERFILE_HASH_LABEL, removeBuilderArgs } from './sandbox-image'
 import type { Runtime } from './setup'
 

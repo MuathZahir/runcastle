@@ -1,5 +1,6 @@
 import type { ExecFn } from '../doctor/doctor'
-import { labelArgs, ownershipLabels } from '../services/owner-labels'
+import { dataDir } from '@runcastle/core/paths'
+import { LABEL_PROJECT, labelArgs, ownerLabels } from './labels-local'
 import { type BurnUser, burnUserSpec, resolveBurnUser } from './burn-user'
 import type { PackageManager } from '../services/repo-toolchain'
 
@@ -347,7 +348,7 @@ export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions):
     '--label',
     `${BURN_CACHE_VOLUME_LABEL}=${BURN_CACHE_VOLUME_VERSION}`,
     // Who made it (decision 5): the sweep and a drive's stop read these.
-    ...labelArgs(ownershipLabels({ projectId: opts.projectId, ...(opts.dataDir ? { dataDir: opts.dataDir } : {}) })),
+    ...labelArgs(ownerLabels(opts.dataDir ?? dataDir(), { [LABEL_PROJECT]: opts.projectId })),
     name,
   ])
   try {

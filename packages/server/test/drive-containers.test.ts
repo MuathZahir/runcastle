@@ -7,7 +7,7 @@ import {
   type DriveEngine,
   removeDriveContainers,
 } from '../../../.runcastle/drive-containers.ts'
-import { DATA_DIR_LABEL } from '../src/services/owner-labels'
+import { LABEL_DATA_DIR as DATA_DIR_LABEL } from '../src/workers/labels-local'
 import { rmTemp } from './helpers/fixtures'
 
 /**

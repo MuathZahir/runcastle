@@ -4,7 +4,7 @@
  * container and volume labelled `runcastle.data-dir=<that folder>`.
  *
  * Self-contained like the rest of the drive scripts. The label name is the one
- * `packages/server/src/services/owner-labels.ts` stamps; it is repeated here
+ * `LABEL_DATA_DIR` in `@runcastle/core` (labels.ts) stamps; it is repeated here
  * because this hook runs with nothing but bun and this folder.
  */
 import { spawnSync } from 'node:child_process'

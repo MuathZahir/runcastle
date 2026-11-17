@@ -11,7 +11,8 @@ import {
 import { type ExecFn, RUNTIME_SPECS } from '../doctor/doctor'
 import { type BurnUser, resolveBurnUser } from '../workers/burn-user'
 import type { HostAgentVersions } from './agent-cli-versions'
-import { ownershipLabels } from './owner-labels'
+import { dataDir } from '@runcastle/core/paths'
+import { LABEL_DOCKERFILE_HASH, LABEL_PROJECT, ownerLabels } from '../workers/labels-local'
 import type { Runtime } from './setup'
 
 /**
@@ -38,7 +39,7 @@ import type { Runtime } from './setup'
  */
 
 /** Image label carrying the sha256 of the Dockerfile an image was built from. */
-export const DOCKERFILE_HASH_LABEL = 'runcastle.dockerfile-hash'
+export const DOCKERFILE_HASH_LABEL = LABEL_DOCKERFILE_HASH
 
 /**
  * Image labels carrying the agent CLI versions the stock build was asked to
@@ -273,7 +274,7 @@ export interface ImageBuildStep {
   buildArgs: Record<string, string>
   /**
    * Labels stamped next to {@link DOCKERFILE_HASH_LABEL}: the ownership marks
-   * (`owner-labels.ts`) on every step, and the stock step's CLI versions.
+   * (`labels-local.ts`) on every step, and the stock step's CLI versions.
    */
   labels: Record<string, string>
   /**
@@ -541,7 +542,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
     dockerfileHash: stockHash,
     buildArgs: { ...buildArgs, ...Object.fromEntries(pins.map((p) => [p.buildArg, p.version])) },
     labels: {
-      ...ownershipLabels(input.dataDir === undefined ? {} : { dataDir: input.dataDir }),
+      ...ownerLabels(input.dataDir ?? dataDir()),
       ...Object.fromEntries(pins.map((p) => [p.label, p.version])),
     },
   }
@@ -565,10 +566,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
           context: projectSandboxDir(project.repoPath),
           dockerfileHash: hashDockerfile(target.dockerfile) ?? '',
           buildArgs: {},
-          labels: ownershipLabels({
-            projectId: project.id,
-            ...(input.dataDir === undefined ? {} : { dataDir: input.dataDir }),
-          }),
+          labels: ownerLabels(input.dataDir ?? dataDir(), { [LABEL_PROJECT]: project.id }),
           fromLocalImage: true,
         },
       ],
