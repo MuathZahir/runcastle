@@ -162,3 +162,40 @@ describe('workers nested under their feature', () => {
     expect(order(html)).toContain('Asking one')
   })
 })
+
+describe('the calmer epic block (a-calmer-sidebar)', () => {
+  const epic: ThreadEntry = { id: 'chat_1', title: 'Checkout flow', role: 'project', state: 'working', createdAt: 0, updatedAt: 0, runtime: 'claude-code', need: null }
+  const list = (features: FeatureListItem[], over: Partial<Parameters<typeof SidebarEpics>[0]> = {}) =>
+    renderToStaticMarkup(
+      createElement(SidebarEpics, {
+        epics: epicsFrom([epic], features, () => true).epics,
+        total: 1,
+        currentChat: null,
+        currentFeature: null,
+        onOpenEpic: () => {},
+        onSelectFeature: () => {},
+        onAllEpics: () => {},
+        ...over,
+      }),
+    )
+  const failing = workers({ entries: [worker('Data', 'working', 1), worker('Search', 'failed', 2)] })
+
+  it('shows a failed worker on the closed fold line and on its feature row, with no need on the server (decision 10)', () => {
+    const features = [f({ chatId: epic.id, working: true })]
+    const closed = list(features, { workersFor: () => failing })
+    expect(closed).toContain('aria-label="Failed"')
+    const open = withFoldsOpen(() => list(features, { workersFor: () => failing }))
+    // Its row and the worker's own row both wear it; the open fold line drops its mark.
+    expect(open.match(/aria-label="Failed"/g)).toHaveLength(2)
+    expect(open).toContain('title="Checkout coupons — a worker failed')
+    expect(list(features, { workersFor: () => workers({ entries: [worker('Data', 'working', 1)] }) })).not.toContain('aria-label="Failed"')
+  })
+
+  it('leaves out the fold line when the feature in front is the only one behind it', () => {
+    const html = list([f({ chatId: epic.id, working: true })], { currentFeature: 'feat_1' })
+    expect(html).toContain('aria-label="Checkout coupons"')
+    expect(html).not.toContain('more feature')
+    const two = list([f({ chatId: epic.id, working: true }), f({ id: 'feat_2', title: 'Refunds', chatId: epic.id })], { currentFeature: 'feat_1' })
+    expect(two).toContain('aria-label="Checkout flow: 1 more feature"')
+  })
+})

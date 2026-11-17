@@ -121,22 +121,29 @@ function WorkingMark() {
   )
 }
 
-/** A feature's leading mark: its autopilot lock, ready to test, a question, a stuck up-next, the spinner while it works, or none. */
-function featureMark(f: FeatureListItem, lock: ReactNode | undefined): ReactNode {
+/** Whether a feature has a failed live worker: the server sets no need for it, so the sidebar marks it red itself. */
+function hasFailedWorker(workers: FeatureWorkers | undefined): boolean {
+  return !!workers?.entries.some((w) => !w.old && w.status === 'failed')
+}
+
+/** A feature's leading mark: its autopilot lock, ready to test, a question, a failed worker, a stuck up-next, the spinner while it works, or none. */
+function featureMark(f: FeatureListItem, lock: ReactNode | undefined, failed: boolean): ReactNode {
   if (lock !== undefined) return <span className="inline-flex size-4 shrink-0 items-center justify-center">{lock}</span>
   const need = needsMe(f)
   if (need) return <NeedMark lit kind={isReadyToTestWhy(need.why) ? 'ready' : 'question'} />
+  if (failed) return <NeedMark kind="failed" />
   if (upNextProblem(f)) return <NeedMark kind="stuck" />
   if (triageOf(f) === 'working') return <WorkingMark />
   return null
 }
 
 /** The row's hover line: the full title, what it waits on (the reason the row no longer says) and since when. */
-function featureTooltip(f: FeatureListItem, locked: boolean): string {
+function featureTooltip(f: FeatureListItem, locked: boolean, failed: boolean): string {
   const ago = relTimeAgo(f.lastActivityAt)
   if (locked) return `${f.title} — on autopilot · ${ago}`
   const need = needsMe(f)
   if (need) return `${f.title} — ${need.why} · ${ago}`
+  if (failed) return `${f.title} — a worker failed · ${ago}`
   const problem = upNextProblem(f)
   if (problem) return `${f.title} — ${problem}`
   return `${f.title} · ${ago}`
@@ -193,6 +200,7 @@ function EpicFeatureRow({
   workers,
   workersOpen = false,
   onToggleWorkers,
+  failed = false,
 }: {
   f: FeatureListItem
   active: boolean
@@ -204,6 +212,8 @@ function EpicFeatureRow({
   workers?: readonly WorkerEntry[]
   workersOpen?: boolean
   onToggleWorkers?: () => void
+  /** One of its live workers failed: the red "!" in front. */
+  failed?: boolean
 }) {
   const lane = triageOf(f)
   const asking = lock === undefined && lane === 'needsYou'
@@ -224,13 +234,13 @@ function EpicFeatureRow({
     >
       <button
         type="button"
-        title={featureTooltip(f, lock !== undefined)}
+        title={featureTooltip(f, lock !== undefined, failed)}
         aria-label={f.title}
         aria-current={active ? 'page' : undefined}
         onClick={() => onSelect(f.id)}
         className="absolute inset-0 cursor-pointer rounded-[inherit]"
       />
-      <span className="pointer-events-none inline-flex size-4 shrink-0 items-center justify-center">{featureMark(f, lock)}</span>
+      <span className="pointer-events-none inline-flex size-4 shrink-0 items-center justify-center">{featureMark(f, lock, failed)}</span>
       <span
         className={cx(
           'pointer-events-none min-w-0 flex-1 truncate text-md',
@@ -347,6 +357,7 @@ function EpicFeature({
       workers={live}
       workersOpen={open}
       onToggleWorkers={toggle}
+      failed={lock === undefined && hasFailedWorker(workers)}
     />
   )
   if (!open || !workers) return row
@@ -391,8 +402,22 @@ function foldWords(items: readonly EpicFeatureItem[]): { working: number; idle: 
 }
 
 /** The fold as a row like the others: the spinner in front while any work and it is closed, the counts, and its arrow at the end. */
-function FoldLine({ items, open, onToggle, label }: { items: readonly EpicFeatureItem[]; open: boolean; onToggle: () => void; label: string }) {
+function FoldLine({
+  items,
+  open,
+  onToggle,
+  label,
+  workersFor,
+}: {
+  items: readonly EpicFeatureItem[]
+  open: boolean
+  onToggle: () => void
+  label: string
+  workersFor?: ((f: FeatureListItem) => FeatureWorkers | undefined) | undefined
+}) {
   const { working, idle, upNext } = foldWords(items)
+  // Something broke behind the fold (a failed worker, a stuck up-next): the red "!" in front while it is closed.
+  const failed = items.some((x) => !x.locked && hasFailedWorker(workersFor?.(x.feature)))
   const stuck = items.some((x) => !x.locked && upNextProblem(x.feature))
   const words = [working > 0 && `${working} working`, idle > 0 && `${idle} idle`, upNext > 0 && `${upNext} up next`].filter(Boolean).join(' · ')
   return (
@@ -404,7 +429,7 @@ function FoldLine({ items, open, onToggle, label }: { items: readonly EpicFeatur
       className="flex h-7 w-full shrink-0 cursor-pointer items-center gap-2 rounded-md pr-1 pl-2 text-left text-xs text-text-tertiary transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text-secondary"
     >
       <span className="inline-flex size-4 shrink-0 items-center justify-center">
-        {stuck && !open ? <NeedMark kind="stuck" /> : working > 0 && !open ? <WorkingMark /> : null}
+        {failed && !open ? <NeedMark kind="failed" /> : stuck && !open ? <NeedMark kind="stuck" /> : working > 0 && !open ? <WorkingMark /> : null}
       </span>
       <span className="min-w-0 flex-1 truncate tabular-nums">{words}</span>
       <span className="inline-flex size-5 shrink-0 items-center justify-center">
@@ -456,6 +481,8 @@ export function EpicFeatureList({
   const rest = items.filter((x) => !upfront.includes(x))
   const folds = rest.length >= FOLD_FROM
   const pinned = folds && !open ? rest.filter((x) => x.feature.id === currentFeature) : []
+  // Closed, with only the feature in front behind it, the fold would hold nothing: leave its line out.
+  const foldLine = folds && (open || rest.length > pinned.length)
   const row = (x: EpicFeatureItem) => (
     <EpicFeature
       key={x.feature.id}
@@ -477,14 +504,22 @@ export function EpicFeatureList({
         </div>
       )}
       {pinned.map(row)}
-      {upfront.length + pinned.length > 0 && rest.length > 0 && (
+      {upfront.length + pinned.length > 0 && foldLine && (
         <span aria-hidden className="mx-2.5 my-1 h-px bg-border-subtle" />
       )}
       {folds ? (
+        foldLine && (
         <>
-          <FoldLine items={open ? rest : rest.filter((x) => !pinned.includes(x))} open={open} onToggle={toggle} label={label} />
+          <FoldLine
+            items={open ? rest : rest.filter((x) => !pinned.includes(x))}
+            open={open}
+            onToggle={toggle}
+            label={label}
+            workersFor={workersFor}
+          />
           {open && <div className="flex animate-rise-in flex-col gap-px">{rest.map(row)}</div>}
         </>
+        )
       ) : (
         rest.map(row)
       )}
