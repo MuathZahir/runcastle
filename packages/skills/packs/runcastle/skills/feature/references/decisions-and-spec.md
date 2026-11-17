@@ -93,20 +93,37 @@ Anything unresolved or deliberately deferred.
 ## Scenarios
 
 A scenario is a project command under `.runcastle/scenarios/` that seeds a
-state and prints `ENTRY_URL=<where>`, so a test drive starts where the feature
-is. `get_feature_context`'s `scenarios` field says whether the project has them
-set up (`setUp`).
+state and prints `ENTRY_URL=<where>`, so a drive (the human's, the review's,
+your own) starts where the feature is instead of redoing signup.
+`get_feature_context`'s `scenarios` field says whether the project has them
+set up (`setUp`: a runner recorded and the folder on the base branch).
 
-- **When `setUp` is true**, the work that builds a hard-to-reach state (an
-  account, a cart with an expired coupon) ships one, named after where it lands
-  (`checkout/expired-coupon-at-payment.ts`), reusing `_fixtures`. An API change
-  also ships a sibling `.http` request, and prints `TOKEN=` when authenticated.
-  Copy changes and settings toggles get none. Pass the one that fits as the
-  `scenario` of `declare_ready`. When `setUp` is false, tell the human once
-  that ＋ New scenario in a test drive sets them up.
+- **A state is slow to reach** when someone driving the feature would build it
+  by hand first: signing up or in, onboarding, data that takes several steps.
+  Copy changes, settings toggles and the screen the app opens on get none.
+- **When `setUp` is true**, the work that builds a slow state ships a scenario,
+  named after where it lands (`checkout/expired-coupon-at-payment.ts`), built on
+  the `_fixtures` ladder (`./scenario-setup.md`). An API change also ships a
+  sibling `.http` request, and prints `TOKEN=` when authenticated.
+- **When `setUp` is false and the feature has a slow state**, you set scenarios
+  up yourself before the first review, by `./scenario-setup.md`, and say so in
+  the Plan's who builds what. Never hand setup to a worker: it needs a drive.
+- **Prove each new scenario** before any review: run it on `feature_drive`
+  and have an `agent-browser` subagent confirm the `ENTRY_URL` shows the state,
+  signed in. Stop the drive when done.
+- **After the full review**, write and prove a scenario for every "No scenario
+  reaches <state>" it reported before you start the verify review.
+- **When the drive cannot carry scenarios** (it will not start, or its
+  `drive.env` does not hand over the database the scenario must seed), say so
+  once (`wait_for_you`, or `hand_back` on autopilot), recommend the
+  orchestrator's project preparation, and go on: the review sets the state up by
+  hand. Never edit the drive setup yourself.
+- Pass the scenario that fits as the `scenario` of `declare_ready`.
 - A copy of drive data lives in `scenarios.dataDir`, outside git (it can hold
   passwords), read through `RUNCASTLE_SCENARIO_DATA`; copy only from this
   feature's own drives.
-- A feature's scenarios leave with it. Your ready message lists them and which
-  to pick for what. When the human says the work is good, ask once which to
-  keep, delete the rest, and rewrite any kept data copy as seed code.
+- A feature's scenarios leave with it, except the setup and the base signed-in
+  scenario when this feature set scenarios up: those stay. Your ready message
+  lists the scenarios, which to pick for what, and which stay. When the human
+  says the work is good, ask once which others to keep, delete the rest, and
+  rewrite any kept data copy as seed code.

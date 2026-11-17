@@ -106,6 +106,16 @@ describe('the drive slot, the Review worker’s drive', () => {
     expect(screen.getByText('Review worker (verify) is trying this feature')).toBeTruthy()
   })
 
+  it('names the feature lead’s drive as the lead’s, opening the feature and offering its Stop', () => {
+    const lead: DriveState = { featureId: 'feat_1', branch: 'feature/checkout', purpose: 'lead', workerLabel: 'Lead' }
+    const acts = slot(lead)
+    expect(screen.getByText('Lead is trying this feature')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Stop the lead’s drive' })).toBeTruthy()
+    expect(humanDriving(lead, 'feat_1')).toBe(false)
+    expect(agentDriveRefusal(lead, 'feat_1')).toBe('Lead is trying this feature — your test drive waits until it stops its drive')
+    expect(acts.onOpenWorker).not.toHaveBeenCalled()
+  })
+
   it('refuses the human’s Test drive by naming the worker, with its chat one click away', () => {
     const info = { ...REVIEW, holderLabel: "the Review worker's drive of feature/checkout" }
     expect(agentDriveRefusal(info, 'feat_1')).toBe(
@@ -125,5 +135,20 @@ describe('the drive slot, the Review worker’s drive', () => {
     expect(row?.action?.label).toBe('Open its chat')
     row?.action?.onClick()
     expect(openWorker).toHaveBeenCalledWith('feat_1', 'sess_review')
+    expect(row?.subtitle).toBe('it holds the drive slot, so your test drive waits until the review hands back')
+  })
+
+  it('says the human’s Test drive waits for the lead to stop its drive, not for a review', () => {
+    const info = { featureId: 'feat_1', branch: 'feature/checkout', purpose: 'lead' as const, workerLabel: 'Lead', holderLabel: 'x' }
+    const acts: StandingActs = { resolve: vi.fn(), resolving: false, dismissDenial: vi.fn(), stopDrive: vi.fn(), stopping: false }
+    const input: StandingInput = {
+      shipped: false, branch: 'feature/checkout', conflict: null, conflictResolved: false, resolveEnded: false,
+      liveSessionId: null, denial: null, unverified: null, phone: false,
+      blockingDrive: slotBlocker(info, { id: 'feat_1', projectId: 'p' }, true),
+    }
+    const [row] = standingNotices(input, acts)
+    expect(row?.title).toBe('Lead is trying this feature')
+    expect(row?.subtitle).toBe('it holds the drive slot, so your test drive waits until it stops its drive')
+    expect(row?.subtitle).not.toMatch(/review/)
   })
 })

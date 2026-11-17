@@ -199,4 +199,12 @@ describe('the stage while the review agent drives', () => {
     expect(html).toMatch(/review agent driving/i)
     expect(html).toContain('No dev server answered')
   })
+  it('names the lead when the lead holds the drive to prove its scenarios', () => {
+    const html = render({ ...agent, drive: { ...SERVING, purpose: 'lead' } })
+    expect(html).toContain('<iframe')
+    expect(html).toContain('Lead driving')
+    expect(html).not.toContain('Review agent driving')
+    const bare = render({ ...agent, drive: { branch: 'feature/x', purpose: 'lead' } })
+    expect(bare).toContain('proving this feature’s scenarios')
+  })
 })

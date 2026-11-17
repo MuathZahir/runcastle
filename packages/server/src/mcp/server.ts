@@ -445,7 +445,11 @@ export interface FeatureContext {
 
 /** The project's scenario state as a planning session sees it. */
 export interface FeatureScenarios {
-  /** The base branch has `.runcastle/scenarios/` AND a scenario runner is recorded. */
+  /**
+   * A scenario runner is recorded AND the base branch tracks at least one file
+   * under `.runcastle/scenarios/`, `_fixtures/` included — so a project whose
+   * scenarios all left with their features still reads as set up.
+   */
   setUp: boolean
   runnerConfigured: boolean
   /** The scenarios at the feature branch, this feature's own first. */
@@ -472,6 +476,7 @@ export async function featureScenarios(ctx: AppCtx, featureId: string): Promise<
   ])
   return {
     setUp: basePaths.length > 0 && runnerConfigured,
+    // `basePaths` is every tracked file under the folder, fixtures included.
     runnerConfigured,
     scenarios,
     fixtures: branchPaths.filter((path) => path.split('/').some((segment) => segment.startsWith('_'))),
@@ -1560,6 +1565,76 @@ export async function toolReviewScenario(
   return { action, ...result }
 }
 
+// --- the lead's drive (features-set-up-scenarios-themselves decision 5) ------
+
+/** The drive slot's name for a lead's drive, as the UI shows it. */
+const LEAD_DRIVE_LABEL = 'Lead'
+
+/**
+ * The feature a `feature_drive` call acts on: the caller's own, and only from
+ * the feature's own lead chat. A worker, the Review worker, a side session and
+ * an orchestrator are refused; another feature's lead reaches only its own
+ * feature, never this one.
+ */
+function requireDriveLead(session: SessionRow): string {
+  if (session.kind === 'worker') {
+    throw new GateError(
+      "feature_drive belongs to the feature's lead. A worker (the Review worker included) cannot use it; " +
+        'the Review worker drives with review_drive.',
+    )
+  }
+  return requireLeadFeatureId(session)
+}
+
+/**
+ * Start, look at or stop a drive of the lead's own feature branch, as
+ * committed, on the human's checkout: the review drive's machinery, held under
+ * the lead's own purpose and named as the lead's.
+ */
+export async function toolFeatureDrive(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { action: 'start' | 'status' | 'stop' },
+): Promise<git.LeadDriveResult> {
+  const feature = getFeatureRow(ctx, requireDriveLead(session))
+  return git.leadDrive(ctx, projectForFeature(ctx, feature), feature, input.action, {
+    id: session.id,
+    label: LEAD_DRIVE_LABEL,
+  })
+}
+
+/** `feature_drive({ action: 'scenario' })`: the landing, the scenario's failure, or a refusal — the review's shape. */
+export type FeatureScenarioResult =
+  | { ok: true; action: 'scenario'; entryUrl: string; token?: string }
+  | { ok: false; action: 'scenario'; failure: ScenarioFailure }
+  | { ok: false; action: 'scenario'; deniedReason: string; retriable?: boolean }
+
+/** Run one committed scenario on the lead's live drive, through the human's runner. */
+export async function toolFeatureScenario(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { file?: string },
+): Promise<FeatureScenarioResult> {
+  const featureId = requireDriveLead(session)
+  const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
+  if (!git.leadDriveFor(projectId, featureId)) {
+    return {
+      ok: false,
+      action: 'scenario',
+      deniedReason: "No drive of this feature is held by you — feature_drive({ action: 'start' }) first.",
+      retriable: false,
+    }
+  }
+  const file = input.file
+  if (!file) {
+    return { ok: false, action: 'scenario', deniedReason: "`scenario` needs `file`, the scenario's repo-relative path.", retriable: false }
+  }
+  const result = await git.runScenarioOnDrive(ctx, projectId, file, { allowLead: true })
+  if ('denied' in result) return { ok: false, action: 'scenario', deniedReason: result.denied }
+  if (!result.ok) return { ok: false, action: 'scenario', failure: result.failure }
+  return { ok: true, action: 'scenario', entryUrl: result.entryUrl, ...(result.token ? { token: result.token } : {}) }
+}
+
 /**
  * `report_finding` from a drive review on the host: recorded against the Review
  * worker itself (burns-become-workers decision 4). A gates review reports the
@@ -1684,7 +1759,12 @@ export function toolSetScenarioRunner(
   session: SessionRow,
   command: string,
 ): { scenarioRunner: string } {
-  const project = requireScenarioSession(ctx, session, 'Setting the scenario runner')
+  // The feature's lead records it too when it sets scenarios up itself
+  // (features-set-up-scenarios-themselves decision 5); anyone else must be the Scenarios worker.
+  const project =
+    session.kind === 'chat' && session.featureId
+      ? projectForFeature(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)))
+      : requireScenarioSession(ctx, session, 'Setting the scenario runner')
   if (!command.includes(SCENARIO_FILE_PLACEHOLDER)) {
     throw new InvalidInputError(
       `the scenario runner must contain ${SCENARIO_FILE_PLACEHOLDER}, where runcastle puts the ` +
@@ -2638,9 +2718,12 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   dry_run_drive: ['project'],
   retry_drive: ['fix-drive-worker'],
   run_scenario: ['scenario-worker'],
-  set_scenario_runner: ['scenario-worker'],
+  // The lead records it too when it sets scenarios up itself (`toolSetScenarioRunner`).
+  set_scenario_runner: ['scenario-worker', 'chat'],
   // A drive review's: `requireReviewer`. A gates review gets report_finding over its relay.
   review_drive: ['review'],
+  // The lead's own drive of its feature, to prove scenarios on (`requireDriveLead`).
+  feature_drive: ['chat'],
   report_finding: ['review'],
   // The one tool both halves share — it emits at whatever scope the caller has.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'fix-drive-worker', 'scenario-worker'],
@@ -2806,6 +2889,34 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
+  if (wants('feature_drive')) {
+    server.registerTool(
+      'feature_drive',
+      {
+        title: 'Drive your feature branch to prove scenarios',
+        description:
+          "Drive YOUR feature branch as committed, on the human's checkout: commit, `start`, `status` until " +
+          '`drive.devReady`, `scenario` with `file` (replies `entryUrl`, maybe `token`, or `failure`), then `stop`. ' +
+          'Have a browser subagent confirm the landing. `retriable: true` means another drive holds the slot: wait, retry.',
+        inputSchema: {
+          action: z
+            .enum(['start', 'status', 'stop', 'scenario'])
+            .describe('`start`/`status`/`stop` run the drive; `scenario` runs scenario `file` on it.'),
+          file: z
+            .string()
+            .optional()
+            .describe('For `scenario`: the repo-relative path, e.g. `.runcastle/scenarios/base/onboarded-user.ts`.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        if (args.action === 'scenario') return ok(await toolFeatureScenario(rs.ctx, rs.session, { file: args.file }))
+        return ok(await toolFeatureDrive(rs.ctx, rs.session, { action: args.action }))
+      },
+    )
+  }
+
   if (wants('report_finding')) {
     server.registerTool(
       'report_finding',
@@ -2872,7 +2983,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Record the project’s scenario runner: the command that runs one scenario file, with ' +
           '`{file}` where its repo-relative path goes (e.g. `bun {file}`, `bin/rails runner {file}`). ' +
-          'The only setting this session may write. Scenario sessions only.',
+          'The only setting this session may write. For the Scenarios worker, and the feature’s lead ' +
+          'when it sets scenarios up itself.',
         inputSchema: {
           command: z.string().min(1).describe('The runner command; must contain `{file}`.'),
         },

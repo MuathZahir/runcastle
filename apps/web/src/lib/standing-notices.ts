@@ -54,11 +54,11 @@ export interface SlotBlocker {
   cutOff: boolean
   stop: SlotStop | null
   /**
-   * A Review worker's live drive (triage-batch decision 16): who drives, the
+   * A Review worker's or the lead's live drive (triage-batch decision 16): who drives, the
    * feature it tries, and whether that is this one. The human's Test drive
    * waits for it; its chat is one click away.
    */
-  agent?: { featureId: string; workerId?: string; name: string; thisFeature: boolean; branch: string }
+  agent?: { featureId: string; workerId?: string; name: string; thisFeature: boolean; branch: string; lead?: true }
 }
 
 /** The project's drive slot as `feature.driveInfo` reports it. */
@@ -68,7 +68,7 @@ export interface SlotDriveInfo {
   projectId?: string
   projectDrive?: boolean
   dryRun?: boolean
-  purpose?: 'human' | 'review'
+  purpose?: 'human' | 'review' | 'lead'
   workerId?: string
   workerLabel?: string
   branch?: string
@@ -192,7 +192,7 @@ export function standingNotices(input: StandingInput, acts: StandingActs): Stand
       title: agent.thisFeature
         ? agentDriveLine(agent)
         : `${agent.name} is trying ${agent.branch || 'another feature'}`,
-      subtitle: 'it holds the drive slot, so your test drive waits until the review hands back',
+      subtitle: `it holds the drive slot, so your test drive waits until ${agent.lead ? 'it stops its drive' : 'the review hands back'}`,
       ...(agent.workerId && open
         ? { action: { label: 'Open its chat', onClick: () => open(agent.featureId, agent.workerId!) } }
         : {}),

@@ -501,6 +501,11 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
         '3. **Base fixtures** under `.runcastle/scenarios/_fixtures/` ("a buyer", "3 products"), so',
         '   each scenario is a few lines. When the app authenticates its API with tokens, add a',
         '   fixture that mints one for the seeded user, so API scenarios can print `TOKEN=`.',
+        '   **Build them as a ladder of steps**, each a function that calls its parent and adds one',
+        '   thing: `signedUpUser` → `onboardedUser` → `userWithAPlan`, and so on. Each scenario calls',
+        '   the deepest step it needs, adds only its own bit and prints `ENTRY_URL`. When the app',
+        '   changes (a migration, a new signup step), fixing one step fixes every scenario above it.',
+        '   A scenario built from a copy of drive data stays off the ladder.',
         '4. **The runner.** Record the command that runs one scenario file with',
         '   `set_scenario_runner({ command })`; it must contain `{file}` (e.g. `bun {file}`,',
         '   `bin/rails runner {file}`).',
@@ -511,6 +516,10 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
         '## What you may edit',
         'Only `.runcastle/` — the scenarios and their `_` shared code. The guard denies the rest; a',
         'change the app itself needs belongs in a worker assignment, so tell the human.',
+        '',
+        'Reuse the fixtures ladder in `_fixtures/` (steps that each call their parent): call the',
+        'deepest step your scenario needs, and when a new state is worth sharing, add it as a new',
+        'step rather than copy setup code between scenarios.',
         '',
       ]
 

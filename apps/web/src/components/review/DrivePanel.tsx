@@ -99,7 +99,7 @@ function useFrameWidth(asked: number | undefined, stageRef: RefObject<HTMLDivEle
 
 export function DrivePanel({
   url,
-  /** The review agent is holding this drive — the human watches (decision 20). */
+  /** An agent is holding this drive — the human watches (decision 20): the label to show, or true for the review's. */
   agentDriving = false,
   frameKey = '',
   leading,
@@ -114,7 +114,7 @@ export function DrivePanel({
   frameRef,
 }: {
   url: string
-  agentDriving?: boolean
+  agentDriving?: boolean | string
   /**
    * Remounts the frame when it changes — a scenario's landing id, so landing on
    * the same entry URL twice still reloads the app (drive-scenarios decision 7).
@@ -310,7 +310,7 @@ export function DrivePanel({
         {toolbar && <div className="flex min-w-0 shrink items-center gap-1">{toolbar}</div>}
         {agentDriving && (
           <span className="min-w-0 truncate px-1.5">
-            <StatusLabel tone="live">Review agent driving</StatusLabel>
+            <StatusLabel tone="live">{typeof agentDriving === 'string' ? agentDriving : 'Review agent driving'}</StatusLabel>
           </span>
         )}
         {!cover && onCapture && !canCapture && <span className={notice}>{words.cannotCapture}</span>}

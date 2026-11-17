@@ -217,7 +217,14 @@ export function buildDriveInstructions(instructions: string | null | undefined):
 export function buildScenarioBlock(entries: ScenarioEntry[], runnerConfigured: boolean): string {
   if (!runnerConfigured || entries.length === 0) {
     const why = runnerConfigured ? 'this branch has no scenarios' : 'this project has no scenario runner recorded'
-    return `**Scenarios:** none — ${why}, so set up each criterion's state by hand in the app as usual.`
+    // The observation still tells the lead which states to cover before the verify
+    // review (features-set-up-scenarios-themselves decision 7).
+    return [
+      `**Scenarios:** none — ${why}, so set up each criterion's state by hand in the app as usual.`,
+      '',
+      "- For each criterion's state you had to set up by hand, file a `report_finding` observation titled \"No scenario reaches <state>\".",
+      "- Never write or edit a scenario. They are the project's code, and you review it; you do not change it.",
+    ].join('\n')
   }
   const lines = entries.map((e) => {
     const markers = [e.own ? "(this feature's)" : '', e.hasCall ? '(has an API call)' : ''].filter(Boolean)

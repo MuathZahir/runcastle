@@ -20,7 +20,7 @@ export interface DriveState {
   /** A restart cut the drive off: nothing runs, and Stop returns the checkout. */
   cutOff?: boolean
   /** Whose drive it is: the human's own, or the Review worker's (triage-batch decision 5). */
-  purpose?: 'human' | 'review'
+  purpose?: 'human' | 'review' | 'lead'
   /** The Review worker driving a `review` drive, and its label. */
   workerId?: string
   workerLabel?: string
