@@ -194,8 +194,20 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       const updated = listByProject(ctx, project.id, 0).find((e) => e.type === 'settings.updated')
       expect(updated?.data).toMatchObject({ key: 'scenarioRunner', value: 'bun {file}' })
 
-      const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo })
-      expect(() => toolSetScenarioRunner(ctx, chat, 'bun {file}')).toThrow(GateError)
+      // A side session is neither the Scenarios worker nor the feature's lead.
+      const side = createSessionRow(ctx, { featureId: feature.id, kind: 'side', worktreePath: repo })
+      expect(() => toolSetScenarioRunner(ctx, side, 'bun {file}')).toThrow(GateError)
+      const orchestrator = createSessionRow(ctx, { projectId: project.id, kind: 'project', worktreePath: repo })
+      expect(() => toolSetScenarioRunner(ctx, orchestrator, 'bun {file}')).toThrow(GateError)
+    })
+
+    it("set_scenario_runner takes the feature lead's runner, still requiring {file}", () => {
+      const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo })
+      expect(() => toolSetScenarioRunner(ctx, lead, 'bun run')).toThrow(InvalidInputError)
+      expect(getProjectById(ctx, project.id)?.scenarioRunner ?? null).not.toBe('bun run')
+
+      expect(toolSetScenarioRunner(ctx, lead, 'bun {file}')).toEqual({ scenarioRunner: 'bun {file}' })
+      expect(getProjectById(ctx, project.id)?.scenarioRunner).toBe('bun {file}')
     })
   })
 })
@@ -267,6 +279,25 @@ describe('the scenario briefing', () => {
     }
     expect(renderScenarioPrompt(brief({ setup: true }))).toContain('mints one for the seeded user')
     expect(text).not.toContain('mints one for the seeded user')
+  })
+
+  it('teaches the fixtures ladder in setup mode, and reusing it outside', () => {
+    const setup = renderScenarioPrompt(brief({ setup: true, files: [], runner: undefined }))
+    for (const expected of [
+      '**Build them as a ladder of steps**',
+      'each a function that calls its parent',
+      '`signedUpUser` → `onboardedUser`',
+      'calls\n   the deepest step it needs, adds only its own bit and prints `ENTRY_URL`',
+      'A scenario built from a copy of drive data stays off the ladder.',
+    ]) {
+      expect(setup).toContain(expected)
+    }
+    expect(setup).not.toContain('Reuse the fixtures ladder')
+
+    const plain = renderScenarioPrompt(brief())
+    expect(plain).toContain('Reuse the fixtures ladder in `_fixtures/`')
+    expect(plain).toContain('add it as a new\nstep rather than copy setup code between scenarios')
+    expect(plain).not.toContain('**Build them as a ladder of steps**')
   })
 
   it('renders the setup block exactly in setup mode', () => {

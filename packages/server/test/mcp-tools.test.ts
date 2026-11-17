@@ -342,7 +342,17 @@ describe('mcp tool registration by audience', () => {
     expect(toolsForAudience('scenario-worker')).toEqual(['hand_back', 'record_event', 'run_scenario', 'set_scenario_runner', 'show_file'])
     for (const audience of ['chat', 'project', 'fix-drive-worker', 'review'] as const) {
       expect(toolsForAudience(audience)).not.toContain('run_scenario')
-      expect(toolsForAudience(audience)).not.toContain('set_scenario_runner')
+    }
+    // The lead records the runner too when it sets scenarios up itself.
+    expect(toolsForAudience('chat')).toContain('set_scenario_runner')
+    for (const audience of ['side', 'project', 'fix-drive-worker', 'review', 'worker'] as const) {
+      expect(toolsForAudience(audience), audience).not.toContain('set_scenario_runner')
+    }
+
+    // The lead's own drive is the lead's alone.
+    expect(toolsForAudience('chat')).toContain('feature_drive')
+    for (const audience of ['side', 'project', 'worker', 'review', 'fix-drive-worker', 'scenario-worker'] as const) {
+      expect(toolsForAudience(audience), audience).not.toContain('feature_drive')
     }
 
     // The review wires are a drive review's alone (a gates review reports over its relay).
@@ -544,6 +554,25 @@ describe('get_feature_context scenarios', () => {
       scenarios: [],
       fixtures: [],
       dataDir: scenarioDataDir(early.id),
+    })
+  })
+
+  it('is set up with a runner when the base tracks only _fixtures/, and not without a runner', async () => {
+    // A base whose scenarios all left with their features: only the shared fixtures remain.
+    const g = simpleGit(repoPath)
+    await g.checkout(['-b', 'fixtures-only', 'bare-base'])
+    put('.runcastle/scenarios/_fixtures/onboarded-user.ts', 'export const onboardedUser = 1')
+    await g.add('.')
+    await g.commit('fixtures only')
+    await g.checkout('main')
+    const later = seedFeature(ctx, projectId, { slug: 'later', branch: 'fixtures-only', baseBranch: 'fixtures-only' })
+    expect(await featureScenarios(ctx, later.id)).toMatchObject({ setUp: false, runnerConfigured: false })
+    setRunner('bun {file}')
+    expect(await featureScenarios(ctx, later.id)).toMatchObject({
+      setUp: true,
+      runnerConfigured: true,
+      scenarios: [],
+      fixtures: ['.runcastle/scenarios/_fixtures/onboarded-user.ts'],
     })
   })
 

@@ -5,6 +5,7 @@ import { landProjectSession, setThreadPurpose } from '../launcher/sessions'
 import { stopDesignServerForSession } from '../services/design'
 import { startDocsWatch } from '../services/docs-watch'
 import { emitForSession } from '../services/events'
+import { releaseLeadDrive } from '../services/git'
 import { clearWait, waitOf } from '../services/waits'
 import { getFeatureRow, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
@@ -60,6 +61,10 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
       landProjectSession(ctx, row)
       // An idle stop is invisible to the human, so it leaves the design server they may be looking at.
       if (reason !== 'idle' || row.purpose === 'self-plan') stopDesignServerForSession(ctx, row)
+      // A lead's drive goes back when its session ends, as a review's does when its worker ends.
+      if (row.kind === 'chat' && row.featureId) {
+        void releaseLeadDrive(ctx, row.id, row.featureId).catch((err) => console.error(`lead ${row.id}: drive release`, err))
+      }
       const feature = row.featureId ? tryGetFeature(ctx, row.featureId) : null
       if (feature && row.runtime === 'codex') void noteResolvedMerge(ctx, row, feature).catch(() => {})
       emitForSession(ctx, row, {

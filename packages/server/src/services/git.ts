@@ -219,7 +219,8 @@ export function deriveDriveState(info: DriveStateInput | null): import('@runcast
   if (!info) return 'idle'
   if (info.cutOff) return 'cut-off'
   if (info.hookFailure) return 'setup-failed'
-  if (info.purpose === 'review') return 'review-agent-driving'
+  // The lead's drive (features-set-up-scenarios-themselves) shows as an agent's, like the review's.
+  if (info.purpose === 'review' || info.purpose === 'lead') return 'review-agent-driving'
   if (!info.devConfigured) return 'bare-checkout'
   if (info.devReady) return 'serving'
   return 'starting'
@@ -1960,7 +1961,12 @@ export async function driveBlockingPaths(repoPath: string, docsCommitPrefix?: st
  * switch, same hooks, same dev pane — and the purpose decides only two things:
  * whether the active-run denial applies, and who may stop it.
  */
-export type DrivePurpose = 'human' | 'review'
+export type DrivePurpose = 'human' | 'review' | 'lead'
+
+/** An agent's drive (the Review worker's or the feature lead's): named as its holder's, ended by the human's Stop like any other. */
+function agentPurpose(purpose: DrivePurpose): boolean {
+  return purpose !== 'human'
+}
 
 /**
  * What a human or project drive carries for scenarios. The `drive.env` values
@@ -2197,8 +2203,8 @@ async function cutOffDriveOf(ctx: AppCtx, project: Project): Promise<DriveState 
       return {
         ...common,
         kind: 'feature',
-        purpose: data.purpose === 'review' ? 'review' : 'human',
-        ...(data.purpose === 'review' && text(data.workerId) && text(data.workerLabel)
+        purpose: data.purpose === 'review' || data.purpose === 'lead' ? data.purpose : 'human',
+        ...((data.purpose === 'review' || data.purpose === 'lead') && text(data.workerId) && text(data.workerLabel)
           ? { worker: { id: text(data.workerId)!, label: text(data.workerLabel)! } }
           : {}),
         featureId: feature.id,
@@ -2258,7 +2264,12 @@ export function activeDriveInfo(projectId: string): DriveInfo | null {
       ? {
           featureId: state.featureId,
           purpose: state.purpose,
-          ...(state.worker ? { workerId: state.worker.id, workerLabel: state.worker.label } : {}),
+          // A lead's holder is its chat session, not a worker: only its label goes out.
+          ...(state.worker
+            ? state.purpose === 'lead'
+              ? { workerLabel: state.worker.label }
+              : { workerId: state.worker.id, workerLabel: state.worker.label }
+            : {}),
         }
       : state.kind === 'project'
         ? {
@@ -2300,7 +2311,9 @@ function liveHolderLabel(state: DriveState): string {
     case 'feature':
       return state.purpose === 'review'
         ? `the Review worker's drive of ${state.branch}`
-        : `a test drive of ${state.branch}`
+        : state.purpose === 'lead'
+          ? `the feature lead's drive of ${state.branch}`
+          : `a test drive of ${state.branch}`
   }
 }
 
@@ -2498,7 +2511,9 @@ export async function testDrive(
       message:
         stoppedPurpose === 'review'
           ? `review drive stopped — back on ${previousBranch}`
-          : `test drive stopped — back on ${previousBranch}`,
+          : stoppedPurpose === 'lead'
+            ? `the lead's drive stopped — back on ${previousBranch}`
+            : `test drive stopped — back on ${previousBranch}`,
       data: { branch: previousBranch, purpose: stoppedPurpose },
     })
 
@@ -2589,7 +2604,7 @@ export async function testDrive(
   const driving: Extract<DriveState, { kind: 'feature' }> = {
     kind: 'feature',
     purpose,
-    ...(purpose === 'review' && opts.worker ? { worker: opts.worker } : {}),
+    ...(agentPurpose(purpose) && opts.worker ? { worker: opts.worker } : {}),
     projectId: project.id,
     featureId: feature.id,
     branch,
@@ -2606,7 +2621,9 @@ export async function testDrive(
     message:
       purpose === 'review'
         ? `review agent driving ${branch} (was on ${previousBranch})`
-        : `test driving ${branch} (was on ${previousBranch})`,
+        : purpose === 'lead'
+          ? `the feature's lead driving ${branch} (was on ${previousBranch})`
+          : `test driving ${branch} (was on ${previousBranch})`,
     data: {
       branch,
       previousBranch,
@@ -2747,6 +2764,79 @@ export async function releaseReviewDrive(projectId: string): Promise<void> {
   const release = reviewDriveReleases.get(projectId)
   if (!release) return
   await release()
+}
+
+// --- the lead's drive (features-set-up-scenarios-themselves decision 5) -------
+
+/** What one `leadDrive` action reports back to the feature's lead: the review drive's shape. */
+export type LeadDriveResult = ReviewDriveResult
+
+const DENY_NO_LEAD_DRIVE = "No drive of this feature is held by its lead — feature_drive({ action: 'start' }) first"
+
+/**
+ * The feature lead's drive: the same real test drive of the feature branch as
+ * the review's ({@link reviewDrive}), held under its own purpose so neither
+ * side's checks mistake one for the other. It names the lead as its holder, and
+ * the human's Stop ends it like any drive. A held slot is a retriable refusal.
+ */
+export async function leadDrive(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  action: 'start' | 'status' | 'stop',
+  /** On `start`: the lead's session taking the slot, which the drive then names. */
+  holder?: DriveWorker,
+): Promise<LeadDriveResult> {
+  if (action === 'start') {
+    let start: TestDriveResult
+    try {
+      start = await testDrive(ctx, project, feature, 'start', 'lead', holder ? { worker: holder } : {})
+    } catch (e) {
+      if (leadDriveFor(project.id, feature.id)) await testDrive(ctx, project, feature, 'stop')
+      throw e
+    }
+    return {
+      ok: start.ok,
+      action: 'start',
+      ...driveDenialOf(start),
+      drive: activeDriveInfo(project.id),
+      ...(start.hookFailure ? { hookFailure: start.hookFailure } : {}),
+    }
+  }
+  if (!leadDriveFor(project.id, feature.id)) {
+    return { ok: false, action, deniedReason: DENY_NO_LEAD_DRIVE, drive: null }
+  }
+  if (action === 'status') return { ok: true, action: 'status', drive: activeDriveInfo(project.id) }
+  const stop = await testDrive(ctx, project, feature, 'stop')
+  return {
+    ok: stop.ok,
+    action: 'stop',
+    ...driveDenialOf(stop),
+    drive: activeDriveInfo(project.id),
+    ...(stop.hookFailure ? { hookFailure: stop.hookFailure } : {}),
+  }
+}
+
+/** True while THIS feature's lead holds its project's drive slot. */
+export function leadDriveFor(projectId: string, featureId: string): boolean {
+  const state = driveOf(projectId)
+  return state?.kind === 'feature' && state.purpose === 'lead' && state.featureId === featureId
+}
+
+/**
+ * Give back the drive a lead's session holds when that session ends, as a
+ * review's drive goes back when its worker ends. A no-op unless the slot is a
+ * lead drive held by exactly this session.
+ */
+export async function releaseLeadDrive(ctx: AppCtx, sessionId: string, featureId: string): Promise<void> {
+  const feature = tryGetFeature(ctx, featureId)
+  if (!feature) return
+  const project = getProjectById(ctx, feature.projectId)
+  if (!project) return
+  const state = driveOf(project.id)
+  if (state?.kind !== 'feature' || state.purpose !== 'lead' || state.featureId !== featureId) return
+  if (state.worker?.id !== sessionId) return
+  await testDrive(ctx, project, feature, 'stop')
 }
 
 /**
@@ -3280,6 +3370,8 @@ export interface ScenarioDriveOptions {
    * review drive.
    */
   allowReview?: boolean
+  /** Admit the feature lead's drive too: only the lead's `feature_drive` passes it. */
+  allowLead?: boolean
 }
 
 /** A scenario run refused before it started; nothing about the drive changed. */
@@ -3302,7 +3394,12 @@ export function startScenarioOnDrive(
 ): ScenarioDenial | { ok: true; result: Promise<ScenarioRunResult> } {
   if (!isScenarioPath(file)) return { ok: false, denied: `${file} is not a scenario under .runcastle/scenarios/` }
   const state = driveOf(projectId)
-  const admitted = state?.kind === 'feature' && state.purpose === 'review' ? opts.allowReview === true : true
+  const admitted =
+    state?.kind === 'feature' && state.purpose === 'review'
+      ? opts.allowReview === true
+      : state?.kind === 'feature' && state.purpose === 'lead'
+        ? opts.allowLead === true
+        : true
   if (!state || state.kind === 'dryRun' || !admitted) {
     return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }
   }
