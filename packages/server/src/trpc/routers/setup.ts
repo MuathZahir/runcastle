@@ -5,6 +5,7 @@ import {
   resolveSandboxImage,
   type Project,
 } from '@runcastle/core'
+import { dataDir } from '@runcastle/core/paths'
 import { isNotNull } from 'drizzle-orm'
 import * as z from 'zod'
 import { projects } from '../../db/schema'
@@ -21,10 +22,12 @@ import { adoptProjectImage, releaseProjectImage } from '../../services/project-i
 import { allProjects, requireProjectById } from '../../services/repo'
 import { prepareImageBuild, tryImageBuildSlot } from '../../services/image-build'
 import {
+  buildCacheKept,
   imageBuildTarget,
   imageBuildTerminal,
   type ImageBuildTerminal,
 } from '../../services/sandbox-image'
+import { removeStaleSandboxImages } from '../../services/sandbox-image-cleanup'
 import {
   fileAfkTokenIo,
   runtimeInstallGuide,
@@ -265,8 +268,9 @@ async function buildImageTerminal(
   }
   try {
     const project = projectId ? requireProjectById(ctx, projectId) : null
-    const { runtime, plan, notices } = await prepareImageBuild({
-      exec: createSystemExec(),
+    const exec = createSystemExec()
+    const { runtime, plan, mode, notices } = await prepareImageBuild({
+      exec,
       config: ctx.config,
       project: project
         ? {
@@ -278,14 +282,16 @@ async function buildImageTerminal(
         : null,
     })
     if (plan.kind === 'refused') throw new InvalidInputError(plan.reason)
+    const cacheKept = buildCacheKept(plan, mode)
     return {
-      spec: imageBuildTerminal(runtime, plan),
-      notices,
+      spec: imageBuildTerminal(runtime, plan, process.platform, mode),
+      notices: [...notices, ...(cacheKept ? [`This build keeps its build cache: ${cacheKept}.`] : [])],
       onExit: ({ exitCode }) => {
         release()
-        if (exitCode === 0 && plan.kind === 'chain' && project) {
-          adoptProjectImage(ctx, project.id, plan.projectTag)
-        }
+        if (exitCode !== 0) return
+        if (plan.kind === 'chain' && project) adoptProjectImage(ctx, project.id, plan.projectTag)
+        // The image this build replaced is untagged now; it goes unless a container uses it.
+        void removeStaleSandboxImages({ engine: runtime, exec, dataDir: dataDir() })
       },
     }
   } catch (error) {

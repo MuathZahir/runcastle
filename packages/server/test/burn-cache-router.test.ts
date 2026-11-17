@@ -1,10 +1,9 @@
 import { RuncastleConfig } from '@runcastle/core'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listByProject } from '../src/services/events'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { getBurnSlotAllocator } from '../src/workers/burn-cache'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
 
@@ -86,11 +85,6 @@ beforeEach(async () => {
   })
 })
 
-afterEach(() => {
-  const allocator = getBurnSlotAllocator(ctx.config.burnConcurrency)
-  for (const slot of allocator.held()) allocator.release(slot)
-})
-
 describe('system.burnCache.status', () => {
   it('reports the volume and the size the engine gives for it', async () => {
     const status = await caller().system.burnCache.status({ projectId })
@@ -138,29 +132,32 @@ describe('system.burnCache.clear', () => {
     const result = await caller().system.burnCache.clear({ projectId })
 
     expect(result).toEqual({ volumeName })
-    expect(engineCalls()).toEqual([['docker', 'volume', 'rm', volumeName]])
+    expect(engineCalls()).toEqual([
+      ['docker', 'ps', '-a', '--filter', `volume=${volumeName}`, '--format', '{{.Names}}'],
+      ['docker', 'volume', 'rm', volumeName],
+    ])
     expect(listByProject(ctx, projectId).map((e) => e.type)).toContain('burn-cache.cleared')
   })
 
-  // The checkouts on the volume are the running burns' working trees: pulling
-  // it out from under them leaves an agent writing into a deleted mount.
-  it('refuses while a round holds a slot, names the slots, and issues no removal', async () => {
-    const allocator = getBurnSlotAllocator(ctx.config.burnConcurrency)
-    allocator.claim()
-    allocator.claim()
+  // A worker's container, running or stopped, keeps its checkout on the
+  // volume: pulling it out from under it leaves an agent writing into a
+  // deleted mount. Workers never claim the retired burner's slots, so the
+  // containers themselves are what the clear asks about.
+  it('refuses while a container mounts the volume, names it, and issues no removal', async () => {
+    reply = (args) => ({ code: 0, stdout: args[0] === 'ps' ? 'runcastle-worker-abc\n' : '' })
 
     await expect(caller().system.burnCache.clear({ projectId })).rejects.toMatchObject({
       code: 'PRECONDITION_FAILED',
-      message: expect.stringContaining('slots 1, 2'),
+      message: expect.stringContaining('runcastle-worker-abc'),
     })
-    expect(spawnCalls).toEqual([])
+    expect(engineCalls().map((c) => c[1])).toEqual(['ps'])
     expect(listByProject(ctx, projectId).map((e) => e.type)).not.toContain('burn-cache.cleared')
   })
 
   // The engine failing (no such volume, daemon down) must surface as the engine's
   // own words, not as a silent success the card would render as "cleared".
   it('surfaces the engine stderr when the removal fails', async () => {
-    reply = () => ({ code: 1, stdout: '' })
+    reply = (args) => ({ code: args[0] === 'ps' ? 0 : 1, stdout: '' })
 
     await expect(caller().system.burnCache.clear({ projectId })).rejects.toThrow(/volume rm/)
     expect(listByProject(ctx, projectId).map((e) => e.type)).not.toContain('burn-cache.cleared')

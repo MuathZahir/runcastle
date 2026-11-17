@@ -20,6 +20,8 @@ function harness(code = 0) {
       runningAsRoot: false,
       runStep: async (call: BuildStepCall) => {
         builds.push(call)
+        // Only the build itself fails; creating and removing the builder succeed.
+        if (!call.args.includes('-t')) return { code: 0 }
         call.onLine('#1 building')
         return { code }
       },
@@ -33,7 +35,13 @@ describe('runcastle build-image', () => {
 
     expect(await runBuildImage([], deps)).toBe(0)
 
-    expect(builds.map((b) => b.args[2])).toEqual(['sandcastle:runcastle'])
+    // Runcastle's own builder around the build (decision 8), then the build itself.
+    expect(builds.map((b) => b.args.slice(0, 2))).toEqual([
+      ['buildx', 'create'],
+      ['buildx', 'build'],
+      ['buildx', 'rm'],
+    ])
+    expect(builds[1]?.args).toContain('sandcastle:runcastle')
     expect(lines).toContain('#1 building')
     expect(lines.at(-1)).toBe('Built sandcastle:runcastle.')
   })

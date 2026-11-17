@@ -1,3 +1,4 @@
+import { dataDir } from '@runcastle/core/paths'
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import type { BurnUser } from '../src/workers/burn-user'
@@ -92,6 +93,13 @@ const CREATE_LABELLED = [
   'create',
   '--label',
   `${BURN_CACHE_VOLUME_LABEL}=${BURN_CACHE_VOLUME_VERSION}`,
+  // Who made it (decision 5): this install's data folder and the project.
+  '--label',
+  'runcastle.owner=runcastle',
+  '--label',
+  `runcastle.data-dir=${dataDir()}`,
+  '--label',
+  `runcastle.project=${PROJECT}`,
   VOLUME,
 ]
 
@@ -358,42 +366,45 @@ describe('ensureBurnCacheVolume', () => {
 })
 
 describe('removeBurnCacheVolume', () => {
-  it('removes the volume when no slot is held', async () => {
+  const MOUNT_QUERY = ['ps', '-a', '--filter', `volume=${VOLUME}`, '--format', '{{.Names}}']
+
+  it('removes the volume when no container mounts it', async () => {
     const { exec, calls } = fakeExec()
 
-    await removeBurnCacheVolume({ engine: 'docker', projectId: PROJECT, exec, slots: [] })
+    await removeBurnCacheVolume({ engine: 'docker', projectId: PROJECT, exec })
 
-    expect(calls).toEqual([['docker', 'volume', 'rm', VOLUME]])
+    expect(calls).toEqual([
+      ['docker', ...MOUNT_QUERY],
+      ['docker', 'volume', 'rm', VOLUME],
+    ])
   })
 
-  // The volume holds those burns' working trees; deleting it mid-burn leaves
-  // the agent writing into a removed mount.
-  it('refuses while burns hold slots, naming them, and issues nothing', async () => {
-    const { exec, calls } = fakeExec()
+  // A worker's container keeps its checkout on the volume, running or
+  // stopped; deleting it leaves the agent writing into a removed mount.
+  it('refuses while a container mounts it, naming the containers, and removes nothing', async () => {
+    const { exec, calls } = fakeExec((_c, args) =>
+      args[0] === 'ps' ? { stdout: 'runcastle-worker-b\nruncastle-worker-a\n' } : {},
+    )
 
-    const removal = removeBurnCacheVolume({
-      engine: 'docker',
-      projectId: PROJECT,
-      exec,
-      slots: [3, 1],
-    })
-
-    await expect(removal).rejects.toBeInstanceOf(BurnCacheBusyError)
-    await expect(removal).rejects.toThrow(/slots 1, 3/)
-    expect(calls).toEqual([])
-  })
-
-  it('carries the held slots on the error for the caller to report', async () => {
-    const { exec } = fakeExec()
-    const error = await removeBurnCacheVolume({
-      engine: 'podman',
-      projectId: PROJECT,
-      exec,
-      slots: [2],
-    }).catch((e: unknown) => e)
+    const error = await removeBurnCacheVolume({ engine: 'podman', projectId: PROJECT, exec }).catch(
+      (e: unknown) => e,
+    )
 
     expect(error).toBeInstanceOf(BurnCacheBusyError)
-    expect((error as BurnCacheBusyError).slots).toEqual([2])
+    expect((error as BurnCacheBusyError).containers).toEqual(['runcastle-worker-a', 'runcastle-worker-b'])
+    expect((error as Error).message).toContain('runcastle-worker-a, runcastle-worker-b')
+    expect(calls).toEqual([['podman', ...MOUNT_QUERY]])
+  })
+
+  it('refuses when the engine cannot say which containers mount it', async () => {
+    const { exec, calls } = fakeExec((_c, args) =>
+      args[0] === 'ps' ? { ok: true, code: 1, stderr: 'daemon down' } : {},
+    )
+
+    await expect(removeBurnCacheVolume({ engine: 'docker', projectId: PROJECT, exec })).rejects.toThrow(
+      /daemon down/,
+    )
+    expect(calls).toEqual([['docker', ...MOUNT_QUERY]])
   })
 })
 
