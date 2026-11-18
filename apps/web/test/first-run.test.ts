@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  apiKeyBillingNote,
   firstSetupStep,
   nextSetupStep,
   prevSetupStep,
@@ -161,6 +162,18 @@ describe('runtimeReadiness', () => {
     ])
     expect(codex?.installed).toBe(true)
     expect(codex?.talkReady).toBe(false)
+  })
+
+  // sessions-never-pick-up-a-project-s-api-key, decision 6: the doctor's billing row
+  // rides on the Claude Code card only, and only when a key is set.
+  it('notes on the Claude Code card when its sessions will bill an API key', () => {
+    const billing = (status: string): ProbeLike => ({ id: 'api-key-billing', status, detail: `billing ${status}` })
+    const [claude, codex] = runtimeReadiness([...claudeReady, ...codexMissing, billing('api-key')])
+    expect(claude?.apiKeyNote).toBe('billing api-key')
+    expect(codex?.apiKeyNote).toBeUndefined()
+    const [plain] = runtimeReadiness([...claudeReady, ...codexMissing, billing('ok')])
+    expect(plain?.apiKeyNote).toBeUndefined()
+    expect(apiKeyBillingNote([])).toBeNull()
   })
 
   it('reports nothing ready while the probe is still in flight', () => {

@@ -43,15 +43,18 @@ Not covered, by design (decision 4): the dev pane, drive setup/teardown hooks, s
 
 ### Doctor line (decision 6)
 
-A new doctor probe with `info` severity (which never fails a report or the setup gate): when `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` is set in the server's environment, it reports "Sessions will bill the API key in `<name>`, not your Claude subscription." When neither is set, the probe reports ok ("Sessions use your Claude subscription"). It rides the existing doctor everywhere it is shown: `runcastle doctor`, the first-run wizard's checks and Settings. No new screen, no setting. Wording is the builder's within that sense.
+A new doctor probe with `info` severity (which never fails a report or the setup gate): when `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` is set in the server's environment, it reports "Sessions will bill the API key in `<name>`, not your Claude subscription." When neither is set, the probe reports ok ("Sessions use your Claude subscription"). It rides the existing doctor everywhere it is shown. No new screen, no setting. Wording is the builder's within that sense.
+
+As built: the line also says to unset the key in the shell that starts runcastle, because `runcastle doctor` prints no fix line on an `info` row. The web app has no generic list of doctor rows, so the note shows in the two places that already read the doctor about Claude Code: under the Claude Code row of the first-run wizard's "Connect a coding agent" step, and as an extra line in Settings → Models' model discovery list. The probe reads the server's own environment, not the doctor's merged view that includes `~/.runcastle/.env`, since sessions never see that file.
 
 ### Guards (decisions 2 and 5)
 
 - **Behaviour tests** (vitest, spawning the real Bun the way the existing real-Bun tests do): a temp folder with a `.env` holding a sentinel `ANTHROPIC_API_KEY`, and:
   - each runtime's ACP launch spec, run with a fixture script in place of the adapter entry, in that folder, prints no sentinel;
   - the hook command string, executed by a shell in that folder against a fixture script, sees no sentinel;
-  - the server boot function, run in a real Bun child from that folder, removes the sentinel, keeps a variable exported in the child's environment, and keeps a shell variable whose value differs from the `.env` value. The non-Linux branch is tested by forcing it on Linux.
-- **Source scan:** a server test walks the server's source and fails, naming file and line, on any spawn of `process.execPath` or a bare `bun` command (spawn, exec, PTY, SDK executable, hook string) outside the shared helper. A short allow list covers the dev-only scripts, each with its reason.
+  - the server boot function, run in a real Bun child from that folder, removes the sentinel, keeps a variable exported in the child's environment, and keeps a shell variable whose value differs from the `.env` value. The non-Linux branch is tested through the function's injected inputs (no start environment).
+  - a control: plain `bun` from that folder does print the sentinel, so the tests above would see a leak.
+- **Source scan** (`bun-launch-guard.test.ts`): parses every server source file and fails, naming file and line, on `process.execPath`, `process.argv0`, `process.argv[0]`, or a string that is `bun` or starts with `bun `, outside the shared helper; and on an Agent SDK `query(` in a file that never uses the helper's SDK options. Comments, imports and types are skipped. A short allow list covers what is not a runcastle launch (`bun --version`, `bun upgrade`, `bun add -g`, the project's package manager name, a dev-only harness), each with its reason; a stale entry fails too. It does not catch a `bun` buried mid-string (`sh -c "cd x && bun run y"`).
 
 ## Seams
 
@@ -69,4 +72,4 @@ A new doctor probe with `info` severity (which never fails a report or the setup
 
 ## Open questions
 
-- If `claude` resolves to a JavaScript CLI instead of the native binary, the ACP adapter itself starts it under Bun, and that inner Bun would load the worktree's `.env`; runcastle does not control that spawn. The doctor already reports which `claude` it found. Left as is unless the build finds a cheap hook; the builder notes what they find.
+None left. The one the plan carried, a JavaScript `claude` CLI started by the ACP adapter itself, had a cheap hook: the adapter passes the session's `executableArgs` option to the Agent SDK, which runs a JavaScript CLI as `bun <executableArgs> cli.js`. The Claude launch spec now sends `--no-env-file` there when `claude` resolves to a `.js`, `.mjs` or `.cjs` file. A native binary gets nothing, since the SDK would pass the flag to the binary itself.

@@ -27,6 +27,8 @@ const server = vi.hoisted(() => ({
   invalidations: 0,
   /** How many times the page asked the chats' model pickers to refetch their list. */
   pickerRefetches: 0,
+  /** What `setup.doctor` reports: only its session billing row is read here. */
+  probes: [] as { id: string; status: string; detail: string }[],
 }))
 
 vi.mock('../src/trpc', () => ({
@@ -38,6 +40,9 @@ vi.mock('../src/trpc', () => ({
       project: { prep: { invalidate: () => undefined } },
       thread: { models: { invalidate: () => void server.pickerRefetches++ } },
     }),
+    setup: {
+      doctor: { useQuery: () => ({ data: { results: server.probes } }) },
+    },
     settings: {
       get: {
         useQuery: (input?: { projectId?: string }) => ({
@@ -131,6 +136,7 @@ describe('Models page', () => {
     server.globals = view(globalFields)
     server.scoped = view(projectFields())
     server.updates = []
+    server.probes = []
     server.reject = null
     server.refreshes = 0
     server.refreshPending = false
@@ -307,6 +313,21 @@ describe('Models page', () => {
         .getAllByRole('listitem')
         .map((li) => li.textContent)
       expect(lines).toEqual(['Claude: failed — not logged in', 'Codex: 2 models · 2h ago'])
+    })
+
+    // sessions-never-pick-up-a-project-s-api-key, decision 6: the doctor's note
+    // that Claude sessions will bill an exported API key, beside Claude's line.
+    it('adds the doctor’s API key note under the discovery lines', () => {
+      server.probes = [{ id: 'api-key-billing', status: 'api-key', detail: 'Sessions will bill the API key in ANTHROPIC_API_KEY.' }]
+      open()
+      const lines = within(screen.getByRole('list', { name: 'Model discovery' }))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent)
+      expect(lines).toEqual([
+        'Claude: failed — not logged in',
+        'Codex: 2 models · 2h ago',
+        'Sessions will bill the API key in ANTHROPIC_API_KEY.',
+      ])
     })
 
     it('says a source has not run yet on a fresh machine', () => {

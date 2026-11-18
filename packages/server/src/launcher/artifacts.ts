@@ -1,3 +1,4 @@
+import { bunHookCommand } from '../util/bun-launch'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -904,7 +905,7 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  * - `permissions.deny` blocks the pack entry skills that belong to OTHER session
  *   kinds ({@link entrySkillDenyRules}) — the enforcement behind flipping their
  *   `disable-model-invocation` frontmatter to false.
- * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
+ * - `command` = `bun --no-env-file run "<abs hook-client.ts>" <route-event>` (`bunHookCommand`) where the route
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
  * - `SessionStart` is registered for EVERY source (see
  *   {@link SESSION_START_SOURCES}) — a resumed session is a started session.
@@ -935,7 +936,7 @@ export function renderSettings(
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
-    command: `bun run "${hookClient}" ${event}`,
+    command: bunHookCommand(hookClient, event),
     timeout: event === 'session-start' ? 20 : event === 'session-end' ? 10 : 5,
   })
   return {

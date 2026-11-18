@@ -1,4 +1,7 @@
 import { autoCompactWindow } from '../src/launcher/runtimes/types'
+import { sdkExecutableArgs } from '../src/util/bun-launch'
+import { resolveBun } from './helpers/bun'
+import { keySeenByLaunchSpec } from './helpers/dotenv-sentinel'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -46,6 +49,7 @@ import { MAX_KICKOFF_ARGV } from '../src/launcher/runtimes/types'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 import { spawnTargetFor } from '../src/util/resolve-executable'
 
+const bunForDotenv = resolveBun()
 const config: RuncastleConfig = ConfigSchema.parse({})
 
 function feature(overrides: Partial<Feature> = {}): Feature {
@@ -291,19 +295,19 @@ describe('renderSettings', () => {
       const start = entry.hooks[0]
       expect(start.type).toBe('command')
       expect(start.timeout).toBe(20)
-      expect(start.command).toBe('bun run "C:\\hooks\\hook-client.ts" session-start')
+      expect(start.command).toBe('bun --no-env-file run "C:\\hooks\\hook-client.ts" session-start')
     }
 
     // UserPromptSubmit: NO matcher, timeout 5 (inside its 30s budget)
     expect(s.hooks.UserPromptSubmit[0]).not.toHaveProperty('matcher')
     const prompt = s.hooks.UserPromptSubmit[0].hooks[0]
     expect(prompt.timeout).toBe(5)
-    expect(prompt.command).toBe('bun run "C:\\hooks\\hook-client.ts" user-prompt')
+    expect(prompt.command).toBe('bun --no-env-file run "C:\\hooks\\hook-client.ts" user-prompt')
 
     // SessionEnd: NO matcher, timeout 10
     expect(s.hooks.SessionEnd[0]).not.toHaveProperty('matcher')
     expect(s.hooks.SessionEnd[0].hooks[0].command).toBe(
-      'bun run "C:\\hooks\\hook-client.ts" session-end',
+      'bun --no-env-file run "C:\\hooks\\hook-client.ts" session-end',
     )
   })
 
@@ -319,7 +323,7 @@ describe('renderSettings', () => {
     expect(s.hooks.Stop[0]).not.toHaveProperty('matcher')
     expect(s.hooks.Stop[0].hooks[0]).toMatchObject({
       type: 'command',
-      command: 'bun run "C:\\hooks\\hook-client.ts" stop',
+      command: 'bun --no-env-file run "C:\\hooks\\hook-client.ts" stop',
       timeout: 5,
     })
   })
@@ -327,7 +331,7 @@ describe('renderSettings', () => {
   it('registers Stop for every session kind — turn state is not kind-specific', () => {
     for (const kind of SessionKind.options) {
       const s = renderSettings('C:\\hooks\\hook-client.ts', kind)
-      expect(s.hooks.Stop[0].hooks[0].command).toBe('bun run "C:\\hooks\\hook-client.ts" stop')
+      expect(s.hooks.Stop[0].hooks[0].command).toBe('bun --no-env-file run "C:\\hooks\\hook-client.ts" stop')
     }
   })
 
@@ -343,7 +347,7 @@ describe('renderSettings', () => {
       expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
       expect(guard?.[0].hooks[0]).toMatchObject({
         type: 'command',
-        command: 'bun run "C:\\hooks\\hook-client.ts" pre-tool',
+        command: 'bun --no-env-file run "C:\\hooks\\hook-client.ts" pre-tool',
         timeout: 5,
       })
     }
@@ -362,7 +366,7 @@ describe('renderSettings', () => {
       for (const purpose of [undefined, ...SessionPurpose.options]) {
         const s = renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose)
         expect(JSON.stringify(s)).not.toMatch(/wait-messages|asyncRewake|"async"/)
-        expect(s.hooks.Stop[0].hooks.map((h) => h.command)).toEqual(['bun run "C:\\hooks\\hook-client.ts" stop'])
+        expect(s.hooks.Stop[0].hooks.map((h) => h.command)).toEqual(['bun --no-env-file run "C:\\hooks\\hook-client.ts" stop'])
         for (const entry of s.hooks.SessionStart) expect(entry.hooks).toHaveLength(1)
       }
     }
@@ -977,12 +981,18 @@ describe('claudeRuntime.acpLaunch', () => {
     })
   }
 
+  // sessions-never-pick-up-a-project-s-api-key: the adapter starts in the worktree, and Bun must not read its .env.
+  it.skipIf(!bunForDotenv)('starts the adapter so a .env in its folder is not loaded', async () => {
+    expect(keySeenByLaunchSpec(bunForDotenv!, await acpSpec())).toBe('KEY=<unset>')
+  })
+
   it('runs the claude-agent-acp entry against the installed claude, with runcastle env and the nesting scrub', async () => {
     const spec = await acpSpec()
     expect(spec.command).toBe(process.execPath)
-    expect(spec.args).toHaveLength(1)
-    expect(spec.args[0].replace(/\\/g, '/')).toMatch(/@agentclientprotocol\/claude-agent-acp\/dist\/index\.js$/)
-    expect(existsSync(spec.args[0])).toBe(true)
+    expect(spec.args[0]).toBe('--no-env-file')
+    expect(spec.args).toHaveLength(2)
+    expect(spec.args[1].replace(/\\/g, '/')).toMatch(/@agentclientprotocol\/claude-agent-acp\/dist\/index\.js$/)
+    expect(existsSync(spec.args[1])).toBe(true)
     expect(spec.env).toEqual({
       CLAUDE_CODE_EXECUTABLE: claudeRuntime.resolveBinary(),
       RUNCASTLE_SESSION_ID: 'sess_acp_chat',
@@ -1039,6 +1049,7 @@ describe('claudeRuntime.acpLaunch', () => {
           promptSuggestions: true,
           enableFileCheckpointing: true,
           perTaskStopAffordance: false,
+          ...sdkExecutableArgs(spec.env.CLAUDE_CODE_EXECUTABLE as string, true),
           extraArgs: {
             settings: join(dir, 'settings.json'),
             'mcp-config': join(dir, 'mcp.json'),
@@ -1049,6 +1060,16 @@ describe('claudeRuntime.acpLaunch', () => {
       },
     })
     expect(spec.sessionMode).toBe('acceptEdits')
+  })
+
+  // sessions-never-pick-up-a-project-s-api-key: the adapter runs under Bun, so its
+  // SDK starts a JavaScript `claude` with Bun in the worktree; that Bun gets the
+  // flag through the adapter's options. A native binary takes no runtime flag.
+  it('passes --no-env-file to the SDK exactly when claude is a JavaScript CLI', async () => {
+    const spec = await acpSpec()
+    const executable = spec.env.CLAUDE_CODE_EXECUTABLE as string
+    const options = (spec.sessionMeta.claudeCode as { options: { executableArgs?: string[] } }).options
+    expect(options.executableArgs).toEqual(/\.(c|m)?js$/i.test(executable) ? ['--no-env-file'] : undefined)
   })
 
   it('takes the launch posture and the strict MCP setting', async () => {
@@ -1276,16 +1297,16 @@ describe('codexRuntime.writeArtifacts', () => {
     // platform instead of inheriting the host's.
     expect(hooks.hooks.SessionStart[0].hooks[0]).toMatchObject({
       type: 'command',
-      command: `bun run "${client}" session-start`,
+      command: `bun --no-env-file run "${client}" session-start`,
     })
-    expect(hooks.hooks.UserPromptSubmit[0].hooks[0].command).toBe(`bun run "${client}" user-prompt`)
-    expect(hooks.hooks.Stop[0].hooks[0].command).toBe(`bun run "${client}" stop`)
-    expect(hooks.hooks.SessionEnd[0].hooks[0].command).toBe(`bun run "${client}" session-end`)
+    expect(hooks.hooks.UserPromptSubmit[0].hooks[0].command).toBe(`bun --no-env-file run "${client}" user-prompt`)
+    expect(hooks.hooks.Stop[0].hooks[0].command).toBe(`bun --no-env-file run "${client}" stop`)
+    expect(hooks.hooks.SessionEnd[0].hooks[0].command).toBe(`bun --no-env-file run "${client}" session-end`)
     // the edit and install guards reach a Codex session as the same deny hook,
     // matching the tool names Codex edits files (`apply_patch`) and runs shell
     // commands (`Bash`) with
     expect(hooks.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
-    expect(hooks.hooks.PreToolUse[0].hooks[0].command).toBe(`bun run "${client}" pre-tool`)
+    expect(hooks.hooks.PreToolUse[0].hooks[0].command).toBe(`bun --no-env-file run "${client}" pre-tool`)
   })
 
   /**
@@ -1298,7 +1319,7 @@ describe('codexRuntime.writeArtifacts', () => {
       const posix = renderCodexHooks('/tmp/hook-client.ts', 'chat', platform)
       expect(posix.hooks.SessionStart[0].hooks[0]).toEqual({
         type: 'command',
-        command: 'bun run "/tmp/hook-client.ts" session-start',
+        command: 'bun --no-env-file run "/tmp/hook-client.ts" session-start',
       })
       for (const group of Object.values(posix.hooks)) {
         for (const hook of group?.[0].hooks ?? []) {
@@ -1310,8 +1331,8 @@ describe('codexRuntime.writeArtifacts', () => {
     const win = renderCodexHooks('C:\\hooks\\hook-client.ts', 'chat', 'win32')
     expect(win.hooks.SessionStart[0].hooks[0]).toEqual({
       type: 'command',
-      command: 'bun run "C:\\hooks\\hook-client.ts" session-start',
-      commandWindows: 'bun run "C:\\hooks\\hook-client.ts" session-start',
+      command: 'bun --no-env-file run "C:\\hooks\\hook-client.ts" session-start',
+      commandWindows: 'bun --no-env-file run "C:\\hooks\\hook-client.ts" session-start',
     })
     for (const group of Object.values(win.hooks)) {
       for (const hook of group?.[0].hooks ?? []) {

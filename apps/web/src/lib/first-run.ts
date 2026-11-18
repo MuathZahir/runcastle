@@ -19,7 +19,7 @@ export type WizardScreen = 'intro' | SetupStep
 
 /** The shape of a doctor probe result, structurally (keeps this module IO-free). */
 export interface ProbeLike {
-  /** Which probe this is — `git-identity` is the only id read here. */
+  /** Which probe this is — `git-identity` and `api-key-billing` are the ids read here. */
   id?: string
   status: string
   detail: string
@@ -107,6 +107,18 @@ export interface RuntimeReadiness {
   detail: string
   /** How to install it, when it is not here. */
   installFix?: string
+  /** Set when this runtime's sessions will bill an API key, not the subscription: what the doctor found. */
+  apiKeyNote?: string
+}
+
+/**
+ * What the doctor's billing row says when Claude Code sessions will bill an
+ * Anthropic API key exported in the shell instead of the subscription
+ * (sessions-never-pick-up-a-project-s-api-key, decision 6); `null` otherwise.
+ */
+export function apiKeyBillingNote(probes: readonly ProbeLike[]): string | null {
+  const row = probes.find((p) => p.id === 'api-key-billing')
+  return row?.status === 'api-key' ? row.detail : null
 }
 
 /**
@@ -130,6 +142,8 @@ export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness
     const installed = binary?.status === 'ok'
     const authed = of('auth')?.status === 'ok'
     const afkReady = runtime === 'codex' ? authed : of('afk-key')?.status === 'ok'
+    // Only Claude Code bills an Anthropic key.
+    const apiKeyNote = runtime === 'claude-code' ? apiKeyBillingNote(probes) : null
     return {
       runtime,
       label: RUNTIME_LABEL[runtime],
@@ -139,6 +153,7 @@ export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness
       talkReady: installed && (authed || afkReady),
       detail: binary?.detail ?? 'not checked',
       ...(installed || !binary?.fix ? {} : { installFix: binary.fix }),
+      ...(apiKeyNote ? { apiKeyNote } : {}),
     }
   })
 }

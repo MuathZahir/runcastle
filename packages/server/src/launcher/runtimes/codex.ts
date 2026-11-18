@@ -1,3 +1,4 @@
+import { bunHookCommand, bunSpawn } from '../../util/bun-launch'
 import {
   copyFileSync,
   cpSync,
@@ -352,7 +353,7 @@ export function renderCodexHooks(
   platform: NodeJS.Platform = process.platform,
 ): CodexHooksFile {
   const cmd = (event: string): CodexCommandHook => {
-    const command = `bun run "${hookClient}" ${event}`
+    const command = bunHookCommand(hookClient, event)
     return platform === 'win32'
       ? { type: 'command', command, commandWindows: command }
       : { type: 'command', command }
@@ -596,8 +597,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
     const { home, files } = writeCodexHome(input)
     return {
       files,
-      command: process.execPath,
-      args: [codexAcpEntry()],
+      ...bunSpawn([codexAcpEntry()]),
       env: {
         CODEX_HOME: home,
         CODEX_PATH: this.resolveBinary(),

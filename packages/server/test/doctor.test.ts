@@ -106,6 +106,31 @@ describe('runDoctor — canned environments', () => {
     expect(report.tier1Ok).toBe(true)
   })
 
+  // sessions-never-pick-up-a-project-s-api-key, decision 6: a key in the server's own
+  // environment (so exported in the shell) is named, never failed on.
+  it('notes when sessions will bill an exported API key, without failing the report', async () => {
+    const report = await runDoctor({ ...base, sessionEnv: { ANTHROPIC_API_KEY: 'sk-ant-x' }, exec: cannedExec(ALL_HEALTHY) })
+    const row = byId(report.results, 'api-key-billing')
+    expect(row).toMatchObject({ status: 'api-key', severity: 'info', tier: 1 })
+    expect(row.detail).toContain('ANTHROPIC_API_KEY')
+    expect(row.detail).not.toContain('sk-ant-x')
+    expect(report.ok).toBe(true)
+    expect(report.tier1Ok).toBe(true)
+  })
+
+  it('names ANTHROPIC_AUTH_TOKEN too, and says the subscription is used when neither is set', async () => {
+    const token = await runDoctor({ ...base, sessionEnv: { ANTHROPIC_AUTH_TOKEN: 't' }, exec: cannedExec(ALL_HEALTHY) })
+    expect(byId(token.results, 'api-key-billing').detail).toContain('ANTHROPIC_AUTH_TOKEN')
+    const none = await runDoctor({ ...base, sessionEnv: { ANTHROPIC_API_KEY: '' }, exec: cannedExec(ALL_HEALTHY) })
+    expect(byId(none.results, 'api-key-billing')).toMatchObject({ status: 'ok', detail: 'Sessions use your Claude subscription.' })
+  })
+
+  it('reads the session environment, not the worker token file merged into env', async () => {
+    // `env` carries ~/.runcastle/.env for the sandbox probes; sessions never see it.
+    const report = await runDoctor({ ...base, env: { ...base.env, ANTHROPIC_API_KEY: 'x' }, sessionEnv: {}, exec: cannedExec(ALL_HEALTHY) })
+    expect(byId(report.results, 'api-key-billing').status).toBe('ok')
+  })
+
   it('every probe carries a label and an actionable fix line when not ok', async () => {
     const report = await runDoctor({ ...base, exec: cannedExec({}) })
     for (const r of report.results) {

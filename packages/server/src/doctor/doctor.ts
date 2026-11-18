@@ -107,6 +107,7 @@ export type ProbeStatus =
   | 'machine-stopped' // container CLI present, VM not initialized/started (podman)
   | 'unhealthy' // present but a generic health probe failed
   | 'unset' // a value (git identity / AFK token) is absent
+  | 'api-key' // sessions will bill an Anthropic API key, not the subscription (info only)
 
 /**
  * How much a failing probe means. `error` is a genuine problem to fix; `info` is
@@ -143,6 +144,12 @@ export interface DoctorEnv {
   exec: ExecFn
   /** Environment map to read tokens from; defaults to `process.env`. */
   env?: Record<string, string | undefined>
+  /**
+   * The environment sessions inherit: the server's own, defaults to
+   * `process.env`. Apart from {@link env}, which also holds runcastle's data-dir
+   * `.env` — read by hand for workers, never handed to a session.
+   */
+  sessionEnv?: Record<string, string | undefined>
   /** Target platform for fix wording; defaults to the host. */
   platform?: NodeJS.Platform
   /** Directory to resolve git identity in (repo-local overrides honored). */
@@ -272,6 +279,31 @@ async function versionProbe(
 export const BUN_INSTALLER: StandaloneInstaller = {
   unix: 'curl -fsSL https://bun.sh/install | bash',
   windowsUrl: 'bun.sh/install.ps1',
+}
+
+/** The Anthropic credentials Claude Code bills ahead of the subscription login. */
+export const ANTHROPIC_KEY_VARS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'] as const
+
+/**
+ * Whether sessions will bill an Anthropic API key instead of the human's Claude
+ * subscription (sessions-never-pick-up-a-project-s-api-key, decision 6). Since
+ * the bin drops what Bun loaded from a start-folder `.env`, a key here was
+ * exported in the shell — maybe on purpose, maybe for another tool. Information
+ * only: it never fails the report, and a user billing a key on purpose is not
+ * asked to change anything.
+ */
+export function apiKeyBillingProbe(sessionEnv: Record<string, string | undefined>): ProbeResult {
+  const base = { id: 'api-key-billing', label: 'Session billing', tier: 1 as const, severity: 'info' as const }
+  const key = ANTHROPIC_KEY_VARS.find((name) => (sessionEnv[name] ?? '') !== '')
+  return key
+    ? {
+        ...base,
+        status: 'api-key',
+        // The advice sits in the detail too: the CLI prints no fix line on an `info` row.
+        detail: `Sessions will bill the API key in ${key}, not your Claude subscription. Unset it in the shell that starts runcastle to use your subscription.`,
+        fix: `Unset ${key} before starting runcastle to use your subscription.`,
+      }
+    : { ...base, status: 'ok', detail: 'Sessions use your Claude subscription.' }
 }
 
 async function bunProbe(exec: ExecFn): Promise<ProbeResult> {
@@ -1282,6 +1314,7 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
     )
     if (versionRow) results.push(versionRow)
   }
+  results.push(apiKeyBillingProbe(env.sessionEnv ?? process.env))
   const containerRuntime = await containerRuntimeProbe(exec)
   results.push(
     await gitIdentityProbe(exec, env.cwd),
