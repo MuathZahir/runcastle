@@ -5,6 +5,10 @@ import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RuncastleConfig as ConfigSchema, type Feature, type Project, type SessionRow } from '@runcastle/core'
 import { codexHomeDir, codexRuntime } from '../src/launcher/runtimes/codex'
+import { resolveBun } from './helpers/bun'
+import { keySeenByLaunchSpec } from './helpers/dotenv-sentinel'
+
+const bun = resolveBun()
 
 /** `codexRuntime.acpLaunch` — pure description of a Codex thread's launch over codex-acp (ADR-0015). */
 describe('codexRuntime.acpLaunch', () => {
@@ -62,14 +66,21 @@ describe('codexRuntime.acpLaunch', () => {
       headless: true,
     })
 
+  // sessions-never-pick-up-a-project-s-api-key: the adapter starts in the worktree, and Bun must not read its .env.
+  it.skipIf(!bun)('starts the adapter so a .env in its folder is not loaded', async () => {
+    expect(keySeenByLaunchSpec(bun!, await launch())).toBe('KEY=<unset>')
+  })
+
   it('runs codex-acp under the current runtime, against the installed codex and the per-session home', async () => {
     const spec = await launch()
     const home = codexHomeDir(sess.id)
 
     expect(spec.command).toBe(process.execPath)
-    expect(spec.args).toHaveLength(1)
-    expect(spec.args[0]).toMatch(/codex-acp[\\/]dist[\\/]index\.js$/)
-    expect(existsSync(spec.args[0])).toBe(true)
+    // `--no-env-file` first: the adapter starts in the project folder and must not read its .env.
+    expect(spec.args[0]).toBe('--no-env-file')
+    expect(spec.args).toHaveLength(2)
+    expect(spec.args[1]).toMatch(/codex-acp[\\/]dist[\\/]index\.js$/)
+    expect(existsSync(spec.args[1])).toBe(true)
     expect(spec.env).toEqual({
       CODEX_HOME: home,
       CODEX_PATH: '/usr/local/bin/codex',

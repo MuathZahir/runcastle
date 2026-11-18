@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ModelEntry, ModelStep } from '@runcastle/core'
 import { trpc } from '../../trpc'
+import { apiKeyBillingNote } from '../../lib/first-run'
 import {
   customModelsFromView,
   defaultModelOf,
@@ -199,6 +200,9 @@ export function ModelsPage({ globals, scoped, filter, highlightField }: Settings
  * models, so its line is information, not an error to act on.
  */
 function DiscoveryStatus({ view }: { view: SettingsView }) {
+  // The same report the shell already asked for: a cached read, not a new run.
+  const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
+  const apiKeyNote = apiKeyBillingNote(doctor.data?.results ?? [])
   return (
     <ul
       aria-label="Model discovery"
@@ -216,6 +220,12 @@ function DiscoveryStatus({ view }: { view: SettingsView }) {
           {line.text}
         </li>
       ))}
+      {apiKeyNote && (
+        <li className="inline-flex basis-full items-center gap-1.5 text-warning-text">
+          <RuntimeIcon runtime="claude-code" />
+          {apiKeyNote}
+        </li>
+      )}
     </ul>
   )
 }

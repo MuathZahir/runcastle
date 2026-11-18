@@ -114,6 +114,9 @@ function RuntimeRow({ runtime }: { runtime: RuntimeReadiness }) {
           Run {login.command}
         </Button>
       )}
+      {runtime.apiKeyNote && (
+        <span className="basis-full text-right text-xs text-warning-text">{runtime.apiKeyNote}</span>
+      )}
       {runtime.talkReady && !runtime.afkReady && (
         <span className="basis-full text-right text-xs text-text-tertiary">
           Signed in for chats you watch. Unattended workers on {runtime.label} also need its key —

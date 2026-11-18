@@ -1,6 +1,6 @@
 /**
  * Standalone hook client (SPEC §5.5). Runs INSIDE a Claude Code session, invoked
- * by the settings.json hooks as `bun run "<abs path>" <route-event>`.
+ * by the settings.json hooks as `bun --no-env-file run "<abs path>" <route-event>`.
  *
  * It reads the hook JSON from stdin, POSTs `{ event, sessionId, payload }` to
  * `RUNCASTLE_SERVER_URL/api/hooks/<event>`, and prints the server's response body

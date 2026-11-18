@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { getSessionMessages, query, type SessionMessage } from '@anthropic-ai/claude-agent-sdk'
-import { claudeSdkExecutable } from '../launcher/runtimes/claude'
+import { claudeSdkLaunch } from '../launcher/runtimes/claude'
 import { codexRuntime } from '../launcher/runtimes/codex'
 import { killProcessTree } from '../pty/kill-tree'
 import { spawnTargetFor, type SpawnTarget } from '../util/resolve-executable'
@@ -47,7 +47,7 @@ function withTimeout<T>(what: string, work: Promise<T>): Promise<T> {
 
 /** Claude's structured `/usage` response, under `usage` as `claudeUsageReport` reads it. */
 export async function readClaudeUsage(): Promise<unknown> {
-  const q = query({ prompt: noPrompts(), options: { pathToClaudeCodeExecutable: claudeSdkExecutable() } })
+  const q = query({ prompt: noPrompts(), options: claudeSdkLaunch() })
   try {
     return { usage: await withTimeout('Claude usage', q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()) }
   } finally {
@@ -112,7 +112,7 @@ export async function rewindClaudeFiles(input: { sessionId: string; cwd: string;
   const q = query({
     prompt: noPrompts(),
     options: {
-      pathToClaudeCodeExecutable: claudeSdkExecutable(),
+      ...claudeSdkLaunch(),
       cwd: input.cwd,
       resume: input.sessionId,
       enableFileCheckpointing: true,

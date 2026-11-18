@@ -1,3 +1,4 @@
+import { bunSpawn, sdkExecutableArgs } from '../../util/bun-launch'
 import { createRequire } from 'node:module'
 import type { SessionKind } from '@runcastle/core'
 import { createSystemExec } from '../../doctor/system-exec'
@@ -186,10 +187,6 @@ async function listClaudeAgents(): Promise<unknown> {
 }
 
 /**
- * claude-agent-acp's bin entry, resolved from this package's dependencies. Run
- * by `process.execPath`: the adapter declares node ≥ 22, and Bun runs it as is.
- */
-/**
  * The human's `claude`, as a path the Agent SDK can start: the SDK spawns it with
  * no shell, so an npm `claude.cmd` on Windows is swapped for the program it runs.
  * Everything that hands the SDK a path goes through here.
@@ -198,6 +195,17 @@ export function claudeSdkExecutable(): string {
   return unwrapLauncherScript(resolveTool(CLAUDE_BIN))
 }
 
+/** `claudeSdkExecutable()` as Agent SDK options, with `.env` loading off for a JavaScript CLI. */
+export function claudeSdkLaunch(): { pathToClaudeCodeExecutable: string; executableArgs?: string[] } {
+  const pathToClaudeCodeExecutable = claudeSdkExecutable()
+  return { pathToClaudeCodeExecutable, ...sdkExecutableArgs(pathToClaudeCodeExecutable) }
+}
+
+/**
+ * claude-agent-acp's bin entry, resolved from this package's dependencies. Run
+ * by this Bun with `--no-env-file` (`bunSpawn`): the adapter declares node ≥ 22,
+ * and Bun runs it as is.
+ */
 function claudeAcpEntry(): string {
   return createRequire(import.meta.url).resolve('@agentclientprotocol/claude-agent-acp/dist/index.js')
 }
@@ -298,12 +306,12 @@ export const claudeRuntime: AgentRuntimeAdapter = {
     const pluginDir = resolvePluginDir()
     const files = await writeSessionArtifacts({ ...input, runtime: this.id }, pluginDir)
     const permissionMode = input.permissionMode ?? 'acceptEdits'
+    const executable = claudeSdkExecutable()
     return {
       files: [files.systemPromptPath, files.settingsPath, files.mcpConfigPath],
-      command: process.execPath,
-      args: [claudeAcpEntry()],
+      ...bunSpawn([claudeAcpEntry()]),
       env: {
-        CLAUDE_CODE_EXECUTABLE: claudeSdkExecutable(),
+        CLAUDE_CODE_EXECUTABLE: executable,
         RUNCASTLE_SESSION_ID: input.session.id,
         RUNCASTLE_SERVER_URL: input.serverUrl,
         // As in writeArtifacts: no agent view, so nothing moves the conversation
@@ -333,6 +341,9 @@ export const claudeRuntime: AgentRuntimeAdapter = {
             // Stop ends background subagents too. The adapter turns this on for a
             // client that takes subagent sessions, expecting it to stop each one.
             perTaskStopAffordance: false,
+            // The adapter runs under Bun, so its SDK starts a JavaScript `claude`
+            // with Bun too, in the worktree: keep that Bun off the project's .env.
+            ...sdkExecutableArgs(executable, true),
             extraArgs: {
               settings: files.settingsPath,
               'mcp-config': files.mcpConfigPath,

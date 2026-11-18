@@ -1,3 +1,4 @@
+import { bunSpawn } from '../util/bun-launch'
 import { execFile, spawn } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
@@ -120,7 +121,8 @@ export async function ensureRuntimeDir(runtime: AgentRuntime): Promise<string> {
   if (!existsSync(bundle)) {
     mkdirSync(dir, { recursive: true })
     // The Bun CLI, not `Bun.build`: the web typecheck reads this file without Bun's types.
-    await execFileP(process.execPath, ['build', '--target=node', '--format=esm', `--outfile=${bundle}`, adapter.entry()], { maxBuffer: 8 * 1024 * 1024 })
+    const bun = bunSpawn(['build', '--target=node', '--format=esm', `--outfile=${bundle}`, adapter.entry()])
+    await execFileP(bun.command, bun.args, { maxBuffer: 8 * 1024 * 1024 })
   }
   writeFileSync(join(dir, 'worker-mcp.cjs'), WORKER_MCP_SCRIPT)
   writeFileSync(join(dir, 'worker-relay.cjs'), WORKER_RELAY_SCRIPT)

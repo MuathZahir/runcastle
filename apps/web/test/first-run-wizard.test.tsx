@@ -170,6 +170,25 @@ describe('FirstRunWizard', () => {
     expect(screen.getByRole('heading', { name: 'Connect a coding agent' })).toBeTruthy()
   })
 
+  // sessions-never-pick-up-a-project-s-api-key, decision 6: the doctor's billing
+  // note shows on the Claude Code row of the agent step, and only when a key is set.
+  it('notes on the Claude Code row when its sessions will bill an API key', () => {
+    const note = 'Sessions will bill the API key in ANTHROPIC_API_KEY, not your Claude subscription.'
+    const claudeSignedIn: Probe[] = [
+      { status: 'ok', detail: 'claude 2.1', runtime: 'claude-code', check: 'binary' },
+      { status: 'ok', detail: 'signed in', runtime: 'claude-code', check: 'auth' },
+    ]
+    open([identity('ok'), ...claudeSignedIn, { id: 'api-key-billing', status: 'api-key', detail: note }])
+    click('Set up runcastle')
+    expect(screen.getByRole('heading', { name: 'Connect a coding agent' })).toBeTruthy()
+    expect(screen.getByText(note)).toBeTruthy()
+    cleanup()
+
+    open([identity('ok'), ...claudeSignedIn, { id: 'api-key-billing', status: 'ok', detail: 'Sessions use your Claude subscription.' }])
+    click('Set up runcastle')
+    expect(screen.queryByText('Sessions use your Claude subscription.')).toBeNull()
+  })
+
   it('asks about unattended workers instead of showing their settings card', () => {
     open([identity('ok'), ...codexSignedIn])
     click('Set up runcastle')

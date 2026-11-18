@@ -51,6 +51,28 @@ describe('formatReport', () => {
     expect(out).not.toMatch(/fix/i)
   })
 
+  it('prints the API key note as information, outside the issue count', () => {
+    const out = formatReport({
+      ok: true,
+      tier1Ok: true,
+      results: [
+        {
+          id: 'api-key-billing',
+          label: 'Session billing',
+          tier: 1,
+          status: 'api-key',
+          severity: 'info',
+          detail: 'Sessions will bill the API key in ANTHROPIC_API_KEY, not your Claude subscription.',
+          fix: 'Unset ANTHROPIC_API_KEY',
+        },
+      ],
+    })
+    expect(out).toContain('· [T1] Session billing — API-KEY\n    Sessions will bill the API key in ANTHROPIC_API_KEY')
+    expect(out).not.toContain('(not in use)')
+    expect(out).not.toContain('fix:')
+    expect(out).toContain('All prerequisites satisfied.')
+  })
+
   // A runtime nothing the operator configured resolves to is context, not a
   // defect: it must not wear a ✗, demand a fix, or be counted as an issue.
   it('renders a runtime nothing runs on as informational, outside the issue count', () => {

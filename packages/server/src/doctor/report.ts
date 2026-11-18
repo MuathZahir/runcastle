@@ -18,6 +18,7 @@ const GLYPH: Record<ProbeStatus, string> = {
   'machine-stopped': '✗',
   unhealthy: '✗',
   unset: '!',
+  'api-key': '!',
 }
 
 /** One-word status shown after the glyph, e.g. `MISSING`, `DAEMON-DEAD`. */

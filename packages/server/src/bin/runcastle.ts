@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+// First: drop what Bun loaded from a start-folder .env, before anything reads process.env.
+import './no-dotenv'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isOlderVersion } from '../doctor/adapter-requirements'

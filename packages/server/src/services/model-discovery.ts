@@ -14,6 +14,7 @@ import { dataDir } from '@runcastle/core/paths'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { claudeSdkExecutable } from '../launcher/runtimes/claude'
+import { sdkExecutableArgs } from '../util/bun-launch'
 import { codexHomeDir } from './codex-auth'
 import { emitProject } from './events'
 
@@ -39,7 +40,7 @@ const defaultClaudeIO: ClaudeDiscoveryIO = {
   createQuery: ({ prompt, pathToClaudeCodeExecutable }) =>
     query({
       prompt,
-      options: { pathToClaudeCodeExecutable },
+      options: { pathToClaudeCodeExecutable, ...sdkExecutableArgs(pathToClaudeCodeExecutable) },
     }),
   resolveBinary: claudeSdkExecutable,
   timeoutMs: CLAUDE_DISCOVERY_TIMEOUT_MS,
