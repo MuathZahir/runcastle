@@ -13,24 +13,33 @@ import { NO_ENV_FILE } from './bun-launch'
  * does not cover `bun runcastle.js`, the service file or Bun's Windows shim, so
  * the bin's first import runs this instead.
  *
- * Only keys named in the `.env` files Bun reads from the start folder are ever
- * touched, and a variable the shell exported always stays (decision 1):
+ * Only keys named in a `.env` file Bun could have read from the start folder
+ * are ever touched, and a variable the shell exported stays (decision 1):
  * - Linux: `/proc/self/environ` is the environment the process started with,
  *   before Bun's loading; a candidate missing from it came from a file. Exact.
  * - Elsewhere: Bun lets the shell win a conflict, so a candidate whose value
- *   equals the file's came from the file. A value the file builds with `$`
- *   expansion cannot be compared and is treated as the file's.
+ *   equals a file's value came from the file. A `$` value is expanded the way
+ *   Bun does it before comparing.
+ *
+ * Which files Bun read depends on `NODE_ENV` as the shell set it, which a `.env`
+ * may since have overwritten, so every mode's files are candidates.
  */
 
-/** The `.env` files Bun 1.4 reads from its start folder, lowest precedence first. */
+/** The `.env` files Bun 1.4 reads from its start folder in one mode, lowest precedence first. */
 export function dotenvFiles(nodeEnv: string | undefined): string[] {
   const mode = nodeEnv && nodeEnv.length > 0 ? nodeEnv : 'development'
   return mode === 'test' ? ['.env', `.env.${mode}`] : ['.env', `.env.${mode}`, '.env.local', `.env.${mode}.local`]
 }
 
+/** Every `.env` file Bun could have read, whatever `NODE_ENV` was when it started. */
+export function candidateDotenvFiles(nodeEnvs: readonly (string | undefined)[]): string[] {
+  const modes = new Set<string | undefined>(['development', 'production', 'test', ...nodeEnvs])
+  return [...new Set([...modes].flatMap((mode) => dotenvFiles(mode)))]
+}
+
 export interface DotenvEntry {
   value: string
-  /** The value uses `$` expansion, so the loaded value cannot be predicted. */
+  /** The value holds a `$`, which Bun expands in every quote style. */
   expands: boolean
 }
 
@@ -50,9 +59,28 @@ export function parseDotenv(text: string): Map<string, DotenvEntry> {
     } else {
       value = raw.replace(/[ \t]+#.*$/, '').trim()
     }
-    out.set(key, { value, expands: quote !== "'" && value.includes('$') })
+    out.set(key, { value, expands: value.includes('$') })
   }
   return out
+}
+
+/** `\$`, `${NAME:-default}`, `${NAME}` (also `${}`) and `$NAME`: the forms Bun 1.4 expands. */
+const REF = /\\\$|\$\{([A-Za-z_]\w*|)(?::-([^}]*))?\}|\$(\w+)/g
+
+/**
+ * A `$` value as Bun 1.4 expands it against `env` (checked against Bun 1.4.4):
+ * `\$` is a dollar, `$NAME` and `${NAME}` are the variable or empty,
+ * `${NAME:-default}` falls back when it is unset or empty, and any other `$`
+ * stays as written.
+ */
+export function expandDotenv(value: string, env: Record<string, string | undefined>): string {
+  return value.replace(REF, (m: string, braced?: string, fallback?: string, bare?: string) => {
+    if (m === '\\$') return '$'
+    const name = braced ?? bare ?? ''
+    const set = env[name]
+    if (fallback !== undefined) return set ? set : fallback
+    return set ?? ''
+  })
 }
 
 /** Parses NUL-separated `KEY=value` records, as `/proc/<pid>/environ` holds them. */
@@ -77,20 +105,23 @@ export interface DropDotenvDeps {
 /** Deletes from `deps.env` what Bun loaded from `.env` files; returns the names it removed. */
 export function dropDotenvVars(deps: DropDotenvDeps): string[] {
   if (deps.execArgv.includes(NO_ENV_FILE)) return []
-  const fromFiles = new Map<string, DotenvEntry>()
-  for (const name of dotenvFiles(deps.env.NODE_ENV)) {
+  const fromFiles = new Map<string, DotenvEntry[]>()
+  for (const name of candidateDotenvFiles([deps.env.NODE_ENV])) {
     const text = deps.readFile(join(deps.cwd, name))
     if (text === null) continue
-    // A later file wins a key (`.env.development.local` over `.env.local` over `.env`), as in Bun.
-    for (const [k, v] of parseDotenv(text)) fromFiles.set(k, v)
+    for (const [k, v] of parseDotenv(text)) fromFiles.set(k, [...(fromFiles.get(k) ?? []), v])
   }
   if (fromFiles.size === 0) return []
   const startKeys = deps.startKeys()
+  // Expansion reads the environment as Bun left it, before anything is removed.
+  const loaded = { ...deps.env }
   const removed: string[] = []
-  for (const [key, entry] of fromFiles) {
-    const now = deps.env[key]
+  for (const [key, entries] of fromFiles) {
+    const now = loaded[key]
     if (now === undefined) continue
-    const fromFile = startKeys ? !startKeys.has(key) : entry.expands || now === entry.value
+    const fromFile = startKeys
+      ? !startKeys.has(key)
+      : entries.some((e) => now === (e.expands ? expandDotenv(e.value, loaded) : e.value))
     if (fromFile) {
       delete deps.env[key]
       removed.push(key)

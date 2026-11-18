@@ -4,7 +4,7 @@ import { delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { bunHookCommand, bunSpawn, NO_ENV_FILE, sdkExecutableArgs } from '../src/util/bun-launch'
-import { dotenvFiles, dropDotenvVars, parseDotenv, parseEnviron, type DropDotenvDeps } from '../src/util/drop-dotenv'
+import { candidateDotenvFiles, dotenvFiles, dropDotenvVars, expandDotenv, parseDotenv, parseEnviron, type DropDotenvDeps } from '../src/util/drop-dotenv'
 import { resolveBun } from './helpers/bun'
 import { envWithoutAnthropicKey, makeDotenvFolder, runOut, SENTINEL_KEY, type DotenvFolder } from './helpers/dotenv-sentinel'
 
@@ -45,7 +45,9 @@ describe('parseDotenv', () => {
       EMPTY: '',
     })
     expect(parsed.get('EXPANDS')?.expands).toBe(true)
-    expect(parsed.get('SINGLE')?.expands).toBe(false)
+    // Bun expands `$` inside single quotes too (checked on 1.4.4).
+    expect(parsed.get('SINGLE')?.expands).toBe(true)
+    expect(parsed.get('PLAIN')?.expands).toBe(false)
   })
 
   it('handles CRLF files', () => {
@@ -65,6 +67,40 @@ describe('dotenvFiles', () => {
     expect(dotenvFiles('production')).toEqual(['.env', '.env.production', '.env.local', '.env.production.local'])
     expect(dotenvFiles('test')).toEqual(['.env', '.env.test'])
   })
+
+  it('takes every mode as a candidate, since a .env may have changed NODE_ENV after Bun chose its files', () => {
+    const files = candidateDotenvFiles(['production'])
+    for (const f of ['.env', '.env.development', '.env.development.local', '.env.production', '.env.production.local', '.env.local', '.env.test']) {
+      expect(files).toContain(f)
+    }
+    expect(candidateDotenvFiles(['staging'])).toContain('.env.staging.local')
+    expect(new Set(files).size).toBe(files.length)
+  })
+})
+
+describe('expandDotenv', () => {
+  // Each case is what Bun 1.4.4 itself produced from the same .env text.
+  const env = { HOME_X: 'hx', A: 'hx/a' }
+  it.each([
+    ['$HOME_X/a', 'hx/a'],
+    ['${HOME_X}b', 'hxb'],
+    ['q$HOME_X', 'qhx'],
+    ['\\$HOME_X', '$HOME_X'],
+    ['${HOME_X:-dflt}', 'hx'],
+    ['${UNSET_Q:-dflt}', 'dflt'],
+    ['$UNSET_Y.z', '.z'],
+    ['$A-h', 'hx/a-h'],
+    ['pre$', 'pre$'],
+    ['pa$$word', 'pa$'],
+    ['a$$', 'a$$'],
+    ['${}z', 'z'],
+    ['x$1y', 'x'],
+    ['a $ b', 'a $ b'],
+    ['${UNSET_Q-d2}', '${UNSET_Q-d2}'],
+    ['${HOME_X:=z}', '${HOME_X:=z}'],
+  ])('%s -> %s', (raw, expanded) => {
+    expect(expandDotenv(raw, env)).toBe(expanded)
+  })
 })
 
 describe('dropDotenvVars', () => {
@@ -82,14 +118,15 @@ describe('dropDotenvVars', () => {
     SHELL_SAME: 'same',
     LATER: 'local',
     EXP: '/home/x',
+    HOME: '/home',
     UNRELATED: 'kept',
   })
 
   it('with the start environment (Linux), removes exactly the keys the shell did not set', () => {
     const env = loaded()
-    const removed = dropDotenvVars(deps(env, new Set(['SHELL_DIFF', 'SHELL_SAME', 'UNRELATED'])))
+    const removed = dropDotenvVars(deps(env, new Set(['SHELL_DIFF', 'SHELL_SAME', 'HOME', 'UNRELATED'])))
     expect(removed.sort()).toEqual(['ANTHROPIC_API_KEY', 'EXP', 'LATER'])
-    expect(env).toEqual({ SHELL_DIFF: 'shell', SHELL_SAME: 'same', UNRELATED: 'kept' })
+    expect(env).toEqual({ SHELL_DIFF: 'shell', SHELL_SAME: 'same', HOME: '/home', UNRELATED: 'kept' })
   })
 
   it('without it (macOS, Windows), removes keys whose value is the file value, keeping a different shell value', () => {
@@ -97,13 +134,35 @@ describe('dropDotenvVars', () => {
     const removed = dropDotenvVars(deps(env, null))
     // SHELL_SAME is the accepted miss: a shell export equal to the .env value goes too.
     expect(removed.sort()).toEqual(['ANTHROPIC_API_KEY', 'EXP', 'LATER', 'SHELL_SAME'])
-    expect(env).toEqual({ SHELL_DIFF: 'shell', UNRELATED: 'kept' })
+    expect(env).toEqual({ SHELL_DIFF: 'shell', HOME: '/home', UNRELATED: 'kept' })
   })
 
-  it('lets a later file win a key, as Bun does', () => {
-    const env = { LATER: 'env' }
-    // `.env.local` says LATER=local, so the value `env` did not come from the files.
+  it('without it, keeps a shell value that no file gives the key', () => {
+    const env = { LATER: 'shell', ANTHROPIC_API_KEY: 'shell-key' }
     expect(dropDotenvVars(deps(env, null))).toEqual([])
+    expect(env).toEqual({ LATER: 'shell', ANTHROPIC_API_KEY: 'shell-key' })
+  })
+
+  it('without it, expands a $ value the way Bun does and keeps a shell export that differs', () => {
+    const dollar: Record<string, string> = {
+      '/p/.env': 'ANTHROPIC_API_KEY=${OTHER}\nDB_PASS=pa$$word\nREF=${BASE}/v1\n',
+    }
+    const run = (env: Record<string, string | undefined>) =>
+      dropDotenvVars({ env, cwd: '/p', execArgv: [], startKeys: () => null, readFile: (p) => dollar[p.replace(/\\/g, '/')] ?? null })
+    const shell: Record<string, string | undefined> = { ANTHROPIC_API_KEY: 'shell-key', DB_PASS: 'shellpass', BASE: 'https://x', REF: 'https://y/v1' }
+    expect(run(shell)).toEqual([])
+    expect(shell).toEqual({ ANTHROPIC_API_KEY: 'shell-key', DB_PASS: 'shellpass', BASE: 'https://x', REF: 'https://y/v1' })
+    // What Bun loads when the shell set none of them: `pa$$word` is `pa$` and `${OTHER}` is empty.
+    const fromFile: Record<string, string | undefined> = { ANTHROPIC_API_KEY: '', DB_PASS: 'pa$', BASE: 'https://x', REF: 'https://x/v1' }
+    expect(run(fromFile).sort()).toEqual(['ANTHROPIC_API_KEY', 'DB_PASS', 'REF'])
+    expect(fromFile).toEqual({ BASE: 'https://x' })
+  })
+
+  it('checks the files of every mode, so a .env that sets NODE_ENV cannot hide .env.development', () => {
+    const modes: Record<string, string> = { '/p/.env': 'NODE_ENV=production\n', '/p/.env.development': 'ANTHROPIC_API_KEY=from-dev\n' }
+    const env: Record<string, string | undefined> = { NODE_ENV: 'production', ANTHROPIC_API_KEY: 'from-dev' }
+    const removed = dropDotenvVars({ env, cwd: '/p', execArgv: [], startKeys: () => new Set(), readFile: (p) => modes[p.replace(/\\/g, '/')] ?? null })
+    expect(removed.sort()).toEqual(['ANTHROPIC_API_KEY', 'NODE_ENV'])
   })
 
   it('does nothing when Bun already ran with --no-env-file', () => {
@@ -168,6 +227,24 @@ describe.skipIf(!bun)('real Bun from a folder whose .env holds an Anthropic key'
     expect(JSON.parse(r.stdout)).toEqual({ ANTHROPIC_API_KEY: '<unset>', SHELL_DIFF: 'shell', FILE_ONLY: '<unset>', SHELL_ONLY: 'kept' })
     expect(r.stderr).toMatch(/ignoring 2 variable\(s\).*ANTHROPIC_API_KEY, FILE_ONLY/)
     expect(r.stderr).not.toContain(SENTINEL_KEY)
+  })
+
+  it('the server boot also drops a key in .env.development when the .env sets NODE_ENV', () => {
+    writeFileSync(join(folder.dir, '.env'), 'NODE_ENV=production\n')
+    writeFileSync(join(folder.dir, '.env.development'), `ANTHROPIC_API_KEY=${SENTINEL_KEY}\n`)
+    const probe = join(folder.dir, 'boot-probe.ts')
+    writeFileSync(
+      probe,
+      `import ${JSON.stringify(join(serverSrc, 'bin', 'no-dotenv.ts'))}\n` +
+        "process.stdout.write(process.env.ANTHROPIC_API_KEY ?? '<unset>')\n",
+    )
+    const env = envWithoutAnthropicKey()
+    delete env.NODE_ENV
+    const control = runOut(bun!, ['-e', "process.stdout.write(process.env.ANTHROPIC_API_KEY ?? '<unset>')"], { cwd: folder.dir, env })
+    expect(control).toBe(SENTINEL_KEY)
+    const r = spawnSync(bun!, ['run', probe], { cwd: folder.dir, env, encoding: 'utf8', timeout: 30_000 })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toBe('<unset>')
   })
 })
 
