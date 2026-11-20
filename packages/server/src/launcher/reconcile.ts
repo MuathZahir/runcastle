@@ -58,14 +58,14 @@ export function reconcileStaleSessions(ctx: AppCtx, cutOff: SessionRow[] = []): 
 /** What a chat a restart cut off mid-turn is told (agents-are-woken-only-when-it-matters decision 24). */
 export const RESTART_CARRY_ON = '[runcastle] A server restart cut off your turn. Carry on where you were.'
 
-/**
- * What a planning run a restart cut off is told (a-restart-resumes-planning-runs
- * decision 2): the files it left uncommitted, so it carries on from them
- * instead of starting over.
- */
+/** What a planning run a restart cut off is told (a-restart-resumes-planning-runs decision 1). */
 export const RESTART_CARRY_ON_PLANNING = '[runcastle] A server restart cut off your planning run. Carry on where you were.'
 
-/** The planning run's wake message, naming its uncommitted files when it has any. */
+/**
+ * The planning run's wake message, naming the files it left uncommitted in its
+ * worktree when it has any, so it carries on from them instead of starting
+ * over (a-restart-resumes-planning-runs decision 2).
+ */
 export function planningCarryOn(files: readonly string[]): string {
   return files.length === 0 ? RESTART_CARRY_ON_PLANNING : `${RESTART_CARRY_ON_PLANNING}\nUncommitted in your folder: ${truncatedFileList(files)}`
 }
@@ -104,7 +104,9 @@ function carriesOn(ctx: AppCtx, row: SessionRow): boolean {
  * A planning run is woken with its own message, sent as runcastle's so its
  * turn's end still closes the run as an uninterrupted one would. One that is
  * not woken is closed the way a Stop closes it, so its chat stops declining
- * questions (a-restart-resumes-planning-runs).
+ * questions (a-restart-resumes-planning-runs). On a test drive's copy every
+ * cut-off chat began there (it has a thread log), so a planning run is woken
+ * there as a lead is.
  */
 export async function wakeCutOffChats(ctx: AppCtx, cutOff: readonly SessionRow[]): Promise<void> {
   for (const row of cutOff) {
