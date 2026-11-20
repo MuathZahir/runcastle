@@ -876,7 +876,7 @@ export async function toolHandBack(
   return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary, session.id)
 }
 
-/** What `wait_for_you` takes: the one line the agent needs the human for, or a withdraw. */
+/** What `wait_for_you` takes: a few-word label (the question itself is in the agent's reply), or a withdraw. */
 export type WaitForYouInput = { why: string; withdraw?: undefined } | { withdraw: true; why?: undefined }
 
 /**
