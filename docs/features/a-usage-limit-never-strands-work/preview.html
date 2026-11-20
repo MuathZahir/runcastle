@@ -232,21 +232,16 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['A limit is caught however the turn ends', 'A turn that ends normally with the limit notice, a sub-agent that hits it, a self-started turn and a Codex limit all hold the chat; today only a failed Claude turn does.'],
-    ['A reply that only talks about the limit never holds a chat', 'Only a short reply that opens with the runtime\'s own limit wording counts, so chats that discuss limits are never held by mistake.', 'assumed'],
-    ['The wake checks before it starts the chat, and comes back if the limit still stands', 'A fresh usage read moves the wake when the reset moved; a turn that hits the limit again is tried 5 minutes later. Chosen over a fixed buffer, which delays every resume and can still be too short.', 'assumed'],
-    ['A held chat keeps trying until the limit lifts, and never waits on the human for it', 'With no reset time known, runcastle tries every 5 minutes instead of waiting for your next message.', 'assumed'],
-    ['A wake survives a server restart', 'Each wake is saved in the database and set again at start; today it is only a timer in memory.', 'assumed'],
-    ['Held chats wake together; the worker queue stays as it is', 'Wakes already fire together; the gaps came from workers waiting for one of the worker slots you set, which stays.', 'assumed']
+    ['A reply that only talks about the limit never holds a chat', 'Only a short reply that opens with the runtime\'s own limit wording counts, so chats that discuss limits are never held by mistake.'],
+    ['The wake checks before it starts the chat, and comes back if the limit still stands', 'A fresh usage read moves the wake when the reset moved; a turn that hits the limit again is tried 5 minutes later. Chosen over a fixed buffer, which delays every resume and can still be too short.'],
+    ['A held chat keeps trying until the limit lifts, and never waits on the human for it', 'With no reset time known, runcastle tries every 5 minutes instead of waiting for your next message.'],
+    ['A wake survives a server restart', 'Each wake is saved in the database and set again at start; today it is only a timer in memory.'],
+    ['Held chats wake together; the worker queue stays as it is', 'Wakes already fire together; the gaps came from workers waiting for one of the worker slots you set, which stays.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [2, 'Match the limit wording anywhere in a reply, as the audit proposed', 'Narrower matching could miss a limit notice worded in a way not seen yet', 'guess'],
-    [3, 'Your 5-minute buffer after the reported reset', 'You floated the buffer; I chose check-and-retry instead', 'your idea'],
-    [4, 'Give up after some hours of tries and flag the chat for you', 'It changes a wake rule: retries run for as long as the setting is on', 'wake rule'],
-    [6, 'Let workers woken from a limit skip the worker queue', 'You asked to look at chats waking together; I left the queue alone', 'scope']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
