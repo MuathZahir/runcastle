@@ -3,7 +3,9 @@ import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { mayStartInBackground } from '../services/database-copy'
 import { emitForSession } from '../services/events'
+import { truncatedFileList, uncommittedPaths } from '../services/git'
 import { rowToSession, tryGetFeature } from '../services/repo'
+import { endSelfPlan } from '../threads/lifecycle'
 import { hasThreadLog } from '../threads/log'
 import { agentHost, appendThreadEvent, readThreadEvents } from '../threads/types'
 import { getWorker } from '../workers/service'
@@ -56,12 +58,25 @@ export function reconcileStaleSessions(ctx: AppCtx, cutOff: SessionRow[] = []): 
 /** What a chat a restart cut off mid-turn is told (agents-are-woken-only-when-it-matters decision 24). */
 export const RESTART_CARRY_ON = '[runcastle] A server restart cut off your turn. Carry on where you were.'
 
+/**
+ * What a planning run a restart cut off is told (a-restart-resumes-planning-runs
+ * decision 2): the files it left uncommitted, so it carries on from them
+ * instead of starting over.
+ */
+export const RESTART_CARRY_ON_PLANNING = '[runcastle] A server restart cut off your planning run. Carry on where you were.'
+
+/** The planning run's wake message, naming its uncommitted files when it has any. */
+export function planningCarryOn(files: readonly string[]): string {
+  return files.length === 0 ? RESTART_CARRY_ON_PLANNING : `${RESTART_CARRY_ON_PLANNING}\nUncommitted in your folder: ${truncatedFileList(files)}`
+}
+
 /** The event a carry-on wake leaves on the chat's timeline. */
 export const RESTART_CARRY_ON_EVENT = 'session.restart_carry_on'
 
 /**
  * Whether a chat a restart cut off is told to carry on: a feature's lead
- * (its main chat, not a headless or self-planning run), an orchestrator chat,
+ * (its main chat, a planning run included — a-restart-resumes-planning-runs
+ * decision 1 — but not a legacy headless run), an orchestrator chat,
  * or a worker still at work (burns-become-workers decision 10), whose row then
  * follows the turn. Side chats are not, nor a worker that landed, was dropped
  * or failed, nor a lead whose round was cut off (its round message already
@@ -75,7 +90,7 @@ function carriesOn(ctx: AppCtx, row: SessionRow): boolean {
     if (!w || isDriveWorkerKind(w.kind)) return false
     return w.status === 'working' || w.status === 'queued'
   }
-  if (row.kind !== 'chat' || !row.featureId || row.headless || row.purpose === 'self-plan') return false
+  if (row.kind !== 'chat' || !row.featureId || row.headless) return false
   const feature = tryGetFeature(ctx, row.featureId)
   return !!feature && feature.status !== 'shipped' && feature.status !== 'archived'
 }
@@ -85,19 +100,37 @@ function carriesOn(ctx: AppCtx, row: SessionRow): boolean {
  * Called once the server listens, since a woken agent reaches runcastle's MCP
  * server. On a copied database (a test drive) it starts no chat the drive has
  * not started. Best effort: nothing here throws.
+ *
+ * A planning run is woken with its own message, sent as runcastle's so its
+ * turn's end still closes the run as an uninterrupted one would. One that is
+ * not woken is closed the way a Stop closes it, so its chat stops declining
+ * questions (a-restart-resumes-planning-runs).
  */
 export async function wakeCutOffChats(ctx: AppCtx, cutOff: readonly SessionRow[]): Promise<void> {
   for (const row of cutOff) {
+    const planning = row.purpose === 'self-plan'
+    let woken = false
     try {
-      if (!carriesOn(ctx, row) || !mayStartInBackground(row)) continue
-      await agentHost(ctx).prompt(row.id, { text: RESTART_CARRY_ON }, { source: 'runcastle', display: { summary: 'A restart cut off this turn: carrying on' } })
-      emitForSession(ctx, row, {
-        type: RESTART_CARRY_ON_EVENT,
-        message: 'told to carry on after a server restart cut off its turn',
-        data: { sessionId: row.id },
-      })
+      if (carriesOn(ctx, row) && mayStartInBackground(row)) {
+        const text = planning ? planningCarryOn(await uncommittedPaths(row.worktreePath)) : RESTART_CARRY_ON
+        const summary = planning ? 'A restart cut off planning: carrying on' : 'A restart cut off this turn: carrying on'
+        await agentHost(ctx).prompt(row.id, { text }, { source: 'runcastle', display: { summary } })
+        woken = true
+        emitForSession(ctx, row, {
+          type: RESTART_CARRY_ON_EVENT,
+          message: 'told to carry on after a server restart cut off its turn',
+          data: { sessionId: row.id },
+        })
+      }
     } catch (err) {
       console.error('could not wake a chat the restart cut off', err)
+    }
+    if (planning && !woken) {
+      try {
+        endSelfPlan(ctx, row)
+      } catch (err) {
+        console.error('could not close a planning run the restart cut off', err)
+      }
     }
   }
 }
