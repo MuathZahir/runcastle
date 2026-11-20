@@ -19,7 +19,7 @@ export function isUsageLimitText(text: string): boolean {
  * a context or max-turns limit) is the account's usage limit. A reply that only mentions or quotes the wording later in
  * its text is not the notice, so a chat that talks about limits is never held.
  */
-const USAGE_LIMIT_NOTICE = /^(?:api error:\s*|error:\s*)?(?:you(?:'|’)ve (?:hit|reached) your\b[^.\n]{0,40}\blimit\b|(?:claude ai )?usage limit reached\b)/i
+const USAGE_LIMIT_NOTICE = /^(?:api error:\s*|error:\s*)?(?:you(?:'|’)ve (?:hit|reached) your\b[^.\n]{0,40}\blimit\b|[\w -]{0,30}\busage limit reached\b)/i
 
 /** The longest reply that can still be the notice: a notice is a line or two. */
 const NOTICE_MAX = 400
