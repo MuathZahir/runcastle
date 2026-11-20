@@ -74,4 +74,4 @@ wait's `why` set by `declare_ready`, is untouched.
 
 ## Open questions
 
-None beyond the assumed decisions 5 and 6.
+None.

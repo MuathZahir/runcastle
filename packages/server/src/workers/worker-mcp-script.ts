@@ -40,12 +40,13 @@ const TOOLS = [
   {
     name: 'wait_for_you',
     description:
-      'Tell the human you need them, in one short line saying what you need. It stays until the human ' +
-      'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human.',
+      'Flag that you need the human: it marks this chat in the sidebar and pings their phone. Write the question ' +
+      'itself, in full with your recommendation, in your reply first: the human reads that, never this label. ' +
+      'It stays until the human writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human.',
     inputSchema: {
       type: 'object',
       properties: {
-        why: { type: 'string', description: 'One short line: what you need from the human.' },
+        why: { type: 'string', description: 'A few-word label for the sidebar and phone, never the question itself.' },
         withdraw: { type: 'boolean', enum: [true], description: 'Take back your wait: you no longer need the human.' },
       },
     },

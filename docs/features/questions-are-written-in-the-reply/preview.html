@@ -265,16 +265,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The needs-you line stays, as a short label', 'The sidebar, status line, phone and autopilot handbacks need a few words, not the question.'],
     ['Every agent that can flag you', 'The orchestrator, feature leads and workers all ask you, and all read the same tool description.'],
     ['Wording, not machinery', 'The guidance invited the mistake, so the guidance changes; nothing new checks what agents send.'],
-    ['On autopilot, a lead asks its epic through its handback', 'The epic never reads the lead\'s chat, so the full question travels in the handback summary.', 'assumed'],
-    ['No length limit on the label', 'A limit only refuses after the fact, and a refused call could drop the flag when you are needed.', 'assumed']
+    ['On autopilot, a lead asks its epic through its handback', 'The epic never reads the lead\'s chat, so the full question travels in the handback summary.'],
+    ['No length limit on the label', 'A limit only refuses after the fact, and a refused call could drop the flag when you are needed.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [5, 'Runcastle sends the agent\'s latest reply to the epic along with the label', 'A small machinery change would also cover workers on autopilot; I kept to wording as the brief says', 'scope'],
-    [6, 'Refuse a label over about 100 characters, saying to write the question in the reply', 'A hard limit would enforce the rule; I judged wording enough', 'enforcement']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

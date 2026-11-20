@@ -106,4 +106,4 @@ is back:
   `set_design_state`.
 
 A waiting design does not tell the human by itself: when you want them to look,
-call `wait_for_you({ why })` naming it.
+say so in your reply and call `wait_for_you({ why })` with a label naming it.

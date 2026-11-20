@@ -1,8 +1,6 @@
 # Decisions — Questions are written in the reply
 
-Planned with nobody present: decisions marked **Assumed.** are the lead's picks.
-
-Check first: 5, 6
+Planned with nobody present; the human confirmed the whole plan, decisions 5 and 6 included.
 
 ## 1. Every question is written out in the reply
 **Decision:** Every question an agent puts to the human is written out in full, with its recommendation, in the reply text the human reads.
@@ -23,9 +21,7 @@ Check first: 5, 6
 ## 5. On autopilot, a lead asks its epic through its handback
 **Decision:** On autopilot a needs-you line reaches the epic as the whole message, so a short label would arrive there alone. The tool's description says so, and tells the agent to put the full question in its handback summary instead (`hand_back`), as the lead's skill already asks.
 **Why:** The epic never reads the lead's chat, so the question has to travel in what is sent to it. This keeps the label short everywhere without new machinery.
-**Assumed.** Alternative: runcastle sends the agent's latest reply to the epic along with the label (a small change to how autopilot hands back).
 
 ## 6. No length limit on the label
 **Decision:** The label is asked for in words ("a few words"). Runcastle does not refuse a long `why`.
 **Why:** A limit would only refuse calls after the fact; the description now says plainly where the question goes. A refused call could also lose the needs-you flag at the moment the human is needed.
-**Assumed.** Alternative: refuse a `why` over about 100 characters, with an error that says to write the question in the reply.

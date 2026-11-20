@@ -3543,11 +3543,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Wait for the human',
         description:
-          'Tell the human you need them, in one short line saying what you need. It stays until the human ' +
-          'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human. ' +
-          'On autopilot it goes to your epic instead, as a handback does.',
+          'Flag that you need the human: it marks this chat in the sidebar and pings their phone. Write the question ' +
+          'itself, in full with your recommendation, in your reply first: the human reads that, never this label. ' +
+          'It stays until the human writes in your chat or you withdraw it ({ withdraw: true }); ending your turn ' +
+          'never tells the human. On autopilot this label is all your epic receives, so ask there with ' +
+          'hand_back({ summary }) instead.',
         inputSchema: {
-          why: z.string().optional().describe('One short line: what you need from the human.'),
+          why: z.string().optional().describe('A few-word label for the sidebar and phone, never the question itself.'),
           withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),
         },
       },
@@ -3604,7 +3606,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'On autopilot only: report to the epic running this feature (questions, plans and designs for a yes, ready to test, ' +
           'failures, merge conflicts). It answers or asks the human. Wakes it once with your summary and a line of the ' +
-          'feature’s state. Off autopilot the feature is the human’s: refused, ask them with wait_for_you.',
+          'feature’s state. Off autopilot the feature is the human’s: refused, ask them in your reply and call wait_for_you.',
         inputSchema: {
           summary: z
             .string()
