@@ -3543,11 +3543,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Wait for the human',
         description:
-          'Flag that you need the human: it marks this chat in the sidebar and pings their phone. Write the question ' +
-          'itself, in full with your recommendation, in your reply first: the human reads that, never this label. ' +
-          'It stays until the human writes in your chat or you withdraw it ({ withdraw: true }); ending your turn ' +
-          'never tells the human. On autopilot this label is all your epic receives, so ask there with ' +
-          'hand_back({ summary }) instead.',
+          'Flag that you need the human: marks this chat in the sidebar and pings their phone. Write the full ' +
+          'question, with your pick, in your reply first; the human reads that, never this label. Stays until they ' +
+          'write in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells them. On ' +
+          'autopilot your epic gets only this label: ask there with hand_back({ summary }).',
         inputSchema: {
           why: z.string().optional().describe('A few-word label for the sidebar and phone, never the question itself.'),
           withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),
