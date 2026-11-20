@@ -28,6 +28,8 @@ describe('isUsageLimitNotice', () => {
     expect(isUsageLimitNotice('rate limit exceeded (429), retrying')).toBe(false)
     expect(isUsageLimitNotice('Claude usage limit reached. Your limit will reset at 7pm.')).toBe(true)
     expect(isUsageLimitNotice('5-hour usage limit reached')).toBe(true)
+    expect(isUsageLimitNotice('Usage limit reached')).toBe(true)
+    expect(isUsageLimitNotice('The usage limit reached notice now holds the chat.')).toBe(false)
     expect(isUsageLimitNotice('API rate limit reached')).toBe(false)
     expect(isUsageLimitNotice('Context limit reached')).toBe(false)
     expect(isUsageLimitNotice('Max turns limit reached')).toBe(false)
