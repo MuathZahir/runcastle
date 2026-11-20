@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import type { Containment } from '../pty/job-object'
-import { killProcessTree } from '../pty/kill-tree'
+import { stopProcessTree } from '../pty/kill-tree'
 import { containHostProcess } from '../util/contain-host'
 import { resolveSpawnTarget } from '../util/resolve-executable'
 import type { ExecFn, ExecOutcome } from './doctor'
@@ -62,9 +62,12 @@ export function createSystemExec(
         clearTimeout(timer)
         resolve(outcome)
       }
+      // Its own process group off Windows, so a timeout's stop reaches what the command started.
+      const group = process.platform !== 'win32'
       const child = spawn(file, spawnArgs, {
         cwd: opts.cwd,
         windowsHide: true,
+        detached: group,
         ...(opts.env ? { env: opts.env } : {}),
         ...(opts.noStdin ? { stdio: ['ignore', 'pipe', 'pipe'] as const } : {}),
       })
@@ -73,7 +76,7 @@ export function createSystemExec(
       const containment = child.pid === undefined ? null : containFn(child.pid)
       const kill = (): void => {
         if (containment) void containment.kill()
-        else if (child.pid !== undefined) void killProcessTree(child.pid)
+        else if (child.pid !== undefined) void stopProcessTree(child.pid, { group, label: command })
       }
       // A command that printed what the caller was waiting for is done, even
       // when it would go on to wait for an answer nobody can give.

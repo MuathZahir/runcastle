@@ -17,6 +17,7 @@ import {
   type ImageBuildStep,
   NO_BUILDX_CACHE_KEPT,
 } from '../src/services/sandbox-image'
+import { processesWith, until } from './helpers/processes'
 
 type StepsPlan = Extract<ImageBuildPlan, { steps: ImageBuildStep[] }>
 
@@ -161,16 +162,27 @@ describe('spawnBuildStep', () => {
     expect([...lines].sort()).toEqual(['a', 'b', 'c'])
   })
 
-  it('ends a build that goes quiet', async () => {
-    const outcome = await spawnBuildStep(call('setTimeout(() => {}, 60000)', { quietMs: 100 }))
+  // A build that never ends on its own, tagged so the test can find it and its child.
+  const endless = (tag: string) =>
+    `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000) // ${tag}-child'], { stdio: 'ignore' }); setTimeout(() => {}, 60000) // ${tag}`
+  const gone = (tag: string) =>
+    process.platform === 'win32' ? Promise.resolve() : until(() => processesWith(tag).length === 0, `${tag} to exit`)
+
+  it('ends a build that goes quiet, and the process it started', async () => {
+    const tag = `rc-build-quiet-${process.pid}`
+    const outcome = await spawnBuildStep(call(endless(tag), { quietMs: 300 }))
     expect(outcome).toEqual({ code: null, stopped: 'quiet' })
+    await gone(tag)
   })
 
-  it('ends a build when the run is stopped', async () => {
+  it('ends a build when the run is stopped, and the process it started', async () => {
+    const tag = `rc-build-abort-${process.pid}`
     const stop = new AbortController()
-    const running = spawnBuildStep(call('setTimeout(() => {}, 60000)', { signal: stop.signal }))
+    const running = spawnBuildStep(call(endless(tag), { signal: stop.signal }))
+    if (process.platform !== 'win32') await until(() => processesWith(`${tag}-child`).length > 0, 'the build to start its child')
     stop.abort()
     expect(await running).toEqual({ code: null, stopped: 'aborted' })
+    await gone(tag)
   })
 
   it('reports a binary that does not exist', async () => {

@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline'
 import { getSessionMessages, query, type SessionMessage } from '@anthropic-ai/claude-agent-sdk'
 import { claudeSdkLaunch } from '../launcher/runtimes/claude'
 import { codexRuntime } from '../launcher/runtimes/codex'
-import { killProcessTree } from '../pty/kill-tree'
+import { stopProcessTree } from '../pty/kill-tree'
 import { spawnTargetFor, type SpawnTarget } from '../util/resolve-executable'
 import { runcastleVersion } from '../version'
 
@@ -62,7 +62,9 @@ export async function readClaudeUsage(): Promise<unknown> {
  * server starts through {@link spawnTargetFor}; `target` is injected in tests.
  */
 export function readCodexRateLimits(target: SpawnTarget = spawnTargetFor(codexRuntime.resolveBinary(), ['app-server'])): Promise<unknown> {
-  const child = spawn(target.file, target.args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
+  // Its own process group off Windows, so the stop below reaches what it starts.
+  const group = process.platform !== 'win32'
+  const child = spawn(target.file, target.args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true, detached: group })
   const send = (message: Record<string, unknown>) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`)
   const read = new Promise<unknown>((resolve, reject) => {
     child.once('error', reject)
@@ -83,7 +85,9 @@ export function readCodexRateLimits(target: SpawnTarget = spawnTargetFor(codexRu
     send({ id: 0, method: 'initialize', params: { clientInfo: { name: 'runcastle', title: 'runcastle', version: runcastleVersion() } } })
   })
   return withTimeout('Codex rate limits', read).finally(() => {
-    if (child.pid !== undefined && child.exitCode === null) void killProcessTree(child.pid).catch(() => {})
+    if (child.pid === undefined || (!group && child.exitCode !== null)) return
+    child.stdin.end()
+    void stopProcessTree(child.pid, { group, label: 'codex app-server (usage read)' })
   })
 }
 
