@@ -147,7 +147,7 @@ describe.runIf(posix)('an agent session’s stop', () => {
     // The adapter exits by itself; the host notices and stops what is left of its group.
     await until(() => processesWith(tag).length === 0, 'the orphaned child to be ended', 8000)
     expect(host.isRunning(id)).toBe(false)
-  })
+  }, 15_000)
 
   it('resumed five times, only one process ever holds the conversation', async () => {
     const tag = freshTag()

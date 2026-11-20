@@ -89,7 +89,7 @@ describe("a Codex thread's usage limits", () => {
     const appServer = { file: process.execPath, args: [join(import.meta.dirname, 'support', 'fake-codex-app-server.mjs'), '--child', tag] }
     await readCodexRateLimits(appServer)
     await until(() => processesWith(tag).length === 0, 'the app server and its child to exit', 8000)
-  })
+  }, 15_000)
 })
 
 describe('claudeUsageReport', () => {

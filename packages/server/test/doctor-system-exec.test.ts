@@ -99,7 +99,7 @@ describe('createSystemExec — the Job Object each command runs in (win32)', () 
     const out = await createSystemExec({ timeoutMs: 500, containFn: () => null })('node', ['-e', `${child}; setInterval(() => {}, 1 << 30) // ${tag}`])
     expect(out.timedOut).toBe(true)
     await until(() => processesWith(tag).length === 0, 'the command and its child to exit', 8000)
-  })
+  }, 15_000)
 
   it('falls back to the tree walk when the command could not be contained', async () => {
     vi.mocked(stopProcessTree).mockClear()
