@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
 import { createSystemExec } from '../doctor/system-exec'
 import type { ExecFn } from '../doctor/doctor'
-import { stopProcessTree } from '../pty/kill-tree'
+import { readProcStat, stopProcessTree } from '../pty/kill-tree'
 
 /**
  * The start-up clean (stopping-a-session-kills-its-process decisions 5 and 6):
@@ -110,10 +110,9 @@ function listLinux(): ProcInfo[] {
   const out: ProcInfo[] = []
   for (const name of readdirSync('/proc')) {
     if (!/^\d+$/.test(name)) continue
+    const stat = readProcStat(name)
+    if (!stat || stat.state === 'Z' || stat.state === 'X') continue
     try {
-      const stat = readFileSync(`/proc/${name}/stat`, 'utf8')
-      const rest = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
-      if (rest[0] === 'Z' || rest[0] === 'X') continue
       // Another user's environment is not ours to read; it stays in the list so the parent walk is whole.
       let env: Record<string, string> | undefined
       try {
@@ -127,8 +126,8 @@ function listLinux(): ProcInfo[] {
       }
       out.push({
         pid: Number(name),
-        ppid: Number(rest[1]),
-        pgid: Number(rest[2]),
+        ppid: stat.ppid,
+        pgid: stat.pgid,
         command: readFileSync(`/proc/${name}/cmdline`, 'utf8').split('\0').join(' ').trim(),
         ...(env ? { env } : {}),
       })
@@ -190,29 +189,35 @@ export async function listProcesses(exec: ExecFn = createSystemExec({ timeoutMs:
 /** How long the start-up clean lets each leftover quit before forcing it. */
 const LEFTOVER_GRACE_MS = 2000
 
+/** What the start-up clean did: leftovers found, and how many of them are confirmed gone. */
+export interface SweepResult {
+  found: number
+  ended: number
+}
+
 /**
- * End this server's leftovers from earlier runs; resolves with how many it
- * found. Never rejects: a listing that fails is logged and the boot goes on.
+ * End this server's leftovers from earlier runs. Never rejects: a listing that
+ * fails is logged and the boot goes on; a survivor is named by the stop's own log line.
  */
 export async function sweepLeftoverAgents(
   mark: LeftoverMark,
   deps: { list?: () => Promise<ProcInfo[]>; stop?: typeof stopProcessTree } = {},
-): Promise<number> {
+): Promise<SweepResult> {
   let procs: ProcInfo[]
   try {
     procs = await (deps.list ?? (() => listProcesses()))()
   } catch (err) {
     console.error('leftover agents: could not list processes', err)
-    return 0
+    return { found: 0, ended: 0 }
   }
   const leftovers = pickLeftovers(procs, mark)
   const stop = deps.stop ?? stopProcessTree
   // A group the server itself is in is never signalled whole.
   const selfGroup = procs.find((p) => p.pid === mark.selfPid)?.pgid
-  await Promise.all(
+  const results = await Promise.all(
     leftovers.map((p) =>
-      stop(p.pid, { group: p.pgid === p.pid && p.pgid !== selfGroup, graceMs: LEFTOVER_GRACE_MS, label: 'leftover agent process' }).catch(() => undefined),
+      stop(p.pid, { group: p.pgid === p.pid && p.pgid !== selfGroup, graceMs: LEFTOVER_GRACE_MS, label: 'leftover agent process' }).catch(() => ({ gone: false, forced: false })),
     ),
   )
-  return leftovers.length
+  return { found: leftovers.length, ended: results.filter((r) => r.gone).length }
 }

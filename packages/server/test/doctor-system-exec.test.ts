@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createSystemExec } from '../src/doctor/system-exec'
 import type { Containment } from '../src/pty/job-object'
 import { stopProcessTree } from '../src/pty/kill-tree'
+import { processesWith, until } from './helpers/processes'
 
 // The real tree walk, observed: which kill path a timed-out command took.
 vi.mock('../src/pty/kill-tree', async (importOriginal) => {
@@ -90,6 +91,14 @@ describe('createSystemExec — the Job Object each command runs in (win32)', () 
     expect(out.timedOut).toBe(true)
     expect(jobs.killed[0]).toBe(jobs.contained[0])
     expect(stopProcessTree).not.toHaveBeenCalled()
+  })
+
+  it.skipIf(process.platform === 'win32')('leaves nothing of a timed-out command running, what it started included', async () => {
+    const tag = `rc-exec-timeout-${process.pid}`
+    const child = `require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1 << 30) // ${tag}-child'], { stdio: 'ignore' })`
+    const out = await createSystemExec({ timeoutMs: 500, containFn: () => null })('node', ['-e', `${child}; setInterval(() => {}, 1 << 30) // ${tag}`])
+    expect(out.timedOut).toBe(true)
+    await until(() => processesWith(tag).length === 0, 'the command and its child to exit', 8000)
   })
 
   it('falls back to the tree walk when the command could not be contained', async () => {

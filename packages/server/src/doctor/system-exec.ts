@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import type { Containment } from '../pty/job-object'
-import { stopProcessTree } from '../pty/kill-tree'
+import { OWN_GROUP, stopProcessTree } from '../pty/kill-tree'
 import { containHostProcess } from '../util/contain-host'
 import { resolveSpawnTarget } from '../util/resolve-executable'
 import type { ExecFn, ExecOutcome } from './doctor'
@@ -63,7 +63,7 @@ export function createSystemExec(
         resolve(outcome)
       }
       // Its own process group off Windows, so a timeout's stop reaches what the command started.
-      const group = process.platform !== 'win32'
+      const group = OWN_GROUP
       const child = spawn(file, spawnArgs, {
         cwd: opts.cwd,
         windowsHide: true,

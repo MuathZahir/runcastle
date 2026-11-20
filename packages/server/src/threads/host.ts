@@ -43,7 +43,7 @@ import {
   setSessionModel,
   setSessionTitle,
 } from '../launcher/sessions'
-import { stopProcessTree } from '../pty/kill-tree'
+import { OWN_GROUP, stopProcessTree } from '../pty/kill-tree'
 import { publishLive } from '../services/bus'
 import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -446,7 +446,7 @@ export const spawnAdapter: AgentTransport = (spec, row) => {
   // Off Windows the adapter leads its own process group, so a stop reaches
   // `claude`/`codex` and everything they started; on Windows `detached` would
   // open a console, and `taskkill /T` walks the tree instead.
-  const group = process.platform !== 'win32'
+  const group = OWN_GROUP
   const child = spawn(spec.command, spec.args, { cwd: row.worktreePath, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: group })
   let stderr = ''
   child.stderr.on('data', (chunk: Buffer) => {

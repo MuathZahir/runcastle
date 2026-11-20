@@ -136,6 +136,19 @@ describe.runIf(posix)('an agent session’s stop', () => {
     expect(processesWith(tag)).toEqual([])
   })
 
+  it('ends what a crashed adapter left behind', async () => {
+    const tag = freshTag()
+    leftover.push(tag)
+    hostOnRealProcesses(tag, ['--crash'])
+    const id = thread()
+    await host.prompt(id, { text: 'Hello' }, { source: 'human' })
+    await until(() => processesWith(`--resume=${tag}`).length === 1, 'the child to start')
+
+    // The adapter exits by itself; the host notices and stops what is left of its group.
+    await until(() => processesWith(tag).length === 0, 'the orphaned child to be ended', 8000)
+    expect(host.isRunning(id)).toBe(false)
+  })
+
   it('resumed five times, only one process ever holds the conversation', async () => {
     const tag = freshTag()
     leftover.push(tag)

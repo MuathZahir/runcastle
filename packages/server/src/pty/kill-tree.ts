@@ -129,37 +129,58 @@ function signal(target: number, sig: NodeJS.Signals | 0): boolean {
 }
 
 /**
- * Whether a live (not zombie) process is in group `pgid`, read from `/proc`. A
- * zombie still answers signal 0, and in a container with no init nobody reaps
- * the adapter's orphaned children, so on Linux the group check is confirmed here.
+ * Whether a child should be spawned as the leader of its own process group, so
+ * one stop reaches everything it starts: everywhere but Windows, where `detached`
+ * opens a console and `taskkill /T` walks the tree instead.
+ */
+export const OWN_GROUP = process.platform !== 'win32'
+
+/** One process's `/proc/<pid>/stat`, the fields a stop reads. */
+export interface ProcStat {
+  /** `R`, `S`, … ; `Z` and `X` are dead. */
+  state: string
+  ppid: number
+  pgid: number
+}
+
+/** Read `/proc/<pid>/stat` (Linux); undefined when the process is gone or unreadable. */
+export function readProcStat(pid: number | string): ProcStat | undefined {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    // `pid (comm) state ppid pgrp ...`; comm may hold spaces and parens, so read after the last ')'.
+    const rest = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+    return { state: rest[0] ?? '', ppid: Number(rest[1]), pgid: Number(rest[2]) }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The live (not zombie) processes in group `pgid`, read from `/proc`. A zombie
+ * still answers signal 0, and in a container with no init nobody reaps the
+ * adapter's orphaned children, so on Linux the group check is confirmed here.
  * Undefined when `/proc` cannot be read.
  */
-function liveInGroupLinux(pgid: number): boolean | undefined {
+function liveInGroupLinux(pgid: number): number[] | undefined {
   let names: string[]
   try {
     names = readdirSync('/proc')
   } catch {
     return undefined
   }
+  const live: number[] = []
   for (const name of names) {
     if (!/^\d+$/.test(name)) continue
-    let stat: string
-    try {
-      stat = readFileSync(`/proc/${name}/stat`, 'utf8')
-    } catch {
-      continue
-    }
-    // `pid (comm) state ppid pgrp ...`; comm may hold spaces and parens, so read after the last ')'.
-    const rest = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
-    if (Number(rest[2]) === pgid && rest[0] !== 'Z' && rest[0] !== 'X') return true
+    const stat = readProcStat(name)
+    if (stat && stat.pgid === pgid && stat.state !== 'Z' && stat.state !== 'X') live.push(Number(name))
   }
-  return false
+  return live
 }
 
 /** Whether anything of the target is still alive: signal 0, confirmed against zombies on Linux. */
 function alive(target: number): boolean {
   if (!signal(target, 0)) return false
-  if (target < 0 && process.platform === 'linux') return liveInGroupLinux(-target) ?? true
+  if (target < 0 && process.platform === 'linux') return (liveInGroupLinux(-target)?.length ?? 1) > 0
   return true
 }
 
@@ -188,10 +209,17 @@ async function waitGone(alive: () => boolean, ms: number): Promise<boolean> {
 export async function stopProcessTree(pid: number, opts: StopTreeOptions): Promise<StopTreeResult> {
   const started = Date.now()
   const label = opts.label ? `${opts.label} ` : ''
+  // A group whose leader already exited can still hold members, so the group is
+  // what is asked, checked and forced; with no group, the pid alone.
+  let target = opts.group && process.platform !== 'win32' ? -pid : pid
   const report = (result: StopTreeResult, branch: string): StopTreeResult => {
     const line = `[process-stop] ${label}pid=${pid} branch=${branch} gone=${result.gone} forced=${result.forced} after ${Date.now() - started}ms`
     if (result.gone) console.error(line)
-    else console.error(`${line} — a process survived its stop`)
+    else {
+      // Name every survivor where they can be listed; elsewhere the root stands for its tree.
+      const survivors = target < 0 && process.platform === 'linux' ? liveInGroupLinux(-target) : undefined
+      console.error(`${line} — survived its stop: ${survivors?.length ? `pids ${survivors.join(', ')}` : `pid ${pid} or what it started`}`)
+    }
     return result
   }
 
@@ -202,9 +230,6 @@ export async function stopProcessTree(pid: number, opts: StopTreeOptions): Promi
     return report({ gone, forced: true }, 'taskkill')
   }
 
-  // A group whose leader already exited can still hold members, so the group is
-  // what is asked, checked and forced; with no group, the pid alone.
-  let target = opts.group ? -pid : pid
   let branch = opts.group ? 'pgroup' : 'pid'
   if (!signal(target, 'SIGTERM')) {
     // No such group: the pid may still be there, just not leading one (the bug this replaced).

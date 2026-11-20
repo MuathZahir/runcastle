@@ -242,8 +242,10 @@ export async function startServer(): Promise<void> {
   // (stopping-a-session-kills-its-process decisions 5, 6). After the listen: only
   // one server holds the port, so anything still marked with its URL is a dead
   // run's. Not awaited; the server's own agents are its descendants and skipped.
-  void sweepLeftoverAgents({ serverUrl: serverUrlFor(config), dataDir: dataDir(), selfPid: process.pid }).then((n) => {
-    if (n > 0) console.log(`leftover agents: ended ${n} process(es) an earlier server run left running`)
+  void sweepLeftoverAgents({ serverUrl: serverUrlFor(config), dataDir: dataDir(), selfPid: process.pid }).then(({ found, ended }) => {
+    if (found === 0) return
+    const survived = found - ended
+    console.log(`leftover agents: ended ${ended} process(es) an earlier server run left running${survived ? `; ${survived} survived its stop` : ''}`)
   })
 
   // The phone's way to a feature's design server (routes/design-pass.ts), on its

@@ -80,7 +80,16 @@ describe('sweepLeftoverAgents', () => {
     const n = await sweepLeftoverAgents(mark, {
       list: () => Promise.reject(new Error('no ps')),
     })
-    expect(n).toBe(0)
+    expect(n).toEqual({ found: 0, ended: 0 })
+  })
+
+  it('counts a leftover that survived its stop as found, not ended', async () => {
+    const left: ProcInfo = { pid: 900, ppid: 1, pgid: 900, command: 'claude', env: { RUNCASTLE_SESSION_ID: 's', RUNCASTLE_SERVER_URL: mark.serverUrl } }
+    const n = await sweepLeftoverAgents(mark, {
+      list: async () => [left],
+      stop: async () => ({ gone: false, forced: true }),
+    })
+    expect(n).toEqual({ found: 1, ended: 0 })
   })
 })
 
@@ -110,7 +119,7 @@ describe.runIf(process.platform === 'linux')('the start-up clean on Linux, for r
 
     const n = await sweepLeftoverAgents({ serverUrl: url, dataDir: '/nowhere', selfPid: process.pid })
 
-    expect(n).toBe(1)
+    expect(n).toEqual({ found: 1, ended: 1 })
     expect(processesWith(ours)).toEqual([])
     expect(processesWith(other)).toHaveLength(1)
     expect(processesWith(unmarked)).toHaveLength(1)

@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline'
 import { getSessionMessages, query, type SessionMessage } from '@anthropic-ai/claude-agent-sdk'
 import { claudeSdkLaunch } from '../launcher/runtimes/claude'
 import { codexRuntime } from '../launcher/runtimes/codex'
-import { stopProcessTree } from '../pty/kill-tree'
+import { OWN_GROUP, stopProcessTree } from '../pty/kill-tree'
 import { spawnTargetFor, type SpawnTarget } from '../util/resolve-executable'
 import { runcastleVersion } from '../version'
 
@@ -63,7 +63,7 @@ export async function readClaudeUsage(): Promise<unknown> {
  */
 export function readCodexRateLimits(target: SpawnTarget = spawnTargetFor(codexRuntime.resolveBinary(), ['app-server'])): Promise<unknown> {
   // Its own process group off Windows, so the stop below reaches what it starts.
-  const group = process.platform !== 'win32'
+  const group = OWN_GROUP
   const child = spawn(target.file, target.args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true, detached: group })
   const send = (message: Record<string, unknown>) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`)
   const read = new Promise<unknown>((resolve, reject) => {
