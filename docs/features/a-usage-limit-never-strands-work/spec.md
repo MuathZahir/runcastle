@@ -26,7 +26,7 @@ A yes goes through today's limit stop (held text kept, notice posted, wake armed
 
 ### The hold and its wake (decisions 3, 4, 5)
 
-A **usage hold** is one saved row per held chat: the chat, its runtime, when the wake fires, and whether the "still standing" notice was already posted. It lives in a new table in the core drizzle schema, with a migration. The in-memory timer stays the mechanism; the row is what survives.
+A **usage hold** is saved on the held chat's own session row: when its wake fires (`limit_wake_at`, null when nothing holds it) and whether the "still standing" notice was already posted (`limit_wake_told`). Two nullable/defaulted columns in the core drizzle schema, with a migration; on the session row rather than a table of their own, so a deleted chat takes its hold with it and the runtime is the row's own. The in-memory timer stays the mechanism; the row is what survives.
 
 ```
 stopped by limit ──► reset known?  yes ─► wake = reset + 1 min
@@ -38,7 +38,9 @@ turn hits the limit again ──► held again; wake = report's reset ahead + 1 
 turn runs ──► drop the hold
 ```
 
-- The fresh read bypasses the 60-second usage cache; a read that fails counts as "cannot tell" and the chat is started anyway (a failed start costs one rejected request).
+- The fresh read bypasses the 60-second usage cache; wakes firing together share one read in flight. A read that fails counts as "cannot tell" and the chat is started anyway (a failed start costs one rejected request).
+- A try that hits the limit again trusts only a reset the report shows for a limit at 100%; any other reset ahead is not this limit's, so it falls back to 5 minutes.
+- The turn's last reply is read after the log writes its last held text chunk (the log coalesces chunks for a moment).
 - Notices: the first stop posts one notice, as today, with the new "cannot tell" wording ("…so it tries again every 5 minutes"). The first time a wake finds the limit still standing posts one more ("The limit has not lifted yet. Runcastle tries again at 3:45 pm."). Later tries post nothing.
 - A human message to a held chat runs at once as today; when its turn runs, the hold is dropped. Archiving a chat or turning it off drops its hold.
 - At server start the host reads every hold and arms its timer; one whose time passed fires a few seconds after start, all together. The cut-off-chat reconcile at boot is unchanged.

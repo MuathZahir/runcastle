@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import type * as acp from '@agentclientprotocol/sdk/unstable'
+import * as acp from '@agentclientprotocol/sdk/unstable'
 import { foldThread, runningSubagents, threadActivity, type ThreadEvent, type ThreadItem } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
-import { features } from '../src/db/schema'
+import { features, sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
@@ -1663,7 +1663,7 @@ describe('held prompts and the usage limit (agents-are-woken-only-when-it-matter
     await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
     await logUntil(id, (e) => e.some((x) => x.type === 'notice'))
     await host.prompt(id, { text: 'Later' }, { source: 'runcastle', hold: true })
-    // The reset wake hits the limit again; the reset time is past now, so nothing more wakes.
+    // The reset wake hits the limit again; the reset time is past now, so it is tried again in 5 minutes, and the human writes first.
     await logUntil(id, turnsEnded(2), 5000)
     await logUntil(id, (e) => e.filter((x) => x.type === 'notice').length >= 2)
     await host.prompt(id, { text: 'Hi' }, { source: 'human' })
@@ -1685,5 +1685,163 @@ describe('held prompts and the usage limit (agents-are-woken-only-when-it-matter
     carryOn(false)
     await new Promise((r) => setTimeout(r, 600))
     expect(texts()).toEqual(['News', 'News'])
+  })
+})
+
+describe('a usage limit never strands work (a-usage-limit-never-strands-work)', () => {
+  const LIMIT = "You've hit your 5-hour limit · resets 8pm (Europe/Berlin)"
+  const RESET_LINE = '[runcastle] The usage limit has reset. Carry on where you were.'
+  const texts = () => prompts().map((p) => p.prompt[0]?.text)
+  const notices = (id: string) =>
+    readThreadEvents(id)
+      .filter((e): e is Extract<ThreadEvent, { type: 'notice' }> => e.type === 'notice')
+      .map((e) => e.text)
+  const wakeAt = (id: string) => ctx.db.select({ at: sessions.limitWakeAt }).from(sessions).where(eq(sessions.id, id)).get()?.at ?? null
+  const spentUntil = (at: number) => async () => ({ rate_limits: { five_hour: { utilization: 100, resets_at: new Date(at).toISOString() } } })
+  const STOPPED_AT = 'The usage limit stopped this turn. Runcastle carries on at '
+  const NOT_LIFTED = 'The limit has not lifted yet. Runcastle tries again at '
+
+  beforeEach(() => {
+    ctx.config.carryOnAfterLimit = 'on'
+  })
+
+  /** A script whose first `fails` turns end as `stop` does, then say "Done.". */
+  function stopsThen(stop: (t: FakeTurn) => Promise<void>, fails = 1): FakeScript {
+    let n = 0
+    return {
+      turn: async (t) => {
+        if (n++ < fails) return stop(t)
+        await t.say('Done.')
+      },
+    }
+  }
+
+  it('holds a chat whose turn ended normally with the limit notice for its reply, and its wake survives a restart', async () => {
+    const at = Date.now() + 600
+    const deps = { readUsage: spentUntil(at), usageResetGraceMs: 0 }
+    setup(stopsThen((t) => t.say(LIMIT)), deps)
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, () => notices(id).some((n) => n.startsWith(STOPPED_AT)))
+    expect(wakeAt(id)).toBe(at)
+
+    // The server restarts during the limit: the new one arms the wake it finds on the row.
+    await host.stopAll('shutdown')
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, ...deps })
+    host.rearmLimitWakes()
+    await logUntil(id, turnsEnded(2), 5000)
+    expect(texts()).toEqual(['News', `News\n\n${RESET_LINE}`])
+    expect(wakeAt(id)).toBeNull()
+  })
+
+  it('fires a wake whose time passed while the server was down right after start', async () => {
+    setup(stopsThen(async () => {}, 0), { readUsage: spentUntil(Date.now() - 1000) })
+    const id = thread()
+    ctx.db.update(sessions).set({ limitWakeAt: Date.now() - 500 }).where(eq(sessions.id, id)).run()
+    host.rearmLimitWakes()
+    await logUntil(id, turnsEnded(1), 3000)
+    expect(texts()).toEqual([RESET_LINE])
+  })
+
+  it('leaves a chat alone whose reply only talks about the limit', async () => {
+    setup(stopsThen((t) => t.say(`The host misses "${LIMIT}" when a turn ends normally; I fixed that.`)), { readUsage: spentUntil(Date.now() + 300), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'Fix it' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await new Promise((r) => setTimeout(r, 500))
+    expect(notices(id)).toEqual([])
+    expect(wakeAt(id)).toBeNull()
+    expect(texts()).toEqual(['Fix it'])
+  })
+
+  it('holds a chat whose subagent came back with the limit notice', async () => {
+    const subagentStopped = async (t: FakeTurn) => {
+      await t.update({ sessionUpdate: 'tool_call', toolCallId: 'task-1', title: 'Review the diff', kind: 'think', status: 'in_progress' })
+      await t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'task-1', status: 'failed', content: [{ type: 'content', content: { type: 'text', text: LIMIT } }] })
+      await t.say('The review agent stopped before it finished.')
+    }
+    setup(stopsThen(subagentStopped), { readUsage: spentUntil(Date.now() + 400), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'Review' }, { source: 'runcastle' })
+    await logUntil(id, turnsEnded(2), 5000)
+    expect(notices(id)[0]).toMatch(/^The usage limit stopped this turn\. Runcastle carries on at /)
+    expect(texts()[1]).toBe(`Review\n\n${RESET_LINE}`)
+  })
+
+  it("holds a Codex chat whose limit error carries its words in the error's message", async () => {
+    const codexLimit = async () => {
+      throw new acp.RequestError(-32603, 'Internal error', { message: "You've hit your usage limit. Try again in 2 hours." })
+    }
+    const ended: TurnEnding[] = []
+    setup(stopsThen(codexLimit), {
+      readUsage: spentUntil(Date.now() + 400),
+      usageResetGraceMs: 0,
+      lifecycle: { turnEnded: (_row, _source, end) => void ended.push(end) },
+    })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, turnsEnded(2), 5000)
+    expect(ended[0]).toMatchObject({ reason: 'error', error: "You've hit your usage limit. Try again in 2 hours.", usageLimit: true })
+    expect(texts()[1]).toBe(`News\n\n${RESET_LINE}`)
+  })
+
+  it('moves a wake that finds the limit still standing to its new reset, starting nothing and saying so once', async () => {
+    let read = spentUntil(Date.now() + 200)
+    setup(stopsThen((t) => t.say(LIMIT)), { readUsage: () => read(), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, () => notices(id).length === 1)
+    // The reset moved: the report now says it lifts later.
+    const later = Date.now() + 700
+    read = spentUntil(later)
+    await logUntil(id, () => notices(id).length === 2, 3000)
+    expect(notices(id)[1]).toMatch(/^The limit has not lifted yet\. Runcastle tries again at /)
+    expect(wakeAt(id)).toBe(later)
+    expect(texts()).toEqual(['News'])
+
+    await logUntil(id, turnsEnded(2), 5000)
+    expect(texts()[1]).toBe(`News\n\n${RESET_LINE}`)
+    expect(notices(id)).toHaveLength(2)
+  })
+
+  it('tries a wake whose turn hits the limit again a few minutes later, and carries on', async () => {
+    setup(stopsThen((t) => t.say(LIMIT), 2), { readUsage: spentUntil(Date.now() + 200), usageResetGraceMs: 0, usageRetryMs: 300 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, turnsEnded(3), 6000)
+    expect(notices(id)).toHaveLength(2)
+    expect(notices(id)[1]).toMatch(new RegExp(`^${NOT_LIFTED}`))
+    expect(texts()).toEqual(['News', `News\n\n${RESET_LINE}`, `News\n\n${RESET_LINE}`])
+    expect(wakeAt(id)).toBeNull()
+  })
+
+  it('holds a chat whose turn the agent started by itself ended on the limit notice', async () => {
+    let later!: FakeTurn
+    let n = 0
+    fake = createFakeAcp({
+      turn: async (t) => {
+        if (n++ === 0) later = t
+        await t.say(n === 1 ? 'Started the tests in the background.' : 'Done.')
+      },
+    })
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, selfTurnQuietMs: 50, readUsage: async () => ({}), usageRetryMs: 300 })
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: 'gpt-5.5', runtime: 'codex' } }).id
+    await host.prompt(id, { text: 'Run the tests' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    await later.say("You've hit your usage limit. Try again in 2 hours.")
+    await logUntil(id, () => notices(id).length === 1)
+    expect(notices(id)[0]).toMatch(/^The usage limit stopped this turn\./)
+    await logUntil(id, turnsEnded(3), 5000)
+    expect(texts()).toEqual(['Run the tests', RESET_LINE])
+  })
+
+  it('keeps trying a chat whose reset it cannot tell, instead of waiting for the human', async () => {
+    setup(stopsThen((t) => t.say(LIMIT)), { readUsage: async () => ({}), usageRetryMs: 300 })
+    const id = thread()
+    await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
+    await logUntil(id, () => notices(id).length === 1)
+    expect(notices(id)[0]).toBe('The usage limit stopped this turn. Runcastle could not tell when it resets, so it tries again every 5 minutes.')
+    await logUntil(id, turnsEnded(2), 5000)
+    expect(texts()[1]).toBe(`News\n\n${RESET_LINE}`)
   })
 })
