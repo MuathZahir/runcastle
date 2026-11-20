@@ -899,7 +899,7 @@ export async function toolWaitForYou(
     return { ok: true, need: null }
   }
   const why = input.why.trim()
-  if (!why) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+  if (!why) throw new InvalidInputError('wait_for_you needs a few-word label (why), or withdraw: true; the question itself goes in your reply')
   const asker = (session.kind === 'chat' || session.kind === 'worker') && session.featureId ? getFeatureRow(ctx, session.featureId) : null
   if (asker && isLocked(ctx, asker)) {
     const { deliveredTo } =
@@ -3545,8 +3545,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Flag that you need the human: marks this chat in the sidebar and pings their phone. Write the full ' +
           'question, with your pick, in your reply first; the human reads that, never this label. Stays until they ' +
-          'write in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells them. On ' +
-          'autopilot your epic gets only this label: ask there with hand_back({ summary }).',
+          'write in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells them. A feature ' +
+          'lead on autopilot: your epic gets only this label, so ask it with hand_back({ summary }).',
         inputSchema: {
           why: z.string().optional().describe('A few-word label for the sidebar and phone, never the question itself.'),
           withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),

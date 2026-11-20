@@ -107,7 +107,7 @@ export function workerTools(ctx: AppCtx, w: WorkerRow, sb: WorkerSandbox, engine
           workerWithdraws(ctx, w.id)
           return 'Withdrawn: you no longer need the human.'
         }
-        if (!why?.trim()) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+        if (!why?.trim()) throw new InvalidInputError('wait_for_you needs a few-word label (why), or withdraw: true; the question itself goes in your reply')
         // A locked feature's worker asks the epic, as its lead does (epics-on-autopilot decision 17).
         const feature = w.featureId ? getFeatureRow(ctx, w.featureId) : null
         if (feature && isLocked(ctx, feature)) {

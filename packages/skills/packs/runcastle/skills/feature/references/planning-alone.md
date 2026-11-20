@@ -17,7 +17,7 @@ request it quotes and its `## Decided with the human` section count. If any is
 open, stop there: write no decisions, spec, designs or plan. Your closing
 message says which is open and asks each in full, numbered, with your
 recommendation and the real options the survey found, then call
-`wait_for_you({ why: "what, where or who is open" })`. When the answers arrive,
+`wait_for_you` with a label such as `why: "what, where or who is open"`. When the answers arrive,
 record them as the human's (no mark) and finish the plan as below.
 
 **Decide as you would recommend.** Where you would ask the human, take the
@@ -82,8 +82,9 @@ instead. Never design a screen whose what, where or who you guessed.
    whether you saw the screens or only checked they compile, and that only
    designs the human approves are committed. End by asking for their yes to
    start the work.
-4. Call `wait_for_you({ why: "start the work?" })`, naming any design waiting
-   for approval, and end the turn with the question last. **On autopilot** the
+4. With the question written last in that message, call `wait_for_you` with a
+   label such as `why: "start the work?"`, naming any design waiting for
+   approval, and end the turn. **On autopilot** the
    yes is the epic's: call `hand_back({ summary })` instead, with the plan, its
    check-first decisions and any design waiting, and say the plan went to the
    epic.
