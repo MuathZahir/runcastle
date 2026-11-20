@@ -1840,8 +1840,73 @@ describe('a usage limit never strands work (a-usage-limit-never-strands-work)', 
     const id = thread()
     await host.prompt(id, { text: 'News' }, { source: 'runcastle' })
     await logUntil(id, () => notices(id).length === 1)
-    expect(notices(id)[0]).toBe('The usage limit stopped this turn. Runcastle could not tell when it resets, so it tries again every 5 minutes.')
+    expect(notices(id)[0]).toBe('The usage limit stopped this turn. Runcastle could not tell when it resets, so it tries again every 1 second.')
     await logUntil(id, turnsEnded(2), 5000)
     expect(texts()[1]).toBe(`News\n\n${RESET_LINE}`)
+  })
+
+  it("leaves a chat alone whose commands printed some API's rate limit or the notice's words", async () => {
+    const ghLimited = async (t: FakeTurn) => {
+      await t.update({ sessionUpdate: 'tool_call', toolCallId: 'gh-1', title: 'gh pr list', kind: 'execute', status: 'in_progress' })
+      await t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'gh-1', status: 'failed', content: [{ type: 'content', content: { type: 'text', text: 'API rate limit reached for user ID 1.' } }] })
+      // A command whose output is the notice's words (a log it read) is not the account's limit either: only a subagent's is.
+      await t.update({ sessionUpdate: 'tool_call', toolCallId: 'tail-1', title: 'tail run.log', kind: 'execute', status: 'in_progress' })
+      await t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'tail-1', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: LIMIT } }] })
+      await t.say("GitHub's rate limit is spent; I'll read the PRs from git instead.")
+    }
+    setup(stopsThen(ghLimited), { readUsage: spentUntil(Date.now() + 300), usageResetGraceMs: 0 })
+    const id = thread()
+    await host.prompt(id, { text: 'List the PRs' }, { source: 'runcastle' })
+    await logUntil(id, turnsEnded(1))
+    await new Promise((r) => setTimeout(r, 500))
+    expect(notices(id)).toEqual([])
+    expect(wakeAt(id)).toBeNull()
+    expect(texts()).toEqual(['List the PRs'])
+  })
+
+  it('arms again a wake whose usage read failed while the account is marked limited, instead of stranding the chat', async () => {
+    let read: () => Promise<unknown> = async () => {
+      throw new Error('offline')
+    }
+    setup({ turn: (t) => t.say(LIMIT) }, { readUsage: () => read(), usageResetGraceMs: 0, usageRetryMs: 800 })
+    const a = thread()
+    await host.prompt(a, { text: 'A' }, { source: 'runcastle' })
+    await logUntil(a, () => notices(a).length === 1)
+    // A second chat stops with a reset hours ahead: the account is marked limited until then.
+    const until = Date.now() + 3_600_000
+    read = spentUntil(until)
+    const b = thread()
+    await host.prompt(b, { text: 'B' }, { source: 'runcastle' })
+    await logUntil(b, () => notices(b).length === 1)
+    expect(wakeAt(b)).toBe(until)
+    // A's wake fires and its read fails again: its reset line is held, and its wake is armed for the mark.
+    read = async () => {
+      throw new Error('offline')
+    }
+    await logUntil(a, () => wakeAt(a) === until, 3000)
+    expect(texts()).toEqual(['A', 'B'])
+  })
+
+  it('drops the hold of a chat whose turn the agent started by itself ran, with no stale wake after', async () => {
+    let later!: FakeTurn
+    let n = 0
+    fake = createFakeAcp({
+      turn: async (t) => {
+        if (n++ === 0) later = t
+        await t.say('Started the tests in the background.')
+      },
+    })
+    host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, idleMs: IDLE_MS, selfTurnQuietMs: 50, readUsage: async () => ({}), usageResetGraceMs: 0 })
+    const id = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt', model: { id: 'gpt-5.5', runtime: 'codex' } }).id
+    await host.prompt(id, { text: 'Run the tests' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    // The chat is held, as by a limit that came and went while the tests ran.
+    ctx.db.update(sessions).set({ limitWakeAt: Date.now() + 600 }).where(eq(sessions.id, id)).run()
+    host.rearmLimitWakes()
+    await later.say('The tests passed.')
+    await logUntil(id, turnsEnded(2))
+    expect(wakeAt(id)).toBeNull()
+    await new Promise((r) => setTimeout(r, 900))
+    expect(texts()).toEqual(['Run the tests'])
   })
 })

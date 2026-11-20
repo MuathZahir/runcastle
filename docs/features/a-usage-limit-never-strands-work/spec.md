@@ -20,6 +20,8 @@ One question, asked at every turn end the host sees (prompted turns, turns the a
 - the turn ended in any other way and its **last reply is the limit notice itself**: a short reply (a few hundred characters at most) that **opens** with the runtimes' own wording ("You've hit your … limit", "Claude AI usage limit reached", Codex's "You've hit your usage limit…"). A reply that quotes the wording later in its text does not count;
 - a sub-agent (a Task/Agent tool call) inside the turn returned a result that is the limit notice itself, by the same rule.
 
+Only the runtimes' own wordings count: other "limit reached" text (an API's rate limit, a context or max-turns limit) does not. Only a sub-agent's result counts (the Agent tool's `think` call, or a call others nest under); a command or other tool that prints the words does not.
+
 The anchored "is the notice" rule lives next to today's loose wording rule in core's provider-halt module, as a second exported function; the loose one stays for error text, where no agent wrote it. The error reader also takes Codex's `data.message` when `data.details` is absent.
 
 A yes goes through today's limit stop (held text kept, notice posted, wake armed). The worker service already treats a limit as "not a failure, not retried", which holds for the new paths too since they arrive through the same turn end.
@@ -42,7 +44,8 @@ turn runs ──► drop the hold
 - A try that hits the limit again trusts only a reset the report shows for a limit at 100%; any other reset ahead is not this limit's, so it falls back to 5 minutes.
 - The turn's last reply is read after the log writes its last held text chunk (the log coalesces chunks for a moment).
 - Notices: the first stop posts one notice, as today, with the new "cannot tell" wording ("…so it tries again every 5 minutes"). The first time a wake finds the limit still standing posts one more ("The limit has not lifted yet. Runcastle tries again at 3:45 pm."). Later tries post nothing.
-- A human message to a held chat runs at once as today; when its turn runs, the hold is dropped. Archiving a chat or turning it off drops its hold.
+- A human message to a held chat runs at once as today; when its turn runs, the hold is dropped. A turn the agent starts by itself that runs also drops it, or wakes it at once when runcastle messages were held for the chat.
+- A wake whose usage read fails while the account is still marked limited is held behind that mark and armed for it, never left with no timer. Archiving a chat or turning it off drops its hold.
 - At server start the host reads every hold and arms its timer; one whose time passed fires a few seconds after start, all together. The cut-off-chat reconcile at boot is unchanged.
 - The account-wide "limited until" mark stays in memory; after a restart the first prompt that hits the limit sets it again.
 
