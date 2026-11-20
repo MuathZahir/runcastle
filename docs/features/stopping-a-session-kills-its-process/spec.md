@@ -14,25 +14,25 @@ On Windows the tree kill is `taskkill /T /F`, which does walk the tree, so the g
 
 From the user's side nothing changes on screen (decision 2). A stopped session's processes are gone within a few seconds, a conversation never runs in two processes (decision 4), and a server start clears what earlier runs leaked (decisions 5–6).
 
-**One way to stop a process tree.** The tree-kill helper becomes a stop that reports what happened. It takes the pid and whether the pid leads its own group. On POSIX it sends `SIGTERM` to the group, waits up to about 5 seconds for the group to empty, sends `SIGKILL`, then checks again. It resolves with whether the tree is gone and logs any survivor by pid. Without a group it falls back to the single pid. It never throws.
+**One way to stop a process tree.** The tree-kill helper becomes a stop that reports what happened. It takes the pid and whether the pid leads its own group. On POSIX it sends `SIGTERM` to the group, waits up to about 5 seconds for the group to empty, sends `SIGKILL`, then checks again. It resolves with whether the tree is gone and logs any survivor by pid. If the group does not exist (a process that never got one), it falls back to the single pid. It never throws.
 
-On Windows it keeps `taskkill /T /F`, then confirms the pid is gone and logs if not. Where the caller already holds a Job Object (a Windows container that ends every process in it at once), closing the job stays the force step. The PTY paths (terminals, dev panes, the design server), which already lead their own groups, keep working unchanged on the new helper.
+On Windows it keeps `taskkill /T /F` with no polite wait, since the tree walk needs the root still alive; it then confirms the pid is gone and logs if not. The polite step on Windows is the adapter's stdin closing (below). Where the caller already holds a Job Object (a Windows container that ends every process in it at once), closing the job stays the force step. The PTY paths (terminals, dev panes, the design server) and the drive hooks keep the old helper unchanged: they already lead their own groups and already kill correctly.
 
 **Spawn so the group exists.** The adapter spawn sets `detached: true` off Windows, so the adapter leads a group that holds `claude`/`codex`, their MCP servers, hooks and tool shells. On Windows `detached` would open a console, so it is left off. The drive-hook spawn already sets `detached` this way and is the precedent. The same goes for the Codex usage read's `codex app-server`, the short-command runner behind naming runs, the agent list and doctor checks, and the image build (decision 7).
 
 A detached child no longer gets the terminal's Ctrl-C. The server's shutdown stop and the adapter's own exit on stdin EOF cover that. If the server dies hard, its pipes close and the adapters exit on EOF. Anything left after that is a leftover for the start-up clean.
 
-**Polite first (decision 3).** The adapter's stop first ends its stdin. The adapter treats EOF as shutdown, and the Claude Agent SDK then closes `claude` with its own `SIGTERM`→`SIGKILL`. Then the stop runs the tree stop above. Server shutdown keeps its 5-second budget, and stops all threads in parallel.
+**Polite first (decision 3).** The adapter's stop first ends its stdin. The adapter treats EOF as shutdown, and the Claude Agent SDK then closes `claude` with its own `SIGTERM`→`SIGKILL`. Then the stop runs the tree stop above. Server shutdown keeps its 5-second budget and stops all threads in parallel, with a 3-second polite wait so the force lands inside the budget.
 
 **One process per conversation (decision 4).** The host keeps a map from thread to "stopping" (the old process's exit promise). Starting or connecting a thread awaits any entry for that thread before spawning, so a resume or fork never overlaps its predecessor. The kill's own deadline bounds the wait. The entry is removed when the exit settles. Model change, edit-a-message fork, stall kill and idle stop all go through this one path.
 
-**Start-up clean (decisions 5–6).** A new start-up step runs once the server is listening and before any chat is woken. It lists processes and picks those that carry this runcastle's mark:
+**Start-up clean (decisions 5–6).** A new start-up step runs once the server is listening. It is not awaited, so boot never waits on it; it cannot hit a session the new server starts meanwhile, because it skips everything descended from the server. It lists processes and picks those that carry this runcastle's mark:
 
 - **Linux:** read each pid's environment from `/proc/<pid>/environ`. The mark is `RUNCASTLE_SESSION_ID` set together with `RUNCASTLE_SERVER_URL` equal to this server's own URL.
-- **macOS:** read the same two variables from `ps -E -ww` for same-user processes.
+- **macOS:** read the same two variables from `ps -E -ww` for same-user processes. A process whose `ps` line shows no session id falls back to the Windows match below.
 - **Windows:** another process's environment is not readable, so list command lines with `Get-CimInstance Win32_Process`. Match `claude` on its `--settings` path under this data folder's `sessions/`, and the adapter on being the parent of such a process.
 
-It skips the server itself and anything descended from it, then stops each picked tree with the tree stop above and logs one line with the count. A failure to list processes logs and moves on, and never blocks boot. Since only one server can hold the port, any marked process alive at this point belongs to a dead earlier run.
+It skips the server itself, anything descended from it, and every process it runs under (a server restarted from a runcastle terminal carries the mark too). It never signals the server's own process group, and signals a whole group only when the leftover leads one; 1.7.4's leftovers sit in the dead server's group, so only their own pid is signalled. It then stops each picked tree with the tree stop above and logs one line with the count. A failure to list processes logs and moves on, and never blocks boot. Since only one server can hold the port, any marked process alive at this point belongs to a dead earlier run.
 
 ## Seams
 
