@@ -60,7 +60,7 @@ At boot, once the server listens, beside the carry-on wake: every worker that is
 
 ### The lead's guidance
 
-The feature skill's "two failed tries" rule gains: runcastle's nudge is not a try; a message you send a stalled worker is (decision 7).
+The lead learns that a message to a stalled worker is a try, and runcastle's nudge is not (decision 7), from the stalled card itself ("that counts as a try"). It was planned as a clause in the feature skill's "two failed tries" rule, but the skill file sits at its size cap on main.
 
 ### Tests change
 
