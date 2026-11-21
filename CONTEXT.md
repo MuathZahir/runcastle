@@ -75,5 +75,5 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 - Multi-project — the full parallel multi-project UI ([GH #12](https://github.com/MuathZahir/runcastle/issues/12)).
 - Side-by-side dev servers for several drives at once, if one drive slot per project proves too tight.
 - Registry integration (runcastle marketplace inside the app).
-- The lighter feature loop of ADR-0023 (no sandboxes, no required plan, one involvement setting in place of autopilot) is agreed and not yet built; this charter is rewritten part by part as its features merge.
+- The lighter feature loop of ADR-0023 (no sandboxes, no required plan, one involvement setting in place of autopilot) is agreed and being built; this charter is rewritten part by part as its features merge. Built so far: no feature waits for a yes to a plan and the Plan tab is gone (`building-starts-without-a-plan-approval`, 2026-11-21).
 - A setup page for choosing which of the human's skills, plugins and tool servers runcastle sessions load, if the per-turn cost of a full personal setup becomes a real complaint.
