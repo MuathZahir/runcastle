@@ -157,7 +157,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <header id="what">
   <!-- FILL:what -->
   <h1>Workers build in the feature's folder</h1>
-  <p class="lede">Workers run on your machine in the feature's own folder, with no container, and the lead can build small things itself. Planned with nobody present: the decisions marked assumed wait for your look.</p>
+  <p class="lede">Workers run on your machine in the feature's own folder, with no container, and the lead can build small things itself. Planned with nobody present; the epic settled the open decisions on 2026-11-21, and you can overturn any.</p>
   <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/workers-build-in-the-feature-s-folder/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
@@ -198,7 +198,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="box"><b>Feature folder</b><p>On the feature branch. No landing. <a class="pin" data-d="2">2</a></p></div>
       <div></div>
       <div class="arr">yes →</div>
-      <div class="box"><b>Its own folder and branch</b><p>Merged back when runcastle's run of the project's checks passes and the lead has skimmed it. <a class="pin" data-d="3">3</a> <a class="pin" data-d="12">12</a></p></div>
+      <div class="box"><b>Its own folder and branch</b><p>Merged back once the lead has run the project's checks in its folder and skimmed it. <a class="pin" data-d="3">3</a> <a class="pin" data-d="15">15</a></p></div>
     </div>
   </div>
 
@@ -207,7 +207,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <p class="hint">What answers the brief's open questions about two agents in one folder.</p>
     <table class="tbl">
       <tr><th>Who</th><th>While a worker or review is in the folder</th></tr>
-      <tr><td>The lead</td><td>Edits only its docs; a code edit is refused, naming who holds the folder <a class="pin" data-d="8">8</a></td></tr>
+      <tr><td>The lead</td><td>Leaves code alone and writes only its docs, by a rule in its skill; nothing refuses it <a class="pin" data-d="14">14</a></td></tr>
       <tr><td>A worker you start with "+"</td><td>Gets its own folder and branch <a class="pin" data-d="7">7</a></td></tr>
       <tr><td>The review</td><td>Starts only once every worker is landed or dropped; runs in the folder and edits no code <a class="pin" data-d="9">9</a></td></tr>
       <tr><td>Dropping the worker</td><td>Its commits stay; the lead reverts them if unwanted <a class="pin" data-d="13">13</a></td></tr>
@@ -266,7 +266,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <!-- FILL:later -->
     <div><h3>Later</h3><ul>
       <li><i class="dot"></i>Confining the lead's own edits to its folder</li>
-      <li><i class="dot"></i>Locking the lead's shell commands, not just its edits, while a worker holds the folder</li>
+      <li><i class="dot"></i>A check that stops the lead editing code while a worker holds the folder (a rule for now)</li>
     </ul></div>
     <!-- FILL:not-this -->
     <div><h3>Not this feature</h3><ul>
@@ -289,8 +289,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <tr><td>Worker row</td><td>New folder column and a placement (feature-folder or own-folder); the container engine column stops being required. Old sandbox workers finish the old way.</td></tr>
         <tr><td>Starting a worker</td><td>Build workers join the host path the drive workers and drive review already use: host briefing, host permissions, a real folder. An own-folder worker gets a new worktree cut from the feature branch's tip, and the project's setup command if one is set.</td></tr>
         <tr><td>Handback</td><td>A feature-folder worker's commits come from the per-turn commit record the drive workers use. "Land" only marks it landed.</td></tr>
-        <tr><td>Landing an own-folder worker</td><td>Runs the project's check commands in its folder; on green merges through the feature's landing queue and removes the folder; on red returns the output. Conflict handling unchanged.</td></tr>
-        <tr><td>Hook route</td><td>The edit guard's docs-only branch becomes the lead's folder lock; workers get folder containment and a git command check modelled on the drive's checkout guard; the remote guard learns the worker's folder; the command splitter learns PowerShell and Windows paths.</td></tr>
+        <tr><td>Landing an own-folder worker</td><td>The lead runs the checks in its folder first; landing merges through the feature's landing queue and removes the folder. Conflict handling unchanged.</td></tr>
+        <tr><td>Hook route</td><td>Workers get folder containment in place of the docs-only rule and a git command check modelled on the drive's checkout guard; the remote guard learns the worker's folder; the command splitter learns PowerShell and Windows paths.</td></tr>
         <tr><td>Review</td><td>A review that does not drive the app runs on the host in the feature's folder, writing only its notes.</td></tr>
         <tr><td>Words</td><td>The feature skill, worker tool descriptions, worker briefing, review template, guard refusals, web wording, and a plain risk statement in the README. CONTEXT.md lines are left for the orchestrator.</td></tr>
         <tr><td>Tests</td><td>The hook route (allow or refuse per kind and folder, Windows forms) and the worker service against a temporary git repo.</td></tr>
@@ -316,24 +316,20 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The lead builds small things itself', 'You agreed; the code already allows it, the rules and messages catch up.'],
     ['Guards are the only protection, and the remaining risk is stated plainly', 'You accepted that a script can still reach outside the folder.'],
     ['Parallel workers get work that does not share a port or database', 'Nothing separates them any more (ADR-0023).'],
-    ['The feature folder goes to the first worker; any other worker at the same time gets its own folder', 'One rule, nothing for the lead to get wrong, and "+" fits it.', 'assumed'],
-    ["While a worker or a review works in the feature's folder, the lead edits only its docs", 'Answers the open question of two agents editing one file with one check.', 'assumed'],
-    ["The review runs in the feature's folder and does not edit code", 'No second install and no extra folder.', 'assumed'],
-    ['A worker may not push, rewrite history or leave its branch', 'Your list, plus switching branch and stash, which would break the shared folder.', 'assumed'],
-    ['The same guards on Windows, best effort, said plainly', 'Workers need guards wherever runcastle runs; promising more would be false.', 'assumed'],
-    ['Runcastle runs the checks before merging a parallel worker back', '"Merged when checks pass" becomes a fact, not a step the lead can skip.', 'assumed'],
-    ["Dropping a worker in the feature's folder keeps its commits", 'Undoing them would rewrite the branch history that decision 10 refuses.', 'assumed']
+    ['The feature folder goes to the first worker; any other worker at the same time gets its own folder', 'One rule, nothing for the lead to get wrong, and "+" fits it.', 'by the epic'],
+    ["(Replaced by 14) A check refusing the lead's code edits while the folder is held", 'The epic chose a written rule instead.', 'assumed'],
+    ["The review runs in the feature's folder and does not edit code", 'No second install and no extra folder.', 'by the epic'],
+    ['A worker may not push, rewrite history or leave its branch', 'Your list, plus switching branch and stash, which would break the shared folder.', 'by the epic'],
+    ['The same guards on Windows, best effort, said plainly', 'Workers need guards wherever runcastle runs; promising more would be false.', 'by the epic'],
+    ['(Replaced by 15) Runcastle runs the checks before a merge-back', 'The epic kept runcastle language-agnostic.', 'assumed'],
+    ["Dropping a worker in the feature's folder keeps its commits", 'Undoing them would rewrite the branch history that decision 10 refuses.', 'by the epic'],
+    ["Sharing the feature's folder is a rule in the lead's skill, with no check", 'Less machinery; the clash is rare and a refusal would stop the lead building small things.', 'by the epic'],
+    ['The lead runs the checks before merging a parallel worker back', 'As today; runcastle need not know a project\'s check commands.', 'by the epic']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [7, 'The lead says per worker whether it builds in the feature folder or its own', 'The brief says parallel workers get folders when the lead runs them in parallel; I made it automatic', 'intent'],
-    [8, 'A rule in the lead\'s instructions only, no check', 'The orchestrator expected clashes to be rare; this adds a check you may not want', 'forces 9'],
-    [10, 'Keep today\'s checks for every agent, add nothing for workers', 'Refusing every push and switching branch may block a project that needs them', 'scope'],
-    [12, 'The lead runs the checks itself, as today', 'Adds a step runcastle runs and waits on before each merge-back', 'behaviour'],
-    [13, 'Dropping resets the branch to before the worker started', 'You may expect "drop" to remove its work, as it does today', 'intent']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

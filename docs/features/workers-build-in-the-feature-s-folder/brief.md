@@ -51,3 +51,16 @@ Planning mode: automatic
 ## Added by the orchestrator, 2026-11-21
 
 The human, 2026-11-21: "I also want you to tell all features to prioritize implementing on their own. Maybe use subagents. But prefer not to use workers since we keep running out of memory and disk... We need to finish these fixes as fast as possible". So the lead builds this itself in the feature's folder, with its own subagents for parallel parts, and starts no workers, not even a Review worker. It reviews with its own subagents, fixes what they find, runs typecheck and the affected tests, then declares ready.
+
+## Decided by the epic, 2026-11-21
+
+The orchestrator settled the plan's open decisions while this feature runs on autopilot; the human can overturn any (full text in `decisions.md`):
+
+- The feature's folder goes to the first worker; a worker started while it is held gets its own folder and branch (7).
+- Sharing the folder is a written rule in the lead's skill, with no check (14, replacing 8).
+- A review that does not drive the app runs in the feature's folder and edits no code (9).
+- A worker is refused any push, history rewrites, switching branch and `git stash`, which every worktree shares (10).
+- The same guards on Windows, best effort, said plainly (11).
+- The lead runs the project's checks in a parallel worker's folder before merging it back, as today (15, replacing 12).
+- Dropping a worker in the feature's folder keeps its commits (13).
+
