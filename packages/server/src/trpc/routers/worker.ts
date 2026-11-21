@@ -1,13 +1,11 @@
 import type { Need, WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../../db/types'
-import { askWorkerToHandBack, listLiveWorkers, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, startUnassignedWorker } from '../../workers/service'
+import { askWorkerToHandBack, listLiveWorkers, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, startUnassignedWorker, turnRunning } from '../../workers/service'
 import { workerPreviewPath } from '../../routes/design-pass-paths'
 import { phoneDesignPort } from '../../services/phone-link'
 import { publicProcedure, router } from '../context'
 import { threadNeed } from '../../threads/read'
-import { agentHost } from '../../threads/types'
-import { getSessionRow } from '../../launcher/sessions'
 
 /** A worker as the web lists it: its row, its preview's entry path and port, and any account hold it waits behind. */
 type ListedWorker = WorkerRow & { previewPath: string | null; passPort: number; heldBy: string | null; need: Need | null; turnRunning: boolean }
@@ -20,7 +18,7 @@ function listed(ctx: AppCtx, w: WorkerRow): ListedWorker {
     heldBy: queueHoldOf(ctx, w),
     need: threadNeed(ctx, w),
     // A worker `working` by status with no turn running reads Idle (needs-you decision 6).
-    turnRunning: agentHost(ctx).isRunning(w.id) && getSessionRow(ctx, w.id)?.awaitingInput === false,
+    turnRunning: turnRunning(ctx, w.id),
   }
 }
 

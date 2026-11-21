@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { WorkerStatus } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, markSessionEnded, markSessionLive, setSessionTitle } from '../src/launcher/sessions'
@@ -118,9 +117,10 @@ describe('wait_for_you from a lead on autopilot', () => {
 
 describe('the state line runcastle adds', () => {
   it('says ready, what it waits on, and how many workers are at work', () => {
-    const w = (status: WorkerStatus) => ({ status })
-    expect(handbackStateLine({ why: 'Ready to test · Checkout' }, [w('landed'), w('handed-back')])).toBe('Ready to test · no workers at work')
-    expect(handbackStateLine({ why: 'pick a theme' }, [w('working')])).toBe('Not declared ready · waits on the human: pick a theme · 1 worker at work')
-    expect(handbackStateLine(null, [w('working'), w('queued'), w('failed')])).toBe('Not declared ready · 2 workers at work')
+    expect(handbackStateLine({ why: 'Ready to test · Checkout' }, ['landed', 'handed-back'])).toBe('Ready to test · no workers at work')
+    expect(handbackStateLine({ why: 'pick a theme' }, ['working'])).toBe('Not declared ready · waits on the human: pick a theme · 1 worker at work')
+    expect(handbackStateLine(null, ['working', 'queued', 'failed'])).toBe('Not declared ready · 2 workers at work')
+    // As shown: a worker with no turn running is not at work, and a stalled one is named.
+    expect(handbackStateLine(null, ['idle', 'stalled'])).toBe('Not declared ready · no workers at work · 1 stalled')
   })
 })

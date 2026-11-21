@@ -15,7 +15,9 @@ The web's rule for what a worker shows (its own need, else Working while a turn 
 - the feature context's worker list and counts (what the lead reads),
 - the epic's in-flight feature line ("2 working, 1 needs you"),
 - the handback state line ("N workers at work"),
-- the restart carry-on, which must skip a stalled worker.
+- the restart carry-on, which must skip a stalled worker (it already wakes only `working` and `queued` ones, so nothing changes there).
+
+The epic's line also counts idle workers ("1 queued, 2 idle"), so an in-flight feature whose workers all stopped does not read as busy.
 
 `turnRunning` today is computed only in the web's worker router; it becomes one server helper used by all of these.
 
@@ -38,23 +40,23 @@ In the worker service's turn-ended handler, after the handback, failure and usag
 5. The prompt that opened the ended turn was runcastle's nudge: set `stalled`, emit `worker.stalled`, tell the lead.
 6. Otherwise: send the nudge, emit `worker.nudged`.
 
-Steps 4 and 5 read the worker's thread log: the last `prompt` event before the ended turn, its `source`, and whether it carries the nudge's display marker. Reading the log rather than an in-memory counter means a server restart between the nudge and its turn's end still stalls rather than nudging twice.
+Steps 4 and 5 read the worker's thread log: the prompt that opened the ended turn and any steered into it. Step 4 holds when any of them came from the human; step 5 when the opening one is the nudge's exact text. A failed turn is left to the existing recovery, and a compaction turn is never nudged. Reading the log rather than an in-memory counter means a server restart between the nudge and its turn's end still stalls rather than nudging twice.
 
 The nudge is a `source: 'runcastle'` prompt through the agent host, like the transient retry, with a display marker so the log (and the worker's chat) can tell it apart:
 
 > [runcastle] Your turn ended without a handback. Carry on with your assignment. When it is done, hand back; if you are blocked on the human, call wait_for_you.
 
-A Review worker's nudge names its handback (the review package) instead of "your assignment".
+A Review worker's nudge says "the review" and "hand back your Review Package" instead.
 
 ### Telling the lead
 
-`worker.stalled` follows `failWorker`'s pattern: an event, then `deliverToLead` with a new `PromptDisplay` variant `workerStalled { workerId, label, kind }`, which wakes the lead once. Its text tells the lead the worker stopped twice without handing back and its choices: `message_worker` with what to do (counts as a try), or `drop_worker`. The web renders it with the existing worker-failed card's component, with "Stalled" in place of "Failed" and no error block. The orchestrator is not told (decision 6; `orchestrator-notify` already ignores worker events).
+`worker.stalled` follows `failWorker`'s pattern: an event, then `deliverToLead` with a new `PromptDisplay` variant `workerStalled { workerId, label }`, which wakes the lead once. Its text tells the lead the worker stopped twice without handing back and its choices: `message_worker` with what to do (counts as a try), or `drop_worker`. The web renders it with the existing worker-failed card's component, with "Stalled" in place of "Failed" and no error block. The orchestrator is not told (decision 6; `orchestrator-notify` already ignores worker events).
 
 ### Resuming workers a restart caught before their turn (decision 9)
 
 The agent host logs a prompt as it is sent, then the turn waits for the worker's slot before `turn_started`. A thread folds `working` only once a turn has started, so the boot reconciliation sees a worker waiting for its slot (or for its process to start) as idle: it is not closed as cut off, and the carry-on wake skips it. Its row stays `queued` (or `working`) with nothing behind it.
 
-At boot, once the server listens, beside the carry-on wake: every worker that is `working` or `queued`, not a drive worker, not a host review waiting for the drive (the drive-review wait already re-arms those), not running, not among the chats the carry-on wake already told, and not on a copied database's background ban (`mayStartInBackground`), whose thread log holds prompts after its last `turn_started` that are neither held nor steered nor hidden, is resumed. Those prompts' texts, joined in order, are sent again as one `runcastle` prompt marked hidden: the agent receives it, and the chat (which already shows the original messages) does not show it twice. The host's `PromptOptions` gains `hidden` for this. A `worker.resumed` event says so. The slot code then sets it `queued` or `working` as for any turn.
+At boot, once the server listens, beside the carry-on wake: every worker that is `working` or `queued`, not a drive worker, not a host review waiting for the drive (the drive-review wait already re-arms those), not running, not among the chats the carry-on wake already told, and not on a copied database's background ban (`mayStartInBackground`), whose thread log holds prompts after its last `turn_started` that are neither held nor steered nor hidden, is resumed. Those prompts' texts, joined in order, are sent again as one `runcastle` prompt whose display is a one-line summary ("The server restarted before this message reached the worker: sent again"): the agent receives the full text, and the chat (which already shows the original messages) shows only that line. A `worker.resumed` event says so. (Planned as a new hidden prompt option; built with the existing display summary instead, since the host treats a hidden prompt as a command: it skips the usage-limit checks and the chat's opening context.) A worker the usage limit holds is skipped too: its wake is armed again at boot. The slot code then sets it `queued` or `working` as for any turn.
 
 ### The lead's guidance
 

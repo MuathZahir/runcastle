@@ -12,6 +12,7 @@ import {
   messageWorker,
   requireFeatureWorker,
   sendBackWorker,
+  shownStatusOf,
   startReviewWorker,
   startWorker,
   workerPrompted,
@@ -43,6 +44,7 @@ import type {
   SessionRow,
   TicketStatus as TicketStatusT,
   WorkerStatus as WorkerStatusT,
+  ShownWorkerStatus,
   WorkerRow,
 } from '@runcastle/core'
 import {
@@ -657,7 +659,8 @@ export interface FeatureStatusView {
   autopilot: { epic: string; chatId: string } | null
   humanTypedAt: number | null
   /** How many of the feature's workers are in each status; a status with none is absent. */
-  workerCounts: Partial<Record<WorkerStatusT, number>>
+  /** How many of the feature's workers show each status (Working only while a turn runs); a status with none is absent. */
+  workerCounts: Partial<Record<ShownWorkerStatus, number>>
   latestReady: ReadyDeclaration | null
   /** Defects the feature's reviews reported that nothing has resolved yet. */
   openFindings: number
@@ -670,8 +673,11 @@ export interface FeatureStatusView {
 
 export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureStatusView {
   const feature = getFeatureRow(ctx, reader.featureId)
-  const workerCounts: Partial<Record<WorkerStatusT, number>> = {}
-  for (const w of listWorkers(ctx, feature.id)) workerCounts[w.status] = (workerCounts[w.status] ?? 0) + 1
+  const workerCounts: Partial<Record<ShownWorkerStatus, number>> = {}
+  for (const w of listWorkers(ctx, feature.id)) {
+    const shown = shownStatusOf(ctx, w)
+    workerCounts[shown] = (workerCounts[shown] ?? 0) + 1
+  }
   const lock = autopilotOf(ctx, feature)
   return {
     slug: feature.slug,
@@ -2281,15 +2287,18 @@ function featureIndexLine(feature: FeatureListItem, workerState = ''): string {
   return `${feature.slug} — ${feature.title} [${workerState ? `in flight: ${workerState}` : 'in flight'}]${edges}`
 }
 
-/** An in-flight feature's workers for its index line: `2 working, 1 needs you`; empty when none is at work or waiting. */
+/** An in-flight feature's workers for its index line, as shown: `2 working, 1 needs you, 1 idle`; empty when it has none in play. */
 function workerStateOf(ctx: AppCtx, feature: FeatureListItem): string {
   if (feature.status !== 'active') return ''
-  const rows = listWorkers(ctx, feature.id)
-  const count = (...statuses: WorkerRow['status'][]) => rows.filter((w) => statuses.includes(w.status)).length
+  // As shown: a worker with no turn running is not "working" (a-worker-never-shows-working-with-nothing-running decision 1).
+  const shown = listWorkers(ctx, feature.id).map((w) => shownStatusOf(ctx, w))
+  const count = (status: ShownWorkerStatus) => shown.filter((s) => s === status).length
   return [
     [count('working'), 'working'],
     [count('queued'), 'queued'],
     [count('needs-you'), 'needs you'],
+    [count('stalled'), 'stalled'],
+    [count('idle'), 'idle'],
   ]
     .filter(([n]) => n !== 0)
     .map(([n, label]) => `${n} ${label}`)

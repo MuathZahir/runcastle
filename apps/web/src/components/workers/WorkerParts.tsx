@@ -500,25 +500,30 @@ export function FeatureHandbackCard({
 
 /**
  * A worker that failed, in the lead's chat (decision 16): one line, the way
- * a failure reads in a thread, with the way to the worker's chat.
+ * a failure reads in a thread, with the way to the worker's chat. A stalled
+ * worker's notice is the same line in amber (a-worker-never-shows-working-
+ * with-nothing-running decision 6): nothing broke, it stopped short twice.
  */
 export function WorkerFailedCard({
   workerId,
   workerLabel,
   reason,
+  stalled = false,
   onOpenWorker,
 }: {
   workerId: string
   workerLabel: string
   /** What failed, in words: "container stopped unexpectedly". */
   reason: string
+  /** It stalled rather than failed: amber, and "stalled" in place of "failed". */
+  stalled?: boolean
   onOpenWorker: (workerId: string) => void
 }) {
   return (
     <div role="status" className={cx(WELL, 'flex min-w-0 items-center gap-2.5 py-1.5 pr-2 pl-4 animate-rise-in')}>
-      <IconAlert size={15} className="shrink-0 text-danger" />
-      <span className="min-w-0 flex-1 text-sm text-danger-text">
-        Worker “{workerLabel}” failed: {reason}
+      <IconAlert size={15} className={cx('shrink-0', stalled ? 'text-warning' : 'text-danger')} />
+      <span className={cx('min-w-0 flex-1 text-sm', stalled ? 'text-warning-text' : 'text-danger-text')}>
+        Worker “{workerLabel}” {stalled ? 'stalled' : 'failed'}: {reason}
       </span>
       <Button size="sm" variant="ghost" icon={<IconMessage />} onClick={() => onOpenWorker(workerId)}>
         Open its chat

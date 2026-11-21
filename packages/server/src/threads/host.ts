@@ -224,6 +224,8 @@ export interface TurnEnding {
   subagents?: boolean
   /** The account's usage limit stopped it, however it ended: the chat is held for the reset, and the turn failed at nothing of its own. */
   usageLimit?: boolean
+  /** A prompt already waits to run next: the thread is not done, whatever this turn left. */
+  queued?: boolean
 }
 
 /** How long a watched turn may show no progress ({@link AgentHostDeps.stallBounds}). */
@@ -1896,6 +1898,7 @@ class Host implements AgentHost {
         ...(end.error !== undefined ? { error: end.error } : {}),
         ...backgroundOf(t),
         ...(limited ? { usageLimit: true } : {}),
+        ...(t.queue.length ? { queued: true } : {}),
       }
       this.hook(() => this.lifecycle.turnEnded?.(row, item.source, ending))
     }
@@ -2067,7 +2070,10 @@ class Host implements AgentHost {
     else if (reason === 'end_turn') this.ranPastLimit(t.id)
     // Its end is heard like any other: a worker may have handed back in it.
     const row = getSessionRow(this.ctx, t.id)
-    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, 'agent', { reason, ...backgroundOf(t), ...(limited ? { usageLimit: true } : {}) }))
+    if (row) {
+      const ending: TurnEnding = { reason, ...backgroundOf(t), ...(limited ? { usageLimit: true } : {}), ...(t.queue.length ? { queued: true } : {}) }
+      this.hook(() => this.lifecycle.turnEnded?.(row, 'agent', ending))
+    }
     this.pump(t)
   }
 

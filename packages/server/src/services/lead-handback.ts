@@ -1,4 +1,4 @@
-import { type Feature, type Need, readyToTestWhy, type WorkerRow } from '@runcastle/core'
+import { type Feature, type Need, readyToTestWhy, type ShownWorkerStatus } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { agentHost } from '../threads/types'
@@ -7,7 +7,7 @@ import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { getSessionRow, newestThread } from '../launcher/sessions'
 import { waitOf } from './waits'
-import { listWorkers } from '../workers/service'
+import { listWorkers, shownStatusOf } from '../workers/service'
 
 /** The event a lead's handback leaves on its feature's timeline. */
 export const LEAD_HANDED_BACK = 'lead.handed_back'
@@ -18,12 +18,15 @@ export const LEAD_HANDED_BACK = 'lead.handed_back'
  * what it waits on, and how many of its workers are at work, so the
  * orchestrator needs no fetch.
  */
-export function handbackStateLine(wait: Pick<Need, 'why'> | null, workers: readonly Pick<WorkerRow, 'status'>[]): string {
+export function handbackStateLine(wait: Pick<Need, 'why'> | null, shown: readonly ShownWorkerStatus[]): string {
   const ready = !!wait?.why.startsWith(readyToTestWhy(''))
   const parts = [ready ? 'Ready to test' : 'Not declared ready']
   if (wait && !ready) parts.push(`waits on the human: ${wait.why}`)
-  const working = workers.filter((w) => w.status === 'working' || w.status === 'queued').length
+  // As shown: a worker with no turn running is not at work (a-worker-never-shows-working-with-nothing-running decision 1).
+  const working = shown.filter((s) => s === 'working' || s === 'queued').length
   parts.push(working ? `${working} ${working === 1 ? 'worker' : 'workers'} at work` : 'no workers at work')
+  const stalled = shown.filter((s) => s === 'stalled').length
+  if (stalled) parts.push(`${stalled} stalled`)
   return parts.join(' · ')
 }
 
@@ -57,7 +60,10 @@ export async function handBackToOrchestrator(
     throw new GateError('this test drive has not started the epic of this feature, so the handback was not sent')
   }
   const said = summary.trim()
-  const state = handbackStateLine(leadSessionId ? waitOf(ctx, leadSessionId) : null, listWorkers(ctx, feature.id))
+  const state = handbackStateLine(
+    leadSessionId ? waitOf(ctx, leadSessionId) : null,
+    listWorkers(ctx, feature.id).map((w) => shownStatusOf(ctx, w)),
+  )
   const who = opts.worker ? `its worker "${opts.worker}"` : 'its lead'
   const head = opts.asks
     ? `[runcastle] ${feature.slug} asks for the human (${who} called wait_for_you; it is on autopilot, so it comes to you):\n${said}\n`

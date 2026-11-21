@@ -134,7 +134,8 @@ describe('a transient error', () => {
   it('is retried in the same conversation after a backoff, the worker staying working', async () => {
     const fake = failing('API Error: 529 overloaded_error')
     realHost(fake)
-    const id = await startWorker()
+    // With you: its retried turn ends with no handback, which would nudge an "on its own" worker.
+    const id = await startWorker('Header', 'with-you')
     await until(() => turnDone(id))
 
     expect(workerPrompts(id)).toEqual(['Start your assignment: Build the Header', expect.stringContaining('[runcastle] The last turn stopped on a transient error (')])

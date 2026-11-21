@@ -303,7 +303,8 @@ describe('a Codex worker after an idle stop', () => {
   it('wakes its sandbox and reloads the same conversation over codex-acp', async () => {
     const fake = createFakeAcp()
     const host = realHost(fake)
-    const id = await startCodexWorker()
+    // With you: an "on its own" worker's quiet turn would be nudged into a second one.
+    const id = await startCodexWorker('with-you')
     await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
     const conversation = getSessionRow(ctx, id)!.ccSessionId
     const container = getWorker(ctx, id)!.container!
