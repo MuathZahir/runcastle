@@ -27,10 +27,10 @@ type QuietReason =
   | { kind: 'unknown' }                     // "stopped after its last turn"
 type QuietSnapshot = {
   features: QuietFeature[]    // started features only: no drafts, no merged or archived ones (decision 2)
-  orchestratorRunning: boolean
+  otherRunning: boolean       // an orchestrator chat's turn or a drive in progress
   needsYou: boolean           // any wait or open ask on any chat of the project, epics included (decision 3)
 }
-// raises when: !needsYou && !orchestratorRunning && no feature running
+// raises when: !needsYou && !otherRunning && no feature running
 //              && at least one feature with !yourMove
 ```
 
@@ -45,8 +45,8 @@ A new server service beside the needs watcher, started at boot after it, skipped
 - It re-checks a project when a turn starts or ends, when a wait is set or cleared, and on a one-minute timer, so a stop is noticed even with no event.
 - It keeps, per project in memory, when the project last went quiet and whether this stop already raised its alert. Quiet begins at the end of the last running thing; a server start counts as the start of quiet, so a restart never raises the alert for a stop it cannot date.
 - After 10 quiet minutes with the rule still true, it sets the wait with the "runcastle" mark on the target chat: the epic holding the stopped features (the newest one if several), else the project's newest orchestrator chat, else, for a project with none, the first stopped feature's own chat. Setting the wait already emits the event the needs watcher turns into the phone ping; nothing new is needed on the push side.
-- **Once per stop** (decision 6): when work runs again, the watcher clears its own wait (a new wait-end cause, "work started again") and arms for the next stop. A turn that ends held by the usage limit, with no other turn running, does not count as work running again. A human writing in the chat clears the wait as any wait is cleared today, which also counts as the end of that stop.
-- The wait's line is built from the reasons, oldest-stopped feature first, cut to the one-line limit the wait already applies.
+- **Once per stop** (decision 6): when work runs again, the watcher clears its own wait (a new wait-end cause, "work started again") and arms for the next stop. A run shorter than two minutes that ends with a chat of the project held by the usage limit does not count as work running again: it is a retry of the same stop. Work that runs two minutes or more ends the stop. A human writing in the chat clears the wait as any wait is cleared today, which also counts as the end of that stop.
+- The wait's line is built from the reasons, in the order the features were started, and folded to one line as every wait is.
 
 ### The web
 
