@@ -37,7 +37,7 @@ const path = (...segments: string[]): string =>
 function sender(ctx: AppCtx, session: SessionRow): Pick<PushMessage, 'title' | 'url'> {
   const thread = `?thread=${encodeURIComponent(session.id)}`
   if (session.kind === 'project') {
-    const projectId = requireOrchestratorSession(session)
+    const projectId = requireOrchestratorSession(ctx, session)
     return { title: chatName(session), url: `${path('p', projectId, 'chat')}${thread}` }
   }
   if (session.kind !== 'chat' || !session.featureId) {

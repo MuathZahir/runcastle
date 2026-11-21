@@ -295,7 +295,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
       const ended = getSessionRow(ctx, session.id) as SessionRow
       await expect(
         toolSendToFeature(ctx, ended, { slug: 'stopped', message: 'x' }),
-      ).rejects.toThrow(/has ended/)
+      ).rejects.toThrow(/not the orchestrator chat runcastle is running/)
     })
   })
 })

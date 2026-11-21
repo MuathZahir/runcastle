@@ -982,7 +982,6 @@ class Host implements AgentHost {
       const pending = readPendingFork(t.id)
       writePendingFork(t.id, { ...pending, preface: pending.preface !== undefined ? `${PLANNING_HALTED_PREFACE}\n\n${pending.preface}` : PLANNING_HALTED_PREFACE })
     }
-    appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
     this.ended(t, reason)
   }
 
@@ -1503,8 +1502,7 @@ class Host implements AgentHost {
     if (t.state === 'stopped') return
     this.detach(t)
     await this.endProcess(t)
-    appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: failedStartText(err) })
-    this.ended(t, 'crashed')
+    this.ended(t, 'crashed', failedStartText(err))
   }
 
   private crashed(t: Thread, stderr: string): void {
@@ -1513,8 +1511,7 @@ class Host implements AgentHost {
     // The adapter is gone, but what it started may not be.
     void this.endProcess(t)
     this.keepStderr(t.id, stderr)
-    appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: crashText(stderr) })
-    this.ended(t, 'crashed')
+    this.ended(t, 'crashed', crashText(stderr))
   }
 
   /** A dead process's stderr, for whoever debugs it: appended to the session dir's log, never the thread. */
@@ -1530,10 +1527,28 @@ class Host implements AgentHost {
     }
   }
 
-  /** The row's process is over: mark it so, and let the lifecycle react. */
-  private ended(t: Thread, reason: StopReason): void {
+  /**
+   * The row's process is over: say so on the thread, mark the row ended, and
+   * let the lifecycle react. Nothing at all when the session was superseded.
+   */
+  private ended(t: Thread, reason: StopReason, error?: string): void {
+    if (this.superseded(t)) return
+    appendThreadEvent(t.id, { type: 'process', state: 'stopped', ...(error !== undefined ? { error } : {}) })
     const row = markSessionEnded(this.ctx, t.id)
     if (row) this.hook(() => this.lifecycle.stopped?.(row, reason, t.startedBy))
+  }
+
+  /**
+   * Whether a newer process of `t`'s session already runs: a stop that finishes
+   * after a prompt started the conversation again. Such a stop is over for the
+   * old process only. It neither ends the row, says the session stopped, nor
+   * runs the stop's cleanup (a worker's sandbox, a lead's drive, a project
+   * session's landing), all of which belong to the process that replaced it
+   * (the-orchestrator-is-never-locked-out decision 1).
+   */
+  private superseded(t: Thread): boolean {
+    const current = this.threads.get(t.id)
+    return current !== undefined && current !== t
   }
 
   /** Run a lifecycle hook; one that throws is logged, never the thread's failure. */
@@ -1984,6 +1999,8 @@ class Host implements AgentHost {
     if (turn.quiet) clearTimeout(turn.quiet)
     const files = await this.turnFiles(t, turn)
     appendThreadEvent(t.id, { type: 'turn_ended', reason: 'error', error, ...(files.length ? { files } : {}) })
+    // A prompt already started the conversation again: its retry is done, and the rest is the new process's.
+    if (this.superseded(t)) return
     appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
     const row = markSessionEnded(this.ctx, t.id)
     if (!row) return

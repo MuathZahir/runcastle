@@ -16,10 +16,13 @@ import { toolCreateFeature, toolGetProjectContext, toolsForAudience } from '../s
 import {
   orchestratorTool,
   toolSetAutopilot,
+  NOT_THE_RUNNING_CHAT,
   requireOrchestratorSession,
   requireProjectFeature,
 } from '../src/mcp/orchestrator-tools'
-import { emit, listAfter } from '../src/services/events'
+import { setAgentHostForTests } from '../src/threads/host'
+import type { AgentHost } from '../src/threads/types'
+import { emit, listAfter, listByProject } from '../src/services/events'
 import { readThreadEvents } from '../src/threads/types'
 import { openProject } from '../src/services/projects'
 import { withTempDataDir } from './helpers/data-dir'
@@ -121,22 +124,50 @@ describe('the orchestrator’s gate', () => {
     const session = projectSession()
     const feature = seedFeature(ctx, projectId, { slug: 'humans' })
     expect(requireProjectFeature(ctx, session, 'humans').id).toBe(feature.id)
-    expect(requireOrchestratorSession(session)).toBe(projectId)
+    expect(requireOrchestratorSession(ctx, session)).toBe(projectId)
   })
 
   it('refuses a session that is not an orchestrator', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'humans' })
     const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
     expect(refusal(() => requireProjectFeature(ctx, chat, 'humans'))).toMatch(/only the orchestrator/)
-    expect(refusal(() => requireOrchestratorSession(chat))).toMatch(/only the orchestrator/)
+    expect(refusal(() => requireOrchestratorSession(ctx, chat))).toMatch(/only the orchestrator/)
   })
 
-  it('refuses an orchestrator that has ended', () => {
+  /**
+   * the-orchestrator-is-never-locked-out decision 4: only a process the host does
+   * not run is refused, and it is told to stop, never to open a new session.
+   */
+  it('refuses an ended orchestrator whose process runcastle is not running, saying what to do', () => {
     seedFeature(ctx, projectId, { slug: 'humans' })
     const session = projectSession()
     markSessionEnded(ctx, session.id)
     const ended = getSessionRow(ctx, session.id) as SessionRow
-    expect(refusal(() => requireProjectFeature(ctx, ended, 'humans'))).toMatch(/has ended/)
+    const said = refusal(() => requireProjectFeature(ctx, ended, 'humans'))
+    expect(said).toBe(NOT_THE_RUNNING_CHAT)
+    expect(said).not.toMatch(/new one|new session/)
+    expect(getSessionRow(ctx, session.id)?.status).toBe('ended')
+  })
+
+  /**
+   * REGRESSION (the-orchestrator-is-never-locked-out): a stale "session ended"
+   * left an open orchestrator chat's row ended, and every tool refused it for 98
+   * minutes. A row the host runs is alive: the call goes ahead and revives it.
+   */
+  it('lets an orchestrator act whose row says ended while runcastle runs its process, and revives it', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'humans' })
+    const session = projectSession()
+    markSessionEnded(ctx, session.id)
+    const ended = getSessionRow(ctx, session.id) as SessionRow
+    setAgentHostForTests({ isRunning: (id: string) => id === session.id } as unknown as AgentHost)
+    try {
+      expect(requireProjectFeature(ctx, ended, 'humans').id).toBe(feature.id)
+    } finally {
+      setAgentHostForTests(undefined)
+    }
+    expect(getSessionRow(ctx, session.id)?.status).toBe('live')
+    const revived = listByProject(ctx, projectId).filter((e) => e.type === 'session.started' && /live again/.test(e.message))
+    expect(revived).toHaveLength(1)
   })
 
   it('refuses a feature that does not exist in the project', () => {

@@ -43,6 +43,7 @@ import {
 import { writeEpicIcon } from '../threads/epic-look'
 import { EPIC_NAME_MAX, writeEpicName } from '../threads/epic-name'
 import { appendThreadEvent } from '../threads/log'
+import { reviveIfRunning } from '../threads/revive'
 import { seedFromTranscript } from '../threads/read'
 import type { HeaderCarrier } from './server'
 
@@ -61,13 +62,23 @@ export type ResolveSession = (
   extra: HeaderCarrier,
 ) => Promise<{ ctx: AppCtx; session: SessionRow } | null>
 
-/** Refuse unless `session` is a still-open orchestrator chat; its project's id. */
-export function requireOrchestratorSession(session: SessionRow): string {
+/** What a process the host does not run hears when it calls an orchestrator tool (the-orchestrator-is-never-locked-out decision 4). */
+export const NOT_THE_RUNNING_CHAT =
+  'this process is not the orchestrator chat runcastle is running (it was stopped or replaced), so it cannot act. ' +
+  'End your turn here: the open orchestrator chat carries on.'
+
+/**
+ * Refuse unless `session` is an orchestrator chat that is open; its project's
+ * id. A row that says ended while the agent host runs its process is alive and
+ * goes back to live (the-orchestrator-is-never-locked-out decision 2): only a
+ * process the host does not run is refused.
+ */
+export function requireOrchestratorSession(ctx: AppCtx, session: SessionRow): string {
   if (session.kind !== 'project' || !session.projectId) {
     throw new GateError('only the orchestrator may do this: the orchestrator.')
   }
-  if (session.status === 'ended') {
-    throw new GateError('this orchestrator session has ended; a new one must be opened to act.')
+  if (session.status === 'ended' && !reviveIfRunning(ctx, session, 'tool call')) {
+    throw new GateError(NOT_THE_RUNNING_CHAT)
   }
   return session.projectId
 }
@@ -85,7 +96,7 @@ function featureBySlug(ctx: AppCtx, projectId: string, slug: string): Feature {
 
 /** {@link requireOrchestratorSession}, and the feature `slug` names in its project. */
 export function requireProjectFeature(ctx: AppCtx, session: SessionRow, slug: string): Feature {
-  return featureBySlug(ctx, requireOrchestratorSession(session), slug)
+  return featureBySlug(ctx, requireOrchestratorSession(ctx, session), slug)
 }
 
 /**
@@ -148,7 +159,7 @@ export interface SetAutopilotInput {
  */
 export const toolSetAutopilot = orchestratorTool(
   async (ctx: AppCtx, session: SessionRow, input: SetAutopilotInput): Promise<AutopilotResult> => {
-    requireOrchestratorSession(session)
+    requireOrchestratorSession(ctx, session)
     const slugs = input.features ?? []
     if (input.action === 'add' && slugs.length === 0) {
       throw new InvalidInputError('set_autopilot add needs `features`: the slugs to move into this epic.')
@@ -192,7 +203,7 @@ export interface EpicNameResult {
  * changed, only when the human set both.
  */
 export function toolNameEpic(ctx: AppCtx, session: SessionRow, input: { name: string; icon: string }): EpicNameResult {
-  requireOrchestratorSession(session)
+  requireOrchestratorSession(ctx, session)
   const name = input.name.replace(/\s+/g, ' ').trim()
   if (!name) throw new InvalidInputError('name the epic: the name is empty.')
   if (name.length > EPIC_NAME_MAX) {
@@ -287,7 +298,7 @@ export const toolDrive = orchestratorTool(
   ): Promise<TestDriveResult> => {
     const opts = input.scenario ? { scenario: input.scenario } : {}
     if (input.slug === undefined) {
-      const project = requireProjectById(ctx, requireOrchestratorSession(session))
+      const project = requireProjectById(ctx, requireOrchestratorSession(ctx, session))
       return git.projectDrive(ctx, project, input.action, opts)
     }
     const feature = requireActableFeature(ctx, session, input.slug, 'drive')
