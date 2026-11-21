@@ -1,6 +1,6 @@
 import type { Feature, ReviewFinding, TestNote, Ticket, WorkerRow } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
-import { composeOutcomeDoc, digestHasSubstance, type OutcomeInput } from '../src/services/outcome'
+import { appendSection, composeOutcomeDoc, composeReviewSummary, digestHasSubstance, type OutcomeInput } from '../src/services/outcome'
 
 const feature: Feature = {
   id: 'feat_1', projectId: 'proj_1', slug: 'record', title: 'A durable record',
@@ -76,6 +76,34 @@ describe('composeOutcomeDoc', () => {
     expect(doc).toContain('### Review: verify · gates review, verify\n\n- Outcome: handed-back\n- Verified fix commits: f00d123\n\n- No findings')
     // A feature with neither a review ticket nor a Review worker still says so.
     expect(composeOutcomeDoc({ ...input, tickets: [], artifacts: [], workers: [], findings: [] })).toContain('- No completed review pass')
+  })
+
+  it('composes the short review summary: date, scale, each review and its findings, no workers or digests', () => {
+    const worker = { id: 'wkr_b', label: 'Build', kind: 'on-its-own', outcome: 'landed', status: 'landed', tokens: 900 } as unknown as WorkerRow
+    const reviewer = { id: 'wkr_r', label: 'Review', kind: 'review', status: 'handed-back', outcome: null, tokens: 5000, reviewMode: 'gates', reviewVerify: null } as unknown as WorkerRow
+    const verify = { ...reviewer, id: 'wkr_v', label: 'Review: verify', reviewMode: 'drive', reviewVerify: { findingIds: ['f_a'], commits: ['f00d123'] } } as WorkerRow
+    const findings = [
+      { ...finding, id: 'f_a', reviewTicketId: null, reviewWorkerId: 'wkr_r', title: 'Theme resets', resolutionNote: 'persisted in f00d123' },
+      { ...finding, id: 'f_b', reviewTicketId: null, reviewWorkerId: 'wkr_r', title: 'Copy typo', kind: 'observation', severity: 'low', status: 'dismissed', resolutionNote: null },
+    ] as ReviewFinding[]
+
+    const text = composeReviewSummary({ workers: [worker, reviewer, verify], findings, shippedAt: input.shippedAt, delta: input.delta })
+
+    expect(text).toBe([
+      '## Review summary',
+      '- Shipped: 2026-09-05\n- 7 commits · 12 files',
+      '### Review · gates review\n\n- Outcome: handed-back',
+      '- **Theme resets** (defect, high) — fixed: persisted in f00d123\n- **Copy typo** (observation, low) — dismissed',
+      '### Review: verify · drive review, verify\n\n- Outcome: handed-back\n- Verified fix commits: f00d123',
+      '- No findings',
+    ].join('\n\n') + '\n')
+    expect(text).not.toContain('tokens')
+    expect(composeReviewSummary({ workers: [], findings: [], shippedAt: input.shippedAt, delta: input.delta })).toContain('- No review ran')
+  })
+
+  it('appends a section after a blank line, whatever the text ended with', () => {
+    expect(appendSection('# Brief\n\nwords\n\n\n', '## Review summary\n')).toBe('# Brief\n\nwords\n\n## Review summary\n')
+    expect(appendSection('', '## Review summary\n')).toBe('## Review summary\n')
   })
 
   it('drops digests containing only empty None/Nothing rows', () => {

@@ -612,8 +612,8 @@ export function startUnassignedWorker(ctx: AppCtx, featureId: string): Promise<S
 // --- the review (burns-become-workers decisions 3–5) ------------------------------
 
 export interface StartReviewInput {
-  /** `gates` when the feature has nothing to drive; omitted, a drive whenever this host can drive the project. */
-  mode?: ReviewWorkerMode
+  /** The lead's pick (one-file-per-feature decision 9): `drive` when users would meet the change, `gates` (read the diff) otherwise. */
+  mode: ReviewWorkerMode
   /** A verify review's findings and fix commits; omitted for a first review. */
   verify?: ReviewVerify
   /** Omitted, the `review` step's model (the Settings "Review" row). */

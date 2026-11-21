@@ -431,12 +431,18 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     __resetTestDriveState()
   })
 
-  /** A feature with a branch carrying one commit, sitting in review. */
+  /**
+   * An old-shape feature (it has a spec.md, so it gets outcome.md at merge)
+   * with a branch carrying one commit, sitting in review.
+   */
   async function seedShippableFeature(slug: string): Promise<Feature> {
     await createFeatureBranch(project, slug, 'main')
     await g.checkout(`feature/${slug}`)
     writeFileSync(join(project.repoPath, `${slug}.txt`), 'work\n')
-    await g.add([`${slug}.txt`])
+    const docs = join(project.repoPath, 'docs', 'features', slug)
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(join(docs, 'spec.md'), '# Spec\n')
+    await g.add([`${slug}.txt`, `docs/features/${slug}/spec.md`])
     await g.commit('feat: work')
     await g.checkout('main')
     return seedFeature(ctx, project.id, { slug, title: `The ${slug} feature` })

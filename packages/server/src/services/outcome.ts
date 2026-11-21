@@ -1,6 +1,6 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Feature, Project, ReviewFinding, TestNote, Ticket, WorkerRow } from '@runcastle/core'
+import { isOldShapeFeature, type Feature, type Project, type ReviewFinding, type TestNote, type Ticket, type WorkerRow } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
 import { emit } from './events'
@@ -127,11 +127,45 @@ export function composeOutcomeDoc(input: OutcomeInput): string {
   return `${blocks.join('\n\n')}\n`
 }
 
-/** Write and commit the record in the main checkout after the merge commit. */
+/** What the short form needs: the shipped scale and the review workers with their findings. */
+export type ReviewSummaryInput = Pick<OutcomeInput, 'workers' | 'findings' | 'shippedAt' | 'delta'>
+
+/**
+ * The short form of the shipped record, stamped at the end of a one-file
+ * feature's `brief.md` at merge (one-file-per-feature decision 7): the ship
+ * date, the scale, and each review with its findings and what became of them.
+ * The worker list with token counts and the ticket digests stay out; the work
+ * record (runcastle's database) still has them.
+ */
+export function composeReviewSummary(input: ReviewSummaryInput): string {
+  const { workers = [], findings, shippedAt, delta } = input
+  const blocks = [
+    '## Review summary',
+    `- Shipped: ${new Date(shippedAt).toISOString().slice(0, 10)}\n- ${delta.commits} commits · ${delta.files} files`,
+  ]
+  const reviews = workers.filter((w) => w.kind === 'review')
+  for (const review of reviews) blocks.push(...reviewWorkerRecord(review, findings))
+  if (!reviews.length) blocks.push('- No review ran')
+  return `${blocks.join('\n\n')}\n`
+}
+
+/** `text` with `section` added at its end, one blank line between them. */
+export function appendSection(text: string, section: string): string {
+  const body = text.trimEnd()
+  return body ? `${body}\n\n${section}` : section
+}
+
+/**
+ * Write and commit the record in the main checkout after the merge commit.
+ * An old-shape feature (it has `decisions.md` or `spec.md`) gets `outcome.md`;
+ * a one-file feature gets the short `## Review summary` appended to its
+ * `brief.md` (one-file-per-feature decisions 7, 8). Answers the doc's path in
+ * the repo, or null when it could not be written.
+ */
 export async function promoteOutcomeDoc(
   ctx: AppCtx, project: Project, feature: Feature, target: string,
   delta: { commits?: number; files?: number },
-): Promise<void> {
+): Promise<string | null> {
   try {
     const tickets = listTickets(ctx, feature.id)
     const artifacts: OutcomeArtifact[] = tickets.filter((ticket) => ticket.kind === 'review').map((ticket) => ({
@@ -143,26 +177,37 @@ export async function promoteOutcomeDoc(
       ).length,
     }))
     await keepFeatureConversations(ctx, feature.id)
-    const doc = composeOutcomeDoc({
+    const outcomeInput: OutcomeInput = {
       feature, tickets, workers: listWorkers(ctx, feature.id), findings: listFindings(ctx, feature.id), notes: listNotes(ctx, feature.id), artifacts,
       shippedAt: Date.now(), delta: { commits: delta.commits ?? 0, files: delta.files ?? 0 },
-    })
-    await git.onBranch(project.repoPath, target, async () => {
-      const docsDir = join(project.repoPath, ...featureDocsRel(feature.slug).split('/'))
+    }
+    return await git.onBranch(project.repoPath, target, async () => {
+      const docsRel = featureDocsRel(feature.slug)
+      const docsDir = join(project.repoPath, ...docsRel.split('/'))
       mkdirSync(docsDir, { recursive: true })
-      writeFileSync(join(docsDir, 'outcome.md'), doc, 'utf8')
+      const oldShape = isOldShapeFeature(readdirSync(docsDir))
+      const name = oldShape ? 'outcome.md' : 'brief.md'
+      const file = join(docsDir, name)
+      if (oldShape) {
+        writeFileSync(file, composeOutcomeDoc(outcomeInput), 'utf8')
+      } else {
+        const brief = existsSync(file) ? readFileSync(file, 'utf8') : ''
+        writeFileSync(file, appendSection(brief, composeReviewSummary(outcomeInput)), 'utf8')
+      }
       // Only the outcome itself: a merge goes ahead past the human's unrelated
       // uncommitted files (docs included), and they must stay uncommitted.
       await git.commitDocs(
         project.repoPath,
         git.docsCommitMessage(`outcome for ${feature.slug}`, project.docsCommitPrefix),
-        `${featureDocsRel(feature.slug)}/outcome.md`,
+        `${docsRel}/${name}`,
       )
+      return `${docsRel}/${name}`
     })
   } catch (error) {
     emit(ctx, feature.id, {
       type: 'docs.outcome_failed',
-      message: `outcome.md not promoted on ${target}: ${error instanceof Error ? error.message : String(error)}`,
+      message: `outcome not promoted on ${target}: ${error instanceof Error ? error.message : String(error)}`,
     })
+    return null
   }
 }

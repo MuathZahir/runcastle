@@ -116,15 +116,15 @@ export function reviewDriveHost(): ReviewDriveHost {
 }
 
 /**
- * The mode a review starts in (decision 3): a drive when this host can drive
- * the project, else gates. The lead may ask for gates (the feature has nothing
- * to drive); a drive it asks for on a host that cannot is refused with why.
+ * The mode a review starts in: the one the lead picked (one-file-per-feature
+ * decision 9), with no default. A drive asked for on a host that cannot drive
+ * the project is refused with why.
  */
-export function chooseReviewMode(project: Project, requested?: ReviewWorkerMode): ReviewWorkerMode {
+export function chooseReviewMode(project: Project, requested: ReviewWorkerMode): ReviewWorkerMode {
   if (requested === 'gates') return 'gates'
   const withheld = host.withheld(project)
-  if (requested === 'drive' && withheld) throw new GateError(`a drive review cannot run here: ${withheld} Start a gates review instead.`)
-  return withheld ? 'gates' : 'drive'
+  if (withheld) throw new GateError(`a drive review cannot run here: ${withheld} Start a gates review (read the diff) instead.`)
+  return 'drive'
 }
 
 // --- the assignment ---------------------------------------------------------------
@@ -347,7 +347,7 @@ export function sandboxReviewBriefing(label: string, branch: string): string {
     '',
     '## How you work',
     `- Your checkout is ${IN.repo}, on branch ${branch}. You write no code and make no commits: leave it as you found it.`,
-    "- Runcastle's tools for you: report_finding (one review finding), hand_back, read_feature (the feature's state, decisions and the lead's latest turns) and show_file (a file into this chat). You have no others, and no route to runcastle.",
+    "- Runcastle's tools for you: report_finding (one review finding), hand_back, read_feature (the feature's state and docs) and show_file (a file into this chat). You have no others, and no route to runcastle.",
     `- ${LINK_WHAT_YOU_NAME}`,
     '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then end your turn so the human can decide.',
     "- Your assignment says what to review and how. Run the project's checks yourself, as it says.",
@@ -444,7 +444,8 @@ export function reviewHandbackText(w: Pick<WorkerRow, 'id' | 'label' | 'handback
     '',
     defects.length
       ? 'Next: fix the defects you judge real (yourself or with workers) and close each with resolve_finding (`addressed` or `dismissed`, with a note). ' +
-        'Once you fixed some, start_review({ verify: { findingIds, commits } }) with those findings and the fix commits. ' +
+        'Only after a large fix set (more than a handful of findings, or fixes that reached into code the feature had not touched) ' +
+        'start a verify review, start_review({ mode, verify: { findingIds, commits } }); after a small one, passing checks and your skim are enough. ' +
         `send_back_worker({ workerId: "${w.id}", note }) asks this review for more; drop_worker({ workerId: "${w.id}" }) closes it.`
       : `Next: nothing to fix. send_back_worker({ workerId: "${w.id}", note }) asks this review for more; drop_worker({ workerId: "${w.id}" }) closes it.`,
   ].join('\n')
