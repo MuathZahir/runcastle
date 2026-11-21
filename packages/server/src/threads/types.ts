@@ -86,6 +86,12 @@ export interface AgentHost {
   fork(threadId: string, atPromptId: string, opts: { into: 'same' | 'new'; undoFiles?: boolean }): Promise<{ threadId: string }>
   /** The account's usage limits and plan, from the runtime's adapter. */
   usage(threadId: string): Promise<UsageReport>
+  /**
+   * Arm again, at server start, the wake of every chat the usage limit holds
+   * (a-usage-limit-never-strands-work decision 5): kept on its row, it fires at
+   * its time, or at once when that passed while the server was down.
+   */
+  rearmLimitWakes(): void
   /** The models the thread's runtime offers, the same list whether or not its agent runs, and the one it is on; starts nothing. */
   models(threadId: string): ThreadModels
   /**

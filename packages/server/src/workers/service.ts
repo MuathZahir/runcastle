@@ -857,7 +857,7 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   let w = getWorker(ctx, row.id)
   if (!w) return
   // The usage limit is left to the host, under the human's carry-on setting (burns-become-workers decision 7).
-  const error = end?.reason === 'error' && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
+  const error = end?.reason === 'error' && !end.usageLimit && !isUsageLimitText(end.error ?? '') ? end.error || 'the turn failed' : undefined
   const failed = error !== undefined && w.status === 'working' ? { error, verdict: classifyAgentError(error, w.runtime) } : undefined
   // Held before anything here awaits: the slot this turn just gave back must not start a queued turn on the same account.
   // A drive worker is outside the queue (drive-chats-become-workers decision 7): its account error fails it alone.

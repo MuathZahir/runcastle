@@ -39,6 +39,8 @@ import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
+import { serverUrlFor } from './launcher/artifacts'
+import { sweepLeftoverAgents } from './services/leftover-agents'
 import { agentHost } from './threads/types'
 import { resumeDriveReviewWaits, workerPreviews } from './workers/service'
 import { startHourlySweep, stopOwnWorkerContainers, sweepLeftovers } from './workers/sweep'
@@ -236,6 +238,16 @@ export async function startServer(): Promise<void> {
       `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
   )
 
+  // Agent processes an earlier run of this server never stopped are ended once
+  // (stopping-a-session-kills-its-process decisions 5, 6). After the listen: only
+  // one server holds the port, so anything still marked with its URL is a dead
+  // run's. Not awaited; the server's own agents are its descendants and skipped.
+  void sweepLeftoverAgents({ serverUrl: serverUrlFor(config), dataDir: dataDir(), selfPid: process.pid }).then(({ found, ended }) => {
+    if (found === 0) return
+    const survived = found - ended
+    console.log(`leftover agents: ended ${ended} process(es) an earlier server run left running${survived ? `; ${survived} survived its stop` : ''}`)
+  })
+
   // The phone's way to a feature's design server (routes/design-pass.ts), on its
   // own port so project code never shares runcastle's API origin.
   const designPass = serveDesignPass(
@@ -268,6 +280,9 @@ export async function startServer(): Promise<void> {
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   void wakeCutOffChats(ctx, cutOffChats)
+  // …and every chat the usage limit holds gets its wake again, kept on its row (a-usage-limit-never-strands-work decision 5).
+  // A copied database's chats are the live install's, never this server's to wake.
+  if (!isDatabaseCopy()) agentHost(ctx).rearmLimitWakes()
   // …a drive's workers are handed back when it stops; a restart already stopped every drive, so any left at work are handed back now.
   onDriveEnded((ended) => handBackDriveWorkers(ctx, ended))
   if (!isDatabaseCopy()) {

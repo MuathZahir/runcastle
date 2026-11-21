@@ -167,3 +167,13 @@ export function limitLiftsAt(limits: readonly UsageLimit[], now: number): number
   if (spent.length > 0) return Math.max(...spent)
   return ahead.length > 0 ? Math.min(...ahead.map((l) => l.at)) : undefined
 }
+
+/**
+ * When a used-up limit lifts, read fresh as a wake fires (a-usage-limit-never-strands-work
+ * decision 3): the latest reset ahead among the limits at 100%. Undefined when
+ * none reads as used up, or none says when it resets: the wake goes ahead.
+ */
+export function limitStandsUntil(limits: readonly UsageLimit[], now: number): number | undefined {
+  const spent = limits.flatMap((l) => (l.percent >= 100 && l.resetsAt !== undefined && l.resetsAt > now ? [l.resetsAt] : []))
+  return spent.length > 0 ? Math.max(...spent) : undefined
+}

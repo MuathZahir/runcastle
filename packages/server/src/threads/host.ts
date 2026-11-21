@@ -8,6 +8,7 @@ import {
   contextUsed,
   DEFAULT_RUNTIME,
   foldThread,
+  isUsageLimitNotice,
   isUsageLimitText,
   lastPickedModel,
   liveEvents,
@@ -34,16 +35,20 @@ import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import type { AcpLaunchSpec } from '../launcher/runtimes/types'
 import {
+  clearLimitHold,
   createSessionRow,
+  getLimitHold,
   getSessionRow,
+  listLimitHolds,
   markAgentWorking,
   markAwaitingInput,
   markSessionEnded,
   markSessionLive,
+  setLimitHold,
   setSessionModel,
   setSessionTitle,
 } from '../launcher/sessions'
-import { killProcessTree } from '../pty/kill-tree'
+import { OWN_GROUP, stopProcessTree } from '../pty/kill-tree'
 import { publishLive } from '../services/bus'
 import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -63,7 +68,7 @@ import {
   type ConfigChoice,
 } from './controls'
 import { claudeTranscriptOnDisk, readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
-import { claudeUsageReport, codexUsageReport, formatResets, limitLiftsAt } from './usage'
+import { claudeUsageReport, codexUsageReport, formatResets, limitLiftsAt, limitStandsUntil } from './usage'
 import {
   backgroundAgents,
   backgroundTasks,
@@ -89,7 +94,7 @@ import { withWorkers, workerStallBounds, workerTurnSlot } from '../workers/servi
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { assignEpicColor } from './epic-look'
-import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
+import { appendThreadEvent, flushThreadLog, readThreadEvents, seedThreadLog } from './log'
 import { adapterLists, catalogEntry, LONG_CONTEXT, readModelCatalog, rosterLabel, threadModels, writeModelCatalog } from './model-catalog'
 import { namesItsSubject, runtimeMayName, threadAbout, threadName } from './naming'
 import { seedFromTranscript } from './read'
@@ -114,8 +119,12 @@ export interface AgentProcess {
   target: acp.Stream | acp.AgentApp
   /** Resolves when the process exits, for whatever reason, with the tail of its stderr. */
   exited: Promise<{ stderr: string }>
-  /** End the process and everything it started. */
-  kill(): Promise<void>
+  /**
+   * End the process and everything it started, resolving once they are gone (or
+   * forced and still not gone, which is logged). `graceMs` is how long it may
+   * take to quit when asked before it is forced.
+   */
+  kill(opts?: { graceMs?: number }): Promise<void>
   /**
    * How the session opens, when the process runs somewhere the row's own paths
    * do not exist (a worker's sandbox, workers spike decision 2): its cwd, MCP
@@ -155,6 +164,8 @@ export interface AgentHostDeps {
   conversationOnDisk?: (runtime: AgentRuntime, conversationId: string) => boolean
   /** How long after a usage limit's reset runcastle's stopped message goes again; {@link USAGE_RESET_GRACE_MS} by default. */
   usageResetGraceMs?: number
+  /** How long a chat the usage limit stopped waits to be tried again when runcastle cannot tell when it resets; {@link USAGE_RETRY_MS} by default. */
+  usageRetryMs?: number
   /** How long background work counts after a turn ends; {@link BACKGROUND_WINDOW_MS} by default. */
   backgroundWindowMs?: number
   /**
@@ -211,6 +222,8 @@ export interface TurnEnding {
   background?: boolean
   /** Subagents among them, which the host lets run with no time limit (unlike commands' window). */
   subagents?: boolean
+  /** The account's usage limit stopped it, however it ended: the chat is held for the reset, and the turn failed at nothing of its own. */
+  usageLimit?: boolean
 }
 
 /** How long a watched turn may show no progress ({@link AgentHostDeps.stallBounds}). */
@@ -327,6 +340,22 @@ export const SELF_TURN_QUIET_MS = 30_000
 /** How long after a usage limit's reported reset a stopped chat is woken (agents-are-woken-only-when-it-matters decision 25). */
 export const USAGE_RESET_GRACE_MS = 60_000
 
+/**
+ * How long a chat the usage limit stopped waits before it is tried again when
+ * runcastle cannot tell when the limit resets, or when it was woken and hit the
+ * limit again (a-usage-limit-never-strands-work decisions 3, 4).
+ */
+export const USAGE_RETRY_MS = 5 * 60_000
+
+/** How often a held chat is tried again, in words: "5 minutes", "1 minute", "30 seconds". */
+function everyText(ms: number): string {
+  const [n, unit] = ms >= 60_000 ? [Math.round(ms / 60_000), 'minute'] : [Math.max(1, Math.round(ms / 1000)), 'second']
+  return `${n} ${unit}${n === 1 ? '' : 's'}`
+}
+
+/** What a held chat says the first time a wake finds the limit still standing (decision 4); later tries are silent. */
+const notLiftedYet = (wakeAt: number): string => `The limit has not lifted yet. Runcastle tries again at ${formatResets(new Date(wakeAt))}.`
+
 /** What wakes a chat the usage limit stopped, once it has reset; what was held rides ahead of it. */
 export const USAGE_RESET_LINE = '[runcastle] The usage limit has reset. Carry on where you were.'
 
@@ -364,6 +393,12 @@ const NOT_REOPENED = 'this conversation would not reopen. It is still on disk an
 
 /** How much of a crashed adapter's stderr is kept: it goes to the session dir's {@link STDERR_LOG}, not the thread. */
 const STDERR_TAIL = 2000
+
+/**
+ * How long a server shutdown lets each agent quit before forcing it: short of the
+ * shutdown's own 5s budget, so the force lands before the server exits.
+ */
+const SHUTDOWN_GRACE_MS = 3000
 const STDERR_LOG = 'agent-stderr.log'
 
 /** Updates a `session/load` replays from history, which the log already holds. */
@@ -433,7 +468,11 @@ const ASK_NOUN: Record<Ask['kind'], string> = { question: 'a question', form: 'a
 export const spawnAdapter: AgentTransport = (spec, row) => {
   const env: Record<string, string | undefined> = { ...process.env, ...spec.env }
   for (const name of spec.envScrub) delete env[name]
-  const child = spawn(spec.command, spec.args, { cwd: row.worktreePath, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  // Off Windows the adapter leads its own process group, so a stop reaches
+  // `claude`/`codex` and everything they started; on Windows `detached` would
+  // open a console, and `taskkill /T` walks the tree instead.
+  const group = OWN_GROUP
+  const child = spawn(spec.command, spec.args, { cwd: row.worktreePath, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: group })
   let stderr = ''
   child.stderr.on('data', (chunk: Buffer) => {
     stderr = (stderr + chunk.toString('utf8')).slice(-STDERR_TAIL)
@@ -445,8 +484,18 @@ export const spawnAdapter: AgentTransport = (spec, row) => {
   return {
     target: acp.ndJsonStream(Writable.toWeb(child.stdin) as WritableStream<Uint8Array>, Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>),
     exited,
-    kill: async () => {
-      if (child.pid !== undefined && child.exitCode === null) await killProcessTree(child.pid)
+    kill: async (opts) => {
+      if (child.pid === undefined) return
+      // On Windows a pid whose process exited may already be someone else's: never taskkill it.
+      if (!group && child.exitCode !== null) return
+      // Ask first: the adapter shuts down (and closes its runtime) on stdin EOF.
+      try {
+        child.stdin.end()
+      } catch {
+        // Already closed.
+      }
+      // Its group can outlive it (a runtime still shutting down), so a POSIX stop runs even once it has exited.
+      await stopProcessTree(child.pid, { group, label: `adapter ${row.id}`, ...(opts?.graceMs !== undefined ? { graceMs: opts.graceMs } : {}) })
     },
   }
 }
@@ -600,11 +649,49 @@ function spanText(ms: number): string {
   return ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)}s`
 }
 
-/** What went wrong, in the agent's words: an ACP internal error carries them in `data.details`. */
+/**
+ * What went wrong, in the agent's words: an ACP internal error carries them in
+ * `data.details` (claude-agent-acp), codex-acp's in `data.message`.
+ */
 function errorText(err: unknown): string {
-  const details = err instanceof acp.RequestError ? (err.data as { details?: unknown } | undefined)?.details : undefined
-  if (typeof details === 'string' && details) return details
+  const data = err instanceof acp.RequestError ? (err.data as { details?: unknown; message?: unknown } | undefined) : undefined
+  for (const said of [data?.details, data?.message]) if (typeof said === 'string' && said) return said
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * Whether the account's usage limit stopped the turn the log ends in, though
+ * the turn ended as any other (a-usage-limit-never-strands-work decisions 1, 2):
+ * the agent's last words in it are the limit notice itself, or a subagent the
+ * turn delegated to came back with it (its call's output). A subagent's call is
+ * the turn's own `think` call (claude-agent-acp's Agent tool) or one other calls
+ * nest under; any other tool's output (a command printing an API's limit) is
+ * not the account's. A reply that only talks about the limit is not one.
+ */
+export function turnSaysLimit(events: readonly ThreadEvent[]): boolean {
+  let start = events.length
+  while (start > 0 && events[start - 1]!.type !== 'turn_started') start--
+  let lastId: string | undefined
+  for (let i = events.length - 1; i >= start && lastId === undefined; i--) {
+    const e = events[i]!
+    if (e.type === 'agent_text') lastId = e.messageId
+  }
+  const outputs = new Map<string, string>()
+  const subagents = new Set<string>()
+  const words: string[] = []
+  for (const e of events.slice(start)) {
+    if (e.type === 'agent_text' && e.messageId === lastId) words.push(e.text)
+    if (e.type !== 'tool') continue
+    if (e.parentId !== undefined) {
+      subagents.add(e.parentId)
+      continue
+    }
+    if (e.call.kind === 'think') subagents.add(e.call.id)
+    if (e.call.output !== undefined) outputs.set(e.call.id, e.call.output)
+    if (e.outputAppend) outputs.set(e.call.id, (outputs.get(e.call.id) ?? '') + e.outputAppend)
+  }
+  if (lastId !== undefined && isUsageLimitNotice(words.join(''))) return true
+  return [...outputs].some(([id, output]) => subagents.has(id) && isUsageLimitNotice(output))
 }
 
 /**
@@ -664,6 +751,12 @@ function failedStartText(err: unknown): string {
 
 class Host implements AgentHost {
   private readonly threads = new Map<string, Thread>()
+  /**
+   * Each thread's processes still being stopped: a start waits on its entry, so a
+   * conversation never runs in two processes at once (decision 4 of
+   * stopping-a-session-kills-its-process).
+   */
+  private readonly stopping = new Map<string, Promise<void>>()
   private readonly ctx: AppCtx
   private readonly transport: AgentTransport
   private readonly launch: (ctx: AppCtx, row: SessionRow) => Promise<AcpLaunchSpec>
@@ -675,6 +768,7 @@ class Host implements AgentHost {
   private readonly conversationOnDisk: (runtime: AgentRuntime, conversationId: string) => boolean
   private readonly backgroundWindowMs: number
   private readonly usageResetGraceMs: number
+  private readonly usageRetryMs: number
   private readonly turnSlot: NonNullable<AgentHostDeps['turnSlot']>
   private readonly stallBounds: NonNullable<AgentHostDeps['stallBounds']>
   private readonly autoCompact: AutoCompactPolicy
@@ -682,12 +776,14 @@ class Host implements AgentHost {
   private readonly pendingConfig = new Map<string, ConfigChoice>()
   /** Each runtime's last usage report, and the account its adapter last pushed. */
   private readonly usageReports = new Map<AgentRuntime, { report: UsageReport; at: number }>()
+  /** Each runtime's usage read in flight, which every asker meanwhile shares. */
+  private readonly usageReads = new Map<AgentRuntime, Promise<UsageReport | undefined>>()
   private readonly authStatus = new Map<AgentRuntime, unknown>()
   /** Until when each runtime's account is known to be over its usage limit (decision 9). */
   private readonly limitedUntil = new Map<AgentRuntime, number>()
   /** Held prompts a queued prompt already carries, per thread, so the next one does not carry them twice. */
   private readonly claimedHeld = new Map<string, Set<string>>()
-  /** Each thread's one wake for when the usage limit resets. */
+  /** Each thread's one wake for when the usage limit resets; its time is kept on the session row (`limitWakeAt`) so a restart arms it again. */
   private readonly resetWakes = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(deps: AgentHostDeps) {
@@ -702,6 +798,7 @@ class Host implements AgentHost {
     this.conversationOnDisk = deps.conversationOnDisk ?? conversationOnDiskOf
     this.backgroundWindowMs = deps.backgroundWindowMs ?? BACKGROUND_WINDOW_MS
     this.usageResetGraceMs = deps.usageResetGraceMs ?? USAGE_RESET_GRACE_MS
+    this.usageRetryMs = deps.usageRetryMs ?? USAGE_RETRY_MS
     this.turnSlot = deps.turnSlot ?? (() => undefined)
     this.stallBounds = deps.stallBounds ?? (() => undefined)
     this.autoCompact = { ...AUTOCOMPACT, ...deps.autoCompact }
@@ -718,7 +815,10 @@ class Host implements AgentHost {
     const until = this.limitedUntil.get(row.runtime ?? DEFAULT_RUNTIME)
     if (opts.source === 'runcastle' && until !== undefined && until > Date.now()) {
       const held = this.hold(threadId, input.text, opts.source, opts.display)
-      if (this.carriesOnAfterLimit()) this.armResetWake(threadId, until)
+      // A hold already armed keeps its time; one with no timer (its wake just fired, and found the mark still standing) is armed for the mark.
+      if (this.carriesOnAfterLimit() && !this.resetWakes.has(threadId)) {
+        this.holdForLimit(threadId, until + this.usageResetGraceMs, this.limitHold(threadId)?.told ?? false)
+      }
       return held
     }
     const change = this.configChange(threadId, opts)
@@ -863,14 +963,14 @@ class Host implements AgentHost {
 
   async stop(threadId: string, reason: StopReason): Promise<void> {
     // An archived thread is done with: nothing wakes it at a usage reset.
-    if (reason === 'archived') this.dropResetWake(threadId)
+    if (reason === 'archived') this.dropLimitHold(threadId)
     const t = this.threads.get(threadId)
     if (!t) return
     const turn = t.turn
     // Read before the stop's lifecycle makes the thread the lead's ordinary chat again.
     const planning = turn !== null && this.unattended(t)
     this.detach(t)
-    await t.proc?.kill().catch(() => {})
+    await this.endProcess(t, reason === 'shutdown' ? SHUTDOWN_GRACE_MS : undefined)
     if (turn) {
       // The turn is over, and says so: "Stopped by you", with what it changed by then.
       if (turn.quiet) clearTimeout(turn.quiet)
@@ -887,6 +987,7 @@ class Host implements AgentHost {
   }
 
   async stopAll(reason: StopReason): Promise<void> {
+    // Only the timers: each wake stays on its row, and the next server arms it again.
     for (const timer of this.resetWakes.values()) clearTimeout(timer)
     this.resetWakes.clear()
     await Promise.all([...this.threads.keys()].map((id) => this.stop(id, reason)))
@@ -1020,15 +1121,32 @@ class Host implements AgentHost {
     const runtime = this.row(threadId).runtime ?? DEFAULT_RUNTIME
     const last = this.usageReports.get(runtime)
     if (last && Date.now() - last.at < USAGE_FRESH_MS) return last.report
-    try {
-      const read = await this.readUsage(runtime)
-      const raw = { ...(typeof read === 'object' && read !== null ? read : {}), authStatus: this.authStatus.get(runtime) }
-      const report = runtime === 'codex' ? codexUsageReport(raw) : claudeUsageReport(raw)
-      this.usageReports.set(runtime, { report, at: Date.now() })
-      return report
-    } catch {
-      return last?.report ?? { limits: [] }
-    }
+    return (await this.readUsageNow(runtime)) ?? last?.report ?? { limits: [] }
+  }
+
+  /** Ask the runtime's account for its usage now, sharing a read already under way; undefined when the read fails. */
+  private readUsageNow(runtime: AgentRuntime): Promise<UsageReport | undefined> {
+    const going = this.usageReads.get(runtime)
+    if (going) return going
+    const read = (async () => {
+      try {
+        const got = await this.readUsage(runtime)
+        const raw = { ...(typeof got === 'object' && got !== null ? got : {}), authStatus: this.authStatus.get(runtime) }
+        const report = runtime === 'codex' ? codexUsageReport(raw) : claudeUsageReport(raw)
+        this.usageReports.set(runtime, { report, at: Date.now() })
+        return report
+      } catch {
+        return undefined
+      } finally {
+        this.usageReads.delete(runtime)
+      }
+    })()
+    this.usageReads.set(runtime, read)
+    return read
+  }
+
+  rearmLimitWakes(): void {
+    for (const { id, at } of listLimitHolds(this.ctx)) this.armResetWake(id, at)
   }
 
   /**
@@ -1219,6 +1337,8 @@ class Host implements AgentHost {
   }
 
   private async connect(t: Thread, given: SessionRow): Promise<void> {
+    // The conversation's last process must be gone before this one resumes it.
+    await this.stopping.get(t.id)
     const followed = this.followSettings(given)
     // Read before the session opens: the adapter announces its own model as it
     // opens (claude-agent-acp), and that logged announcement is not a pick.
@@ -1237,7 +1357,7 @@ class Host implements AgentHost {
     t.proc = proc
     void proc.exited.then(({ stderr }) => this.crashed(t, stderr))
     // Stopped while it spawned: the stop found no process to kill, so this one goes now.
-    if (t.state === 'stopped') return void (await proc.kill().catch(() => {}))
+    if (t.state === 'stopped') return void (await this.endProcess(t))
     const app = acp
       .client({ name: 'runcastle' })
       .onNotification(acp.methods.client.session.update, ({ params }) => this.onUpdate(t, params.sessionId, params.update))
@@ -1382,7 +1502,7 @@ class Host implements AgentHost {
   private async failStart(t: Thread, err: unknown): Promise<void> {
     if (t.state === 'stopped') return
     this.detach(t)
-    await t.proc?.kill().catch(() => {})
+    await this.endProcess(t)
     appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: failedStartText(err) })
     this.ended(t, 'crashed')
   }
@@ -1390,6 +1510,8 @@ class Host implements AgentHost {
   private crashed(t: Thread, stderr: string): void {
     if (t.state === 'stopped') return
     this.detach(t)
+    // The adapter is gone, but what it started may not be.
+    void this.endProcess(t)
     this.keepStderr(t.id, stderr)
     appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: crashText(stderr) })
     this.ended(t, 'crashed')
@@ -1422,6 +1544,23 @@ class Host implements AgentHost {
       console.error('thread lifecycle hook failed', err)
       return undefined
     }
+  }
+
+  /**
+   * End the thread's process and everything it started, resolving once they are
+   * gone. Until then the thread's entry in `stopping` holds any new start of the
+   * same conversation.
+   */
+  private endProcess(t: Thread, graceMs?: number): Promise<void> {
+    const proc = t.proc
+    if (!proc) return Promise.resolve()
+    const ending = proc.kill(graceMs !== undefined ? { graceMs } : undefined).catch((err) => console.error(`thread ${t.id}: stopping its process failed`, err))
+    const all = Promise.all([this.stopping.get(t.id), ending]).then(() => {})
+    this.stopping.set(t.id, all)
+    void all.then(() => {
+      if (this.stopping.get(t.id) === all) this.stopping.delete(t.id)
+    })
+    return ending
   }
 
   /** Forget the thread's process: no more events from it, no asks left waiting. */
@@ -1505,20 +1644,29 @@ class Host implements AgentHost {
 
   /**
    * A turn the account's usage limit stopped (agents-are-woken-only-when-it-matters
-   * decision 25). What runcastle said is kept for the next prompt, first, without
-   * a reset line it carried; for the human's own turn, only what rode ahead of
-   * their words. The chat says so: with the setting on and a reset time known it
-   * is woken once at the reset; otherwise its line offers the setting.
+   * decision 25), however it ended (a-usage-limit-never-strands-work decision 1).
+   * What runcastle said is kept for the next prompt, first, without a reset
+   * line it carried; for the human's own turn, only what rode ahead of their
+   * words; a turn the agent started by itself (no `item`) keeps nothing. With
+   * the setting off, the chat's line offers the setting. With it on, the chat is
+   * held: woken a little after the reset, or tried again in a few minutes when
+   * runcastle cannot tell when that is. A chat already held tried again and hit
+   * the limit (decision 3): it says so once, and waits for the limit's own reset
+   * if the report shows one still standing, else tries again later.
    */
-  private async stoppedByLimit(t: Thread, item: Queued): Promise<void> {
-    if (item.source === 'runcastle') {
+  private async stoppedByLimit(t: Thread, item?: Queued): Promise<void> {
+    if (item?.source === 'runcastle') {
       const first = item.blocks[0]
       const said = first?.type === 'text' ? first.text : item.text
       this.keepHeld(t.id, said.endsWith(USAGE_RESET_LINE) ? said.slice(0, -USAGE_RESET_LINE.length).trimEnd() : said, true)
-    } else if (item.ahead !== undefined) {
+    } else if (item?.ahead !== undefined) {
       this.keepHeld(t.id, item.ahead, true)
     }
-    const at = limitLiftsAt((await this.usage(t.id)).limits, Date.now())
+    const now = Date.now()
+    const limits = (await this.usage(t.id)).limits
+    const held = this.carriesOnAfterLimit() ? this.limitHold(t.id) : undefined
+    // A try that hit the limit again trusts only a limit the report shows used up: any other reset is not this one.
+    const at = held ? limitStandsUntil(limits, now) : limitLiftsAt(limits, now)
     if (at !== undefined) this.limitedUntil.set(this.runtimeOf(t.id), at)
     if (!this.carriesOnAfterLimit()) {
       appendThreadEvent(t.id, {
@@ -1530,12 +1678,36 @@ class Host implements AgentHost {
       setWait(this.ctx, t.id, USAGE_LIMIT_WHY, 'runcastle')
       return
     }
-    if (at === undefined) {
-      appendThreadEvent(t.id, { type: 'notice', text: 'The usage limit stopped this turn. Runcastle could not tell when it resets, so it carries on with your next message.' })
-      return
+    const wakeAt = at !== undefined ? at + this.usageResetGraceMs : now + this.usageRetryMs
+    if (held) {
+      if (!held.told) appendThreadEvent(t.id, { type: 'notice', text: notLiftedYet(wakeAt) })
+      return this.holdForLimit(t.id, wakeAt, true)
     }
-    appendThreadEvent(t.id, { type: 'notice', text: `The usage limit stopped this turn. Runcastle carries on at ${formatResets(new Date(at))}.` })
-    this.armResetWake(t.id, at)
+    appendThreadEvent(t.id, {
+      type: 'notice',
+      text:
+        at !== undefined
+          ? `The usage limit stopped this turn. Runcastle carries on at ${formatResets(new Date(at))}.`
+          : `The usage limit stopped this turn. Runcastle could not tell when it resets, so it tries again every ${everyText(this.usageRetryMs)}.`,
+    })
+    this.holdForLimit(t.id, wakeAt, false)
+  }
+
+  /** Whether the thread's turn just over ended on the limit notice ({@link turnSaysLimit}), its last words written first. */
+  private turnSaidLimit(threadId: string): boolean {
+    flushThreadLog(threadId)
+    return turnSaysLimit(readThreadEvents(threadId))
+  }
+
+  /**
+   * A turn the agent started by itself ran while the chat was held: the limit
+   * has lifted. With nothing held for it, the hold goes; with something held,
+   * its wake fires now, so what was held is said.
+   */
+  private ranPastLimit(threadId: string): void {
+    if (!this.limitHold(threadId)) return
+    if ((readPendingFork(threadId).held ?? []).length === 0) return this.dropLimitHold(threadId)
+    this.armResetWake(threadId, Date.now())
   }
 
   /** The runtime a thread runs on. */
@@ -1543,28 +1715,68 @@ class Host implements AgentHost {
     return getSessionRow(this.ctx, threadId)?.runtime ?? DEFAULT_RUNTIME
   }
 
-  /** Forget a thread's reset wake, if it has one. */
+  /** The thread's hold for the usage limit, as its row keeps it: when its wake fires, and whether "not lifted yet" was said. */
+  private limitHold(threadId: string): { at: number; told: boolean } | undefined {
+    return getLimitHold(this.ctx, threadId)
+  }
+
+  /** Hold the thread for the usage limit until `wakeAt`, kept on its row so a restart arms it again (decision 5), and arm the wake. */
+  private holdForLimit(threadId: string, wakeAt: number, told: boolean): void {
+    setLimitHold(this.ctx, threadId, wakeAt, told)
+    this.armResetWake(threadId, wakeAt)
+  }
+
+  /** The thread is no longer held for the usage limit: a turn of it ran, it was archived, or the setting went off. */
+  private dropLimitHold(threadId: string): void {
+    this.dropResetWake(threadId)
+    clearLimitHold(this.ctx, threadId)
+  }
+
+  /** Forget a thread's reset wake timer, if it has one. */
   private dropResetWake(threadId: string): void {
     const timer = this.resetWakes.get(threadId)
     if (timer) clearTimeout(timer)
     this.resetWakes.delete(threadId)
   }
 
-  /** Wake the thread once, a little after `at`; what it holds rides the wake. One per thread. */
-  private armResetWake(threadId: string, at: number): void {
-    if (this.resetWakes.has(threadId)) return
+  /** Arm the thread's one wake for `wakeAt` (one already past fires at once), in place of any it had. */
+  private armResetWake(threadId: string, wakeAt: number): void {
+    this.dropResetWake(threadId)
     const timer = setTimeout(() => {
       this.resetWakes.delete(threadId)
-      const runtime = this.runtimeOf(threadId)
-      if ((this.limitedUntil.get(runtime) ?? 0) <= Date.now()) this.limitedUntil.delete(runtime)
-      // Turned off meanwhile: what is held waits for the human's next message.
-      if (!this.carriesOnAfterLimit()) return
-      this.prompt(threadId, { text: USAGE_RESET_LINE }, { source: 'runcastle' }).catch((err) =>
-        console.error('usage reset wake failed', err),
-      )
-    }, Math.max(0, at - Date.now()) + this.usageResetGraceMs)
+      void this.limitWakeFired(threadId).catch((err) => console.error('usage reset wake failed', err))
+    }, Math.max(0, wakeAt - Date.now()))
     timer.unref?.()
     this.resetWakes.set(threadId, timer)
+  }
+
+  /**
+   * A held thread's wake fired (decision 3). With the setting turned off
+   * meanwhile, the hold goes and what is held waits for the human's next
+   * message. Else the usage is read fresh: a limit still used up with a reset
+   * ahead moves the wake there and starts nothing, saying so once; otherwise
+   * the chat carries on, its held words riding the reset line.
+   */
+  private async limitWakeFired(threadId: string): Promise<void> {
+    if (!getSessionRow(this.ctx, threadId)) return
+    const runtime = this.runtimeOf(threadId)
+    if (!this.carriesOnAfterLimit()) {
+      if ((this.limitedUntil.get(runtime) ?? 0) <= Date.now()) this.limitedUntil.delete(runtime)
+      return this.dropLimitHold(threadId)
+    }
+    // Read now, not from the minute's cache: the wakes of one limit fire together and share this one read.
+    const report = await this.readUsageNow(runtime)
+    const now = Date.now()
+    const stands = report ? limitStandsUntil(report.limits, now) : undefined
+    if (stands !== undefined) {
+      this.limitedUntil.set(runtime, stands)
+      const wakeAt = stands + this.usageResetGraceMs
+      if (!this.limitHold(threadId)?.told) appendThreadEvent(threadId, { type: 'notice', text: notLiftedYet(wakeAt) })
+      return this.holdForLimit(threadId, wakeAt, true)
+    }
+    // Read and not used up, the account is free; a failed read leaves only a mark already past to go.
+    if (report || (this.limitedUntil.get(runtime) ?? 0) <= now) this.limitedUntil.delete(runtime)
+    await this.prompt(threadId, { text: USAGE_RESET_LINE }, { source: 'runcastle' })
   }
 
   private enqueue(t: Thread, item: Queued): void {
@@ -1655,12 +1867,17 @@ class Host implements AgentHost {
     endWatch(turn)
     // The watch cancelled it: the turn failed, and says why.
     if (turn.watch?.stalled) end = { type: 'turn_ended', reason: 'error', error: turn.watch.stalled }
-    if (end.reason === 'error' && !item.hidden && isUsageLimitText(end.error ?? '')) {
-      void this.stoppedByLimit(t, item).catch((err) => console.error('usage limit hold failed', err))
-    }
+    const failedOnLimit = end.reason === 'error' && !item.hidden && isUsageLimitText(end.error ?? '')
+    if (failedOnLimit) void this.stoppedByLimit(t, item).catch((err) => console.error('usage limit hold failed', err))
     if (t.state === 'stopped') return
     const files = await this.turnFiles(t, turn)
     if (isStopped(t)) return
+    // The limit also ends a turn as any other, with its notice for the reply (decision 1).
+    const endedOnLimit = !failedOnLimit && !item.hidden && end.reason !== 'error' && end.reason !== 'cancelled' && this.turnSaidLimit(t.id)
+    if (endedOnLimit) void this.stoppedByLimit(t, item).catch((err) => console.error('usage limit hold failed', err))
+    const limited = failedOnLimit || endedOnLimit
+    // A turn ran past the limit: the chat is held no longer.
+    if (!limited && !item.hidden && !item.compaction) this.dropLimitHold(t.id)
     t.turn = null
     releaseSlot(turn)
     this.logAwaits(t.id, { ...end, ...(files.length ? { files } : {}) })
@@ -1674,7 +1891,12 @@ class Host implements AgentHost {
     // Read before the lifecycle ends the run and makes the thread the lead's ordinary chat.
     const planned = item.source === 'runcastle' && row?.purpose === 'self-plan'
     if (row) {
-      const ending: TurnEnding = { reason: end.reason, ...(end.error !== undefined ? { error: end.error } : {}), ...backgroundOf(t) }
+      const ending: TurnEnding = {
+        reason: end.reason,
+        ...(end.error !== undefined ? { error: end.error } : {}),
+        ...backgroundOf(t),
+        ...(limited ? { usageLimit: true } : {}),
+      }
       this.hook(() => this.lifecycle.turnEnded?.(row, item.source, ending))
     }
     // A self-planning run is over: the lead is compacted while its cache is warm (decision 6a).
@@ -1758,7 +1980,7 @@ class Host implements AgentHost {
     const error = `${watch.stalled}, and its agent ignored the cancel`
     appendThreadEvent(t.id, { type: 'notice', text: 'The agent did not stop the stalled turn, so runcastle stopped its process.' })
     this.detach(t)
-    await t.proc?.kill().catch(() => {})
+    await this.endProcess(t)
     if (turn.quiet) clearTimeout(turn.quiet)
     const files = await this.turnFiles(t, turn)
     appendThreadEvent(t.id, { type: 'turn_ended', reason: 'error', error, ...(files.length ? { files } : {}) })
@@ -1839,9 +2061,13 @@ class Host implements AgentHost {
     markAwaitingInput(this.ctx, t.id)
     t.turnEndedAt = Date.now()
     this.watchWindow(t)
+    // The limit may stop a turn the agent started by itself too (decision 1): the chat is held as for any other.
+    const limited = reason === 'end_turn' && this.turnSaidLimit(t.id)
+    if (limited) void this.stoppedByLimit(t).catch((err) => console.error('usage limit hold failed', err))
+    else if (reason === 'end_turn') this.ranPastLimit(t.id)
     // Its end is heard like any other: a worker may have handed back in it.
     const row = getSessionRow(this.ctx, t.id)
-    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, 'agent', { reason, ...backgroundOf(t) }))
+    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, 'agent', { reason, ...backgroundOf(t), ...(limited ? { usageLimit: true } : {}) }))
     this.pump(t)
   }
 

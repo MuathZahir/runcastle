@@ -3704,6 +3704,19 @@ async function runDriveHookStep(
   }
 }
 
+/**
+ * The paths uncommitted in a worktree (tracked or not), or `[]` when there are
+ * none or the folder cannot be read. Best effort: never throws.
+ */
+export async function uncommittedPaths(worktreePath: string): Promise<string[]> {
+  try {
+    return await dirtyPaths(git(worktreePath))
+  } catch {
+    // simple-git refuses a folder that does not exist.
+    return []
+  }
+}
+
 /** Repo-relative paths with uncommitted changes (tracked or not), or `[]`. */
 async function dirtyPaths(g: SimpleGit): Promise<string[]> {
   try {

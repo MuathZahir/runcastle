@@ -402,6 +402,14 @@ export const sessions = sqliteTable('sessions', {
   waitWhy: text('wait_why'),
   waitSince: integer('wait_since'),
   waitBy: text('wait_by', { enum: ['agent', 'runcastle'] }),
+  /**
+   * A chat the account's usage limit stopped, held until it lifts
+   * (a-usage-limit-never-strands-work decisions 3-5): when its wake fires (ms),
+   * so a restart arms it again. Null when no limit holds the chat.
+   */
+  limitWakeAt: integer('limit_wake_at'),
+  /** The "limit has not lifted yet" notice was posted for this hold (decision 4): later tries are silent. */
+  limitWakeTold: integer('limit_wake_told', { mode: 'boolean' }).notNull().default(false),
 })
 
 /**

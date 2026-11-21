@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "148b56bd-b919-4156-a5da-079d154c3d87",
+  "id": "4881d740-5e57-4f22-af48-83aa30aa8597",
   "prevId": "9c4eaa31-1ee1-4248-a5e6-e925f50d3474",
   "tables": {
     "designs": {
@@ -388,6 +388,20 @@
         },
         "last_dispatch_at": {
           "name": "last_dispatch_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "plan_shown_at": {
+          "name": "plan_shown_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "plan_seen_at": {
+          "name": "plan_seen_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -1216,6 +1230,21 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "limit_wake_at": {
+          "name": "limit_wake_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "limit_wake_told": {
+          "name": "limit_wake_told",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {},
