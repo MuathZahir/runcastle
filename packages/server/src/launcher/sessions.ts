@@ -733,3 +733,38 @@ export function mostRecentLiveSession(ctx: AppCtx): SessionRow | null {
     .get()
   return row ? rowToSession(row) : null
 }
+
+// ---- usage holds (a-usage-limit-never-strands-work decision 5) ----
+// A chat the usage limit holds keeps its wake on its row, so a restart arms it
+// again. No event: nothing on screen reads the hold; the chat's own notice is
+// what the human sees, and it is pushed with the thread log.
+
+/** When a chat the usage limit holds wakes, and whether it was told the limit still stands; undefined when nothing holds it. */
+export function getLimitHold(ctx: AppCtx, id: string): { at: number; told: boolean } | undefined {
+  const row = ctx.db.select({ at: sessions.limitWakeAt, told: sessions.limitWakeTold }).from(sessions).where(eq(sessions.id, id)).get()
+  return row && row.at !== null ? { at: row.at, told: row.told } : undefined
+}
+
+/** Hold a chat for the usage limit until `wakeAt`. */
+export function setLimitHold(ctx: AppCtx, id: string, wakeAt: number, told: boolean): void {
+  ctx.db.update(sessions).set({ limitWakeAt: wakeAt, limitWakeTold: told }).where(eq(sessions.id, id)).run()
+}
+
+/** The chat is no longer held for the usage limit. */
+export function clearLimitHold(ctx: AppCtx, id: string): void {
+  ctx.db
+    .update(sessions)
+    .set({ limitWakeAt: null, limitWakeTold: false })
+    .where(and(eq(sessions.id, id), isNotNull(sessions.limitWakeAt)))
+    .run()
+}
+
+/** Every chat the usage limit holds, with when it wakes. */
+export function listLimitHolds(ctx: AppCtx): { id: string; at: number }[] {
+  return ctx.db
+    .select({ id: sessions.id, at: sessions.limitWakeAt })
+    .from(sessions)
+    .where(isNotNull(sessions.limitWakeAt))
+    .all()
+    .flatMap(({ id, at }) => (at === null ? [] : [{ id, at }]))
+}
