@@ -1056,7 +1056,7 @@ const ResolveFindingShape = {
   disposition: z
     .enum(['addressed', 'dismissed'])
     .describe('`addressed`: work already answers it. `dismissed`: not worth fixing.'),
-  note: z.string().optional().describe('REQUIRED: what addressed it, or why it was dismissed.'),
+  note: z.string().optional().describe('REQUIRED: what addressed it (name the fix commit), or why it was dismissed.'),
 }
 
 /**

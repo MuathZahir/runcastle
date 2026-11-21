@@ -1,6 +1,6 @@
 import type { Feature, ReviewFinding, TestNote, Ticket, WorkerRow } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
-import { appendSection, composeOutcomeDoc, composeReviewSummary, digestHasSubstance, type OutcomeInput } from '../src/services/outcome'
+import { appendSection, composeOutcomeDoc, composeReviewSummary, digestHasSubstance, withReviewSummary, type OutcomeInput } from '../src/services/outcome'
 
 const feature: Feature = {
   id: 'feat_1', projectId: 'proj_1', slug: 'record', title: 'A durable record',
@@ -93,7 +93,7 @@ describe('composeOutcomeDoc', () => {
       '## Review summary',
       '- Shipped: 2026-09-05\n- 7 commits · 12 files',
       '### Review · gates review\n\n- Outcome: handed-back',
-      '- **Theme resets** (defect, high) — fixed: persisted in f00d123\n- **Copy typo** (observation, low) — dismissed',
+      '- **Theme resets** (defect, high) — fixed: persisted in f00d123\n- **Copy typo** (observation, low) — accepted, not fixed',
       '### Review: verify · drive review, verify\n\n- Outcome: handed-back\n- Verified fix commits: f00d123',
       '- No findings',
     ].join('\n\n') + '\n')
@@ -104,6 +104,11 @@ describe('composeOutcomeDoc', () => {
   it('appends a section after a blank line, whatever the text ended with', () => {
     expect(appendSection('# Brief\n\nwords\n\n\n', '## Review summary\n')).toBe('# Brief\n\nwords\n\n## Review summary\n')
     expect(appendSection('', '## Review summary\n')).toBe('## Review summary\n')
+  })
+
+  it('replaces a review summary the brief already ends in instead of adding a second', () => {
+    const once = withReviewSummary('# Brief\n\nwords\n', '## Review summary\n\n- old\n')
+    expect(withReviewSummary(once, '## Review summary\n\n- new\n')).toBe('# Brief\n\nwords\n\n## Review summary\n\n- new\n')
   })
 
   it('drops digests containing only empty None/Nothing rows', () => {

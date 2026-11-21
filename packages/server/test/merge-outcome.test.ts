@@ -79,6 +79,31 @@ describe('the merge stamps the feature’s record', () => {
     expect(shippedOutcome(feature.id).outcome).toBe('docs/features/export-csv/brief.md')
   })
 
+  it('commits the brief as committed plus the summary, keeping the human’s uncommitted brief edits uncommitted', async () => {
+    const brief = '# Share link\n\nThe human’s words.\n'
+    const dir = join(repoPath, 'docs', 'features', 'share-link')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'brief.md'), brief)
+    await g.add(['.'])
+    await g.commit('runcastle: scaffold share-link')
+    // The branch never touches the brief, so the merge goes ahead past the edit.
+    const { feature } = await mergeable('share-link', {})
+    writeFileSync(join(dir, 'brief.md'), `${brief}\nA half-written thought.\n`)
+
+    expect((await mergeFeatureFlow(ctx, feature.id)).ok).toBe(true)
+
+    const committed = await g.show(['HEAD:docs/features/share-link/brief.md'])
+    expect(committed).not.toContain('half-written')
+    expect(committed.startsWith(brief.trimEnd())).toBe(true)
+    expect(committed).toContain('\n\n## Review summary\n')
+    const working = readFileSync(join(dir, 'brief.md'), 'utf8')
+    expect(working).toContain('A half-written thought.')
+    expect(working).toContain('\n\n## Review summary\n')
+    const changed = (await g.diff(['--', 'docs/features/share-link/brief.md'])).split('\n')
+      .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---) /.test(l))
+    expect(changed).toEqual(['+A half-written thought.', '+'])
+  })
+
   it('writes outcome.md as before for an old-shape feature and leaves its brief alone', async () => {
     const { feature, dir } = await mergeable('import-csv', { 'brief.md': '# Import\n', 'decisions.md': '# Decisions\n' })
 
