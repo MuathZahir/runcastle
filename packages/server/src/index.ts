@@ -35,6 +35,7 @@ import { handBackDriveWorkers, handBackOrphanedDriveWorkers } from './workers/dr
 import { startModelDiscovery } from './services/model-discovery'
 import { startNeedPush } from './services/need-push'
 import { startNeedWatch } from './services/need-watch'
+import { startQuietWatch } from './services/quiet-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
@@ -277,6 +278,9 @@ export async function startServer(): Promise<void> {
   startNeedWatch(ctx)
   // …and push each of those the human is pinged for to their phone (decision 12).
   startNeedPush(ctx)
+  // …and say once when a project has features open, nothing running and nothing waiting on the human
+  // (runcastle-says-when-nothing-is-running). A copied database's chats are the live install's, never this server's to flag.
+  const quietWatch = isDatabaseCopy() ? undefined : startQuietWatch(ctx)
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   void wakeCutOffChats(ctx, cutOffChats)
@@ -325,6 +329,8 @@ export async function startServer(): Promise<void> {
     const shutdown = createShutdown({
       // The PTYs, and every thread's ACP adapter process (ADR-0015).
       killAllTrees: async () => {
+        // Threads stopping for shutdown are not a stop of the work: the quiet watch looks away first.
+        quietWatch?.stop()
         await Promise.all([ptyRegistry().killAllTrees(), agentHost(ctx).stopAll('shutdown')])
       },
       // Every running worker container this install owns, within the same budget (cleans-up decision 4).
