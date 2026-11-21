@@ -425,7 +425,7 @@ describe('renderSystemPrompt', () => {
         expect(p, name).toContain('Invoke the `/runcastle:feature` skill')
         expect(p, name).toContain('Feature: `dark-mode`, on branch `feature/dark-mode`')
         expect(p, name).toContain("Working directory: the feature's own worktree")
-        expect(p, name).toContain('Docs folder: `docs/features/dark-mode/` (`brief.md`, `decisions.md`, `spec.md`)')
+        expect(p, name).toContain('Docs folder: `docs/features/dark-mode/`. Its `brief.md` holds the human\'s words, decisions and build notes')
         expect(p, name).toContain("Your commits land through the feature's landing queue")
         expect(p, name).toContain('wait while the human is driving the feature')
         expect(p, name).toContain('Never reword a `ticket(<seq>): …` or `runcastle: …` commit')
