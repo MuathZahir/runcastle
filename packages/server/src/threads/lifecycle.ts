@@ -101,7 +101,7 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
  * ends, and reads idle (needs-you decision 2). No-op for a thread with any
  * other purpose.
  */
-function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
+export function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
   if (row.purpose !== 'self-plan' || !row.featureId) return
   const complete = waitOf(ctx, row.id) !== null
   emitForSession(ctx, row, {

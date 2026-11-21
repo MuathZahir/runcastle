@@ -1,10 +1,17 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { WorkerStatus } from '@runcastle/core'
+import { simpleGit } from 'simple-git'
 import { workers } from '../src/db/schema'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { reconcileStaleSessions, RESTART_CARRY_ON, wakeCutOffChats } from '../src/launcher/reconcile'
-import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { planningCarryOn, reconcileStaleSessions, RESTART_CARRY_ON, RESTART_CARRY_ON_PLANNING, wakeCutOffChats } from '../src/launcher/reconcile'
+import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { listAfter } from '../src/services/events'
+import { setWait } from '../src/services/waits'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent, type AgentHost } from '../src/threads/types'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -67,18 +74,17 @@ describe('after a restart', () => {
     expect(promptsOf(lead)[1]).toMatchObject({ source: 'runcastle', display: { summary: 'A restart cut off this turn: carrying on' } })
   })
 
-  it('skips a side chat, a worker, a self-planning run and a shipped feature', async () => {
+  it('skips a side chat and a shipped feature', async () => {
     const f = seedFeature(ctx, projectId, { slug: 'f' })
     const shipped = seedFeature(ctx, projectId, { slug: 'shipped', status: 'shipped' })
     const side = thread(createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' }))
-    const planning = thread(createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: '/wt', purpose: 'self-plan' }))
     const shippedLead = thread(createSessionRow(ctx, { featureId: shipped.id, kind: 'chat', worktreePath: '/wt' }))
 
     const cutOff: Parameters<typeof wakeCutOffChats>[1][number][] = []
     reconcileStaleSessions(ctx, cutOff)
     await wakeCutOffChats(ctx, cutOff)
 
-    for (const id of [side, planning, shippedLead]) expect(said(id)).toHaveLength(0)
+    for (const id of [side, shippedLead]) expect(said(id)).toHaveLength(0)
   })
 
   it('tells a worker still at work to carry on, once, and none that landed, was dropped or failed (burns-become-workers decision 10)', async () => {
@@ -103,5 +109,98 @@ describe('after a restart', () => {
     expect(said(working)).toHaveLength(1)
     expect(said(queued)).toHaveLength(1)
     for (const id of done) expect(said(id)).toHaveLength(0)
+  })
+})
+
+/** A restart cuts off a planning run too; it is woken to carry on (a-restart-resumes-planning-runs). */
+describe('after a restart, a planning run', () => {
+  let repo: string
+
+  beforeEach(async () => {
+    // The lifecycle closes the woken run at its turn's end, as an uninterrupted one.
+    await host.stopAll('shutdown')
+    host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+    setAgentHostForTests(host)
+    repo = mkdtempSync(join(tmpdir(), 'rc-planning-wt-'))
+    await simpleGit(repo).init()
+  })
+
+  afterEach(() => rmSync(repo, { recursive: true, force: true }))
+
+  const planningRun = (featureId: string, worktreePath = repo) =>
+    thread(createSessionRow(ctx, { featureId, kind: 'chat', worktreePath, purpose: 'self-plan' }))
+  const wakes = (id: string) => promptsOf(id).filter((p) => p.text.startsWith(RESTART_CARRY_ON_PLANNING))
+  const ended = (featureId: string) => listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.self_plan_ended')
+
+  async function restart(): Promise<void> {
+    const cutOff: Parameters<typeof wakeCutOffChats>[1][number][] = []
+    reconcileStaleSessions(ctx, cutOff)
+    await wakeCutOffChats(ctx, cutOff)
+  }
+
+  it('is woken once, as runcastle, with no file list when nothing is uncommitted', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'planning' })
+    const id = planningRun(f.id)
+
+    await restart()
+
+    expect(wakes(id)).toHaveLength(1)
+    expect(wakes(id)[0]).toMatchObject({ text: RESTART_CARRY_ON_PLANNING, source: 'runcastle', display: { summary: 'A restart cut off planning: carrying on' } })
+    expect(said(id)).toHaveLength(0)
+    expect(listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.restart_carry_on')).toHaveLength(1)
+  })
+
+  it('is told the files it left uncommitted in its folder', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'half-written' })
+    writeFileSync(join(repo, 'decisions.md'), '# half')
+    writeFileSync(join(repo, 'spec.md'), '# half')
+    const id = planningRun(f.id)
+
+    await restart()
+
+    expect(wakes(id).map((p) => p.text)).toEqual([planningCarryOn(['decisions.md', 'spec.md'])])
+    expect(wakes(id)[0]?.text).toContain('Uncommitted in your folder: decisions.md, spec.md')
+  })
+
+  it('is still woken when its folder cannot be read', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'no-folder' })
+    const id = planningRun(f.id, join(repo, 'gone'))
+
+    await restart()
+
+    expect(wakes(id).map((p) => p.text)).toEqual([RESTART_CARRY_ON_PLANNING])
+  })
+
+  it('ends as an uninterrupted run does when its woken turn ends', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'finishes' })
+    const id = planningRun(f.id)
+    setWait(ctx, id, 'Start the work?')
+
+    await restart()
+
+    await vi.waitFor(() => expect(ended(f.id)).toHaveLength(1))
+    expect(ended(f.id)[0]?.data).toEqual({ sessionId: id, complete: true })
+    expect(getSessionRow(ctx, id)?.purpose).toBeUndefined()
+  })
+
+  it('that is not woken is closed as stopped short, so its chat stops declining questions', async () => {
+    const shipped = seedFeature(ctx, projectId, { slug: 'shipped-planning', status: 'shipped' })
+    const id = planningRun(shipped.id)
+
+    await restart()
+
+    expect(wakes(id)).toHaveLength(0)
+    expect(ended(shipped.id).map((e) => e.data)).toEqual([{ sessionId: id, complete: false }])
+    expect(getSessionRow(ctx, id)?.purpose).toBeUndefined()
+  })
+
+  it('that finished before the restart is left alone', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'done-before' })
+    const id = thread(createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repo, purpose: 'self-plan' }), false)
+
+    await restart()
+
+    expect(wakes(id)).toHaveLength(0)
+    expect(ended(f.id)).toHaveLength(0)
   })
 })

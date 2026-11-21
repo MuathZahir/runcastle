@@ -280,6 +280,9 @@ export async function startServer(): Promise<void> {
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   void wakeCutOffChats(ctx, cutOffChats)
+  // …and every chat the usage limit holds gets its wake again, kept on its row (a-usage-limit-never-strands-work decision 5).
+  // A copied database's chats are the live install's, never this server's to wake.
+  if (!isDatabaseCopy()) agentHost(ctx).rearmLimitWakes()
   // …a drive's workers are handed back when it stops; a restart already stopped every drive, so any left at work are handed back now.
   onDriveEnded((ended) => handBackDriveWorkers(ctx, ended))
   if (!isDatabaseCopy()) {
