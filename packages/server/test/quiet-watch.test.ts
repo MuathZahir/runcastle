@@ -20,7 +20,6 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  */
 
 const QUIET = 1_000
-const RESUME = 500
 
 let ctx: AppCtx
 let projectId: string
@@ -46,7 +45,7 @@ afterEach(() => {
 })
 
 const start = () => {
-  watch = startQuietWatch(ctx, { now: () => clock, quietMs: QUIET, resumeMs: RESUME, tickMs: 3_600_000 })
+  watch = startQuietWatch(ctx, { now: () => clock, quietMs: QUIET, tickMs: 3_600_000 })
   return watch
 }
 /** Move the clock and look at the project. */
@@ -159,8 +158,7 @@ describe('the quiet watcher', () => {
     after(QUIET)
     expect(raised()).toHaveLength(1)
     runTurn(lead)
-    after(RESUME)
-    after(RESUME)
+    after(0)
     expect(waitOf(ctx, epic)).toBeNull()
     expect(cleared().map((e) => (e.data as { cause: string }).cause)).toEqual(['resumed'])
     endTurn(lead, ['human', 'runcastle'])
@@ -177,9 +175,9 @@ describe('the quiet watcher', () => {
     after(QUIET)
     expect(raised()).toHaveLength(1)
     runTurn(lead)
-    after(RESUME / 5)
+    after(QUIET / 5)
     endTurn(lead)
-    after(RESUME / 5)
+    after(QUIET / 5)
     after(QUIET * 2)
     expect(raised()).toHaveLength(1)
     expect(cleared()).toHaveLength(0)
@@ -246,8 +244,34 @@ describe('the quiet watcher', () => {
     after(QUIET)
     setWait(ctx, epic, 'Start the batch?')
     runTurn(lead)
-    after(RESUME)
-    after(RESUME)
+    after(0)
     expect(waitOf(ctx, epic)?.why).toBe('Start the batch?')
+  })
+  it('clears at once when work other than a held chat’s retry starts', () => {
+    const epic = epicChat()
+    const search = stoppedFeature('Search', epic)
+    const header = stoppedFeature('Header', epic)
+    setLimitHold(ctx, search.lead, Date.now() + 3_600_000, true)
+    start()
+    after(QUIET)
+    expect(raised()).toHaveLength(1)
+    runTurn(header.lead)
+    after(0)
+    expect(waitOf(ctx, epic)).toBeNull()
+  })
+
+  it('takes back the alert the last server left standing, and clears it when work runs', () => {
+    const epic = epicChat()
+    const { lead } = stoppedFeature('Search', epic)
+    start()
+    after(QUIET)
+    watch!.stop()
+    start()
+    after(QUIET * 3)
+    expect(raised()).toHaveLength(1)
+    runTurn(lead)
+    after(0)
+    expect(waitOf(ctx, epic)).toBeNull()
+    expect(cleared().map((e) => (e.data as { cause: string }).cause)).toEqual(['resumed'])
   })
 })

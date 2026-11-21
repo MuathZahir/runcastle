@@ -280,7 +280,7 @@ export async function startServer(): Promise<void> {
   startNeedPush(ctx)
   // …and say once when a project has features open, nothing running and nothing waiting on the human
   // (runcastle-says-when-nothing-is-running). A copied database's chats are the live install's, never this server's to flag.
-  if (!isDatabaseCopy()) startQuietWatch(ctx)
+  const quietWatch = isDatabaseCopy() ? undefined : startQuietWatch(ctx)
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   void wakeCutOffChats(ctx, cutOffChats)
@@ -329,6 +329,8 @@ export async function startServer(): Promise<void> {
     const shutdown = createShutdown({
       // The PTYs, and every thread's ACP adapter process (ADR-0015).
       killAllTrees: async () => {
+        // Threads stopping for shutdown are not a stop of the work: the quiet watch looks away first.
+        quietWatch?.stop()
         await Promise.all([ptyRegistry().killAllTrees(), agentHost(ctx).stopAll('shutdown')])
       },
       // Every running worker container this install owns, within the same budget (cleans-up decision 4).

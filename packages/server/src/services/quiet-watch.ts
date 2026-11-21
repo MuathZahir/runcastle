@@ -3,26 +3,28 @@ import {
   IN_PLAY_WORKER_STATUSES,
   projectQuiet,
   QUIET_ALERT_MS,
+  QUIET_ALERT_OPENING,
   quietAlertLine,
   type QuietFeature,
   type QuietReason,
   type QuietSnapshot,
+  type SessionRow,
   stoppedFeatures,
   type WorkerKind,
   type WorkerStatus,
 } from '@runcastle/core'
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
-import type { AppCtx } from '../db/types'
+import { and, desc, eq, inArray, isNotNull, like, or } from 'drizzle-orm'
 import { features, readyDeclarations, sessions, workers } from '../db/schema'
-import { getSessionRow, newestThread, projectSessions } from '../launcher/sessions'
+import type { AppCtx } from '../db/types'
+import { featureSessions, getSessionRow, newestThread, projectSessions } from '../launcher/sessions'
 import { leadAnsweredHuman, threadBusy, threadNeed } from '../threads/read'
 import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
-import { featureWorking, needOf } from './feature-need'
 import { getEventRow } from './events'
+import { featureWorking, needOf } from './feature-need'
 import { activeDriveInfo } from './git'
 import { listProjects } from './projects'
-import { rowToFeature } from './repo'
+import { hasActiveRun, rowToFeature } from './repo'
 import { clearWait, SESSION_WAIT_CLEARED, SESSION_WAITING, setWait, waitOf } from './waits'
 
 /**
@@ -34,8 +36,6 @@ import { clearWait, SESSION_WAIT_CLEARED, SESSION_WAITING, setWait, waitOf } fro
  * turns it into the human's ping like any other.
  */
 
-/** How long work must run for a stop to be over, when the run ends with a chat held for the usage limit (decision 6). */
-export const RESUME_MS = 2 * 60_000
 /** How often every project is looked at, so a stop is seen even when no event comes. */
 export const QUIET_TICK_MS = 60_000
 /** How long a project's changes settle before it is looked at again. */
@@ -43,18 +43,27 @@ export const QUIET_SETTLE_MS = 50
 
 /** The worker kinds that carry an assignment of their own: a quiet one has stopped short. */
 const ASSIGNED_KINDS: readonly WorkerKind[] = ['on-its-own', 'review']
-/** A worker still at its assignment: by status only, whether a turn runs is read from the host. */
-const AT_WORK: readonly string[] = ['working', 'stalled']
+/**
+ * A worker still at its assignment, by status; whether a turn runs is read
+ * from the host. "stalled" is the status "A worker never shows working with
+ * nothing running" adds: read already, so the alert words it the day it lands.
+ */
+const STILL_ASSIGNED: readonly string[] = ['working', 'stalled']
+const IN_PLAY = [...IN_PLAY_WORKER_STATUSES, 'stalled'] as WorkerStatus[]
 
-/** A worker row's status, which may be one this build does not know yet ("stalled", once it lands). */
-const statusOf = (status: WorkerStatus | string): string => status
+/** The project as the watcher reads it: the rule's snapshot, the chat the alert would go on, and what runs. */
+export interface QuietRead extends QuietSnapshot {
+  /** The chat the alert goes on, when any feature has stopped. */
+  target: string | null
+  /** All that runs is chats held for the usage limit trying again: the stop goes on (decision 6). */
+  onlyLimitRetries: boolean
+}
 
 /**
- * The project as the quiet rule reads it, plus the chat the alert would go on.
- * Running is read from what runs (the agent host, runs, the worker queue, a
- * drive), never from a stored status.
+ * The project as the quiet rule reads it. Running is read from what runs (the
+ * agent host, runs, the worker queue, a drive), never from a stored status.
  */
-export function quietSnapshot(ctx: AppCtx, projectId: string): QuietSnapshot & { target: string | null; limitHeld: boolean } {
+export function quietSnapshot(ctx: AppCtx, projectId: string): QuietRead {
   const host = agentHost(ctx)
   const open = ctx.db
     .select()
@@ -64,55 +73,65 @@ export function quietSnapshot(ctx: AppCtx, projectId: string): QuietSnapshot & {
     .all()
     .map(rowToFeature)
   const ids = open.map((f) => f.id)
+  const epics = projectSessions(ctx, projectId, 'project')
 
   const workerRows = ids.length
     ? ctx.db
         .select({ id: workers.id, featureId: workers.featureId, kind: workers.kind, status: workers.status })
         .from(workers)
-        .where(and(inArray(workers.featureId, ids), inArray(workers.status, [...IN_PLAY_WORKER_STATUSES, 'stalled' as WorkerStatus])))
+        .where(and(inArray(workers.featureId, ids), inArray(workers.status, IN_PLAY)))
         .all()
     : []
-  const holds = ids.length
-    ? ctx.db
-        .select({ featureId: sessions.featureId, at: sessions.limitWakeAt })
-        .from(sessions)
-        .where(and(inArray(sessions.featureId, ids), isNotNull(sessions.limitWakeAt)))
-        .all()
-    : []
-  const epics = projectSessions(ctx, projectId, 'project')
-  const epicHold =
-    ctx.db
-      .select({ id: sessions.id })
-      .from(sessions)
-      .where(and(eq(sessions.projectId, projectId), isNotNull(sessions.limitWakeAt)))
-      .get() !== undefined
+  // Every chat of the project the usage limit holds, with when it tries again.
+  const holds = ctx.db
+    .select({ id: sessions.id, featureId: sessions.featureId, at: sessions.limitWakeAt })
+    .from(sessions)
+    .where(
+      and(
+        isNotNull(sessions.limitWakeAt),
+        ids.length ? or(eq(sessions.projectId, projectId), inArray(sessions.featureId, ids)) : eq(sessions.projectId, projectId),
+      ),
+    )
+    .all()
+  const held = new Set(holds.map((h) => h.id))
+  /** Some of it runs, and every turn that does belongs to a chat held for the limit. */
+  const onlyHeld = (rows: readonly SessionRow[]) => {
+    const busy = rows.filter((row) => threadBusy(ctx, row.id))
+    return busy.length > 0 && busy.every((row) => held.has(row.id))
+  }
 
-  const quietFeatures: (QuietFeature & { feature: Feature })[] = open.map((feature) => {
+  let featuresRetrying = true
+  const quietFeatures: QuietFeature[] = open.map((feature) => {
     const own = workerRows.filter((w) => w.featureId === feature.id)
     const queued = own.some((w) => w.status === 'queued')
     const running = queued || featureWorking(ctx, feature.id)
+    if (running && (queued || hasActiveRun(ctx, feature.id) || !onlyHeld(featureSessions(ctx, feature.id, ['chat', 'worker'])))) {
+      featuresRetrying = false
+    }
     const midAssignment = own.filter(
-      (w) => ASSIGNED_KINDS.includes(w.kind) && AT_WORK.includes(statusOf(w.status)) && !host.isRunning(w.id),
+      (w) => ASSIGNED_KINDS.includes(w.kind) && STILL_ASSIGNED.includes(w.status) && !host.isRunning(w.id),
     )
-    const hold = holds
-      .filter((h) => h.featureId === feature.id && h.at !== null)
-      .map((h) => h.at as number)
-      .sort((a, b) => a - b)[0]
+    const hold = Math.min(...holds.flatMap((h) => (h.featureId === feature.id && h.at !== null ? [h.at] : [])))
+    const limitUntil = Number.isFinite(hold) ? hold : undefined
     const stoppedByHuman = feature.stoppedAt !== null && !((feature.lastHumanMessageAt ?? 0) > feature.stoppedAt)
     const yourMove =
-      stoppedByHuman || (hold === undefined && !midAssignment.length && leadAnsweredHuman(ctx, feature.id))
-    return { feature, title: feature.title, running, yourMove, reason: reasonOf(ctx, feature, hold, midAssignment) }
+      stoppedByHuman || (limitUntil === undefined && !midAssignment.length && leadAnsweredHuman(ctx, feature.id))
+    return { title: feature.title, running, yourMove, reason: reasonOf(ctx, feature, limitUntil, midAssignment) }
   })
 
-  const otherRunning = epics.some((row) => threadBusy(ctx, row.id)) || activeDriveInfo(projectId) !== null
-  const needsYou =
-    open.some((f) => needOf(ctx, f) !== null) || epics.some((row) => threadNeed(ctx, row) !== null)
+  const drive = activeDriveInfo(projectId) !== null
+  const busyEpics = epics.filter((row) => threadBusy(ctx, row.id))
+  const otherRunning = busyEpics.length > 0 || drive
+  const needsYou = open.some((f) => needOf(ctx, f) !== null) || epics.some((row) => threadNeed(ctx, row) !== null)
   const snapshot: QuietSnapshot = { features: quietFeatures, otherRunning, needsYou }
 
+  const stopped = stoppedFeatures(snapshot)
+  const stoppedOpen = open.filter((_, i) => stopped.includes(quietFeatures[i]!))
   return {
     ...snapshot,
-    target: targetOf(ctx, projectId, stoppedFeatures(snapshot) as typeof quietFeatures),
-    limitHeld: epicHold || holds.length > 0,
+    target: targetOf(ctx, epics, stoppedOpen),
+    onlyLimitRetries:
+      !projectQuiet(snapshot) && !drive && featuresRetrying && busyEpics.every((row) => held.has(row.id)),
   }
 }
 
@@ -120,12 +139,12 @@ export function quietSnapshot(ctx: AppCtx, projectId: string): QuietSnapshot & {
 function reasonOf(
   ctx: AppCtx,
   feature: Feature,
-  hold: number | undefined,
-  midAssignment: { status: WorkerStatus | string }[],
+  limitUntil: number | undefined,
+  midAssignment: readonly { status: string }[],
 ): QuietReason {
-  if (hold !== undefined) return { kind: 'limit', until: hold }
+  if (limitUntil !== undefined) return { kind: 'limit', until: limitUntil }
   if (midAssignment.length) {
-    return midAssignment.some((w) => statusOf(w.status) === 'stalled') ? { kind: 'worker', stalled: true } : { kind: 'worker' }
+    return midAssignment.some((w) => w.status === 'stalled') ? { kind: 'worker', stalled: true } : { kind: 'worker' }
   }
   const ready = ctx.db
     .select({ at: readyDeclarations.createdAt })
@@ -142,33 +161,57 @@ function reasonOf(
  * features (the newest, if several), else the project's newest orchestrator
  * chat, else the first stopped feature's own chat.
  */
-function targetOf(ctx: AppCtx, projectId: string, stopped: { feature: Feature }[]): string | null {
-  if (!stopped.length) return null
-  const epics = projectSessions(ctx, projectId, 'project')
-  const holders = new Set(stopped.flatMap((s) => (s.feature.chatId ? [s.feature.chatId] : [])))
+function targetOf(ctx: AppCtx, epics: readonly SessionRow[], stopped: readonly Feature[]): string | null {
+  const first = stopped[0]
+  if (!first) return null
+  const holders = new Set(stopped.flatMap((f) => (f.chatId ? [f.chatId] : [])))
   const holder = epics.find((row) => holders.has(row.id))
   if (holder) return holder.id
-  const newest = newestThread(ctx, { projectId }, 'project')
-  if (newest) return newest.id
-  return newestThread(ctx, { featureId: stopped[0]!.feature.id }, 'chat')?.id ?? null
+  if (epics[0]) return epics[0].id
+  return newestThread(ctx, { featureId: first.id }, 'chat')?.id ?? null
+}
+
+/** The project a session belongs to, whichever way its row says so. */
+function projectOf(ctx: AppCtx, row: { projectId?: string | null; featureId?: string | null }): string | undefined {
+  if (row.projectId) return row.projectId
+  if (!row.featureId) return undefined
+  return ctx.db.select({ projectId: features.projectId }).from(features).where(eq(features.id, row.featureId)).get()?.projectId
+}
+
+/** The alert's wait as the watcher set it, so only that one is ever cleared. */
+interface Alert {
+  sessionId: string
+  since: number
+}
+
+/** The alerts a server before this one left standing, by project: this watcher clears them as its own. */
+function standingAlerts(ctx: AppCtx): Map<string, Alert> {
+  const rows = ctx.db
+    .select({ id: sessions.id, projectId: sessions.projectId, featureId: sessions.featureId, since: sessions.waitSince })
+    .from(sessions)
+    .where(and(eq(sessions.waitBy, 'runcastle'), like(sessions.waitWhy, `${QUIET_ALERT_OPENING}%`)))
+    .all()
+  const out = new Map<string, Alert>()
+  for (const row of rows) {
+    const projectId = projectOf(ctx, row)
+    if (projectId) out.set(projectId, { sessionId: row.id, since: row.since ?? 0 })
+  }
+  return out
 }
 
 /** One project's stop, as the watcher remembers it. */
-interface Stop {
-  /** When the current stop began; null while work runs and no stop stands. */
+interface ProjectStop {
+  /** When the current stop began; null while work runs. */
   quietSince: number | null
-  /** When the work now running began; null while quiet. */
-  runningSince: number | null
   /** This stop already raised its alert: no second one until it ends. */
   raised: boolean
-  /** The wait the alert set, so only that one is ever cleared. */
-  alert: { sessionId: string; since: number } | null
+  /** The wait the alert set, while it may still stand. */
+  alert: Alert | null
 }
 
 export interface QuietWatchOptions {
   now?: () => number
   quietMs?: number
-  resumeMs?: number
   tickMs?: number
 }
 
@@ -182,20 +225,34 @@ export interface QuietWatch {
 /**
  * Watch every open project for a stop: looked at on each turn change and wait
  * change of its chats, and on a timer. A server start counts as the start of
- * quiet. Called once at boot.
+ * quiet, and an alert the last server left standing is this stop's. Called
+ * once at boot.
  */
 export function startQuietWatch(ctx: AppCtx, opts: QuietWatchOptions = {}): QuietWatch {
   const now = opts.now ?? Date.now
   const quietMs = opts.quietMs ?? QUIET_ALERT_MS
-  const resumeMs = opts.resumeMs ?? RESUME_MS
   const started = now()
-  const stops = new Map<string, Stop>()
+  const standing = standingAlerts(ctx)
+  const stops = new Map<string, ProjectStop>()
   const pending = new Set<string>()
   let settle: ReturnType<typeof setTimeout> | undefined
 
-  function clearAlert(stop: Stop): void {
+  function stopOf(projectId: string): ProjectStop {
+    let stop = stops.get(projectId)
+    if (!stop) {
+      const alert = standing.get(projectId) ?? null
+      stop = { quietSince: started, raised: alert !== null, alert }
+      stops.set(projectId, stop)
+    }
+    return stop
+  }
+
+  /** Work runs again: clear the alert if it is still ours, and arm for the next stop. */
+  function endStop(stop: ProjectStop): void {
     const alert = stop.alert
     stop.alert = null
+    stop.raised = false
+    stop.quietSince = null
     if (!alert) return
     const wait = waitOf(ctx, alert.sessionId)
     // Only our own wait: the agent may have replaced it, or the human answered it.
@@ -205,26 +262,13 @@ export function startQuietWatch(ctx: AppCtx, opts: QuietWatchOptions = {}): Quie
   function check(projectId: string): void {
     try {
       const at = now()
-      const stop = stops.get(projectId) ?? { quietSince: started, runningSince: null, raised: false, alert: null }
-      stops.set(projectId, stop)
+      const stop = stopOf(projectId)
       const snap = quietSnapshot(ctx, projectId)
 
       if (!projectQuiet(snap)) {
-        stop.runningSince ??= at
-        // Work that has run this long ends the stop, whatever happens next.
-        if (stop.quietSince !== null && at - stop.runningSince >= resumeMs) endStop(stop)
+        // A held chat trying again is the same stop, whether or not the limit has lifted yet (decision 6).
+        if (!(snap.onlyLimitRetries && stop.quietSince !== null)) endStop(stop)
         return
-      }
-
-      if (stop.runningSince !== null) {
-        const ranFor = at - stop.runningSince
-        stop.runningSince = null
-        // A short run that ended held by the usage limit is a retry of the same stop (decision 6).
-        const retry = stop.quietSince !== null && ranFor < resumeMs && snap.limitHeld
-        if (!retry) {
-          endStop(stop)
-          stop.quietSince = at
-        }
       }
       stop.quietSince ??= at
 
@@ -237,12 +281,6 @@ export function startQuietWatch(ctx: AppCtx, opts: QuietWatchOptions = {}): Quie
     } catch (err) {
       console.error('quiet watch failed', err)
     }
-  }
-
-  function endStop(stop: Stop): void {
-    clearAlert(stop)
-    stop.raised = false
-    stop.quietSince = null
   }
 
   function checkAll(): void {
@@ -258,11 +296,7 @@ export function startQuietWatch(ctx: AppCtx, opts: QuietWatchOptions = {}): Quie
 
   function schedule(sessionId: string): void {
     const row = getSessionRow(ctx, sessionId)
-    const projectId =
-      row?.projectId ??
-      (row?.featureId
-        ? ctx.db.select({ projectId: features.projectId }).from(features).where(eq(features.id, row.featureId)).get()?.projectId
-        : undefined)
+    const projectId = row ? projectOf(ctx, row) : undefined
     if (!projectId) return
     pending.add(projectId)
     if (settle) return

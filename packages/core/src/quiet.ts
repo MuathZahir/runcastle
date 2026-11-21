@@ -10,6 +10,9 @@ import { liveEvents, outsideCompactions, type ThreadEvent } from './thread'
 /** How long a project must be quiet before the alert (decision 5). */
 export const QUIET_ALERT_MS = 10 * 60_000
 
+/** How the alert's line starts: how the watcher knows its own wait again after a restart. */
+export const QUIET_ALERT_OPENING = 'Nothing is running:'
+
 /** Why a stopped feature stopped, as far as runcastle knows (decision 8). */
 export type QuietReason =
   /** A chat of the feature is held for the usage limit until `until` (ms). */
@@ -85,7 +88,7 @@ export function quietAlertLine(s: QuietSnapshot, time: (at: number) => string = 
   const stopped = stoppedFeatures(s)
   const count = stopped.length === 1 ? '1 feature stopped' : `${stopped.length} features stopped`
   const each = stopped.map((f) => `${f.title.trim()}: ${quietReasonWords(f.reason, time)}.`)
-  return [`Nothing is running: ${count}.`, ...each].join(' ')
+  return [`${QUIET_ALERT_OPENING} ${count}.`, ...each].join(' ')
 }
 
 /**
