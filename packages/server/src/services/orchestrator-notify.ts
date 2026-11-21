@@ -137,7 +137,8 @@ function describeMerge(merge: MergeNews, slug: string): string {
   const siblings = merge.siblings.map((s) => `- ${s.slug}: ${s.title} (run by ${s.owner})`)
   const where = [
     ...(merge.sha ? [`the merge commit ${merge.sha.slice(0, 12)}`] : []),
-    ...(merge.outcome ? [merge.outcome] : []),
+    // A one-file feature's record is the `## Review summary` at the end of its brief.md.
+    ...(merge.outcome ? [merge.outcome.endsWith('/brief.md') ? `the "## Review summary" section of ${merge.outcome}` : merge.outcome] : []),
   ]
   const read =
     where.length > 0
