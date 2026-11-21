@@ -69,6 +69,11 @@ sessions work.
    is not the orchestrator chat runcastle is running (it was stopped or replaced); end your
    turn — the open chat carries on." The three tests that pin the old text are updated.
 
+5. **The merge-conflict notice keeps working.** The web app's "a resolve session came and went
+   without the merge landing" notice listened for the `session.ended` event the hook emitted.
+   It now also counts `session.process_stopped`, which the host emits whenever a chat's
+   process stops (for Claude and Codex alike, so Codex resolve sessions now count too).
+
 No schema change, no new env var, no change to who may merge, start or message features.
 
 ## Seams

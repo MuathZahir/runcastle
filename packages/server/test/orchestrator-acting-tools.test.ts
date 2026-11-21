@@ -141,7 +141,7 @@ describe('the orchestrator’s acting tools', () => {
         const session = orchestrator()
         markSessionEnded(ctx, session.id)
         const ended = getSessionRow(ctx, session.id) as SessionRow
-        expect(await refusal(() => call(ctx, ended, 'humans'))).toMatch(/has ended/)
+        expect(await refusal(() => call(ctx, ended, 'humans'))).toMatch(/not the orchestrator chat runcastle is running/)
       })
     }
 

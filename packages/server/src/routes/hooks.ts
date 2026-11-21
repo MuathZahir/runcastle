@@ -15,7 +15,6 @@ import {
   getSessionRow,
   markAgentWorking,
   markAwaitingInput,
-  markSessionEnded,
   markSessionLive,
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
@@ -29,6 +28,7 @@ import { clearWait } from '../services/waits'
 import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
+import { reviveIfRunning } from '../threads/revive'
 
 /**
  * Hook receiver (SPEC §5.6): `POST /api/hooks/:event` for `session-start`,
@@ -215,15 +215,18 @@ export const ORCHESTRATOR_AFTER_COMPACTION =
  * session whose start hook never arrived (it timed out client-side on a slow
  * server moment) is checked in here, and an id a missed `/clear` start left
  * stale is brought current. Without it the row keeps no id, and the next start
- * of the thread's process has no conversation to load. An
- * ended row stays ended; a row that already holds this id is left alone.
+ * of the thread's process has no conversation to load. A row that already
+ * holds this id is left alone. An ended row comes back only when the agent host
+ * runs its process (the-orchestrator-is-never-locked-out decision 2): a late
+ * turn hook from a killed process must not undo its stop.
  */
 function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<string, unknown> | undefined): void {
   const ccSessionId = typeof payload?.session_id === 'string' ? payload.session_id : undefined
-  if (!ccSessionId || session.status === 'ended') return
-  if (session.status === 'live' && session.ccSessionId === ccSessionId) return
+  if (!ccSessionId) return
   const transcriptPath =
     typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
+  if (session.status === 'ended') return void reviveIfRunning(ctx, session, 'turn', { ccSessionId, transcriptPath })
+  if (session.status === 'live' && session.ccSessionId === ccSessionId) return
   markSessionLive(ctx, session.id, { ccSessionId, transcriptPath })
   if (session.status === 'live') return
   emitForSession(ctx, session, {
@@ -285,21 +288,20 @@ function handleProjectScopedUserPrompt(session: SessionRow): unknown {
   }
 }
 
+/**
+ * `SessionEnd` only notes the end on the timeline, for every runtime: the
+ * agent host owns whether a session is over (the-orchestrator-is-never-locked-out
+ * decision 1), and marks it ended when it stops or loses the process. This hook
+ * names the session only by the env var every process of it shares, so it is
+ * the signal that arrives late and from the wrong process (a leftover agent
+ * killed at boot, an old process exiting after a new one started).
+ */
 function handleProjectScopedSessionEnd(
   ctx: AppCtx,
   session: SessionRow,
   payload: Record<string, unknown> | undefined,
 ): unknown {
-  if (session.runtime === 'codex') {
-    emitConversationEnded(ctx, session, payload)
-    return {}
-  }
-  markSessionEnded(ctx, session.id)
-  emitForSession(ctx, session, {
-    type: 'session.ended',
-    message: `${projectScopedNoun(session.kind)} ended`,
-    data: { sessionId: session.id },
-  })
+  emitConversationEnded(ctx, session, payload)
   return {}
 }
 
@@ -434,17 +436,10 @@ async function handleSessionEnd(
   feature: Feature,
   payload: Record<string, unknown> | undefined,
 ): Promise<unknown> {
-  if (session.runtime === 'codex') {
-    emitConversationEnded(ctx, session, payload)
-    return {}
-  }
-  markSessionEnded(ctx, session.id)
-  emit(ctx, feature.id, {
-    type: 'session.ended',
-    message: 'session ended',
-    data: { sessionId: session.id },
-  })
-  await noteResolvedMerge(ctx, session, feature)
+  // As for a project-scoped session: a note only; the host ends the row.
+  emitConversationEnded(ctx, session, payload)
+  // A Codex thread's merge is probed when its process stops (threads/lifecycle.ts).
+  if (session.runtime !== 'codex') await noteResolvedMerge(ctx, session, feature)
   return {}
 }
 

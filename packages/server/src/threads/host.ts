@@ -1532,8 +1532,20 @@ class Host implements AgentHost {
 
   /** The row's process is over: mark it so, and let the lifecycle react. */
   private ended(t: Thread, reason: StopReason): void {
-    const row = markSessionEnded(this.ctx, t.id)
+    const row = this.markEnded(t)
     if (row) this.hook(() => this.lifecycle.stopped?.(row, reason, t.startedBy))
+  }
+
+  /**
+   * Mark `t`'s row ended, unless a newer process of the same session already
+   * runs: a stop that finishes after a prompt started the conversation again
+   * must not end the process that replaced it (the-orchestrator-is-never-locked-out
+   * decision 1). The row either way, or null when it is gone.
+   */
+  private markEnded(t: Thread): SessionRow | null {
+    const current = this.threads.get(t.id)
+    if (current && current !== t) return getSessionRow(this.ctx, t.id)
+    return markSessionEnded(this.ctx, t.id)
   }
 
   /** Run a lifecycle hook; one that throws is logged, never the thread's failure. */
@@ -1985,7 +1997,7 @@ class Host implements AgentHost {
     const files = await this.turnFiles(t, turn)
     appendThreadEvent(t.id, { type: 'turn_ended', reason: 'error', error, ...(files.length ? { files } : {}) })
     appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
-    const row = markSessionEnded(this.ctx, t.id)
+    const row = this.markEnded(t)
     if (!row) return
     this.hook(() => this.lifecycle.turnEnded?.(row, watch.source, { reason: 'error', error }))
     this.hook(() => this.lifecycle.stopped?.(row, 'stalled', t.startedBy))
