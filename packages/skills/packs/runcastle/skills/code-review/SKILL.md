@@ -1,16 +1,16 @@
 ---
 name: code-review
-description: Review a feature branch's diff against its base along two axes — Standards (does the code follow this repo's documented standards?) and Spec (does the code do what docs/features/<slug>/spec.md asked for?). Runs both axes as parallel sub-agents and reports them side by side, never merged. Use when reviewing a runcastle feature branch, a round's landed work, or any diff since a fixed point.
+description: Review a feature branch's diff against its base along two axes — Standards (does the code follow this repo's documented standards?) and Spec (does the code do what the human asked for in docs/features/<slug>/brief.md?). Runs both axes as parallel sub-agents and reports them side by side, never merged. Use when reviewing a runcastle feature branch, a round's landed work, or any diff since a fixed point.
 disable-model-invocation: false
 ---
-<!-- Forked from Matt Pocock's code-review skill, via https://github.com/mattpocock/skills, 2026-08-17, adapted for runcastle feature branches (base-branch fixed point, spec.md as the spec source) -->
+<!-- Forked from Matt Pocock's code-review skill, via https://github.com/mattpocock/skills, 2026-08-17, adapted for runcastle feature branches (base-branch fixed point, the feature's brief.md as the spec source) -->
 
 # Code review — two axes over a feature branch
 
 Two-axis review of the diff between the feature branch and the base it forked from:
 
 - **Standards** — is it built right? Does the code follow how this repo writes code?
-- **Spec** — is it the right thing? Does the code do what `spec.md` asked for?
+- **Spec** — is it the right thing? Does the code do what the human asked for in the feature's `brief.md`?
 
 Both axes run as **parallel sub-agents**, so neither sees the other's reasoning, and this skill aggregates the two reports without merging them.
 
@@ -57,8 +57,8 @@ git worktree remove <path>               # before the session finishes, on every
 
 runcastle features always have one, so there is no "no spec available" path to reach for first:
 
-1. `docs/features/<slug>/spec.md` — the requirements. This is the primary source.
-2. `docs/features/<slug>/decisions.md` — *why* each shape was chosen. Read it: half the Spec-axis findings that look like scope creep are a locked decision the spec states tersely.
+1. `docs/features/<slug>/brief.md` — the human's own words, then `## Decisions` (*why* each shape was chosen: half the Spec-axis findings that look like scope creep are a locked decision), then the lead's `## Build notes`. The human's words and decisions are the primary source; the build notes are the lead's reading of them, and lose where they differ.
+2. An older feature also has `spec.md` and `decisions.md` beside the brief: read them too.
 3. A spec digest already pasted into your prompt — use it verbatim rather than re-reading, if it is the whole document.
 
 Only if all of those are genuinely absent does the Spec axis skip, and then it reports "no spec available" rather than inferring requirements from the code it is meant to be checking.
@@ -107,8 +107,8 @@ One sub-agent each, in a single dispatch so they actually run concurrently.
 **Spec sub-agent** — hand it:
 
 - The diff command and the commit list.
-- The path or the contents of `spec.md`, and `decisions.md` alongside it.
-- The brief: *"Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words. Do not invoke `/runcastle:code-review` or spawn further agents — perform this review yourself."*
+- The path or the contents of `brief.md` (and `spec.md` and `decisions.md` when an older feature has them).
+- The brief: *"Report: (a) what the human's words or decisions asked for that is missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words. Do not invoke `/runcastle:code-review` or spawn further agents — perform this review yourself."*
 
 **That last sentence in each brief is load-bearing.** Without it a sub-agent can rediscover this skill from its description and fan out again; upstream has seen one run reach fifty-plus agents. Two sub-agents, one level deep, and that is the whole tree.
 

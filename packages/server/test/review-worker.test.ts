@@ -197,7 +197,7 @@ describe('a drive review', () => {
       }),
     )
 
-    const started = await toolStartReview(ctx, leadSession(), {})
+    const started = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(started).toMatchObject({ mode: 'drive', status: 'queued' })
     await until(() => review()?.status === 'handed-back')
 
@@ -230,7 +230,7 @@ describe('a drive review', () => {
 
   it('gives the slot back when it is dropped or stopped, and fails when the drive cannot start', async () => {
     realHost(reviewer(() => {}))
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     await until(() => readThreadEvents(workerId).some((e) => e.type === 'turn_ended'))
     await dropWorker(ctx, workerId)
     expect(drive.given).toContain(workerId)
@@ -248,13 +248,13 @@ describe('a drive review', () => {
         },
       }),
     )
-    const stopped = await toolStartReview(ctx, leadSession(), {})
+    const stopped = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     await until(() => reviewing)
     await host!.cancel(stopped.workerId)
     await until(() => drive.given.includes(stopped.workerId))
 
     drive.answers = [{ ok: false, retriable: false, reason: 'uncommitted files: notes.txt' }]
-    const second = await toolStartReview(ctx, leadSession(), {})
+    const second = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(getWorker(ctx, second.workerId)).toMatchObject({ status: 'failed', failure: expect.stringContaining('uncommitted files') })
     expect(drive.given).toContain(second.workerId)
   })
@@ -274,7 +274,7 @@ describe('a drive review', () => {
         toolReviewHandBack(ctx, getSessionRow(ctx, w.id)!, { summary: 'Drive review: fine' })
       }),
     )
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     await until(() => getWorker(ctx, workerId)?.status === 'handed-back')
 
     expect(getWorker(ctx, workerId)?.tokens).toBe(42)
@@ -286,7 +286,7 @@ describe('a drive review', () => {
     setReviewDriveRetryForTests(60_000)
     drive.answers = [held]
     realHost(reviewer((w) => toolReviewHandBack(ctx, getSessionRow(ctx, w.id)!, { summary: 'Drive review: fine' })))
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(getWorker(ctx, workerId)?.status).toBe('queued')
 
     // The server dies: its re-ask timer goes with it, and nothing asks for the slot again.
@@ -318,7 +318,7 @@ describe('a gates review', () => {
       }),
     )
 
-    const started = await toolStartReview(ctx, leadSession(), {})
+    const started = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
     expect(started.mode).toBe('gates')
     await until(() => review()?.status === 'handed-back')
 
@@ -358,7 +358,7 @@ describe('a verify review', () => {
     expect(assignment).toContain('abc1234 fix: persist the theme')
     expect(assignment).not.toContain('The header overflows')
 
-    await expect(toolStartReview(ctx, leadSession(), { verify: { findingIds: ['finding_nope'], commits: [] } })).rejects.toThrow(/no finding finding_nope/)
+    await expect(toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: ['finding_nope'], commits: [] } })).rejects.toThrow(/no finding finding_nope/)
   })
 })
 
@@ -380,7 +380,7 @@ describe("a review's model", () => {
     const verify = await toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: [fixed.id], commits: [] } })
     expect(modelOf(verify.workerId)).toBe('claude-sonnet-5-5')
     drive.answers = [{ ok: false, retriable: true, reason: 'busy' }]
-    const driven = await toolStartReview(ctx, leadSession(), {})
+    const driven = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(driven.mode).toBe('drive')
     expect(modelOf(driven.workerId)).toBe('claude-sonnet-5-5')
   })
@@ -422,7 +422,7 @@ describe("the lead's passed checks", () => {
   it("reach a drive review's kept assignment", async () => {
     drive.answers = [{ ok: false, retriable: true, reason: 'busy' }]
     realHost(reviewer(() => {}))
-    const { workerId } = await toolStartReview(ctx, leadSession(), { checksPassed })
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive', checksPassed })
     expect(reviewAssignment(workerId)).toContain('commit `abc1234def`')
   })
 })
@@ -445,7 +445,7 @@ describe("a review in the lead's workers card", () => {
   it('appends one for a drive review as it starts queued', async () => {
     drive.answers = [{ ok: false, retriable: true, reason: 'A test drive of feature/work is running — stop it first' }]
     realHost(reviewer(() => {}))
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(started()).toEqual([expect.objectContaining({ workerId, kind: 'review', purpose: 'Drives the feature for review' })])
   })
 })

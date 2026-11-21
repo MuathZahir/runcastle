@@ -14,6 +14,7 @@ import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import { getWorker, withWorkers, workerTurnSlot } from '../src/workers/service'
+import { readFeatureForWorker } from '../src/workers/tools'
 import { SETUP_MANAGED, claudeSetup, setupFingerprint } from '../src/workers/setup-copy'
 import { serveToolRelay } from '../src/workers/tool-relay'
 import { WORKER_MCP_SCRIPT, WORKER_RELAY_SCRIPT } from '../src/workers/worker-mcp-script'
@@ -422,5 +423,14 @@ describe("runcastle's answers to a worker's tools", () => {
     const answer = JSON.parse(await engine.processes[0]!.tools('read_feature', {})) as { feature: { feature: { slug: string } }; leadLatestTurns: unknown }
     expect(answer.feature.feature.slug).toBe('work')
     expect(answer).toHaveProperty('leadLatestTurns')
+  })
+
+  it('read_feature gives a Review worker the feature without the lead’s latest turns', async () => {
+    const id = await startedWorker()
+    const reviewer = { ...getWorker(ctx, id)!, kind: 'review' as const }
+    const answer = (await readFeatureForWorker(ctx, reviewer)) as { feature: { feature: { slug: string } } }
+    expect(answer.feature.feature.slug).toBe('work')
+    expect(answer).not.toHaveProperty('leadLatestTurns')
+    expect(JSON.stringify(answer)).not.toContain('lead chat quote')
   })
 })

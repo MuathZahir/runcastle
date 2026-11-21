@@ -121,3 +121,22 @@ export function agentDigestFillRank(relPath: string): number {
   const i = (AGENT_DIGEST_FILL_ORDER as readonly string[]).indexOf(relPath.toLowerCase())
   return i === -1 ? AGENT_DIGEST_FILL_ORDER.length : i
 }
+
+/**
+ * The files whose presence marks a feature as old-shape (one-file-per-feature
+ * decision 8): a feature started before the one growing `brief.md` keeps its
+ * separate decisions and spec, and gets `outcome.md` at merge as before.
+ */
+export const OLD_SHAPE_FEATURE_DOCS = ['decisions.md', 'spec.md'] as const
+
+/**
+ * True when a feature docs folder is old-shape: it has `decisions.md` or
+ * `spec.md`. Takes the folder's file names (bare, or paths relative to the
+ * folder; a file in a subfolder never counts), so it stays IO-free. A feature
+ * with neither is one-file: everything lives in its `brief.md`.
+ */
+export function isOldShapeFeature(fileNames: readonly string[]): boolean {
+  return fileNames.some((name) =>
+    !name.includes('/') && !name.includes('\\') &&
+    (OLD_SHAPE_FEATURE_DOCS as readonly string[]).includes(name.toLowerCase()))
+}

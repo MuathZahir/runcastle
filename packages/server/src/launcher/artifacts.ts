@@ -194,7 +194,7 @@ export function renderSystemPrompt(
     `- Feature: \`${feature.slug}\`, on branch \`${feature.branch}\`` +
       (feature.baseBranch ? `, which merges into \`${feature.baseBranch}\`.` : '.'),
     "- Working directory: the feature's own worktree on that branch, not the human's checkout.",
-    `- Docs folder: \`${docs}/\` (\`brief.md\`, \`decisions.md\`, \`spec.md\`). Write them here and commit them.`,
+    `- Docs folder: \`${docs}/\`. Its \`brief.md\` holds the human's words, decisions and build notes; older features also have \`decisions.md\` and \`spec.md\`. Write them here and commit them.`,
     unattended
       ? '- No human is present (see below).'
       : '- A human is present: you talk with them in this chat.',

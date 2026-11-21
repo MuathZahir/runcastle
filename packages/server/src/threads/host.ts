@@ -436,7 +436,7 @@ export function autoCompactCommand(runtime: AgentRuntime, slug: string | undefin
     'Keep in the summary: what you are waiting on (the human, a round, a drive, a review);',
     "the human's latest words, and anything agreed with them but not yet written down;",
     'the work in progress and its uncommitted files.',
-    `Every settled decision is already in ${docs} (decisions.md, spec.md), so the summary need not repeat them.`,
+    `Every settled decision is already in ${docs} (brief.md; an older feature's decisions.md and spec.md), so the summary need not repeat them.`,
     'After this compaction, your first move is to call the runcastle MCP tool get_feature_context before acting.',
   ].join(' ')
 }

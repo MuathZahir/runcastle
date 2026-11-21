@@ -186,8 +186,8 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
     reason:
       `Talk sessions do not write code. This ${input.kind} session may only write this ` +
       `feature's docs under \`${docs}/\` — ${input.filePath} is outside them. The change you ` +
-      'want belongs in a worker assignment: capture the decision in `decisions.md`, amend `spec.md`, and ' +
-      'emit a ticket for the work. A worker builds it in its own sandbox.',
+      "want belongs in a worker assignment: write the decision into the feature's `brief.md` (an older feature " +
+      'keeps `decisions.md` and `spec.md`), then hand the work to a worker. It builds it in its own sandbox.',
   }
 }
 

@@ -10,8 +10,9 @@ export function mergeConflictKickoff(base: string, branch: string, files: string
     `on: ${list}. Your working directory IS the talk worktree, already checked out on ${branch}. ` +
     `First check it still stands: if \`git merge-base --is-ancestor ${base} HEAD\` succeeds, ${base} ` +
     `is already in, so say so in one line and stop — no checks, no review. ` +
-    `Otherwise run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
-    `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. ` +
+    `Otherwise run \`git merge ${base}\`, then resolve every conflict using this feature’s brief.md ` +
+    `(the human’s words, decisions and build notes; an older feature also has decisions.md and spec.md) for intent. ` +
+    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. ` +
     `When the merge commit is in, tell me ` +
     `to click “Merge & ship” again for a clean retry — ${TEST_DRIVE_OFFER}`
   )

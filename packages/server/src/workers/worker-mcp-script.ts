@@ -62,7 +62,7 @@ const TOOLS = [
   {
     name: 'read_feature',
     description:
-      "The feature you work on, as it stands now: its state, tickets, designs, docs (brief, decisions, spec) and the lead's latest turns. " +
+      "The feature you work on, as it stands now: its state, tickets, designs, docs (brief, decisions, spec) and, unless you are reviewing, the lead's latest turns. " +
       'Read it when your assignment leaves you unsure what was decided.',
     inputSchema: { type: 'object', properties: {} },
   },

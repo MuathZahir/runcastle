@@ -784,7 +784,7 @@ export async function toolStartReview(
   ctx: AppCtx,
   session: SessionRow,
   input: {
-    mode?: 'drive' | 'gates'
+    mode: 'drive' | 'gates'
     verify?: { findingIds: string[]; commits: string[] }
     model?: string
     checksPassed?: { commit: string; commands: string[] }
@@ -1056,7 +1056,7 @@ const ResolveFindingShape = {
   disposition: z
     .enum(['addressed', 'dismissed'])
     .describe('`addressed`: work already answers it. `dismissed`: not worth fixing.'),
-  note: z.string().optional().describe('REQUIRED: what addressed it, or why it was dismissed.'),
+  note: z.string().optional().describe('REQUIRED: what addressed it (name the fix commit), or why it was dismissed.'),
 }
 
 /**
@@ -3393,12 +3393,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start the Review worker',
         description:
-          'Start the feature’s Review worker once the work is done. It writes no code: it runs the project’s checks, ' +
-          'then drives the app on this machine when it can (holding the one drive slot, waiting while the human ' +
-          'drives) or reads the diff (`gates`), and hands back a Review Package. After fixing defects you judged real, ' +
-          'start one with `verify`. Refused after the human presses Stop, until they reply.',
+          'Start the feature’s one Review worker when the work is done. `drive` if the change reaches what a user meets: ' +
+          'a screen, a command’s output or options, an API’s responses, a library’s public functions. ' +
+          'For a project with no screen, driving is running the command or calling the API as its user would. ' +
+          'Else `gates` (read the diff). `verify` only after a large fix set. Refused after Stop until a reply.',
         inputSchema: {
-          mode: z.enum(['drive', 'gates']).optional().describe('`gates` when there is nothing to drive; omit to drive whenever this machine can.'),
+          mode: z.enum(['drive', 'gates']).describe('`drive`: use what the change reaches as its user would. `gates`: read the diff.'),
           verify: z
             .object({
               findingIds: z.array(z.string().min(1)).min(1).describe('The findings you fixed.'),

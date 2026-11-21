@@ -1,7 +1,7 @@
 # The plan page — optional, never a gate
 
 Read this when a drawn plan page would help the human, or to redraw one after
-`decisions.md` changes.
+the feature's decisions change.
 
 A plan page (`preview.html`) is a picture of how the feature will work. Nothing
 waits for it: the human approves by answering your questions, and designs by
@@ -14,7 +14,7 @@ gets none; your few-line playback is enough.
 1. Draw it from `./preview-starter.html` and run the self-check below.
 2. Show it with `show_file({ path })`: it posts a card the human opens in the
    file viewer. Put any question after the call.
-3. When `decisions.md` changes, redraw it in the same move and show it again.
+3. When the feature's decisions change, redraw it in the same move and show it again.
 
 ## The file
 
@@ -43,7 +43,7 @@ gets none; your few-line playback is enough.
    screens, clickable skeletons, flows, before and after, scenarios. It ends
    with **who builds what**: each worker by label, one-line purpose and kind
    ("with you" or "on its own"), your own part, and the review at the end.
-3. **What was decided.** Every decision in `decisions.md` by number and title,
+3. **What was decided.** Every decision in the feature file by number and title,
    the reason on demand. Pin a decision's number where the show shows it:
    `<a class="pin" data-d="3">3</a>`. A plan made with nobody present opens with
    the Check first group and marks its assumed decisions; one made with the
