@@ -13,7 +13,6 @@ import { IconButton, Tabs, cx } from '../../ui'
 import {
   IconArrowLeft,
   IconChevronRight,
-  IconDoc,
   IconInfo,
   IconList,
   IconPanelRight,
@@ -31,7 +30,6 @@ import {
 
 /** Every view leads with an icon (DESIGN.md principle 7). */
 export const PANEL_VIEW_ICON: Record<PanelView, ReactNode> = {
-  plan: <IconDoc />,
   work: <IconList />,
   design: <IconPen />,
   drive: <IconPlay />,

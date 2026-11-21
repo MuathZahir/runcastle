@@ -1,7 +1,9 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useState } from 'react'
 import { trpc } from '../../trpc'
+import { useLivePoll } from '../../lib/live'
 import { useDesignRecord } from '../../lib/use-designs'
 import { PlanCard } from '../chat/thread/PlanCard'
+import { PlanPageDialog } from '../PreviewFrame'
 import { DesignCards } from './DesignCard'
 import { FeatureLinksContext } from '../chat/thread/FeatureCardItems'
 
@@ -13,9 +15,8 @@ import { FeatureLinksContext } from '../chat/thread/FeatureCardItems'
  */
 export interface ThreadCardsTarget {
   featureId: string
-  /** The plan card's line: the feature's "what this is". */
-  oneLiner: string
-  onOpenPlan: () => void
+  /** Open the Details view: an old plan card's way in when the feature has no plan page. */
+  onOpenDetails: () => void
   /** Open this design (its page) in the Design view. */
   onOpenDesign: (path: string) => void
   /** Open the Design view's list; none where there is no list (the phone). */
@@ -27,7 +28,7 @@ export const ThreadCardsContext = createContext<ThreadCardsTarget | null>(null)
 /**
  * What a card opens: its feature's page when the thread is on it, else, in an
  * orchestrator chat (every-feature-has-one-owner decision 3), the feature the
- * card names, opened from the project's list on its Plan or Design view.
+ * card names, opened from the project's list on its Details or Design view.
  */
 function useCardsTarget(featureId: string | undefined): ThreadCardsTarget | null {
   const page = useContext(ThreadCardsContext)
@@ -37,24 +38,30 @@ function useCardsTarget(featureId: string | undefined): ThreadCardsTarget | null
   if (!links || !feature) return null
   return {
     featureId: feature.id,
-    oneLiner: feature.oneLiner,
-    onOpenPlan: () => links.openFeature(feature.id, 'plan'),
+    onOpenDetails: () => links.openFeature(feature.id, 'details'),
     onOpenDesign: () => links.openFeature(feature.id, 'design'),
   }
 }
 
 /**
- * A plan card in a thread: the feature's line and the plan's figures, read
- * from the server. Nothing shows until both read. Opening the Plan view is
- * what marks the plan seen.
+ * A plan card an older chat holds (building-starts-without-a-plan-approval
+ * decision 6): it opens the feature's current plan page full window, or its
+ * Details view when the feature has no page. Nothing shows until the feature
+ * reads.
  */
 export function PlanCardItem({ older, featureId: named }: { older?: boolean; featureId?: string }) {
   const target = useCardsTarget(named)
   const featureId = target?.featureId ?? ''
-  const { designs, planIsNew } = useDesignRecord(featureId, !!target)
-  const figures = trpc.design.planFigures.useQuery({ featureId }, { enabled: !!target })
-  if (!target || !designs || !figures.data) return null
-  return <PlanCard oneLiner={target.oneLiner} counts={figures.data} isNew={planIsNew} {...(older ? { older } : {})} onOpen={target.onOpenPlan} />
+  const full = trpc.feature.get.useQuery({ id: featureId }, { enabled: !!target, refetchInterval: useLivePoll() })
+  const [open, setOpen] = useState(false)
+  if (!target || !full.data) return null
+  const preview = full.data.preview
+  return (
+    <>
+      <PlanCard {...(older ? { older } : {})} onOpen={() => (preview ? setOpen(true) : target.onOpenDetails())} />
+      {open && preview && <PlanPageDialog featureId={featureId} preview={preview} onClose={() => setOpen(false)} />}
+    </>
+  )
 }
 
 /**

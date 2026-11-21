@@ -58,7 +58,7 @@ const SEEDS: Seed[] = [
     name: 'runcastle',
     repo: '~/projects/runcastle',
     busy: (p) => [
-      waits(p, 'Voice notes in the chat', 'plan', 'Plan to approve', 6),
+      waits(p, 'Voice notes in the chat', 'answer', 'Needs your answer · Record in the browser or on the phone?', 6),
       waits(p, 'Phone push for finished drives', 'answer', 'Needs your answer · Which sound plays?', 25),
       runs(p, 'Faster sandbox start', 2, 6, 3),
       runs(p, 'Drive recordings', 1, 4, 1),

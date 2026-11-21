@@ -210,7 +210,6 @@ describe('the chat-first feature page', () => {
   it('never shows a view the feature’s facts do not offer, whatever the address says', () => {
     expect(page({ view: 'drive' })).not.toContain('data-panel')
     expect(page({ view: 'work' })).not.toContain('data-panel')
-    expect(page({ view: 'plan' })).not.toContain('data-panel')
   })
 
   it("shows a draft's body as the page, with no chat and no panel", () => {
@@ -231,34 +230,16 @@ describe('the chat-first feature page', () => {
 })
 
 describe('the panel’s views', () => {
-  it('switches the views by tabs in the panel’s header, Review never among them', () => {
-    const panel = panelOf(page({ view: 'plan', preview: true, tickets: [ticket(1)], queries: READY, docs: [doc('spec.md')] }))
+  it('switches the views by tabs in the panel’s header, Review and Plan never among them', () => {
+    const panel = panelOf(page({ view: 'details', preview: true, tickets: [ticket(1)], queries: READY, docs: [doc('decisions.md'), doc('spec.md')] }))
     const views = panel.slice(at(panel, 'aria-label="Panel views"'), at(panel, 'aria-label="Fold the panel"'))
-    expect([...views.matchAll(/role="tab"/g)]).toHaveLength(4)
+    expect([...views.matchAll(/role="tab"/g)]).toHaveLength(3)
+    // building-starts-without-a-plan-approval decision 3: a plan page and a spec offer no Plan tab.
+    expect(views).not.toContain('Plan')
     expect(views).toContain('History')
     expect(views).toContain('Details')
     expect(views).toContain('Design')
     expect(views).not.toContain('Review')
-  })
-
-  it('shows the plan preview in Plan, with Decisions and Spec as tabs beside it and no repeated title', () => {
-    const docs = [doc('brief.md'), doc('decisions.md'), doc('spec.md')]
-    const panel = panelOf(page({ view: 'plan', preview: true, docs, queries: { 'docs.read': { content: '<p>the show</p>' } } }))
-    const bar = panel.slice(at(panel, 'role="tablist" aria-label="Plan"'))
-    expect(bar).toContain('Overview</button>')
-    expect(bar).toContain('Decisions</button>')
-    expect(bar).toContain('Spec</button>')
-    expect(bar).not.toContain('brief.md')
-    expect(panel).toContain('<iframe')
-    expect(panel).not.toContain('<h1')
-  })
-
-  it('reads the decisions in Plan before a preview exists, in the panel and not a dialog', () => {
-    const panel = panelOf(page({ view: 'plan', docs: [doc('decisions.md')] }))
-    expect(panel).not.toContain('Overview</button>')
-    expect(panel).toContain('Decisions</button>')
-    expect(panel).not.toContain('role="dialog"')
-    expect(panel).not.toContain('<iframe')
   })
 
   it('shows old tickets read only in History: no Go, no ticket action, no live log (burns-become-workers decision 19)', () => {
@@ -272,7 +253,7 @@ describe('the panel’s views', () => {
   })
 
   it('offers no History to a feature with no old tickets', () => {
-    const panel = panelOf(page({ view: 'plan', preview: true, queries: READY, docs: [doc('spec.md')] }))
+    const panel = panelOf(page({ view: 'details', preview: true, queries: READY, docs: [doc('spec.md')] }))
     expect(panel).not.toContain('History')
   })
 })

@@ -10,7 +10,7 @@ import {
   type DesignEntry,
   type DesignState,
 } from '../../lib/feature-ui/designs'
-import { NewMark, OlderMark } from '../chat/thread/PlanCard'
+import { NewMark, OlderMark } from './marks'
 import { WELL } from '../chat/thread/surfaces'
 
 /** A state's dot: waiting is the amber of "waiting on you" everywhere else. */

@@ -3,7 +3,7 @@
  * 1, 2): a markdown link whose target names a runcastle thing.
  *
  *   feature:<slug>          a feature, opened as a sidebar click opens it
- *   feature:<slug>/plan     its Plan tab
+ *   feature:<slug>/plan     its Details tab (the retired Plan tab's name)
  *   feature:<slug>/design   its Design tab
  *   worker:<worker id>      that worker's chat, in its feature
  *
@@ -11,7 +11,7 @@
  */
 
 export type ChatLinkTarget =
-  | { kind: 'feature'; slug: string; view?: 'plan' | 'design' }
+  | { kind: 'feature'; slug: string; view?: 'details' | 'design' }
   | { kind: 'worker'; id: string }
 
 const FEATURE = 'feature:'
@@ -46,5 +46,7 @@ export function parseChatLink(href: string): ChatLinkTarget | null {
   if (slug === null || !NAME.test(slug)) return null
   const view = parts[1]
   if (view === undefined) return { kind: 'feature', slug }
-  return view === 'plan' || view === 'design' ? { kind: 'feature', slug, view } : null
+  // The retired Plan tab's link opens Details, where its docs are read now.
+  if (view === 'plan') return { kind: 'feature', slug, view: 'details' }
+  return view === 'design' ? { kind: 'feature', slug, view } : null
 }

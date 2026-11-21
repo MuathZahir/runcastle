@@ -22,8 +22,8 @@ export interface ChatLinks {
   projectId: string
   /** Every feature of the project, whatever its state (decision 7). */
   features: readonly Pick<FeatureListItem, 'id' | 'slug'>[]
-  /** Open a feature as a sidebar click does, or on its Plan or Design tab. */
-  openFeature: (featureId: string, view?: 'plan' | 'design') => void
+  /** Open a feature as a sidebar click does, or on its Details or Design tab. */
+  openFeature: (featureId: string, view?: 'details' | 'design') => void
   /** Open a worker's chat in its feature. */
   openWorker: (featureId: string, workerId: string) => void
   /** A hook: the worker's feature in this project, or null while it loads and for an id that names no feature's worker here. */

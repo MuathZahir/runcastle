@@ -373,7 +373,6 @@ export const LIVE_COVERED_PATHS: readonly string[] = [
   'setup.imageBuildTarget',
   'design.status',
   'design.list',
-  'design.planFigures',
 ]
 
 const LIVE_COVERED = new Set(LIVE_COVERED_PATHS)
@@ -524,10 +523,9 @@ export function useLiveSync(): LiveStatus {
       // The design view's frame follows `design.server_started` / `_stopped`:
       // a server that idled out shows its stopped state on the same push.
       refetches.push(u.design.status.invalidate())
-      // The design record (`design.*`, `plan.*`): the cards, the Design list,
+      // The design record (`design.*`): the cards, the Design list,
       // its approval meter and the new-item dots move on the same push.
       refetches.push(u.design.list.invalidate())
-      refetches.push(u.design.planFigures.invalidate())
       // The review agent's walkthrough appears mid-burn, at the tail of a run
       // the human is already watching — so the player has to arrive on the same
       // push as everything else, not on a reload.

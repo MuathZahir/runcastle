@@ -16,7 +16,7 @@ import { atWidth } from './phone-width'
 
 const PROJECT: AppLocation = { kind: 'project', projectId: 'p1' }
 const CHAT: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'chat' }
-const PLAN: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'plan' }
+const DETAILS: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'details' }
 const DESIGN: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'alpha', view: 'design' }
 const BETA: AppLocation = { kind: 'feature', projectId: 'p1', featureSlug: 'beta', view: 'chat' }
 
@@ -28,7 +28,7 @@ function Page({ dirty = false }: { dirty?: boolean }) {
   return (
     <>
       <button onClick={() => setLocation(CHAT)}>chat</button>
-      <button onClick={() => setLocation(PLAN)}>plan</button>
+      <button onClick={() => setLocation(DETAILS)}>details</button>
       <button onClick={() => setLocation(DESIGN)}>design</button>
       <button onClick={() => setLocation(BETA)}>beta</button>
       <button onClick={() => setOpen(true)}>open dialog</button>
@@ -38,10 +38,10 @@ function Page({ dirty = false }: { dirty?: boolean }) {
           onClick={() => {
             // A sheet row: close, then go somewhere, in one tap.
             setOpen(false)
-            setLocation(PLAN)
+            setLocation(DETAILS)
           }}
         >
-          close and open plan
+          close and open details
         </button>
       </Dialog>
     </>
@@ -75,8 +75,8 @@ describe('closing a view (decisions 2, 5)', () => {
     atWidth(false)
     render(<Page />)
     tap('chat')
-    tap('plan')
-    expect(path()).toBe('/p/p1/f/alpha/plan')
+    tap('details')
+    expect(path()).toBe('/p/p1/f/alpha/details')
     tap('chat') // the panel closes
     await settle()
     expect(path()).toBe('/p/p1/f/alpha/chat')
@@ -87,12 +87,12 @@ describe('closing a view (decisions 2, 5)', () => {
     atWidth(false)
     render(<Page />)
     tap('chat')
-    tap('plan')
+    tap('details')
     tap('design')
     tap('chat') // the panel closes from the design, which came from the Plan
     await settle()
     expect(path()).toBe('/p/p1/f/alpha/chat')
-    await back('/p/p1/f/alpha/plan')
+    await back('/p/p1/f/alpha/details')
   })
 
   it('still pushes a move to another page, even one the entry behind names', async () => {
@@ -141,9 +141,9 @@ describe('an overlay on the phone (decision 3)', () => {
     tap('chat')
     tap('open dialog')
     await settle()
-    tap('close and open plan')
+    tap('close and open details')
     await settle()
-    expect(path()).toBe('/p/p1/f/alpha/plan')
+    expect(path()).toBe('/p/p1/f/alpha/details')
     await back('/p/p1/f/alpha/chat')
     expect(screen.queryByRole('dialog')).toBeNull()
     await back('/p/p1')
@@ -171,7 +171,7 @@ describe('an overlay on the phone (decision 3)', () => {
     await settle()
     // What a reload over an open sheet leaves, then a page opened above it.
     act(() => window.history.pushState({ runcastle: true, overlay: 'gone', from: '/p/p1/f/alpha/chat' }, '', '/p/p1/f/alpha/chat'))
-    tap('plan')
+    tap('details')
     await settle()
     await back('/p/p1/f/alpha/chat')
     await settle()

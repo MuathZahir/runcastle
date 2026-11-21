@@ -17,11 +17,10 @@ export const SLUG = 'the-whole-app-matches-the-sidebar'
 export const FEATURE_ID = 'feat_panel'
 export const TITLE = 'The whole app matches the sidebar'
 
-export type Step = 'early' | 'plan' | 'docs' | 'reader' | 'tickets' | 'round' | 'ready' | 'drive' | 'shipped'
+export type Step = 'early' | 'docs' | 'reader' | 'tickets' | 'round' | 'ready' | 'drive' | 'shipped'
 
 export const STEPS: { key: Step; label: string; view: string; doc?: string }[] = [
-  { key: 'early', label: 'Plan, early', view: 'plan' },
-  { key: 'plan', label: 'Plan', view: 'plan' },
+  { key: 'early', label: 'Docs, early', view: 'details' },
   { key: 'docs', label: 'Details', view: 'details' },
   { key: 'reader', label: 'A doc open', view: 'details', doc: 'Menus today' },
   { key: 'tickets', label: 'Tickets', view: 'work' },
@@ -85,7 +84,7 @@ const GOAL: Record<number, Partial<Ticket>> = {
  * current one (decision 18).
  */
 export function ticketsAt(step: Step): Ticket[] {
-  if (step === 'early' || step === 'plan' || step === 'docs' || step === 'reader') return []
+  if (step === 'early' || step === 'docs' || step === 'reader') return []
   const r1 = step === 'tickets' ? 'pending' : 'done'
   const round1 = [
     ticket(1, 'Theme: see-through hover, the card and the 14px row step', r1, { model: 'claude-opus-5-5[1m]' }),

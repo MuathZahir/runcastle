@@ -11,7 +11,7 @@ import {
   type DesignEntry,
   type DesignState,
 } from '../../lib/feature-ui/designs'
-import { NewMark } from '../chat/thread/PlanCard'
+import { NewMark } from './marks'
 import { ApprovalMeter, DesignPicture, DesignStateLabel } from './DesignCard'
 
 /** The list's groups, in order (decision 6): what waits for the human leads. */

@@ -1,4 +1,4 @@
-import { type EventRow, PREVIEW_FILE } from '@runcastle/core'
+import type { EventRow } from '@runcastle/core'
 import type { PanelView } from './feature-ui/panel'
 
 /**
@@ -10,13 +10,13 @@ import type { PanelView } from './feature-ui/panel'
  */
 
 /** The collapse key: a repeat of the same kind counts up on one card. */
-export type ChatNoticeKind = 'preview' | 'spec' | 'history' | 'drive'
+export type ChatNoticeKind = 'history' | 'drive'
 
 /** The phase hue a notice wears (the `--color-phase-*` token), or danger. */
 export type ChatNoticeHue = 'planning' | 'tickets' | 'building' | 'review' | 'danger'
 
 /** The panel view a notice's action opens beside the chat (design-mode decision 5). */
-export type ChatNoticeTarget = Extract<PanelView, 'plan' | 'work' | 'drive'>
+export type ChatNoticeTarget = Extract<PanelView, 'work' | 'drive'>
 
 export interface ChatNotice {
   kind: ChatNoticeKind
@@ -62,8 +62,9 @@ const HISTORY_EVENTS = new Set(['tickets.stored', 'ticket.edited', 'ticket.cance
 /**
  * The notice an event raises over the chat, or `null` for every event that
  * is not worth pulling the operator out of the conversation for — each locked
- * decision, notes, worktree and chat housekeeping, and the phase
- * moves the human made themselves (Merge).
+ * decision, notes, docs written (the Plan view that showed them is gone:
+ * building-starts-without-a-plan-approval decision 3), worktree and chat
+ * housekeeping, and the phase moves the human made themselves (Merge).
  *
  * An old ticket or round event reads as a plain history note that opens the
  * History view, the event's own words its subtitle: it never offers a round
@@ -75,32 +76,6 @@ export function noticeFor(event: EventRow): ChatNotice | null {
     count: 1,
     eventId: event.id,
   })
-
-  if (event.type === 'docs.changed') {
-    const files = docsFiles(event)
-    const names = (name: string) => files.some((file) => file === name || file.endsWith(`/${name}`))
-    // The preview first: the session asks the human to look at it, and a write
-    // that also touched the spec is still the preview they were asked about.
-    if (names(PREVIEW_FILE)) {
-      return notice({
-        kind: 'preview',
-        hue: 'planning',
-        title: 'Preview ready',
-        subtitle: PREVIEW_FILE,
-        actionLabel: 'View preview',
-        target: 'plan',
-      })
-    }
-    if (!names('spec.md')) return null
-    return notice({
-      kind: 'spec',
-      hue: 'planning',
-      title: 'Spec written',
-      subtitle: 'spec.md',
-      actionLabel: 'View spec',
-      target: 'plan',
-    })
-  }
 
   if (HISTORY_EVENTS.has(event.type)) {
     return notice({
@@ -127,12 +102,6 @@ export function noticeFor(event: EventRow): ChatNotice | null {
   }
 
   return null
-}
-
-/** The files a `docs.changed` names (docs-watch's `data.files`). */
-function docsFiles(event: EventRow): string[] {
-  const files = (event.data as { files?: unknown } | undefined)?.files
-  return Array.isArray(files) ? files.filter((f): f is string => typeof f === 'string') : []
 }
 
 /** The most cards the deck holds; a push past it drops the oldest. */

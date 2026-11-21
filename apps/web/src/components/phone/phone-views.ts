@@ -7,7 +7,7 @@ import type { ThreadState } from '../../lib/chat-thread'
 import type { PhoneChatStatus, PhoneViewChoice } from './PhoneChatBar'
 
 /** The views a phone opens from a chat, read-only and full screen (decision 3): never Details, never a drive. */
-export const PHONE_VIEWS: readonly PanelView[] = ['plan', 'work', 'design']
+export const PHONE_VIEWS: readonly PanelView[] = ['work', 'design']
 
 /** The phone shows `view` full screen, or null: Details and a drive show the chat. */
 export function phoneViewOf(view: PanelView | null): PanelView | null {
@@ -32,7 +32,6 @@ export function phoneViewChoices(
   designs: readonly DesignEntry[] = [],
 ): PhoneViewChoice[] {
   const hint: Partial<Record<PanelView, string>> = {
-    plan: 'Decisions and spec, to read',
     work: ticketCountText(ticketCount(tickets)),
     design: phoneDesignHint(designs),
   }

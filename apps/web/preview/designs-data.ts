@@ -1,4 +1,4 @@
-import type { DesignEntry, PlanCounts } from '../src/lib/feature-ui/designs'
+import type { DesignEntry } from '../src/lib/feature-ui/designs'
 import type { ThreadItem } from '../src/lib/chat-thread'
 
 /**
@@ -93,9 +93,7 @@ export const DESIGNS: DesignEntry[] = [
   },
 ]
 
-export const PLAN_ONE_LINER = 'A notes page exports the open note, or a whole folder, as a PDF the human can save or send.'
 
-export const PLAN_COUNTS: PlanCounts = { decisions: 14, checkFirst: 4, tickets: 4, designs: DESIGNS.length }
 
 /** The conversation above the cards: the planning run's opening, its work folded. */
 export const OPENING: ThreadItem[] = [
