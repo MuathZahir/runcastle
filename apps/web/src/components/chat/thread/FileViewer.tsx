@@ -8,7 +8,7 @@ import { Dialog, DimLine, IconButton } from '../../../ui'
 import { useIsPhone } from '../../../lib/use-phone'
 import { ProseSkeleton } from '../../DocReader'
 import { Markdown } from '../../Markdown'
-import { PreviewFrame } from '../../PreviewPanel'
+import { PreviewFrame } from '../../PreviewFrame'
 
 /** How much of a text file the viewer reads (decision 5). */
 const TEXT_MAX = 1_000_000

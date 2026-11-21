@@ -425,7 +425,7 @@ describe('renderSystemPrompt', () => {
         expect(p, name).toContain('Invoke the `/runcastle:feature` skill')
         expect(p, name).toContain('Feature: `dark-mode`, on branch `feature/dark-mode`')
         expect(p, name).toContain("Working directory: the feature's own worktree")
-        expect(p, name).toContain('Docs folder: `docs/features/dark-mode/` (`brief.md`, `decisions.md`, `spec.md`)')
+        expect(p, name).toContain('Docs folder: `docs/features/dark-mode/`. Its `brief.md` holds the human\'s words, decisions and build notes')
         expect(p, name).toContain("Your commits land through the feature's landing queue")
         expect(p, name).toContain('wait while the human is driving the feature')
         expect(p, name).toContain('Never reword a `ticket(<seq>): …` or `runcastle: …` commit')
@@ -459,7 +459,7 @@ describe('renderSystemPrompt', () => {
   it('adds one sentence for each errand, and nothing else', () => {
     // A self-planning run is unattended by definition, so it is compared with a headless brief.
     const errands: [SessionPurpose, RegExp, boolean][] = [
-      ['self-plan', /automatic planning run: plan this feature by yourself, designing its screens where it adds or reshapes them, and do not build it, .*`references\/planning-alone\.md`.*human's yes; if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead\.$/, true],
+      ['self-plan', /automatic planning run: plan this feature by yourself, designing its screens where it adds or reshapes them, by .*`references\/planning-alone\.md`, ending on the decisions you made for the human, or, with none made and no design waiting, saying what you will build and building it; if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead\.$/, true],
       ['relay', /relay run: the project's orchestrator, not the human, sent this conversation a message/, false],
       ['resolve-conflict', /resolves a merge conflict: merge the base branch in, resolve the conflicts/, false],
     ]
@@ -477,7 +477,7 @@ describe('renderSystemPrompt', () => {
     for (const purpose of [undefined, 'self-plan', 'relay'] as const) {
       const p = renderSystemPrompt(feature(), 'chat', purpose, undefined, true)
       expect(p).toContain('## No human is present')
-      expect(p).toContain('call `wait_for_you` with why, then end your turn')
+      expect(p).toContain('write the question in full in your reply, call `wait_for_you` with a few-word why')
       expect(p).toContain('A refused tool is not a wait')
       expect(p).toContain('do what your opening prompt asks, in this one run')
     }

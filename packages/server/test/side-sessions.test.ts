@@ -255,7 +255,9 @@ describe('the main chat’s quote in a kickoff', () => {
       expect(text).toContain('Assistant: the cache should expire hourly')
       expect(text).not.toContain(kickoffLineFor('chat', undefined, runtime).slice(0, 40))
       expect(text).toContain(path)
-      expect(text).toContain(join('docs', 'features', `excerpt-${runtime}`, 'decisions.md'))
+      // No decisions.md: a one-file feature keeps its decisions in brief.md.
+      expect(text).toContain(`the decisions, in brief.md: `)
+      expect(text).toContain(join('docs', 'features', `excerpt-${runtime}`, 'brief.md'))
     })
   }
 

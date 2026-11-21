@@ -104,7 +104,6 @@ import {
   copyDesignPicture,
   leadDesigns,
   listDesigns,
-  markPlanShown,
   recordDesign,
   setDesignState,
 } from '../services/designs'
@@ -790,7 +789,7 @@ export async function toolStartReview(
   ctx: AppCtx,
   session: SessionRow,
   input: {
-    mode?: 'drive' | 'gates'
+    mode: 'drive' | 'gates'
     verify?: { findingIds: string[]; commits: string[] }
     model?: string
     checksPassed?: { commit: string; commands: string[] }
@@ -881,7 +880,7 @@ export async function toolHandBack(
   return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary, session.id)
 }
 
-/** What `wait_for_you` takes: the one line the agent needs the human for, or a withdraw. */
+/** What `wait_for_you` takes: a few-word label (the question itself is in the agent's reply), or a withdraw. */
 export type WaitForYouInput = { why: string; withdraw?: undefined } | { withdraw: true; why?: undefined }
 
 /**
@@ -904,7 +903,7 @@ export async function toolWaitForYou(
     return { ok: true, need: null }
   }
   const why = input.why.trim()
-  if (!why) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+  if (!why) throw new InvalidInputError('wait_for_you needs a few-word label (why), or withdraw: true; the question itself goes in your reply')
   const asker = (session.kind === 'chat' || session.kind === 'worker') && session.featureId ? getFeatureRow(ctx, session.featureId) : null
   if (asker && isLocked(ctx, asker)) {
     const { deliveredTo } =
@@ -943,17 +942,17 @@ function unattended(session: SessionRow): boolean {
 }
 
 /**
- * The views `show_panel` opens (decision 8). The plan and a design are not among
- * them: `show_plan` and `show_design` show those, leaving a card in the chat
+ * The views `show_panel` opens (decision 8). A design is not among them:
+ * `show_design` shows it, leaving a card in the chat
  * (designs-and-the-plan-get-their-own-place decision 3).
  */
 const PanelView = z.enum(['work', 'review', 'details', 'drive'], {
-  error: 'show_panel opens work, review, details or drive. Show the plan with show_plan and a design with show_design',
+  error: 'show_panel opens work, review, details or drive. Show a design with show_design and a plan page with show_file',
 })
 type PanelViewT = z.infer<typeof PanelView>
 
-/** Every view a `panel.show` event can open: `show_panel`'s, and the plan and the design view the card tools open. */
-type PanelOpenView = PanelViewT | 'plan' | 'design'
+/** Every view a `panel.show` event can open: `show_panel`'s, and the design view `show_design` opens. */
+type PanelOpenView = PanelViewT | 'design'
 
 /**
  * The `panel.show` event the web opens a view on — always the agent's own act,
@@ -1018,35 +1017,6 @@ export function toolShowDesign(
   return { recorded: true, state: design.state }
 }
 
-/** The docs that make a feature's plan: one of them must exist before the plan can be shown. */
-const PLAN_DOCS = ['preview.html', 'decisions.md', 'spec.md']
-
-/**
- * Show the feature's plan (decisions 2, 15): post a plan card in this chat, make
- * the plan new to the human, and, with a human watching, open the Plan view.
- */
-export function toolShowPlan(ctx: AppCtx, session: SessionRow, input: { slug?: string } = {}): { shown: true } {
-  // An orchestrator chat posts a feature's plan card in its own chat (every-feature-has-one-owner
-  // decision 3): the same card, opening the feature's Plan tab. It reads, so it needs no hold,
-  // and it leaves the plan's "new to the human" mark to the lead.
-  const fromChat = !session.featureId
-  const feature = fromChat
-    ? requireProjectFeature(ctx, session, input.slug ?? '')
-    : getFeatureRow(ctx, requireChatFeatureId(session))
-  const featureId = feature.id
-  const docsDir = featureDocsDir(projectForFeature(ctx, feature), feature)
-  if (!PLAN_DOCS.some((doc) => existsSync(join(docsDir, doc)))) {
-    throw new GateError(
-      `${feature.slug} has no plan yet: write its plan page (preview.html), decisions.md or spec.md in ${docsDir} first`,
-    )
-  }
-  if (!fromChat) markPlanShown(ctx, featureId)
-  seedFromTranscript(ctx, session.id)
-  appendThreadEvent(session.id, { type: 'plan_shown', featureId })
-  if (!fromChat && !unattended(session)) emitPanelShow(ctx, featureId, { view: 'plan' })
-  return { shown: true }
-}
-
 /**
  * `show_design` from an orchestrator chat (decisions 3, 27): post the card of a
  * design the feature's lead already recorded, found by its path, in this chat.
@@ -1091,7 +1061,7 @@ const ResolveFindingShape = {
   disposition: z
     .enum(['addressed', 'dismissed'])
     .describe('`addressed`: work already answers it. `dismissed`: not worth fixing.'),
-  note: z.string().optional().describe('REQUIRED: what addressed it, or why it was dismissed.'),
+  note: z.string().optional().describe('REQUIRED: what addressed it (name the fix commit), or why it was dismissed.'),
 }
 
 /**
@@ -2701,9 +2671,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
   start_design_server: ['chat'],
   show_panel: ['chat'],
-  // The plan and the designs (`designs-and-the-plan-get-their-own-place`): the feature's chat;
+  // The designs (`designs-and-the-plan-get-their-own-place`): the feature's chat;
   // an orchestrator chat posts their cards by slug (every-feature-has-one-owner decision 3).
-  show_plan: ['chat', 'project'],
   show_design: ['chat', 'project'],
   set_design_state: ['chat'],
   // Every session with a thread to show it in.
@@ -3401,7 +3370,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start a worker',
         description:
-          'Start a worker on the human’s yes: an agent in its own sandbox and branch off this feature branch, with ' +
+          'Start a worker: an agent in its own sandbox and branch off this feature branch, with ' +
           'one assignment. `with-you` is taste work the human iterates on and hands back when happy (never a design: that is yours); ' +
           '`on-its-own` ' +
           'hands back when done. Past the machine’s agent limit it waits queued. Nothing lands until land_worker. ' +
@@ -3432,12 +3401,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start the Review worker',
         description:
-          'Start the feature’s Review worker once the work is done. It writes no code: it runs the project’s checks, ' +
-          'then drives the app on this machine when it can (holding the one drive slot, waiting while the human ' +
-          'drives) or reads the diff (`gates`), and hands back a Review Package. After fixing defects you judged real, ' +
-          'start one with `verify`. Refused after the human presses Stop, until they reply.',
+          'Start the feature’s one Review worker when the work is done. `drive` if the change reaches what a user meets: ' +
+          'a screen, a command’s output or options, an API’s responses, a library’s public functions. ' +
+          'For a project with no screen, driving is running the command or calling the API as its user would. ' +
+          'Else `gates` (read the diff). `verify` only after a large fix set. Refused after Stop until a reply.',
         inputSchema: {
-          mode: z.enum(['drive', 'gates']).optional().describe('`gates` when there is nothing to drive; omit to drive whenever this machine can.'),
+          mode: z.enum(['drive', 'gates']).describe('`drive`: use what the change reaches as its user would. `gates`: read the diff.'),
           verify: z
             .object({
               findingIds: z.array(z.string().min(1)).min(1).describe('The findings you fixed.'),
@@ -3551,11 +3520,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Wait for the human',
         description:
-          'Tell the human you need them, in one short line saying what you need. It stays until the human ' +
-          'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human. ' +
-          'On autopilot it goes to your epic instead, as a handback does.',
+          'Flag that you need the human: marks this chat in the sidebar and pings their phone. Write the full ' +
+          'question, with your pick, in your reply first; the human reads that, never this label. Stays until they ' +
+          'write in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells them. A feature ' +
+          'lead on autopilot: your epic gets only this label, so ask it with hand_back({ summary }).',
         inputSchema: {
-          why: z.string().optional().describe('One short line: what you need from the human.'),
+          why: z.string().optional().describe('A few-word label for the sidebar and phone, never the question itself.'),
           withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),
         },
       },
@@ -3610,9 +3580,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Hand back to your epic',
         description:
-          'On autopilot only: report to the epic running this feature (questions, plans and designs for a yes, ready to test, ' +
+          'On autopilot only: report to the epic running this feature (questions, designs for a yes, ready to test, ' +
           'failures, merge conflicts). It answers or asks the human. Wakes it once with your summary and a line of the ' +
-          'feature’s state. Off autopilot the feature is the human’s: refused, ask them with wait_for_you.',
+          'feature’s state. Off autopilot the feature is the human’s: refused, ask them in your reply and call wait_for_you.',
         inputSchema: {
           summary: z
             .string()
@@ -3691,26 +3661,6 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolShowDesign(rs.ctx, rs.session, args))
-      },
-    )
-  }
-
-  if (wants('show_plan')) {
-    server.registerTool(
-      'show_plan',
-      {
-        title: 'Show the human the plan',
-        description:
-          'Post the plan card (plan page, decisions, spec) in this chat and open the Plan tab when someone is ' +
-          'present (an orchestrator chat only posts the card); call it when asking for the yes and after every redraw.',
-        inputSchema: {
-          slug: z.string().optional().describe("The feature's slug. A feature's own chat leaves it out."),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        return ok(toolShowPlan(rs.ctx, rs.session, args))
       },
     )
   }

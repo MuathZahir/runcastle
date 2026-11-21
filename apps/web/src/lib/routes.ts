@@ -43,7 +43,7 @@ function isFeatureSegment(segment: string): segment is FeatureSegment {
 /**
  * A feature view read from a path segment or from storage: the retired tabs
  * land on Work, and the retired panel views on the fixed view each became
- * (`body` on Work, `preview` on Plan).
+ * (`body` on Work; `plan` and its older name `preview` on Details).
  */
 export function parseFeatureView(value: string | null): FeatureView | null {
   if (value === null) return null
@@ -149,11 +149,11 @@ export function parsePath(path: string): AppLocation | null {
     return { kind: 'feature', projectId, featureSlug: parts[3], view: segment }
   }
   // The retired Tickets tab, the retired `/body` and a hand-typed `/work` land
-  // on Work; the retired `/preview` on Plan.
+  // on Work; the retired `/plan` and `/preview` on Details.
   const featureSlug = parts[3]
   const retired = parts.length === 5 && parts[2] === 'f' && featureSlug && segment ? parseFeatureView(segment) : null
   if (featureSlug && retired === 'work') return { kind: 'feature', projectId, featureSlug, namesWork: true }
-  if (featureSlug && retired === 'plan') return { kind: 'feature', projectId, featureSlug, view: retired }
+  if (featureSlug && retired === 'details') return { kind: 'feature', projectId, featureSlug, view: retired }
   return null
 }
 

@@ -14,7 +14,6 @@ import { setWait } from '../src/services/waits'
 import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
 import { getFeatureRow } from '../src/services/repo'
-import { storeTickets } from './helpers/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
@@ -26,7 +25,7 @@ import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 
 /**
  * A feature's designs and its plan (designs-and-the-plan-get-their-own-place):
- * the agent's show_design / show_plan / set_design_state over the real `/mcp`
+ * the agent's show_design / set_design_state over the real `/mcp`
  * route, and the human's design.* procedures, observed through the record, the
  * thread log, the timeline and what reaches the lead.
  */
@@ -80,7 +79,7 @@ async function call(sessionId: string, name: string, args: Record<string, unknow
 }
 
 const events = (type: string) => listAfter(ctx, feature.id, 0).filter((e) => e.type === type)
-const shownIn = (sessionId: string) => readThreadEvents(sessionId).filter((e) => e.type === 'design_shown' || e.type === 'plan_shown')
+const shownIn = (sessionId: string) => readThreadEvents(sessionId).filter((e) => e.type === 'design_shown')
 const list = () => caller().design.list({ featureId: feature.id })
 
 describe('show_design', () => {
@@ -148,60 +147,6 @@ describe('show_design', () => {
     expect(res.headers.get('content-type')).toBe('image/png')
     expect(await res.text()).toBe('png-bytes')
     expect((await app.request(`/api/designs/${feature.id}/pictures/..%2Fx.png`)).status).toBe(404)
-  })
-})
-
-describe('show_plan', () => {
-  it('refuses on a feature with no plan, and leaves nothing behind', async () => {
-    const chat = session()
-    const out = await call(chat, 'show_plan')
-    expect(out.isError).toBe(true)
-    expect(out.text).toMatch(/no plan yet/)
-    expect(shownIn(chat)).toEqual([])
-    expect((await list()).plan.isNew).toBe(false)
-  })
-
-  it('posts a plan card, makes the plan new to the human until they open it, and opens the Plan view', async () => {
-    const docs = join(repo, 'docs', 'features', 'checkout')
-    mkdirSync(docs, { recursive: true })
-    writeFileSync(join(docs, 'decisions.md'), '# Decisions\n')
-    const chat = session()
-
-    expect((await call(chat, 'show_plan')).isError).toBe(false)
-    expect(shownIn(chat)).toMatchObject([{ type: 'plan_shown' }])
-    expect(events('panel.show').map((e) => e.data)).toEqual([{ view: 'plan' }])
-    expect((await list()).plan.isNew).toBe(true)
-
-    await caller().design.planSeen({ featureId: feature.id })
-    expect((await list()).plan.isNew).toBe(false)
-
-    await call(session('self-plan'), 'show_plan')
-    expect((await list()).plan.isNew).toBe(true)
-    expect(events('panel.show')).toHaveLength(1)
-  })
-})
-
-describe('design.planFigures', () => {
-  const ticket = (title: string) => ({ title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] })
-
-  it('counts the numbered decisions, the Check first line, the implementation tickets and the recorded designs', async () => {
-    const docs = join(repo, 'docs', 'features', 'checkout')
-    mkdirSync(docs, { recursive: true })
-    writeFileSync(
-      join(docs, 'decisions.md'),
-      '# Decisions\n\nCheck first: 17, 6, 3\n\n## 1. One\ntext\n## 2. Two\n## Notes\n## 3. Three\n',
-    )
-    storeTickets(ctx, feature.id, [ticket('First'), ticket('Second')])
-    recordDesign(ctx, feature.id, { path: '/preview/a.html', title: 'A' })
-
-    expect(await caller().design.planFigures({ featureId: feature.id })).toEqual({ decisions: 3, checkFirst: 3, tickets: 2, designs: 1 })
-  })
-
-  it('leaves "to check first" at 0 without the line, and tickets null when the agent builds it alone', async () => {
-    const docs = join(repo, 'docs', 'features', 'checkout')
-    mkdirSync(docs, { recursive: true })
-    writeFileSync(join(docs, 'decisions.md'), '# Decisions\n\n## 1. One\n')
-    expect(await caller().design.planFigures({ featureId: feature.id })).toEqual({ decisions: 1, checkFirst: 0, tickets: null, designs: 0 })
   })
 })
 

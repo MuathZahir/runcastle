@@ -1,21 +1,20 @@
-# The Plan — the page the human looks at
+# The plan page — optional, never a gate
 
-Read this when you draw the Plan, or redraw it after `decisions.md` changes.
+Read this when a drawn plan page would help the human, or to redraw one after
+the feature's decisions change.
 
-The Plan (`preview.html`) is the one page the human reads the feature by, and
-when tired the only thing they read before their yes. Draw it for that reader.
+A plan page (`preview.html`) is a picture of how the feature will work. Nothing
+waits for it: the human approves by answering your questions, and designs by
+their own approval. Draw one only when it helps: a large feature, several
+screens or flows, or a question that is easier shown than told. A small feature
+gets none; your few-line playback is enough.
 
-## Show it, then get the yes
+## Show it
 
 1. Draw it from `./preview-starter.html` and run the self-check below.
-2. `show_plan()` posts the Plan card and opens the Plan tab. Tell the human the
-   workers, your own part and the review, and ask for their explicit yes.
-3. A correction is a decision edit plus a redraw: edit `decisions.md`, redraw,
-   `show_plan()` again, and ask them to look again.
-
-Never skip the Plan on your own judgement; a small feature gets a small one. If
-the human says to skip it, write no file; the yes is still needed. Any later
-edit to `decisions.md` updates `preview.html` in the same move.
+2. Show it with `show_file({ path })`: it posts a card the human opens in the
+   file viewer. Put any question after the call.
+3. When the feature's decisions change, redraw it in the same move and show it again.
 
 ## The file
 
@@ -44,7 +43,7 @@ edit to `decisions.md` updates `preview.html` in the same move.
    screens, clickable skeletons, flows, before and after, scenarios. It ends
    with **who builds what**: each worker by label, one-line purpose and kind
    ("with you" or "on its own"), your own part, and the review at the end.
-3. **What was decided.** Every decision in `decisions.md` by number and title,
+3. **What was decided.** Every decision in the feature file by number and title,
    the reason on demand. Pin a decision's number where the show shows it:
    `<a class="pin" data-d="3">3</a>`. A plan made with nobody present opens with
    the Check first group and marks its assumed decisions; one made with the

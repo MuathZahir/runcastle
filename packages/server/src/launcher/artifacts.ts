@@ -112,8 +112,9 @@ function purposeLine(purpose: SessionPurpose | undefined, runtime: AgentRuntime)
     case 'self-plan':
       return (
         "This is an automatic planning run: plan this feature by yourself, designing its screens where it adds or " +
-        "reshapes them, and do not build it, by the " +
-        `${skillRef(runtime, FEATURE_SKILL)} skill's \`${PLANNING_ALONE}\`, ending on a request for the human's yes; ` +
+        "reshapes them, by the " +
+        `${skillRef(runtime, FEATURE_SKILL)} skill's \`${PLANNING_ALONE}\`, ending on the decisions you made for the human, ` +
+        'or, with none made and no design waiting, saying what you will build and building it; ' +
         'if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead.'
       )
     case 'relay':
@@ -145,8 +146,8 @@ function headlessRule(): string {
     'Runcastle runs this conversation headless: nobody is watching this run.',
     '- Act on your opening prompt in this one run.',
     '- Never end your turn waiting on an answer — ending the turn ends the run. To ask the human',
-    '  anything, call `wait_for_you` with why, then end your turn: their reply reaches you later',
-    '  in this same conversation.',
+    '  anything, write the question in full in your reply, call `wait_for_you` with a few-word why',
+    '  as its label, then end your turn: their reply reaches you later in this same conversation.',
     '- A refused tool is not a wait: do not retry it or wait for approval. Decide on what you',
     '  know and treat that decision as a candidate to check first.',
   ].join('\n')
@@ -193,7 +194,7 @@ export function renderSystemPrompt(
     `- Feature: \`${feature.slug}\`, on branch \`${feature.branch}\`` +
       (feature.baseBranch ? `, which merges into \`${feature.baseBranch}\`.` : '.'),
     "- Working directory: the feature's own worktree on that branch, not the human's checkout.",
-    `- Docs folder: \`${docs}/\` (\`brief.md\`, \`decisions.md\`, \`spec.md\`). Write them here and commit them.`,
+    `- Docs folder: \`${docs}/\`. Its \`brief.md\` holds the human's words, decisions and build notes; older features also have \`decisions.md\` and \`spec.md\`. Write them here and commit them.`,
     unattended
       ? '- No human is present (see below).'
       : '- A human is present: you talk with them in this chat.',
@@ -762,8 +763,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   // agent for something that asks nothing of the human.
   'mcp__runcastle__show_file',
   'mcp__runcastle__show_review_package',
-  // The plan and the designs: a card and a record, never anything to answer.
-  'mcp__runcastle__show_plan',
+  // The designs: a card and a record, never anything to answer.
   'mcp__runcastle__show_design',
   'mcp__runcastle__set_design_state',
   // An orchestrator names its epic on its first reply, a headless wake's included.

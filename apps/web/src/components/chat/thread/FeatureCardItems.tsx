@@ -19,8 +19,8 @@ import { WorkersStartedCard } from '../../workers/WorkersStartedCard'
  */
 export interface FeatureLinks {
   features: readonly FeatureListItem[]
-  /** Open a feature, on one of its views when named (a plan card opens its Plan). */
-  openFeature: (featureId: string, view?: 'plan' | 'design') => void
+  /** Open a feature, on one of its views when named (a design card opens its Design). */
+  openFeature: (featureId: string, view?: 'details' | 'design') => void
 }
 
 export const FeatureLinksContext = createContext<FeatureLinks | null>(null)

@@ -48,7 +48,7 @@ export function StartAgent({
               icon={<IconSparkle />}
               loading={starting === 'selfPlan'}
               disabled={busy}
-              title="Plans the feature without you, then shows you the plan"
+              title="Plans the feature without you, then asks you what it decided"
               onClick={onPlanItYourself}
             >
               Plan automatically

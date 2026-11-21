@@ -1,5 +1,5 @@
 import { AUTOSTART_FAILED, unresolvedMergeConflict } from '@runcastle/core'
-import { featureDocsRel, scenarioDataDir } from '@runcastle/core/paths'
+import { scenarioDataDir } from '@runcastle/core/paths'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
 import { stopDesignServer } from './design'
@@ -67,9 +67,9 @@ export async function mergeFeatureFlow(
     }
     // The merge commit, read before the outcome doc commits on top of it.
     const sha = (await git.headSha(project.repoPath, res.target)) ?? null
-    await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
-    const outcomeRel = `${featureDocsRel(feature.slug)}/outcome.md`
-    const outcome = (await git.headSha(project.repoPath, `${res.target}:${outcomeRel}`)) ? outcomeRel : null
+    // `outcome.md` for an old-shape feature, `brief.md` (its `## Review summary`) for a one-file one.
+    const outcomeRel = await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
+    const outcome = outcomeRel && (await git.headSha(project.repoPath, `${res.target}:${outcomeRel}`)) ? outcomeRel : null
     const shippedData: ShippedData = { base: res.target, sha, outcome, mergedBy: opts.by ?? null }
     const shipped = emit(ctx, featureId, {
       type: 'feature.shipped',
@@ -119,7 +119,7 @@ export async function mergeFeatureFlow(
       text:
         `[runcastle] Merging ${feature.branch} into ${res.target} stopped on a conflict` +
         (files.length ? ` in: ${files.join(', ')}` : '') +
-        `. Bring ${res.target} into the feature branch and resolve it, or call wait_for_you if the human must decide.`,
+        `. Bring ${res.target} into the feature branch and resolve it, or, if the human must decide, ask them in your reply and call wait_for_you.`,
       source: 'runcastle',
     }).catch((err) => console.error(`feature ${featureId}: conflict delivery`, err))
   }

@@ -65,7 +65,7 @@ always describes the present, never the history.>
 The live ADR **index** comes back in `get_project_context`; the bodies do not.
 Read the ones your work touches with `read_adr({ relPath })` — a live ADR binds
 you and binds every feature session, so an answer that contradicts one is wrong
-regardless of what a feature's `decisions.md` argued on the way there.
+regardless of what a feature's decisions argued on the way there.
 
 A charter change that **overturns** an ADR is a decision, and decisions land as
 ADRs — write the ADR, do not quietly edit the charter around it. Never scaffold

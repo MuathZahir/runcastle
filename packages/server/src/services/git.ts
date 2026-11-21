@@ -1867,6 +1867,15 @@ export function docsCommitMessage(
   return `${prefix} ${summary}`
 }
 
+/** A file's text as `HEAD` holds it in `repoPath` (a repo-relative, `/`-separated path), or null when HEAD has no such file. */
+export async function readCommitted(repoPath: string, rel: string): Promise<string | null> {
+  try {
+    return await git(repoPath).show([`HEAD:${rel}`])
+  } catch {
+    return null
+  }
+}
+
 /**
  * Stage ONLY `docs/features/**` within `worktreePath` and commit if anything is
  * staged there (no-op otherwise). Uses a pathspec commit so pre-staged changes
@@ -3701,6 +3710,19 @@ async function runDriveHookStep(
       timedOut: result.timedOut,
       output: result.output,
     },
+  }
+}
+
+/**
+ * The paths uncommitted in a worktree (tracked or not), or `[]` when there are
+ * none or the folder cannot be read. Best effort: never throws.
+ */
+export async function uncommittedPaths(worktreePath: string): Promise<string[]> {
+  try {
+    return await dirtyPaths(git(worktreePath))
+  } catch {
+    // simple-git refuses a folder that does not exist.
+    return []
   }
 }
 

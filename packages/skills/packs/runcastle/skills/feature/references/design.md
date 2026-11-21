@@ -98,12 +98,13 @@ is back:
 
 - They approve a screen: commit it as above.
 - They ask for changes: iterate and `show_design` the page again.
-- They say yes to the plan: that does not approve designs. Commit only those
-  whose state in `get_feature_context`'s `designs[]` is approved, name every
-  other waiting one, and ask before you start work. Leave a rejected screen out.
+- They answer your questions or say go: that does not approve designs. Commit
+  only those whose state in `get_feature_context`'s `designs[]` is approved,
+  name every other waiting one, and build no screen still waiting. Leave a
+  rejected screen out.
 - An orchestrator message approves a design only when it relays the human's own
   answer, or the epic runs this feature on autopilot; then record it with
   `set_design_state`.
 
 A waiting design does not tell the human by itself: when you want them to look,
-call `wait_for_you({ why })` naming it.
+say so in your reply and call `wait_for_you({ why })` with a label naming it.

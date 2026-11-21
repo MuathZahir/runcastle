@@ -62,7 +62,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     id: 'plan',
     term: 'Plan',
     group: 'work',
-    definition: 'What the feature’s agent proposes before anything is built: the decisions, the spec, the tickets and any designs. Nothing is built until you say yes.',
+    definition: 'What the feature’s agent works out before it builds: the decisions and the spec, and any designs. It asks you only what is yours to decide; otherwise it says what it will build and builds. Designs still wait for your yes.',
   },
   {
     id: 'design',

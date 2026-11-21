@@ -10,8 +10,9 @@ export function mergeConflictKickoff(base: string, branch: string, files: string
     `on: ${list}. Your working directory IS the talk worktree, already checked out on ${branch}. ` +
     `First check it still stands: if \`git merge-base --is-ancestor ${base} HEAD\` succeeds, ${base} ` +
     `is already in, so say so in one line and stop — no checks, no review. ` +
-    `Otherwise run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
-    `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. ` +
+    `Otherwise run \`git merge ${base}\`, then resolve every conflict using this feature’s brief.md ` +
+    `(the human’s words, decisions and build notes; an older feature also has decisions.md and spec.md) for intent. ` +
+    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. ` +
     `When the merge commit is in, tell me ` +
     `to click “Merge & ship” again for a clean retry — ${TEST_DRIVE_OFFER}`
   )
@@ -100,10 +101,11 @@ function eventSessionId(event: EventRow): string | undefined {
  * reads as the button having done nothing at all. This is what lets it say so.
  *
  * There is no negative event to look for: `session.ended` carries only the
- * session's id, so the sessions are what say which of them was the resolve. Both
- * closing events count — a terminal the human closed emits `session.ended`, one
- * the server found dead at boot emits `session.reconciled`, and either way the
- * session is over and the merge has not landed.
+ * session's id, so the sessions are what say which of them was the resolve. Every
+ * closing event counts — the human ending the session emits `session.ended`, its
+ * agent process stopping emits `session.process_stopped`, one the server found
+ * dead at boot emits `session.reconciled` — and each way the resolve is over and
+ * the merge has not landed.
  *
  * Answers for whatever conflict is standing at the end of the feed, so callers
  * only ask it where {@link unresolvedMergeConflict} already returned one.
@@ -121,7 +123,7 @@ export function conflictResolveEnded(
     // A fresh conflict, or anything that retires the old one, starts the
     // question over: what matters is the resolve attempt on the CURRENT one.
     if (event.type === 'merge.conflict' || CONFLICT_CLEARED.includes(event.type)) ended = false
-    else if (event.type === 'session.ended' || event.type === 'session.reconciled') {
+    else if (event.type === 'session.ended' || event.type === 'session.process_stopped' || event.type === 'session.reconciled') {
       const id = eventSessionId(event)
       if (id && resolvers.has(id)) ended = true
     }

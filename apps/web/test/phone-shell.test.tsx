@@ -232,18 +232,6 @@ describe('runcastle on a phone', () => {
     expect(screen.queryByText('new line')).toBeNull()
   })
 
-  it('opens the Plan full screen from the chat’s “…”, never Details, and its Back is the chat', async () => {
-    render(<Root path={CHAT} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'More' }))
-    const views = screen.getByRole('dialog', { name: 'Views' })
-    expect(within(views).queryByRole('button', { name: /Details/ })).toBeNull()
-    fireEvent.click(within(views).getByRole('button', { name: /^Plan/ }))
-    await waitFor(() => expect(window.location.pathname).toBe(`/p/${PROJECT_ID}/f/${SLUG}/plan`))
-    fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
-    await waitFor(() => expect(window.location.pathname).toBe(CHAT))
-    expect(screen.getByRole('button', { name: 'Back to the list' })).toBeTruthy()
-  })
-
   it('shows the chat for an address naming Details', async () => {
     render(<Root path={`/p/${PROJECT_ID}/f/${SLUG}/details`} />)
     await screen.findByRole('button', { name: 'Back to the list' })
@@ -506,15 +494,19 @@ describe('a design on a phone', () => {
     await waitFor(() => expect(seen).toEqual([{ designId: 'newer' }]))
   })
 
-  it('opens the oldest waiting design from the “…” sheet’s Design, the chat having no waiting line', async () => {
+  it('opens the oldest waiting design from the “…” sheet’s Design, never Details, the chat having no waiting line', async () => {
     const { fakes, over, seen, threads } = withDesigns()
     render(<Root path={CHAT} threads={threads} extra={fakes} over={over} />)
     fireEvent.click(await screen.findByRole('button', { name: 'More' }))
     expect(screen.queryByRole('button', { name: 'Open design' })).toBeNull()
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'Views' })).getByRole('button', { name: /^Design/ }))
+    const views = screen.getByRole('dialog', { name: 'Views' })
+    expect(within(views).queryByRole('button', { name: /Details/ })).toBeNull()
+    fireEvent.click(within(views).getByRole('button', { name: /^Design/ }))
     await waitFor(() => expect(window.location.pathname).toBe(DESIGN))
     expect(await screen.findByRole('region', { name: 'Cart' })).toBeTruthy()
     await waitFor(() => expect(seen).toEqual([{ designId: 'older' }]))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the chat' }))
+    await waitFor(() => expect(window.location.pathname).toBe(CHAT))
   })
 
   describe('Back walks out one level at a time (phone-fixes decisions 2, 3)', () => {
@@ -549,8 +541,9 @@ describe('a design on a phone', () => {
       await systemBack(CHAT)
 
       fireEvent.click(await screen.findByRole('button', { name: 'More' }))
-      fireEvent.click(within(screen.getByRole('dialog', { name: 'Views' })).getByRole('button', { name: /^Plan/ }))
-      await waitFor(() => expect(window.location.pathname).toBe(`/p/${PROJECT_ID}/f/${SLUG}/plan`))
+      fireEvent.click(within(screen.getByRole('dialog', { name: 'Views' })).getByRole('button', { name: /^Design/ }))
+      await screen.findByRole('region', { name: 'Cart' })
+      expect(window.location.pathname).toBe(DESIGN)
       fireEvent.click(await screen.findByRole('button', { name: 'Back to the chat' }))
       await waitFor(() => expect(window.location.pathname).toBe(CHAT))
 
@@ -576,10 +569,8 @@ describe('a design on a phone', () => {
       await onList()
     })
 
-    it.each([
-      ['the Plan', `/p/${PROJECT_ID}/f/${SLUG}/plan`, 'Plan'],
-      ['a design', DESIGN, 'Design'],
-    ])('walks out of %s opened straight by its link, as a notification opens it, and never back into it', async (_name, address, region) => {
+    it('walks out of a design opened straight by its link, as a notification opens it, and never back into it', async () => {
+      const [address, region] = [DESIGN, 'Design']
       const { fakes, over, threads } = withDesigns()
       realHistory()
       // Whatever page the link was tapped from, outside the app.

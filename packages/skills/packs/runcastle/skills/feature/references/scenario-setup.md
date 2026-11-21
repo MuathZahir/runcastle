@@ -33,7 +33,7 @@ a setup since you planned. If `.runcastle/scenarios/` is there, reuse it.
 6. **This feature's own scenarios**, each a few lines over the deepest rung it
    needs.
 
-Commit, then prove each on `feature_drive` as `./decisions-and-spec.md` says.
+Commit, then prove each on `feature_drive` as `./feature-file.md` says.
 
 ## Keeping it fixable
 

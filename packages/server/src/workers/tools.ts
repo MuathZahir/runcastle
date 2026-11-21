@@ -47,12 +47,19 @@ export function provideWorkerFeatureRead(read: FeatureRead): void {
   featureRead = read
 }
 
-/** The feature as a worker reads it: the lead's whole bundle, plus a quote of the lead's latest turns. */
+/**
+ * The feature as a worker reads it: the lead's whole bundle, plus a quote of
+ * the lead's latest turns. A Review worker gets the bundle alone: it starts
+ * empty of the lead's conversation, so the lead's blind spots do not travel
+ * into the review (one-file-per-feature decision 3).
+ */
 export async function readFeatureForWorker(ctx: AppCtx, w: WorkerRow): Promise<unknown> {
   if (!featureRead) throw new GateError('the feature read is not loaded: runcastle is still starting, try again in a moment')
   const feature = getFeatureRow(ctx, workerFeatureId(w))
+  const bundle = await featureRead(ctx, feature.id)
+  if (w.kind === 'review') return { feature: bundle }
   const { quote } = mainChatExcerpt(ctx, feature)
-  return { feature: await featureRead(ctx, feature.id), leadLatestTurns: quote ?? null }
+  return { feature: bundle, leadLatestTurns: quote ?? null }
 }
 
 /** Show a file from the worker's sandbox in the worker's own chat: copied out by the engine, then shown as `show_file` shows. */
@@ -107,7 +114,7 @@ export function workerTools(ctx: AppCtx, w: WorkerRow, sb: WorkerSandbox, engine
           workerWithdraws(ctx, w.id)
           return 'Withdrawn: you no longer need the human.'
         }
-        if (!why?.trim()) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+        if (!why?.trim()) throw new InvalidInputError('wait_for_you needs a few-word label (why), or withdraw: true; the question itself goes in your reply')
         // A locked feature's worker asks the epic, as its lead does (epics-on-autopilot decision 17).
         const feature = w.featureId ? getFeatureRow(ctx, w.featureId) : null
         if (feature && isLocked(ctx, feature)) {
