@@ -115,7 +115,7 @@ set up (`setUp`: a runner recorded and the folder on the base branch).
   reaches <state>" it reported before you start the verify review.
 - **When the drive cannot carry scenarios** (it will not start, or its
   `drive.env` does not hand over the database the scenario must seed), say so
-  once (`wait_for_you`, or `hand_back` on autopilot), recommend the
+  once in your reply (then `wait_for_you`, or `hand_back` on autopilot), recommend the
   orchestrator's project preparation, and go on: the review sets the state up by
   hand. Never edit the drive setup yourself.
 - Pass the scenario that fits as the `scenario` of `declare_ready`.

@@ -30,7 +30,7 @@ export function handbackStateLine(wait: Pick<Need, 'why'> | null, workers: reado
 /** The refusal of a handback off autopilot: the lead talks to the human, in its own chat. */
 export const NOT_ON_AUTOPILOT =
   'this feature is not on autopilot, so it is the human\'s and there is no epic to hand back to: ' +
-  'ask the human in your chat with wait_for_you instead'
+  'ask the human in your reply and call wait_for_you instead'
 
 /**
  * A lead reports to its epic (`epics-on-autopilot` decisions 3, 17): one

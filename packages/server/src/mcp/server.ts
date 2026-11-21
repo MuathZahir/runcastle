@@ -876,7 +876,7 @@ export async function toolHandBack(
   return handBackToOrchestrator(ctx, getFeatureRow(ctx, requireLeadFeatureId(session)), input.summary, session.id)
 }
 
-/** What `wait_for_you` takes: the one line the agent needs the human for, or a withdraw. */
+/** What `wait_for_you` takes: a few-word label (the question itself is in the agent's reply), or a withdraw. */
 export type WaitForYouInput = { why: string; withdraw?: undefined } | { withdraw: true; why?: undefined }
 
 /**
@@ -899,7 +899,7 @@ export async function toolWaitForYou(
     return { ok: true, need: null }
   }
   const why = input.why.trim()
-  if (!why) throw new InvalidInputError('wait_for_you needs a short line saying what you need, or withdraw: true')
+  if (!why) throw new InvalidInputError('wait_for_you needs a few-word label (why), or withdraw: true; the question itself goes in your reply')
   const asker = (session.kind === 'chat' || session.kind === 'worker') && session.featureId ? getFeatureRow(ctx, session.featureId) : null
   if (asker && isLocked(ctx, asker)) {
     const { deliveredTo } =
@@ -3543,11 +3543,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Wait for the human',
         description:
-          'Tell the human you need them, in one short line saying what you need. It stays until the human ' +
-          'writes in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells the human. ' +
-          'On autopilot it goes to your epic instead, as a handback does.',
+          'Flag that you need the human: marks this chat in the sidebar and pings their phone. Write the full ' +
+          'question, with your pick, in your reply first; the human reads that, never this label. Stays until they ' +
+          'write in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells them. A feature ' +
+          'lead on autopilot: your epic gets only this label, so ask it with hand_back({ summary }).',
         inputSchema: {
-          why: z.string().optional().describe('One short line: what you need from the human.'),
+          why: z.string().optional().describe('A few-word label for the sidebar and phone, never the question itself.'),
           withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),
         },
       },
@@ -3604,7 +3605,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'On autopilot only: report to the epic running this feature (questions, plans and designs for a yes, ready to test, ' +
           'failures, merge conflicts). It answers or asks the human. Wakes it once with your summary and a line of the ' +
-          'feature’s state. Off autopilot the feature is the human’s: refused, ask them with wait_for_you.',
+          'feature’s state. Off autopilot the feature is the human’s: refused, ask them in your reply and call wait_for_you.',
         inputSchema: {
           summary: z
             .string()
