@@ -259,22 +259,17 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Review scales with the change', 'One review always; drive only when users meet the change; a second only after a large fix set.'],
     ['The reviewer is an ordinary worker with runcastle\'s standard instructions', 'So the lead\'s blind spots do not travel into the review.'],
     ['How agents talk', 'Assignments quote your words, handbacks are short, the lead brings the base in; nobody is pinged.'],
-    ['The one file is the feature\'s brief.md, grown in place', 'Your words were "keep the brief"; every feature and tool already has it, so nothing learns a new name.', 'assumed'],
-    ['The file\'s four parts, and who writes each', 'Your words, decisions, build notes, review summary; each part appears once it has content.', 'assumed'],
-    ['The merge stamp is short: what the review found and what became of it', 'Ship date, size, findings and their fixes; no worker token lists or ticket digests.', 'assumed'],
-    ['Features started before this merges keep their separate files', 'No migration and no feature caught half in each shape.', 'assumed'],
-    ['"Something a user sees or does" means what the project\'s users meet, and the lead picks the kind', 'Works for CLIs and libraries; a reading reviewer flags a user-facing change it finds.', 'assumed'],
-    ['The scenario rule stays, but runs before "ready"', 'It was timed to the second review, which is now rare.', 'assumed']
+    ['The one file is the feature\'s brief.md, grown in place', 'Your words were "keep the brief"; every feature and tool already has it, so nothing learns a new name.'],
+    ['The file\'s four parts, and who writes each', 'Your words, decisions, build notes, review summary; each part appears once it has content.'],
+    ['The merge stamp is short: what the review found and what became of it', 'Ship date, size, findings and their fixes; no worker token lists or ticket digests.'],
+    ['Features started before this merges keep their separate files', 'No migration and no feature caught half in each shape.'],
+    ['"Something a user sees or does" means what the project\'s users meet, and the lead picks the kind', 'Works for CLIs and libraries; a reading reviewer flags a user-facing change it finds.'],
+    ['The scenario rule stays, but runs before "ready"', 'It was timed to the second review, which is now rare.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [5, 'A new name such as feature.md', 'The name "brief" undersells a file that ends with a review summary.'],
-    [7, 'Stamp the whole of today\'s outcome doc', 'You may want the worker and token record kept in the repo.'],
-    [8, 'Switch in-flight features at merge', 'Keeps the old shape alive for a while.'],
-    [9, 'Runcastle picks the kind from the files changed', 'The lead choosing its own review could favour the cheaper one.']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
