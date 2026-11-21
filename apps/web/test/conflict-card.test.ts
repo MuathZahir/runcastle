@@ -48,12 +48,13 @@ describe('conflictResolveEnded', () => {
     expect(conflictResolveEnded([conflicted, qaEnded], sessions)).toBe(false)
   })
 
-  /** A server that restarted under a live resolve terminal ends it this way. */
+  /** The agent host says this whenever a chat's process stops, Claude's or Codex's. */
   it('counts a resolve session whose agent process stopped as ended', () => {
     const stopped = event(2, 'session.process_stopped', { sessionId: 'ses_resolve' })
     expect(conflictResolveEnded([conflicted, stopped], sessions)).toBe(true)
   })
 
+  /** A server that restarted under a live resolve terminal ends it this way. */
   it('counts a session the server reconciled at boot as ended', () => {
     const reconciled = event(2, 'session.reconciled', { sessionId: 'ses_resolve' })
     expect(conflictResolveEnded([conflicted, reconciled], sessions)).toBe(true)
