@@ -1,4 +1,8 @@
+import { execFileSync } from 'node:child_process'
 import { DEFAULT_RUNTIME, type SessionRow } from '@runcastle/core'
+import { featureDocsRel } from '@runcastle/core/paths'
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import { events } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { chatKickoffHeader, kickoffFor } from '../launcher/launcher'
 import { landProjectSession, setThreadPurpose } from '../launcher/sessions'
@@ -98,20 +102,53 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
  * thread the lead's ordinary chat again, so asks reach the human. The run is
  * complete when it ended waiting on the human (`wait_for_you`: the decisions it
  * made for them, or a question it could not answer itself), or when it went on
- * to build and started a worker (building-starts-without-a-plan-approval
- * decision 5); one that ended with neither just ends, and reads idle (needs-you
- * decision 2). No-op for a thread with any other purpose.
+ * to build: it started a worker, or committed work beyond the feature's docs,
+ * after it began (building-starts-without-a-plan-approval decision 5). One that
+ * ended with none of these just ends, and reads idle (needs-you decision 2).
+ * No-op for a thread with any other purpose.
  */
 export function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
   if (row.purpose !== 'self-plan' || !row.featureId) return
-  const complete =
-    waitOf(ctx, row.id) !== null || listSessionsByFeature(ctx, row.featureId).some((s) => s.kind === 'worker')
+  const featureId = row.featureId
+  const complete = waitOf(ctx, row.id) !== null || builtSince(ctx, row, featureId, selfPlanStartedAt(ctx, row, featureId))
   emitForSession(ctx, row, {
     type: 'session.self_plan_ended',
     message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
     data: { sessionId: row.id, complete },
   })
   setThreadPurpose(ctx, row.id, null)
+}
+
+/** When the thread's current planning errand began: its newest launch or purpose change to it, else the row's creation. */
+function selfPlanStartedAt(ctx: AppCtx, row: SessionRow, featureId: string): number {
+  const starts = ctx.db
+    .select({ ts: events.ts, data: events.data })
+    .from(events)
+    .where(and(eq(events.featureId, featureId), inArray(events.type, ['session.launching', 'session.purpose_set'])))
+    .orderBy(desc(events.id))
+    .all()
+  const start = starts.find((e) => {
+    const data = e.data as { sessionId?: unknown; purpose?: unknown } | null
+    return data?.sessionId === row.id && data.purpose === 'self-plan'
+  })
+  return start?.ts ?? row.createdAt ?? 0
+}
+
+/** Whether the feature was built on since `since`: a worker started, or a commit touched more than its docs. */
+function builtSince(ctx: AppCtx, row: SessionRow, featureId: string, since: number): boolean {
+  if (listSessionsByFeature(ctx, featureId).some((s) => s.kind === 'worker' && (s.createdAt ?? 0) >= since)) return true
+  const slug = tryGetFeature(ctx, featureId)?.slug
+  if (!slug) return false
+  try {
+    const out = execFileSync(
+      'git',
+      ['log', `--since=@${Math.floor(since / 1000)}`, '--no-merges', '--format=%H', '--', '.', `:(exclude)${featureDocsRel(slug)}`],
+      { cwd: row.worktreePath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+    )
+    return out.trim() !== ''
+  } catch {
+    return false
+  }
 }
 
 /** The feature state a resumed main chat is handed with its first prompt; nothing for a new conversation. */

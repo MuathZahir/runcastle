@@ -5,6 +5,8 @@ import { foldThread, threadActivity, type AgentRuntime, type Feature, type Sessi
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { launchSession } from '../src/launcher/launcher'
@@ -261,6 +263,36 @@ describe('a self-planning run', () => {
       const [ended] = selfPlanEnded(f.id)
       expect(ended?.message).toBe('planning finished')
       expect(ended?.data).toEqual({ sessionId, complete: true })
+    })
+
+    /** A commit in the feature's worktree, of one file at `rel`. */
+    async function commitIn(slug: string, rel: string): Promise<void> {
+      const wt = worktreeDir(projectId, slug)
+      mkdirSync(dirname(join(wt, rel)), { recursive: true })
+      writeFileSync(join(wt, rel), 'x\n')
+      const g = simpleGit(wt)
+      await g.add(rel)
+      await g.commit(`add ${rel}`)
+    }
+
+    it('says planning finished when the run built the feature itself, committing more than its docs', async () => {
+      const f = await feature('self-built')
+      fakeHost({ turn: () => commitIn('self-built', 'src/app.ts') })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
+      expect(selfPlanEnded(f.id)[0]?.data).toEqual({ sessionId, complete: true })
+    })
+
+    it('does not count a docs-only commit or a worker from before the run as building', async () => {
+      const f = await feature('docs-only')
+      createSessionRow(ctx, { featureId: f.id, kind: 'worker', worktreePath: 'C:\\wt-old' })
+      ctx.db.update(sessions).set({ createdAt: 1 }).where(eq(sessions.kind, 'worker')).run()
+      fakeHost({ turn: () => commitIn('docs-only', 'docs/features/docs-only/decisions.md') })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
+      expect(selfPlanEnded(f.id)[0]?.data).toEqual({ sessionId, complete: false })
     })
 
     it('says planning stopped short when the run ended waiting on nobody, and makes nobody need the human', async () => {
