@@ -77,8 +77,9 @@ and your closing message instead. Never design a screen whose what, where or who
    for a small feature, usually you alone), and commit the docs. If you drew a
    plan page, run its self-check (`./preview.md`) and show it with `show_file`.
 2. **With nothing of the human's open** (no `**Assumed.**` decision, no design
-   waiting): play back in a few lines what you will build and who builds what,
-   then build in this same run, as SKILL.md says.
+   waiting): write in a few lines what you will build and who builds what
+   before any edit, install or worker, then build in this same run, as
+   SKILL.md says.
 3. **Otherwise** one closing message: that you planned without the human, then
    the decisions you made for them, check-first ones first, each by number,
    title and its main alternative, and any design waiting (each screen, its
