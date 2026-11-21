@@ -284,20 +284,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['A lead asks only when a decision of yours is open, otherwise it plays back and builds', 'ADR-0023 decision 6: a required plan yes made every feature pay the same fixed cost whatever its size.'],
     ['Designs still need your yes', 'ADR-0023 decision 6: a screen is the one thing you must see before it is built.'],
     ['The Plan tab goes; a drawn plan page is optional and shown in the chat', 'ADR-0023 decision 6: the tab existed for the approval.'],
-    ['The brief, decisions and spec are read in Details → Docs', 'It already lists them; the next feature folds them into one file anyway.', 'assumed'],
-    ['"Plan automatically" ends on the decisions it made for you, not on a plan yes', 'Decisions made for you are still yours and still open, so they are asked; the rest is not.', 'assumed'],
-    ['Old plan cards and links keep working', 'Old cards open their plan page as a file; old Plan links open Details.', 'assumed'],
-    ['On autopilot the epic gets no plan to approve', 'Decision 1 applies to every feature; autopilot itself goes in a later feature.', 'assumed']
+    ['The brief, decisions and spec are read in Details → Docs', 'It already lists them; the next feature folds them into one file anyway.'],
+    ['"Plan automatically" ends on the decisions it made for you, not on a plan yes', 'Decisions made for you are still yours and still open, so they are asked; the rest is not.'],
+    ['Old plan cards and links keep working', 'Old cards open their plan page as a file; old Plan links open Details.'],
+    ['On autopilot the epic gets no plan to approve', 'Decision 1 applies to every feature; autopilot itself goes in a later feature.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [1, 'Wait for a brief in your own words before planning', 'No brief was written; decisions 1–3 come from ADR-0023 decision 6, not your words in this feature', 'no brief'],
-    [5, 'The planning run always stops at the end and waits for a go', 'It is the one place a stop could stay; how-involved-am-i reshapes it soon anyway', 'your intent'],
-    [4, 'Keep a small Docs tab where Plan was', 'Details → Docs is one click deeper than the Plan tab was'],
-    [7, 'Autopilot keeps the plan yes until autopilot is removed', 'It changes what the epic sees while autopilot still exists']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
