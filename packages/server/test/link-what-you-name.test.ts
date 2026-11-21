@@ -49,8 +49,10 @@ describe('the linking rule', () => {
   })
 
   it('names the target forms the chat renders', () => {
-    for (const form of ['](feature:', 'feature:<slug>/plan', 'feature:<slug>/design', '](worker:']) {
+    for (const form of ['](feature:', 'feature:<slug>/design', '](worker:']) {
       expect(LINK_WHAT_YOU_NAME).toContain(form)
     }
+    // The Plan tab is gone (building-starts-without-a-plan-approval decision 3).
+    expect(LINK_WHAT_YOU_NAME).not.toContain('/plan')
   })
 })

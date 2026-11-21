@@ -47,9 +47,8 @@ decisions they did not touch keep their marks.
 
 **Check first.** A plan made with nobody present carries one line under the
 intro, `Check first: 2, 5, 7`: at most five decision numbers the human should
-look at first. Keep it in step with the plan page's Check first group when one
-exists, and drop a
-number once the human confirms that decision. A plan made with the human has no
+look at first. Keep it in step with any plan page's Check first group, and drop
+a number once the human confirms that decision. A plan made with the human has no
 such line.
 
 Whenever `decisions.md` changes and a `preview.html` exists, redraw the plan page

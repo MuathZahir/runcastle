@@ -112,8 +112,9 @@ function purposeLine(purpose: SessionPurpose | undefined, runtime: AgentRuntime)
     case 'self-plan':
       return (
         "This is an automatic planning run: plan this feature by yourself, designing its screens where it adds or " +
-        "reshapes them, and do not build it, by the " +
-        `${skillRef(runtime, FEATURE_SKILL)} skill's \`${PLANNING_ALONE}\`, ending on a request for the human's yes; ` +
+        "reshapes them, by the " +
+        `${skillRef(runtime, FEATURE_SKILL)} skill's \`${PLANNING_ALONE}\`, ending on the decisions you made for the human, ` +
+        'or, with none made and no design waiting, saying what you will build and building it; ' +
         'if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead.'
       )
     case 'relay':
@@ -762,8 +763,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   // agent for something that asks nothing of the human.
   'mcp__runcastle__show_file',
   'mcp__runcastle__show_review_package',
-  // The plan and the designs: a card and a record, never anything to answer.
-  'mcp__runcastle__show_plan',
+  // The designs: a card and a record, never anything to answer.
   'mcp__runcastle__show_design',
   'mcp__runcastle__set_design_state',
   // An orchestrator names its epic on its first reply, a headless wake's included.

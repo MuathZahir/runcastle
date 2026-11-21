@@ -519,6 +519,13 @@
       "when": 1794561644700,
       "tag": "0073_autopilot",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1795248153689,
+      "tag": "0074_drop_plan_seen",
+      "breakpoints": true
     }
   ]
 }

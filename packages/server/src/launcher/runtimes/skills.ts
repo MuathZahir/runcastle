@@ -104,8 +104,9 @@ export const PLANNING_ALONE = 'references/planning-alone.md'
  * The opening of a self-planning run's prompt, spelled for `runtime` — the
  * `self-plan` counterpart of {@link chatKickoffFor}. A headless run has no human
  * on the other end, so the line says so before anything else, plans (designing
- * the screens it adds or reshapes, designs-wait-for-you) without building, and
- * ends by asking for the human's yes.
+ * the screens it adds or reshapes, designs-wait-for-you), and ends by asking the
+ * human about the decisions it made for them; with none made and no design
+ * waiting, it says what it will build and builds.
  */
 export function selfPlanKickoffFor(runtime: AgentRuntime, resumed = false): string {
   const skill = skillRef(runtime, FEATURE_SKILL)
@@ -113,7 +114,8 @@ export function selfPlanKickoffFor(runtime: AgentRuntime, resumed = false): stri
     'Proceed with your task: no human is present and nobody will reply to you. Invoke ' +
     `${resumed ? `${skill} (unless its text is already in this conversation)` : skill} and follow its \`${PLANNING_ALONE}\` to plan this feature ` +
     'by yourself in this one run: plan it, design its screens where it adds or reshapes them, ' +
-    "do not build it, and end by asking for the human's yes; " +
+    'and end by asking the human about the decisions you made for them, or, with none made and no design ' +
+    'waiting, say what you will build and build it; ' +
     'if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead.'
   )
 }

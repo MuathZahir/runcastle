@@ -234,7 +234,7 @@ describe('a self-planning run', () => {
       return listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.self_plan_ended')
     }
 
-    it('says the plan is complete when the run ended by asking the human for the yes', async () => {
+    it('says planning finished when the run ended by asking the human', async () => {
       const f = await feature('done')
       fakeHost({ turn: async () => waitOnLead(f.id, 'Start round 1?') })
       const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
@@ -245,6 +245,22 @@ describe('a self-planning run', () => {
       expect(ended?.data).toEqual({ sessionId, complete: true })
       // The run is over: the thread is the lead's ordinary chat from here on.
       expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
+    })
+
+    // With nothing of the human's open, a planning run builds on (building-starts-without-a-plan-approval decision 5).
+    it('says planning finished when the run went on to build, starting a worker instead of asking', async () => {
+      const f = await feature('built')
+      fakeHost({
+        turn: async () => {
+          createSessionRow(ctx, { featureId: f.id, kind: 'worker', worktreePath: 'C:\\wt-worker' })
+        },
+      })
+      const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat', purpose: 'self-plan' })
+
+      await vi.waitFor(() => expect(selfPlanEnded(f.id)).toHaveLength(1))
+      const [ended] = selfPlanEnded(f.id)
+      expect(ended?.message).toBe('planning finished')
+      expect(ended?.data).toEqual({ sessionId, complete: true })
     })
 
     it('says planning stopped short when the run ended waiting on nobody, and makes nobody need the human', async () => {

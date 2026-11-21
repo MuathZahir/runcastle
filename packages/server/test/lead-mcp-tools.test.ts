@@ -98,7 +98,7 @@ describe('the lead’s MCP tools', () => {
     for (const view of ['plan', 'design']) {
       const out = await call('show_panel', { view })
       expect(out.isError, view).toBe(true)
-      expect(out.text, view).toMatch(/show_plan.*show_design/)
+      expect(out.text, view).toMatch(/show_design.*show_file/)
     }
     for (const view of ['body', 'preview']) {
       expect((await call('show_panel', { view })).isError, view).toBe(true)

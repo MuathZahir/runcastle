@@ -7,7 +7,7 @@ import { startDocsWatch } from '../services/docs-watch'
 import { emitForSession } from '../services/events'
 import { releaseLeadDrive } from '../services/git'
 import { clearWait, waitOf } from '../services/waits'
-import { getFeatureRow, tryGetFeature } from '../services/repo'
+import { getFeatureRow, listSessionsByFeature, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { getWorker, humanWrote, isWorkerThread, workerAskAnswered, workerAskOpened, workerKickoff, workerStopped, workerTurnEnded } from '../workers/service'
 import type { ThreadLifecycle } from './host'
@@ -96,14 +96,16 @@ export function threadLifecycle(ctx: AppCtx): ThreadLifecycle {
 /**
  * A self-planning run is over: say whether the plan is complete, and make the
  * thread the lead's ordinary chat again, so asks reach the human. The run is
- * complete when it ended waiting on the human (`wait_for_you`: the plan's yes,
- * or a question it could not answer itself); one that ended with no wait just
- * ends, and reads idle (needs-you decision 2). No-op for a thread with any
- * other purpose.
+ * complete when it ended waiting on the human (`wait_for_you`: the decisions it
+ * made for them, or a question it could not answer itself), or when it went on
+ * to build and started a worker (building-starts-without-a-plan-approval
+ * decision 5); one that ended with neither just ends, and reads idle (needs-you
+ * decision 2). No-op for a thread with any other purpose.
  */
 function endSelfPlan(ctx: AppCtx, row: SessionRow): void {
   if (row.purpose !== 'self-plan' || !row.featureId) return
-  const complete = waitOf(ctx, row.id) !== null
+  const complete =
+    waitOf(ctx, row.id) !== null || listSessionsByFeature(ctx, row.featureId).some((s) => s.kind === 'worker')
   emitForSession(ctx, row, {
     type: 'session.self_plan_ended',
     message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
