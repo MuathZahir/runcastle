@@ -1,12 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type * as acp from '@agentclientprotocol/sdk/unstable'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type Feature, foldThread } from '@runcastle/core'
+import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { toolStartWorker } from '../src/mcp/server'
-import { listAfter } from '../src/services/events'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -17,14 +15,13 @@ import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
-import { fakeEngine, fakeHost, initRepo, type FakeEngine } from './support/fake-workers'
+import { fakeEngine, initRepo, type FakeEngine } from './support/fake-workers'
 
 /**
- * Codex workers (interactive-workers decisions 8, 11, 12): a worker on one of
- * the human's Codex models runs codex-acp inside its sandbox, gets the human's
- * Codex setup, runs in auto-review with the same fallback as Claude Code, and
- * resumes its conversation after an idle stop. No container: the fake engine
- * records the launch the real one would make.
+ * Codex workers (interactive-workers decisions 8, 11, 12; workers-build-in-the-feature-s-folder):
+ * a Codex worker starts on the host through the base transport, with no container and no sandbox
+ * engine call. The codex-setup module still builds a Codex home for old sandbox workers, so its
+ * file shapes stay pinned here.
  */
 
 const CODEX_MODEL = 'gpt-5.6-sol'
@@ -133,30 +130,25 @@ async function startCodexWorker(kind: 'with-you' | 'on-its-own' = 'on-its-own'):
 }
 
 describe('starting a Codex worker', () => {
-  it('starts through the sandbox engine with codex-acp running inside the container, and no Claude token', async () => {
+  it('starts on the host through the base transport with runtime codex: no container, no sandbox engine call, no Claude token', async () => {
     fakeCodexHome()
-    setAgentHostForTests(fakeHost().host)
+    const fake = createFakeAcp()
+    const host = realHost(fake)
     const id = await startCodexWorker()
-    expect(getWorker(ctx, id)).toMatchObject({ runtime: 'codex', model: CODEX_MODEL, status: 'working' })
+    await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
 
-    engine.transport = createFakeAcp().transport
-    await withWorkers(ctx, () => {
-      throw new Error('only workers run here')
-    })({} as never, getSessionRow(ctx, id)!)
-
-    const container = getWorker(ctx, id)!.container!
-    const { execArgs, env, session } = engine.launches[0]!
-    expect(execArgs.slice(0, 4)).toEqual(['exec', '-i', '-w', '/home/agent/repo'])
-    expect(execArgs).toEqual(expect.arrayContaining(['CODEX_HOME=/home/agent/.codex', 'CODEX_PATH=codex', 'INITIAL_AGENT_MODE=agent', 'WORKER_PORT=41001']))
-    expect(execArgs.slice(-3)).toEqual([container, 'node', '/opt/runcastle/codex-acp.mjs'])
-    expect(execArgs.some((a) => a.startsWith('CLAUDE_CODE'))).toBe(false)
-    expect(env).toEqual({})
-    expect(session).toEqual({ cwd: '/home/agent/repo', mcpServers: [], mode: 'agent' })
-    expect(engine.processes[0]?.token).toBeUndefined()
-    expect(engine.processes[0]?.model).toBe(CODEX_MODEL)
-    // The human's Codex setup went in first, not the Claude one.
-    expect(engine.setups[0]?.setup.files.map((f) => f.to)).toContain('.codex/config.toml')
-    expect(engine.setups[0]?.setup).not.toHaveProperty('mcpServers')
+    const w = getWorker(ctx, id)!
+    expect(w).toMatchObject({ runtime: 'codex', model: CODEX_MODEL, container: null })
+    expect(w.folder).toBeTruthy()
+    expect(getSessionRow(ctx, id)).toMatchObject({ runtime: 'codex', model: CODEX_MODEL })
+    // The agent came from the base transport: the fake one ran once.
+    expect(fake.processes).toHaveLength(1)
+    // The sandbox engine was never asked for anything, and the human's Codex setup was not copied anywhere.
+    expect(engine.order).toEqual([])
+    expect(engine.created).toEqual([])
+    expect(engine.setups).toEqual([])
+    expect(engine.launches).toEqual([])
+    await host.stopAll('shutdown')
   })
 })
 
@@ -222,16 +214,12 @@ describe("the human's Codex setup in the sandbox", () => {
   })
 })
 
-// --- the permission mode, and resuming --------------------------------------------
 
-/** A real agent host over the fake ACP agent, the worker transport and the server's lifecycle. */
+/** A real agent host over the fake ACP agent, the base transport behind the worker transport and the server's lifecycle. */
 function realHost(fake: FakeAcp): AgentHost {
-  engine.transport = fake.transport
   const host = createAgentHost({
     ctx,
-    transport: withWorkers(ctx, () => {
-      throw new Error('only workers run here')
-    }),
+    transport: withWorkers(ctx, fake.transport),
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),
@@ -248,95 +236,3 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
     await new Promise((r) => setTimeout(r, 5))
   }
 }
-
-const shell: acp.ToolCallUpdate = { toolCallId: 'c1', title: 'bun install', kind: 'execute' }
-/** codex-acp marks an MCP tool approval on the request, not the tool call. */
-const linear = { call: { toolCallId: 'c2', title: 'linear.create_issue', kind: 'other' } as acp.ToolCallUpdate, meta: { is_mcp_tool_approval: true } }
-
-const modeEvents = () =>
-  listAfter(ctx, feature.id, 0)
-    .filter((e) => e.type === 'worker.permission_mode')
-    .map((e) => (e.data as { mode: string }).mode)
-const asks = (id: string) => readThreadEvents(id).filter((e) => e.type === 'ask')
-
-describe("a Codex worker's permission mode", () => {
-  async function workerAsking(mode: string): Promise<{ id: string; host: AgentHost; answers: acp.RequestPermissionResponse[] }> {
-    const answers: acp.RequestPermissionResponse[] = []
-    const host = realHost(
-      createFakeAcp({
-        mode,
-        turn: async (t) => {
-          answers.push(await t.permission(shell))
-          answers.push(await t.permission(linear.call, linear.meta))
-          await t.say('Done.')
-        },
-      }),
-    )
-    return { id: await startCodexWorker(), host, answers }
-  }
-
-  const allowed = { outcome: { outcome: 'selected', optionId: 'allow-once' } }
-
-  it('runs in auto-review when the session opens in it, and allows what the reviewer still asks without the human', async () => {
-    const { id, host, answers } = await workerAsking('agent')
-    await until(() => answers.length === 2)
-    expect(answers).toEqual([allowed, allowed])
-    expect(asks(id)).toEqual([])
-    expect(modeEvents()).toEqual(['auto'])
-    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
-    await host.stopAll('shutdown')
-  })
-
-  it("falls back when auto-review is unavailable: every request, a call to one of the human's MCP servers too, is allowed without the human", async () => {
-    const { id, host, answers } = await workerAsking('workspace-write')
-    await until(() => answers.length === 2)
-    expect(answers).toEqual([allowed, allowed])
-    expect(asks(id)).toEqual([])
-    expect(readThreadEvents(id).filter((e) => e.type === 'permission_allowed')).toMatchObject([{ title: 'bun install' }, { title: 'linear.create_issue' }])
-    expect(modeEvents()).toEqual(['fallback'])
-    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
-    await host.stopAll('shutdown')
-  })
-})
-
-describe('a Codex worker after an idle stop', () => {
-  it('wakes its sandbox and reloads the same conversation over codex-acp', async () => {
-    const fake = createFakeAcp()
-    const host = realHost(fake)
-    // With you: an "on its own" worker's quiet turn would be nudged into a second one.
-    const id = await startCodexWorker('with-you')
-    await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
-    const conversation = getSessionRow(ctx, id)!.ccSessionId
-    const container = getWorker(ctx, id)!.container!
-
-    await host.stop(id, 'idle')
-    await until(() => engine.stopped.includes(container))
-    await host.prompt(id, { text: 'Also the migration' }, { source: 'human' })
-    await until(() => readThreadEvents(id).filter((e) => e.type === 'turn_ended').length === 2)
-
-    expect(fake.last().received[1]).toMatchObject({ method: 'session/load', params: { sessionId: conversation, cwd: '/home/agent/repo' } })
-    expect(getSessionRow(ctx, id)!.ccSessionId).toBe(conversation)
-    expect(engine.launches.map((l) => l.execArgs.at(-1))).toEqual(['/opt/runcastle/codex-acp.mjs', '/opt/runcastle/codex-acp.mjs'])
-    // The setup is unchanged, so the wake copies nothing; the rollouts stay in the sandbox's CODEX_HOME.
-    expect(engine.setups).toHaveLength(1)
-    await host.stopAll('shutdown')
-  })
-
-  it('starts no new conversation over a rollout still in the sandbox', async () => {
-    const fake = createFakeAcp()
-    const host = realHost(fake)
-    const id = await startCodexWorker()
-    await until(() => readThreadEvents(id).some((e) => e.type === 'turn_ended'))
-    const conversation = getSessionRow(ctx, id)!.ccSessionId!
-    await host.stop(id, 'idle')
-
-    engine.conversations.add(conversation)
-    fake.script.gone = true
-    await host.prompt(id, { text: 'Still there?' }, { source: 'human' })
-    await until(() => readThreadEvents(id).filter((e) => e.type === 'process' && e.state === 'stopped').length >= 2)
-    expect(fake.last().received.map((r) => r.method)).toEqual(['initialize', 'session/load'])
-    expect(foldThread(readThreadEvents(id)).items.at(-1)).toMatchObject({ kind: 'error', message: expect.stringContaining('would not reopen') })
-    expect(getSessionRow(ctx, id)!.ccSessionId).toBe(conversation)
-    await host.stopAll('shutdown')
-  })
-})

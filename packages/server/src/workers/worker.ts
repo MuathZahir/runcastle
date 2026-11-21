@@ -474,6 +474,68 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
   ].join('\n')
 }
 
+/** Where a host build worker builds (workers-build-in-the-feature-s-folder decisions 2, 3, 7), and the port its dev server takes. */
+export interface HostWorkerPlace {
+  placement: 'feature-folder' | 'own-folder'
+  folder: string
+  /** The feature branch; a worker in its own folder builds on `branch`, cut from it. */
+  featureBranch: string
+  branch: string | null
+  port: number | null
+  previewUrl: string | null
+}
+
+/** What a host build worker may not do, which runcastle's checks refuse (decision 10). */
+function hostWorkerLimits(place: HostWorkerPlace): string {
+  const shared =
+    place.placement === 'feature-folder'
+      ? `This folder is the feature's own: your lead works in it too, and your commits land straight on ${place.featureBranch}.`
+      : `This folder is yours alone, on branch ${place.branch}, cut from ${place.featureBranch}; your lead merges it back once you hand back.`
+  return (
+    `- ${shared} Edit files only inside it (and the system temp folder). Never push, rewrite history (reset --hard, rebase, commit --amend, deleting branches), ` +
+    'switch branch or use git stash (its stack is shared by every folder of the repo): runcastle refuses them.'
+  )
+}
+
+/**
+ * A build worker's briefing on the host (decisions 2, 3, 10): the sandbox
+ * briefing's rules, with where it builds, what it may not do, and the main
+ * server's tools in place of the sandbox's relay.
+ */
+export function hostWorkerBriefing(brief: WorkerBrief & { kind: Exclude<WorkerKind, 'review' | DriveWorkerKind> }, place: HostWorkerPlace): string {
+  return [
+    `# You are a runcastle worker: ${brief.label}`,
+    '',
+    brief.kind === 'unassigned'
+      ? `The human started you on this feature. You run on the human's machine, in ${place.folder}; the human types to you in this conversation.`
+      : `Your lead (the agent running this feature) gave you one assignment. You run on the human's machine, in ${place.folder}; the human can open this conversation at any time and type to you.`,
+    '',
+    ...(brief.goal ? [`## Goal\n${brief.goal}`, ''] : []),
+    ...(brief.doneWhen ? [`## Done when\n${brief.doneWhen}`, ''] : []),
+    '## Ask before you guess',
+    NEVER_GUESS,
+    '',
+    howItAsks(brief.kind),
+    '',
+    '## How you work',
+    hostWorkerLimits(place),
+    '- Commit as you go with conventional messages. Uncommitted work is not handed back.',
+    ...(place.placement === 'own-folder'
+      ? ['- A new folder has no installed packages or local env files: install what your work needs before you run anything.']
+      : []),
+    ...(place.port !== null && place.previewUrl
+      ? [`- To show the human a screen, run the app's dev server on port ${place.port} and tell them; they open it at ${place.previewUrl}. Use no other port: other agents run beside you on this machine.`]
+      : []),
+    "- Runcastle's tools for you: hand_back, wait_for_you (flags that you need the human; only this call does, ending your turn never does. Write the question itself in this chat first: its why is only a few-word label), " +
+      "get_feature_context and read_feature_doc (the feature's state and docs), show_file (a file or screenshot, into this chat) and create_feature with draft: true (work for another feature, parked in the backlog).",
+    `- ${LINK_WHAT_YOU_NAME}`,
+    "- Checks: while you work, run only the tests that cover each slice before you commit it. Run the project-wide static check (typecheck or its equivalent) once at the end, and once more only after fixing what it found. Never run the full test suite or the project's verify commands whole: your lead runs those. Keep your hand-back summary short.",
+    whenFixesFail(brief.kind),
+    howItHandsBack(brief.kind).replaceAll('show it (start_dev_server)', 'show it (your dev server)'),
+    '- To hand back, call hand_back with a short summary: what was done, what was not, where to look, and every direction the human gave you directly in this conversation (your lead never reads it, so the summary is the only way it learns them). No logs or file lists: runcastle appends your commits and files itself. Then end your turn.',
+  ].join('\n')
+}
+
 /** What a worker's agent process is started with, beyond its sandbox and brief. */
 export interface WorkerProcessOptions {
   /** A Claude Code worker's token, passed into the exec by name; a Codex worker signs in with the login its setup copied in. */

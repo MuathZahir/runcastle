@@ -26,7 +26,7 @@ import { threadModels } from '../../threads/model-catalog'
 import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
 import { agentHost, appendThreadEvent } from '../../threads/types'
 import { driveWorkerBetweenDrives } from '../../workers/drive'
-import { workerPrompted, workerTypedTo } from '../../workers/service'
+import { beforeWorkerTurn, workerPrompted, workerTypedTo } from '../../workers/service'
 import { clearWait } from '../../services/waits'
 import { refuseHumanMessage } from '../../services/autopilot'
 import { publicProcedure, router } from '../context'
@@ -102,6 +102,7 @@ export const threadRouter = router({
           { source: 'runcastle', hold: true, ...(summary ? { display: { summary } } : {}) },
         )
       }
+      if (row.kind === 'worker') await beforeWorkerTurn(ctx, id)
       const sent = await agentHost(ctx).prompt(
         id,
         { text, ...(images ? { images } : {}) },

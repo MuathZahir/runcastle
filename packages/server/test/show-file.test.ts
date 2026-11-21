@@ -61,11 +61,10 @@ describe('show_file', () => {
   const shown = (): ShownFile[] =>
     readThreadEvents(session.id).flatMap((e) => (e.type === 'file_shown' ? [e.file] : []))
 
-  it('is offered to every session with a thread, and not to a sandboxed worker', () => {
-    for (const kind of ['chat', 'side', 'scenario', 'drive-fix', 'project'] as const) {
+  it('is offered to every session with a thread, a host worker included', () => {
+    for (const kind of ['chat', 'side', 'scenario', 'drive-fix', 'project', 'worker'] as const) {
       expect(toolsForAudience(kind), kind).toContain('show_file')
     }
-    expect(toolsForAudience('worker')).not.toContain('show_file')
   })
 
   it('copies the file into the thread and logs it, and the copy outlives the original', async () => {

@@ -1,3 +1,5 @@
+import { existsSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
@@ -17,18 +19,23 @@ import { appRouter } from '../src/trpc/router'
 import { setAgentHostForTests } from '../src/threads/host'
 import { readThreadEvents } from '../src/threads/log'
 import { setSandboxEngineForTests } from '../src/workers/engine'
-import { getWorker, workerPrompted, workerTurnEnded } from '../src/workers/service'
+import { writeHostHandback } from '../src/workers/review'
+import { forgetDriveTurnBasesForTests } from '../src/workers/drive'
+import { getWorker, messageWorker, workerFolder, workerPrompted, workerTurnEnded } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
-import { commitOn, fakeEngine, fakeHost, git, initRepo } from './support/fake-workers'
+import { fakeEngine, fakeHost, git, initRepo } from './support/fake-workers'
 
 /**
  * Interactive workers (docs/features/interactive-workers): the worker record
  * and its lifecycle, driven through the service and the lead's tools with a
- * fake sandbox engine (no container) and a fake agent host (no agent). The
- * git underneath is real: a handback's commits and a land are read from a
- * real repo.
+ * fake agent host (no agent). Workers build on the host
+ * (docs/features/workers-build-in-the-feature-s-folder): the first in the
+ * feature's own folder, one started beside it in its own folder and branch.
+ * The git underneath is real: a handback's commits and a land are read from a
+ * real repo. The fake sandbox engine stays installed only to prove no new
+ * worker calls it.
  */
 
 let ctx: AppCtx
@@ -74,30 +81,40 @@ function workerEvents(): { type: string; status: unknown }[] {
 
 const toLead = () => host.sent.filter((s) => s.threadId === lead)
 
-async function startHeader(): Promise<string> {
+async function startHeader(kind: 'with-you' | 'on-its-own' = 'with-you', label = 'Header'): Promise<string> {
   const { workerId } = await toolStartWorker(ctx, leadSession(), {
-    label: 'Header',
+    label,
     purpose: 'The page header',
-    kind: 'with-you',
+    kind,
     goal: 'Build the header',
     doneWhen: 'The human likes it',
   })
   return workerId
 }
 
-/** The worker hands back with one commit on its branch. */
-async function handBack(id: string, summary = 'Built the header; the human wants it blue.'): Promise<void> {
-  const branch = getWorker(ctx, id)!.branch!
-  commitOn(repo, branch, 'header.txt', 'header\n', 'feat: header')
-  engine.handbacks.set(id, { summary, at: Date.now() })
+/** Commit `file` in a checkout, as an agent working there would. */
+function commitIn(folder: string, file: string, body: string, subject: string): void {
+  writeFileSync(join(folder, file), body)
+  git(folder, 'add', file)
+  git(folder, 'commit', '-q', '-m', subject)
+}
+
+/** The worker commits `header.txt` in its folder, hands back (its `hand_back` tool), and its turn ends. */
+async function handBack(id: string, summary = 'Built the header; the human wants it blue.', body = 'header\n'): Promise<void> {
+  commitIn(getWorker(ctx, id)!.folder!, 'header.txt', body, 'feat: header')
+  writeHostHandback(id, summary)
   await workerTurnEnded(ctx, { id })
 }
+
+const featureTip = () => git(repo, 'rev-parse', 'feature/work').trim()
+const branchExists = (branch: string) => git(repo, 'branch', '--list', branch) !== ''
 
 describe('a worker, start to land', () => {
   it('starts working, stays working after a turn and a message, hands back once and lands', async () => {
     const id = await startHeader()
     const started = getWorker(ctx, id)!
-    expect(started).toMatchObject({ status: 'working', kind: 'with-you', startedBy: 'lead', label: 'Header', container: expect.any(String) })
+    expect(started).toMatchObject({ status: 'working', kind: 'with-you', startedBy: 'lead', label: 'Header', folder: expect.any(String), branch: null, container: null })
+    expect(engine.order).toEqual([])
     expect(getSessionRow(ctx, id)?.kind).toBe('worker')
     expect(host.sent.filter((s) => s.threadId === id).map((s) => s.text)).toEqual(['Start your assignment: Build the header\n\nDone when: The human likes it'])
     expect(workerEvents()).toEqual([{ type: 'worker.started', status: 'working' }])
@@ -132,6 +149,7 @@ describe('a worker, start to land', () => {
       },
     })
     expect(toLead()[0]?.text).toContain('land_worker')
+    expect(toLead()[0]?.text).toContain('nothing waits to land')
 
     // A later turn with no new handback does not wake the lead again.
     await workerTurnEnded(ctx, { id })
@@ -145,13 +163,28 @@ describe('a worker, start to land', () => {
   })
 
   it('leaves a worker that conflicts with the feature branch handed back, with the conflict for the lead', async () => {
+    const first = await startHeader('with-you', 'First')
+    // Started while the first holds the feature's folder: its own folder and branch.
     const id = await startHeader()
-    commitOn(repo, 'feature/work', 'header.txt', 'the lead wrote this\n', 'feat: lead header')
+    commitIn(getWorker(ctx, first)!.folder!, 'header.txt', 'the lead wrote this\n', 'feat: lead header')
     await handBack(id)
     const result = await toolLandWorker(ctx, leadSession(), { workerId: id })
     expect(result).toMatchObject({ ok: false, conflict: true, files: ['header.txt'] })
     expect(getWorker(ctx, id)?.status).toBe('handed-back')
     expect(workerEvents().at(-1)?.type).toBe('worker.land_failed')
+    expect(branchExists(getWorker(ctx, id)!.branch!)).toBe(true)
+  })
+
+  it('sends an on-its-own worker back to merge the feature branch into its own when it conflicts', async () => {
+    const first = await startHeader('with-you', 'First')
+    const id = await startHeader('on-its-own')
+    commitIn(getWorker(ctx, first)!.folder!, 'header.txt', 'the lead wrote this\n', 'feat: lead header')
+    await handBack(id)
+    expect(await toolLandWorker(ctx, leadSession(), { workerId: id })).toMatchObject({ ok: false, conflict: true, files: ['header.txt'] })
+    expect(getWorker(ctx, id)).toMatchObject({ status: 'working', outcome: 'sent-back' })
+    expect(host.sent.at(-1)?.threadId).toBe(id)
+    expect(host.sent.at(-1)?.text).toContain('git merge feature/work')
+    expect(host.sent.at(-1)?.text).not.toContain('git fetch origin')
   })
 
   it('works again when the human types to a worker that needs them', async () => {
@@ -159,6 +192,93 @@ describe('a worker, start to land', () => {
     await workerTurnEnded(ctx, { id })
     workerPrompted(ctx, id)
     expect(getWorker(ctx, id)?.status).toBe('working')
+  })
+})
+
+describe("where a worker builds (workers-build-in-the-feature-s-folder)", () => {
+  it("gives the first worker the feature's folder and one started while it works its own folder and branch", async () => {
+    const first = await startHeader('with-you', 'First')
+    const w1 = getWorker(ctx, first)!
+    expect(w1.branch).toBeNull()
+    expect(git(w1.folder!, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('feature/work')
+    expect(getSessionRow(ctx, first)?.worktreePath).toBe(w1.folder)
+
+    const second = await startHeader('on-its-own', 'Second')
+    const w2 = getWorker(ctx, second)!
+    expect(w2.folder).toBe(workerFolder(second))
+    expect(w2.branch).toMatch(/^runcastle\/worker\//)
+    expect(git(w2.folder!, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(w2.branch)
+    expect(git(repo, 'rev-parse', w2.branch!).trim()).toBe(featureTip())
+    expect(getSessionRow(ctx, second)?.worktreePath).toBe(w2.folder)
+    expect(engine.order).toEqual([])
+  })
+
+  it("gives the feature's folder to a new worker once the one holding it has landed", async () => {
+    const first = await startHeader('with-you', 'First')
+    await handBack(first)
+    await toolLandWorker(ctx, leadSession(), { workerId: first })
+    const next = await startHeader('with-you', 'Next')
+    expect(getWorker(ctx, next)).toMatchObject({ folder: getWorker(ctx, first)!.folder, branch: null })
+  })
+
+  it("lists in a feature-folder worker's handback the commits it made on the feature branch during its turn", async () => {
+    const id = await startHeader()
+    const folder = getWorker(ctx, id)!.folder!
+    commitIn(folder, 'a.txt', 'a\n', 'feat: a')
+    await workerTurnEnded(ctx, { id })
+    commitIn(folder, 'b.txt', 'b\n', 'feat: b')
+    writeHostHandback(id, 'Built a and b.')
+    await workerTurnEnded(ctx, { id })
+    const handed = getWorker(ctx, id)!
+    expect(handed.status).toBe('handed-back')
+    expect(handed.handbackCommits).toEqual([expect.stringMatching(/^[0-9a-f]{7} feat: a$/), expect.stringMatching(/^[0-9a-f]{7} feat: b$/)])
+    expect(handed.handbackFiles).toEqual(['a.txt', 'b.txt'])
+  })
+
+  it("never counts the lead's commits between a feature-folder worker's turns as the worker's, even after a restart", async () => {
+    const id = await startHeader()
+    const folder = getWorker(ctx, id)!.folder!
+    commitIn(folder, 'a.txt', 'a\n', 'feat: a')
+    await workerTurnEnded(ctx, { id })
+    // The lead commits in the folder between the worker's turns, then the server restarts.
+    commitIn(folder, 'plan.md', 'plan\n', 'docs: the plan')
+    forgetDriveTurnBasesForTests()
+    await messageWorker(ctx, id, 'Now b.')
+    commitIn(folder, 'b.txt', 'b\n', 'feat: b')
+    writeHostHandback(id, 'Built a and b.')
+    await workerTurnEnded(ctx, { id })
+    expect(getWorker(ctx, id)!.handbackCommits).toEqual([
+      expect.stringMatching(/^[0-9a-f]{7} feat: a$/),
+      expect.stringMatching(/^[0-9a-f]{7} feat: b$/),
+    ])
+  })
+
+  it('lands an own-folder worker: its commit is merged into the feature branch, its folder and branch go', async () => {
+    await startHeader('with-you', 'First')
+    const id = await startHeader('on-its-own')
+    await handBack(id)
+    const { folder, branch } = getWorker(ctx, id)!
+    expect(getWorker(ctx, id)!.handbackCommits).toEqual([expect.stringMatching(/^[0-9a-f]{7} feat: header$/)])
+    expect(toLead().at(-1)?.text).toContain(folder!)
+    expect(await toolLandWorker(ctx, leadSession(), { workerId: id })).toEqual({ ok: true, commits: 1, files: 1 })
+    expect(getWorker(ctx, id)).toMatchObject({ status: 'landed', outcome: 'landed' })
+    expect(git(repo, 'log', '--format=%s', 'feature/work')).toContain('feat: header')
+    expect(git(repo, 'show', 'feature/work:header.txt')).toBe('header\n')
+    expect(existsSync(folder!)).toBe(false)
+    expect(branchExists(branch!)).toBe(false)
+  })
+
+  it('lands a feature-folder worker by settling it: nothing merges, it is marked landed', async () => {
+    const id = await startHeader()
+    await handBack(id)
+    const tip = featureTip()
+    const folder = getWorker(ctx, id)!.folder!
+    expect(await toolLandWorker(ctx, leadSession(), { workerId: id })).toEqual({ ok: true, commits: 1, files: 1 })
+    expect(getWorker(ctx, id)).toMatchObject({ status: 'landed', outcome: 'landed' })
+    expect(featureTip()).toBe(tip)
+    expect(existsSync(folder)).toBe(true)
+    expect(host.stopped).toEqual([id])
+    expect(workerEvents().at(-1)).toEqual({ type: 'worker.landed', status: 'landed' })
   })
 })
 
@@ -173,15 +293,32 @@ describe('sending back and dropping', () => {
     expect(workerEvents().at(-1)).toEqual({ type: 'worker.sent_back', status: 'working' })
   })
 
-  it('drops a worker: its process stops, its container and branch go', async () => {
+  it("drops a worker in the feature's folder: its process stops, its commits stay on the branch", async () => {
     const id = await startHeader()
     await handBack(id)
-    const { container, branch } = getWorker(ctx, id)!
+    const tip = featureTip()
     await toolDropWorker(ctx, leadSession(), { workerId: id })
     expect(getWorker(ctx, id)).toMatchObject({ status: 'dropped', outcome: 'dropped' })
     expect(host.stopped).toEqual([id])
-    expect(engine.removed).toEqual([container])
-    expect(git(repo, 'branch', '--list', branch!)).toBe('')
+    expect(engine.removed).toEqual([])
+    expect(featureTip()).toBe(tip)
+    expect(git(repo, 'log', '--format=%s', 'feature/work')).toContain('feat: header')
+    expect(existsSync(getWorker(ctx, id)!.folder!)).toBe(true)
+    expect(workerEvents().at(-1)).toEqual({ type: 'worker.dropped', status: 'dropped' })
+  })
+
+  it('drops a worker in its own folder: its process stops, its folder and branch go, nothing lands', async () => {
+    await startHeader('with-you', 'First')
+    const id = await startHeader()
+    await handBack(id)
+    const { folder, branch } = getWorker(ctx, id)!
+    const tip = featureTip()
+    await toolDropWorker(ctx, leadSession(), { workerId: id })
+    expect(getWorker(ctx, id)).toMatchObject({ status: 'dropped', outcome: 'dropped' })
+    expect(host.stopped).toEqual([id])
+    expect(existsSync(folder!)).toBe(false)
+    expect(branchExists(branch!)).toBe(false)
+    expect(featureTip()).toBe(tip)
     expect(workerEvents().at(-1)).toEqual({ type: 'worker.dropped', status: 'dropped' })
   })
 })
@@ -212,10 +349,11 @@ describe("the lead's workers card", () => {
 })
 
 describe('starting a worker', () => {
-  it('says in plain words to start a container engine and run the doctor, and makes no worker', async () => {
+  it('starts a worker with no container engine running: none is needed', async () => {
     engine.up = false
-    await expect(startHeader()).rejects.toThrow(/Docker or Podman.*runcastle doctor/)
-    expect(featureContext(ctx, { featureId: feature.id }).workers).toEqual([])
+    const id = await startHeader()
+    expect(getWorker(ctx, id)?.status).toBe('working')
+    expect(engine.order).toEqual([])
   })
 
   it('runs an ordinary worker with no model on the chat step, never the review step', async () => {
@@ -239,8 +377,8 @@ describe("the lead's tools", () => {
     for (const kind of ['side', 'fix-drive-worker', 'scenario-worker', 'project', 'review', 'worker'] as const) {
       expect(toolsForAudience(kind).filter((t) => LEAD_WORKER_TOOLS.includes(t))).toEqual([])
     }
-    const chat = new Set(toolsForAudience('chat'))
-    expect(toolsForAudience('worker').filter((t) => chat.has(t))).toEqual([])
+    // A build worker on the host asks its own few tools here, none of the lead's.
+    expect(toolsForAudience('worker')).toEqual(['create_feature', 'get_feature_context', 'hand_back', 'read_feature_doc', 'show_file', 'wait_for_you'])
   })
 
   it('are refused to any session but the lead', async () => {
@@ -273,6 +411,7 @@ describe('get_feature_context', () => {
         startedBy: 'lead',
         model: expect.any(String),
         branch: getWorker(ctx, id)!.branch,
+        folder: getWorker(ctx, id)!.folder,
         updatedAt: expect.any(Number),
         handback: { summary: 'Built the header; the human wants it blue.', commits: [expect.stringContaining('feat: header')], files: ['header.txt'] },
       },

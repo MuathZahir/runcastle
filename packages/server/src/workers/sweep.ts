@@ -9,6 +9,7 @@ import { sql } from 'drizzle-orm'
 import { projects, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { emitProject } from '../services/events'
+import { discardWorktree } from '../services/git'
 import { expireReviewCaptures } from '../services/review-capture-expiry'
 import { tryGetFeature } from '../services/repo'
 import { agentHost } from '../threads/types'
@@ -197,6 +198,7 @@ async function sweepOnce(ctx: AppCtx, opts: SweepOptions): Promise<SweepResult> 
       await sweepImages(engine, tally, projectIds)
     }
     await sweepOrigins(ctx, tally, rows)
+    await sweepWorkerFolders(ctx, tally, rows, projectRows)
     await sweepBranches(ctx, tally, rows, projectRows)
     sweepRuntimeDirs(tally)
     await sweepSandcastleWorktrees(ctx, tally, projectRows)
@@ -462,6 +464,31 @@ async function git(repo: string, args: string[]): Promise<string> {
 }
 
 /** `runcastle/worker/*` branches in each project's repo whose worker is unknown or whose sandbox is no longer needed. */
+/**
+ * A host worker's own folder (workers-build-in-the-feature-s-folder decision 3) left behind by a landing or drop
+ * the server never finished: a folder whose worker is gone, landed or dropped, or whose feature is over. Removed
+ * before the branches, which git will not delete while a folder holds them.
+ */
+async function sweepWorkerFolders(ctx: AppCtx, tally: Tally, rows: WorkerRow[], projectRows: { id: string; repoPath: string }[]): Promise<void> {
+  const root = join(tally.dataDir, 'workers', 'folders')
+  if (!existsSync(root)) return
+  for (const name of readdirSync(root)) {
+    const row = rows.find((r) => r.id === name)
+    if (row && (isSettingUp(row.id) || !sandboxDone(ctx, row))) continue
+    const path = join(root, name)
+    const repoPath = projectRows.find((p) => p.id === row?.projectId)?.repoPath
+    try {
+      const bytes = await folderBytes(path)
+      if (repoPath && existsSync(repoPath)) await discardWorktree(repoPath, path)
+      if (existsSync(path)) rmSync(path, { recursive: true, force: true })
+      if (repoPath && existsSync(repoPath)) await git(repoPath, ['worktree', 'prune']).catch(() => {})
+      tally.removed(row?.projectId, NOUNS.worktree, bytes)
+    } catch (err) {
+      tally.failed(row?.projectId, `worker folder ${path}`, err)
+    }
+  }
+}
+
 async function sweepBranches(ctx: AppCtx, tally: Tally, rows: WorkerRow[], projectRows: { id: string; repoPath: string }[]): Promise<void> {
   for (const p of projectRows) {
     if (!existsSync(p.repoPath)) continue
