@@ -19,6 +19,7 @@ import {
 } from '../src/launcher/sessions'
 import {
   toolAddToBrief,
+  withBriefSection,
   toolDrive,
   toolMergeFeature,
   toolPlanFeature,
@@ -344,7 +345,8 @@ describe('the orchestrator’s acting tools', () => {
     const res = await toolMergeFeature(ctx, session, { slug: 'landing' })
     expect(res).toMatchObject({ ok: true, base: 'main', files: [] })
     expect(getFeatureRow(ctx, f.id)).toMatchObject({ status: 'shipped' })
-    expect(await g.raw(['show', 'main:docs/features/landing/outcome.md'])).toContain('# Outcome')
+    // No decisions.md or spec.md: a one-file feature, whose record is brief.md's review summary.
+    expect(await g.raw(['show', 'main:docs/features/landing/brief.md'])).toContain('## Review summary')
   })
 
   it('merge_feature answers with its epic’s other features in progress, and says who merged on the event', async () => {
@@ -380,7 +382,7 @@ describe('the orchestrator’s acting tools', () => {
       mergedBy: session.id,
       base: 'main',
       sha: expect.stringMatching(/^[0-9a-f]{40}$/),
-      outcome: 'docs/features/fits/outcome.md',
+      outcome: 'docs/features/fits/brief.md',
     })
   })
 
@@ -439,6 +441,39 @@ describe('the orchestrator’s acting tools', () => {
       `dark too.\n\n## Added by the orchestrator, ${date}\n\nAnd keyboard first.\n`,
     )
     expect(existsSync(join(repoPath, 'docs'))).toBe(false)
+  })
+
+  it('add_to_brief inserts above the brief’s ## Decisions, keeping the parts below whole', async () => {
+    const session = orchestrator()
+    const f = await started('grown')
+    const project = projectForFeature(ctx, f)
+    const worktree = await ensureTalkWorktree(project, f)
+    const briefPath = featureDocPath(project, f, 'brief.md')
+    const below = '## Decisions\n\n### 1. Dark only\n\n## Build notes\n\nA toggle.\n'
+    mkdirSync(dirname(briefPath), { recursive: true })
+    writeFileSync(briefPath, `# Grown\n\nThe human’s words.\n\n${below}`)
+    await simpleGit(worktree).add(['.']).commit('docs: grown brief')
+
+    await toolAddToBrief(ctx, session, { slug: 'grown', text: 'The human wants it dark too.' })
+
+    const date = new Date().toISOString().slice(0, 10)
+    expect(readFileSync(briefPath, 'utf8')).toBe(
+      `# Grown\n\nThe human’s words.\n\n## Added by the orchestrator, ${date}\n\nThe human wants it dark too.\n\n${below}`,
+    )
+  })
+
+  it('add_to_brief inserts above whichever later part comes first', () => {
+    const date = new Date().toISOString().slice(0, 10)
+    expect(withBriefSection('# B\n\n## Build notes\n\nx\n\n## Decisions\n', 'more')).toBe(
+      `# B\n\n## Added by the orchestrator, ${date}\n\nmore\n\n## Build notes\n\nx\n\n## Decisions\n`,
+    )
+    expect(withBriefSection('# B\n## Review summary\n', 'more')).toBe(
+      `# B\n\n## Added by the orchestrator, ${date}\n\nmore\n\n## Review summary\n`,
+    )
+    // A heading that only starts the same way is not one of the parts.
+    expect(withBriefSection('# B\n\n## Decisions we might make\n', 'more')).toBe(
+      `# B\n\n## Decisions we might make\n\n## Added by the orchestrator, ${date}\n\nmore\n`,
+    )
   })
 
   it('add_to_brief appends to a draft’s parked brief, and Start lands it in brief.md', async () => {

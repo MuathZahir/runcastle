@@ -470,7 +470,7 @@ export function workerBriefing(sb: WorkerSandbox, brief: WorkerBrief): string {
     "- Checks: while you work, run only the tests that cover each slice before you commit it. Run the project-wide static check (typecheck or its equivalent) once at the end, and once more only after fixing what it found. Never run the full test suite or the project's verify commands whole: your lead runs those. Keep your hand-back summary short.",
     whenFixesFail(brief.kind),
     howItHandsBack(brief.kind),
-    '- To hand back, call hand_back with a short summary: what you did, what is left, and every direction the human gave you directly in this conversation (your lead never reads it, so the summary is the only way it learns them). Then end your turn.',
+    '- To hand back, call hand_back with a short summary: what was done, what was not, where to look, and every direction the human gave you directly in this conversation (your lead never reads it, so the summary is the only way it learns them). No logs or file lists: runcastle appends your commits and files itself. Then end your turn.',
   ].join('\n')
 }
 

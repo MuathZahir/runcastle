@@ -302,7 +302,6 @@ function ChatColumn({ moment, goNew, notices }: { moment: MomentSample; goNew: (
 const NOTICES: ChatNotice[] = [
   { kind: 'ticket-failed', hue: 'danger', title: 'Ticket 3 failed', subtitle: 'typecheck failed in src/server/export.ts', actionLabel: 'Open the work', target: 'work', count: 2, eventId: 3 },
   { kind: 'run', hue: 'building', title: 'Round 1 finished', subtitle: '3 of 3 tickets landed, checks green', actionLabel: 'See the round', target: 'work', count: 1, eventId: 2 },
-  { kind: 'preview', hue: 'planning', title: 'The plan is ready', subtitle: 'Decisions, spec and the preview to look at', actionLabel: 'Open the plan', target: 'plan', count: 1, eventId: 1 },
 ]
 
 /** A warning that stands while its condition holds (the-feature-s-right-panel decision 21). */

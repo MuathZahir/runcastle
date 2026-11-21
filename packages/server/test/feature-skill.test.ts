@@ -69,4 +69,37 @@ describe('the feature skill', () => {
       expect(text, file).not.toMatch(/packages\/|apps\/web|STYLE\.md|DESIGN\.md/)
     }
   })
+
+  // one-file-per-feature decisions 1, 2, 4, 9 and 10: the lead's rules for the
+  // one growing file, one review sized to the change, and how agents talk.
+  it('keeps one growing brief.md, with decisions and build notes under it', () => {
+    expect(skill()).toMatch(/One file per feature: `brief\.md` grows/)
+    expect(skill()).toMatch(/`## Decisions`/)
+    expect(skill()).toMatch(/`## Build notes`/)
+    const page = read('references', 'feature-file.md')
+    expect(page).toMatch(/`## Review summary` \(runcastle adds it at merge; never write it\)/)
+    expect(page).toMatch(/already has `decisions\.md` or `spec\.md` keeps writing those/)
+  })
+
+  it('quotes the human’s words in assignments and brings the base in before the review and before ready', () => {
+    expect(skill()).toMatch(/the human's words it needs unchanged/)
+    expect(skill()).toMatch(/bring the base branch in, commit, and get the checks green\*\*, then run one review/)
+    expect(skill()).toMatch(/Bring the base in again, then `declare_ready/)
+    expect(skill()).toMatch(/skim of the diff's shape/)
+  })
+
+  it('picks drive or gates by what users meet, and a second review only after a large fix set', () => {
+    expect(skill()).toMatch(/start_review\(\{ mode, checksPassed \}\)/)
+    const page = read('references', 'feature-file.md')
+    expect(page).toMatch(/`drive` when the change reaches something a user of the project meets/)
+    expect(page).toMatch(/`gates` \(reads the diff\) for everything else/)
+    expect(page).toMatch(/second review \(`verify`\) only after a large fix set/)
+    for (const [file, text] of allTexts()) expect(text, file).not.toMatch(/have a second review verify your fixes/)
+  })
+
+  it('writes a scenario for each "No scenario reaches" before ready, not before a verify review', () => {
+    expect(skill()).toMatch(/scenario for each "No scenario reaches <state>"/)
+    expect(read('references', 'feature-file.md')).toMatch(/\*\*After the review\*\*, write and prove a scenario[^]*before you say ready/)
+    for (const [file, text] of allTexts()) expect(text, file).not.toMatch(/Before that verify review/)
+  })
 })

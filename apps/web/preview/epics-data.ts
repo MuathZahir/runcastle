@@ -51,7 +51,7 @@ const tickets = (total: number, done: number) => ({ total, pending: total - done
 /** What a feature is doing, as the server's fields say it. */
 const is = {
   /** The human's to answer: an amber row. */
-  needs: (words: string, kind: 'plan' | 'design' | 'answer' | 'test' | 'merge' | 'conflict' = 'plan'): Partial<FeatureListItem> => ({
+  needs: (words: string, kind: 'design' | 'answer' | 'test' | 'merge' | 'conflict' = 'answer'): Partial<FeatureListItem> => ({
     need: { kind, words, held: false, since: now - 20 * MIN },
   }),
   /** Its chat holds the next move: "With <chat> · <words>". */
@@ -165,7 +165,7 @@ function busy(): Sample {
       asksAbout: null,
       features: [
         { feature: feature('Hand-back button', is.workers(2, 7, 3)), holder: EPIC },
-        { feature: feature('Owner control in the header', is.needs('Plan to approve')), holder: EPIC },
+        { feature: feature('Owner control in the header', is.needs('Needs your answer · owner or admin?')), holder: EPIC },
         { feature: feature('Typing warning strip', is.quiet(4, 1)), holder: EPIC },
       ],
     },
@@ -206,7 +206,7 @@ function asking(): Sample {
 
 /** Taken over: one feature is the human's ("Yours · …"), one is run by a different chat, one asks its epic's chat ("Asking above") (decision 10). */
 function takenOver(): Sample {
-  const owner = feature('Owner control in the header', is.needs('Plan to approve'))
+  const owner = feature('Owner control in the header', is.needs('Needs your answer · owner or admin?'))
   const epics: Epic[] = [
     {
       chat: chat('Feature Ownership', 1 * DAY, { state: 'working' }),
@@ -215,7 +215,7 @@ function takenOver(): Sample {
         { feature: owner, holder: YOU },
         { feature: feature('Hand-back button', is.lead()), holder: other('Notes Triage') },
         { feature: feature('Owner in the row menu', is.consulting('Feature Ownership', 'Should Release also hand back?')), holder: YOU },
-        { feature: feature('Typing warning strip', is.held('Feature Ownership', 'Plan to approve')), holder: EPIC },
+        { feature: feature('Typing warning strip', is.held('Feature Ownership', 'Needs your answer · owner or admin?')), holder: EPIC },
       ],
     },
     {
@@ -259,7 +259,7 @@ function many(): Sample {
       ['Coupon codes', is.quiet(4, 0)],
     ]),
     named('Feature Ownership', 1 * DAY, 'idle', null, [
-      ['Owner control in the header', is.needs('Plan to approve'), YOU],
+      ['Owner control in the header', is.needs('Needs your answer · owner or admin?'), YOU],
       ['Hand-back button', is.workers(2, 7, 3)],
       ['Typing warning strip', is.quiet(4, 1)],
       ['Owner in the row menu', is.held('Notes Triage', 'Agent working'), other('Notes Triage')],

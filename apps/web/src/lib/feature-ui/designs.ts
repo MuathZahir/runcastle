@@ -26,14 +26,6 @@ export function orderDesigns(designs: readonly DesignEntry[]): DesignEntry[] {
   return [...designs].sort((a, b) => rank[a.state] - rank[b.state] || b.shownAt - a.shownAt)
 }
 
-/** What the plan card counts (decision 5). `tickets` null means the agent builds it itself. */
-export interface PlanCounts {
-  decisions: number
-  checkFirst: number
-  tickets: number | null
-  designs: number
-}
-
 /**
  * Where Approve takes the human (decision 24): the next design still waiting
  * after `currentId` in the list's order, wrapping round to the first; null

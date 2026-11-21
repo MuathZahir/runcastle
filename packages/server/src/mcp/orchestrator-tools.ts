@@ -343,10 +343,26 @@ export const toolMergeFeature = orchestratorTool(
   },
 )
 
-/** `prior` with `text` appended as a dated orchestrator section. */
-function withBriefSection(prior: string, text: string): string {
+/**
+ * The parts a lead and runcastle grow below the human's words in a one-file
+ * feature's brief (one-file-per-feature decision 6). What the orchestrator adds
+ * belongs to the human's words, so it goes above the first of them.
+ */
+const LATER_BRIEF_PART = /^## (?:Decisions|Build notes|Review summary)[ \t]*$/m
+
+/**
+ * `prior` with `text` added as a dated orchestrator section: just above the
+ * first `## Decisions`, `## Build notes` or `## Review summary` line when the
+ * brief has one, appended at the end otherwise.
+ */
+export function withBriefSection(prior: string, text: string): string {
   const date = new Date().toISOString().slice(0, 10)
   const section = `## Added by the orchestrator, ${date}\n\n${text}\n`
+  const later = LATER_BRIEF_PART.exec(prior)
+  if (later) {
+    const before = prior.slice(0, later.index).trimEnd()
+    return `${before === '' ? '' : `${before}\n\n`}${section}\n${prior.slice(later.index)}`
+  }
   const separator = prior === '' ? '' : prior.endsWith('\n') ? '\n' : '\n\n'
   return `${prior}${separator}${section}`
 }
@@ -562,7 +578,7 @@ export function registerOrchestratorTools(
     {
       title: 'Add to a feature’s brief',
       description:
-        'Append what the human told you later about a feature to its brief, as a dated section.',
+        'Add what the human told you later about a feature to its brief, as a dated section, above the lead’s decisions and build notes.',
       inputSchema: {
         slug: SlugInput,
         text: z.string().min(1).describe('What the human said, in your words, as markdown.'),

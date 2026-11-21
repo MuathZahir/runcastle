@@ -1867,6 +1867,15 @@ export function docsCommitMessage(
   return `${prefix} ${summary}`
 }
 
+/** A file's text as `HEAD` holds it in `repoPath` (a repo-relative, `/`-separated path), or null when HEAD has no such file. */
+export async function readCommitted(repoPath: string, rel: string): Promise<string | null> {
+  try {
+    return await git(repoPath).show([`HEAD:${rel}`])
+  } catch {
+    return null
+  }
+}
+
 /**
  * Stage ONLY `docs/features/**` within `worktreePath` and commit if anything is
  * staged there (no-op otherwise). Uses a pathspec commit so pre-staged changes

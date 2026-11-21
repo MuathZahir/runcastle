@@ -581,7 +581,7 @@ function sessionStartContext(ctx: AppCtx, feature: Feature, session: SessionRow 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
     `status: ${featureStateLine(ctx, feature)}; branch: ${feature.branch}`,
-    `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
+    `docs: docs/features/${feature.slug}/ (brief.md: the human's words, decisions, build notes; older features also have decisions.md, spec.md)`,
     'A repeat `get_feature_context` returns only what changed; `read_feature_doc` returns any doc in full.',
     ...toolLoadLine(ctx, session),
   ].join('\n')

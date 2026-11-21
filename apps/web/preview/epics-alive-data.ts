@@ -46,7 +46,7 @@ function chat(title: string, createdAgo: number, lastAgo: number, state: ThreadE
 const tickets = (total: number, done: number) => ({ total, pending: total - done, burning: 0, done, failed: 0, cancelled: 0 })
 
 const is = {
-  needs: (words: string, kind: 'plan' | 'design' | 'answer' | 'test' | 'merge' = 'plan'): Partial<FeatureListItem> => ({
+  needs: (words: string, kind: 'design' | 'answer' | 'test' | 'merge' = 'answer'): Partial<FeatureListItem> => ({
     need: { kind, words, held: false, since: now - 20 * MIN },
   }),
   lead: (): Partial<FeatureListItem> => ({ liveSession: { status: 'live', awaitingInput: false } }),

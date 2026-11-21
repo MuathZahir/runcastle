@@ -23,7 +23,7 @@ const LOCATIONS: AppLocation[] = [
   { kind: 'conversations', projectId: 'proj_a' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'chat' },
-  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'plan' },
+  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'details' },
 ]
 
 describe('pathFor', () => {
@@ -35,7 +35,7 @@ describe('pathFor', () => {
       '/p/proj_a/conversations',
       '/p/proj_a/f/flow-redesign-shell',
       '/p/proj_a/f/flow-redesign-shell/chat',
-      '/p/proj_a/f/flow-redesign-shell/plan',
+      '/p/proj_a/f/flow-redesign-shell/details',
     ])
   })
 
@@ -89,14 +89,17 @@ describe('parsePath', () => {
     expect(at('/p/proj_a/f/slug')).toBeUndefined()
   })
 
-  // tickets-and-review-are-tools-not-phases decision 8: the preview folded into Plan.
-  it('reads the retired preview address as the feature’s Plan', () => {
-    expect(parsePath('/p/proj_a/f/flow-redesign-shell/preview')).toEqual({
-      kind: 'feature',
-      projectId: 'proj_a',
-      featureSlug: 'flow-redesign-shell',
-      view: 'plan',
-    })
+  // building-starts-without-a-plan-approval decision 6: the Plan tab and the
+  // preview folded into it are gone; their docs are read in Details.
+  it('reads the retired plan and preview addresses as the feature’s Details', () => {
+    for (const retired of ['plan', 'preview']) {
+      expect(parsePath(`/p/proj_a/f/flow-redesign-shell/${retired}`)).toEqual({
+        kind: 'feature',
+        projectId: 'proj_a',
+        featureSlug: 'flow-redesign-shell',
+        view: 'details',
+      })
+    }
   })
 
   // design-mode: the tabs became the panel. The old Overview link was the bare
@@ -109,7 +112,7 @@ describe('parsePath', () => {
   })
 
   it('names every panel view but Work by its own segment', () => {
-    for (const view of ['plan', 'design', 'drive', 'details'] as const) {
+    for (const view of ['design', 'drive', 'details'] as const) {
       expect(parsePath(`/p/proj_a/f/slug/${view}`)).toEqual({
         kind: 'feature',
         projectId: 'proj_a',

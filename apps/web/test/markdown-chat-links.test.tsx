@@ -56,17 +56,17 @@ describe('a feature link', () => {
     expect(links.openFeature).not.toHaveBeenCalled()
   })
 
-  it('opens the Plan or Design tab it names', () => {
+  it('opens the Design tab it names, and an old Plan link on Details', () => {
     const links = fakeLinks()
     show('[its plan](feature:faster-reviews/plan) and [the designs](feature:header/design)', links)
     const plan = screen.getByRole('link', { name: 'its plan' })
     const design = screen.getByRole('link', { name: 'the designs' })
-    expect(plan.getAttribute('href')).toBe('/p/p1/f/faster-reviews/plan')
+    expect(plan.getAttribute('href')).toBe('/p/p1/f/faster-reviews/details')
     expect(design.getAttribute('href')).toBe('/p/p1/f/header/design')
     fireEvent.click(plan)
     fireEvent.click(design)
     expect(links.openFeature.mock.calls).toEqual([
-      ['f1', 'plan'],
+      ['f1', 'details'],
       ['f2', 'design'],
     ])
   })

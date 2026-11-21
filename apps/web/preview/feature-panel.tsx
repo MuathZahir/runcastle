@@ -17,7 +17,7 @@ import { listItem } from '../test/fixtures'
 import { DOCS, FEATURE_ID, SLUG, STEPS, TITLE, fullAt, roundsAt, type Step } from './feature-panel-data'
 
 /**
- * The feature page's right panel at each step a feature passes through — plan,
+ * The feature page's right panel at each step a feature passes through —
  * docs, tickets, the running round, review, shipped — in the real app on
  * sample data (docs/features/the-feature-s-right-panel-step-by-step). Pick the
  * step with `?step=`, or from the bar at the bottom. A dead end on purpose:
@@ -35,7 +35,7 @@ document.addEventListener(
 )
 
 const params = new URLSearchParams(location.search)
-const stepKey = (params.get('step') ?? 'plan') as Step
+const stepKey = (params.get('step') ?? 'docs') as Step
 const step = STEPS.find((s) => s.key === stepKey) ?? STEPS[0]!
 const full = fullAt(step.key)
 

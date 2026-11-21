@@ -8,16 +8,6 @@ import type { ChatNotice, StandingNotice } from '../src/lib/chat-notices'
  * The strip of notices on the composer's top edge. Tier 2: folding the older
  * notices behind "+N more" and the row buttons are behaviour, not markup.
  */
-const SPEC: ChatNotice = {
-  kind: 'spec',
-  hue: 'planning',
-  title: 'Spec written',
-  subtitle: 'spec.md',
-  actionLabel: 'View spec',
-  target: 'work',
-  count: 1,
-  eventId: 1,
-}
 const HISTORY: ChatNotice = {
   kind: 'history',
   hue: 'tickets',
@@ -39,7 +29,7 @@ const DRIVE: ChatNotice = {
   eventId: 3,
 }
 
-function renderStrip(notices: ChatNotice[] = [DRIVE, HISTORY, SPEC]) {
+function renderStrip(notices: ChatNotice[] = [DRIVE, HISTORY]) {
   const onAct = vi.fn()
   const onDismiss = vi.fn()
   const view = render(<NoticeStrip notices={notices} onAct={onAct} onDismiss={onDismiss} />)
@@ -61,24 +51,23 @@ describe('NoticeStrip', () => {
 
   it('shows only the newest notice, with the older ones folded behind "+N more"', () => {
     renderStrip()
-    expect(screen.getByText('+2 more')).toBeTruthy()
+    expect(screen.getByText('+1 more')).toBeTruthy()
     expect(screen.getAllByRole('article')).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Open' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'View history' })).toBeNull()
   })
 
   it('offers no "+N more" for a single notice', () => {
-    renderStrip([SPEC])
+    renderStrip([HISTORY])
     expect(screen.queryByRole('button', { expanded: false })).toBeNull()
   })
 
   it('opens the older notices above the newest, oldest first, and folds them again', () => {
     renderStrip()
-    const more = screen.getByRole('button', { name: '+2 more' })
+    const more = screen.getByRole('button', { name: '+1 more' })
     fireEvent.click(more)
     expect(more.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getAllByRole('article').map((n) => within(n).getAllByRole('button')[0].textContent)).toEqual([
-      'View spec',
       'View history',
       'Show less',
     ])
@@ -88,12 +77,12 @@ describe('NoticeStrip', () => {
 
   it("calls onAct and onDismiss with the notice's kind", () => {
     const { onAct, onDismiss } = renderStrip()
-    fireEvent.click(screen.getByRole('button', { name: '+2 more' }))
+    fireEvent.click(screen.getByRole('button', { name: '+1 more' }))
     fireEvent.click(screen.getByRole('button', { name: 'View history' }))
     expect(onAct).toHaveBeenCalledWith('history')
-    const spec = screen.getByText('Spec written').closest('article') as HTMLElement
-    fireEvent.click(within(spec).getByRole('button', { name: 'Dismiss' }))
-    expect(onDismiss).toHaveBeenCalledWith('spec')
+    const drive = screen.getByText('Test drive running').closest('article') as HTMLElement
+    fireEvent.click(within(drive).getByRole('button', { name: 'Dismiss' }))
+    expect(onDismiss).toHaveBeenCalledWith('drive')
   })
 
   describe('standing rows', () => {
@@ -107,7 +96,7 @@ describe('NoticeStrip', () => {
     }
     const UNVERIFIED: StandingNotice = { key: 'unverified', hue: 'review', title: 'Nothing verified', subtitle: 'ask the agent' }
 
-    function renderStanding(standing: StandingNotice[], notices: ChatNotice[] = [DRIVE, HISTORY, SPEC]) {
+    function renderStanding(standing: StandingNotice[], notices: ChatNotice[] = [DRIVE, HISTORY]) {
       const onAct = vi.fn()
       const onDismiss = vi.fn()
       render(<NoticeStrip notices={notices} standing={standing} onAct={onAct} onDismiss={onDismiss} />)
@@ -127,7 +116,7 @@ describe('NoticeStrip', () => {
         'Nothing verified',
         'Test drive running',
       ])
-      expect(screen.getByText('+2 more')).toBeTruthy()
+      expect(screen.getByText('+1 more')).toBeTruthy()
     })
 
     it('has its action only where given, no ✕ unless dismissible, and its tooltip', () => {

@@ -12,9 +12,6 @@ import {
   approveDesign,
   listDesigns,
   markDesignSeen,
-  markPlanSeen,
-  planFigures,
-  planIsNew,
   reportDesign,
 } from '../../services/designs'
 import { phoneDesignPort } from '../../services/phone-link'
@@ -66,21 +63,10 @@ export const designRouter = router({
       stopped: await stopDesignServer(ctx, input.featureId, 'stopped'),
     })),
 
-  /**
-   * The feature's recorded designs (designs-and-the-plan-get-their-own-place
-   * decision 6), and whether its plan is new to the human (decision 10).
-   */
+  /** The feature's recorded designs (designs-and-the-plan-get-their-own-place decision 6). */
   list: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .query(({ ctx, input }) => ({
-      designs: listDesigns(ctx, input.featureId),
-      plan: { isNew: planIsNew(ctx, input.featureId) },
-    })),
-
-  /** The plan card's figures (decision 5): decisions, to check first, tickets, designs. */
-  planFigures: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .query(({ ctx, input }) => planFigures(ctx, input.featureId)),
+    .query(({ ctx, input }) => ({ designs: listDesigns(ctx, input.featureId) })),
 
   /** The human's Approve on an opened design (decisions 8, 25): quiet until the last waiting one. */
   approve: publicProcedure
@@ -102,12 +88,4 @@ export const designRouter = router({
   seen: publicProcedure
     .input(z.object({ designId: z.string() }))
     .mutation(({ ctx, input }) => markDesignSeen(ctx, input.designId)),
-
-  /** The human opened the plan: the Plan tab or its card. */
-  planSeen: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => {
-      markPlanSeen(ctx, input.featureId)
-      return { ok: true as const }
-    }),
 })

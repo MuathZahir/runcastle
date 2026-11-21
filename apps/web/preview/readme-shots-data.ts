@@ -105,7 +105,7 @@ export function rtFull(stage: RtStage): Full {
     dependsOn: [],
     blocks: [],
     upNextProblem: null,
-    need: building ? null : need('plan', 'Plan to approve', 4 * MIN),
+    need: building ? null : need('answer', 'Needs your answer · one board, or one per team?', 4 * MIN),
     leadAwaitsHuman: !building,
     leadInBackground: false,
   } as unknown as Full
@@ -256,7 +256,7 @@ export function features(stage: RtStage): FeatureListItem[] {
       RT.title,
       building
         ? { workersWorking: 1, ticketCounts: counts(10, 2, 3) }
-        : { ticketCounts: counts(10, 0), need: need('plan', 'Plan to approve', 4 * MIN), leadAwaitsHuman: true },
+        : { ticketCounts: counts(10, 0), need: need('answer', 'Needs your answer · one board, or one per team?', 4 * MIN), leadAwaitsHuman: true },
       3 * MIN,
     ),
     f('feat_empty', 'Clarify the empty entry error', { need: need('answer', 'Needs your answer · block an empty entry, or warn?', 12 * MIN), ticketCounts: counts(1, 1) }, 12 * MIN),

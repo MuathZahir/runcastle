@@ -7,17 +7,13 @@ import { flushDesignReport } from './use-design-report'
 
 /**
  * A feature's design record as the web reads it
- * (designs-and-the-plan-get-their-own-place decisions 6, 10, 11): its designs
- * and whether its plan is new to the human. One query key, shared by the
- * cards, the Design list and the dots; every `design.*` / `plan.*` event
- * invalidates it.
+ * (designs-and-the-plan-get-their-own-place decisions 6, 10, 11): its designs.
+ * One query key, shared by the cards, the Design list and the dots; every
+ * pushed event invalidates it.
  */
-export function useDesignRecord(featureId: string, enabled = true): { designs?: DesignEntry[]; planIsNew: boolean } {
+export function useDesignRecord(featureId: string, enabled = true): { designs?: DesignEntry[] } {
   const list = trpc.design.list.useQuery({ featureId }, { enabled, refetchInterval: useLivePoll() })
-  return {
-    ...(list.data ? { designs: list.data.designs } : {}),
-    planIsNew: list.data?.plan.isNew === true,
-  }
+  return list.data ? { designs: list.data.designs } : {}
 }
 
 /**
@@ -58,7 +54,7 @@ export function useApproveAndNext(
 
 /**
  * Tells the server, once, that the human has `what` on screen while it is new
- * to them: the open design, or the Plan view. Showing it again makes it new
+ * to them: the open design. Showing it again makes it new
  * again, and a fresh `key` asks again.
  */
 export function useMarkSeen(key: string | undefined, isNew: boolean, mark: () => void): void {

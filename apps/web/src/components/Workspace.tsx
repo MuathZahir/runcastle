@@ -7,7 +7,7 @@ import { useToast } from '../lib/toast'
 import { relTimeAgo } from '../lib/format'
 import { pathFor, type FeatureView } from '../lib/routes'
 import { useLandOnChat } from '../lib/land-on-chat'
-import { availableViews, hasPlan, PANEL_VIEW_LABEL, panelTabs, type PanelView } from '../lib/feature-ui/panel'
+import { availableViews, PANEL_VIEW_LABEL, panelTabs, type PanelView } from '../lib/feature-ui/panel'
 import { Button,
   DimLine,
   IconButton,
@@ -60,11 +60,10 @@ import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
-import { PlanBody } from './bodies/PlanBody'
 import { HistoryView } from './bodies/history/HistoryView'
 import { DesignTab, PhoneDesignView } from './lazy'
 import { ThreadCardsContext, type ThreadCardsTarget } from './design/ThreadCards'
-import { useDesignRecord, useMarkSeen } from '../lib/use-designs'
+import { useDesignRecord } from '../lib/use-designs'
 import { newestDesign, oldestWaiting } from '../lib/feature-ui/designs'
 import { DocReader } from './DocReader'
 import { DetailsView } from './inspector/Inspector'
@@ -115,7 +114,7 @@ const FRAME = 'flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface'
  *   the chat — the feature's live session (`FeatureChat`), filling the page,
  *              with the page's notices atop it and its standing warnings on
  *              the composer's notice strip
- *   one panel — on the right when open, one view at a time: Plan, History
+ *   one panel — on the right when open, one view at a time: History
  *              (old tickets, read only), Details, and Design or Drive while
  *              they run (the-feature-s-right-panel decisions 14, 17)
  *
@@ -263,8 +262,8 @@ export function Workspace({
   // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
     !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
-  // The feature's design record: the dots on the panel toggle and the Plan and
-  // Design tabs (designs-and-the-plan-get-their-own-place decision 11), and the
+  // The feature's design record: the dots on the panel toggle and the Design
+  // tab (designs-and-the-plan-get-their-own-place decision 11), and the
   // designs the merge dialog names as still waiting (decision 21).
   const record = useDesignRecord(featureId, !!q.data && !isDraft)
 
@@ -283,7 +282,6 @@ export function Workspace({
   const views = q.data
     ? availableViews({
         isDraft,
-        hasPlan: hasPlan(q.data),
         hasTickets: q.data.tickets.length > 0,
         shipped,
         driveActive,
@@ -291,12 +289,8 @@ export function Workspace({
     : []
   const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
   const tabs = panelTabs(views)
-  // What is new to the human: the plan shown since they last opened it, a
-  // design not opened since it was last shown (decision 11).
-  const fresh = tabs.filter((v) => (v === 'plan' && record.planIsNew) || (v === 'design' && !!record.designs?.some((d) => d.isNew)))
-  // The Plan view on screen is the plan seen (decision 10), from its card or its tab.
-  const { mutate: markPlanSeen } = trpc.design.planSeen.useMutation()
-  useMarkSeen(panel.state.view === 'plan' ? featureId : undefined, record.planIsNew, () => markPlanSeen({ featureId }))
+  // What is new to the human: a design not opened since it was last shown (decision 11).
+  const fresh = tabs.filter((v) => v === 'design' && !!record.designs?.some((d) => d.isNew))
   // The agent's `show_panel`, for a view this feature offers.
   usePanelShow(events, featureId, (request) => {
     const offered = views.includes(request.view)
@@ -309,17 +303,15 @@ export function Workspace({
   // streamed chunk (a-faster-web-app).
   const dispatchPanel = useRef(panel.dispatch)
   dispatchPanel.current = panel.dispatch
-  const oneLiner = q.data?.feature.oneLiner ?? ''
   const cardsTarget = useMemo<ThreadCardsTarget>(
     () => ({
       featureId,
-      oneLiner,
-      onOpenPlan: () => dispatchPanel.current({ type: 'open', view: 'plan', origin: 'human' }),
+      onOpenDetails: () => dispatchPanel.current({ type: 'open', view: 'details', origin: 'human' }),
       onOpenDesign: (path) => dispatchPanel.current({ type: 'open', view: 'design', path, origin: 'human' }),
       // The phone has no design list (decision 16): its cards open designs only.
       ...(phone ? {} : { onOpenDesignList: () => dispatchPanel.current({ type: 'designList' }) }),
     }),
-    [featureId, oneLiner, phone],
+    [featureId, phone],
   )
   // The chat column (chat-as-web-components decision 7): every thread of the
   // feature, one in front — the drive errand's scenario chat comes to the
@@ -994,17 +986,10 @@ export function Workspace({
   )
 
   // A view is a panel column, not a page (the-feature-s-right-panel decisions
-  // 2, 4): no repeated title, 24px sides. Plan lays itself out to the view's
-  // full height, its bar on top; the rest scroll with the panel.
+  // 2, 4): no repeated title, 24px sides; each scrolls with the panel.
   const documentView = (v: PanelView, content: ReactNode) => {
     // Rises in once per navigation — feature, view — never on a refetch.
     const routeKey = `${featureId}:${v}`
-    if (v === 'plan')
-      return (
-        <div key={routeKey} className="h-full min-h-0 animate-rise-in">
-          {content}
-        </div>
-      )
     return (
       <div key={routeKey} className="px-6 pt-5 pb-10 animate-rise-in">
         {content}
@@ -1037,8 +1022,6 @@ export function Workspace({
         />
       )
     switch (v) {
-      case 'plan':
-        return documentView(v, <PlanBody full={full} />)
       case 'work':
         // The tickets the feature ran before workers, read only (burns-become-workers decision 19).
         return documentView(v, <HistoryView featureId={featureId} />)
