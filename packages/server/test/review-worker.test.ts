@@ -5,7 +5,7 @@ import type { Feature, ReviewFindingInput, WorkerRow } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolReportFinding, toolResolveFinding, toolReviewHandBack, toolStartReview } from '../src/mcp/server'
+import { sessionAudience, toolReportFinding, toolReviewDrive, toolsForAudience, toolResolveFinding, toolReviewHandBack, toolStartReview } from '../src/mcp/server'
 import { resetAgentSlotsForTests } from '../src/services/agent-slots'
 import { listByFeature as listFindings, reportFinding } from '../src/services/review-findings'
 import { reviewPackage, workerPass } from '../src/services/review-package'
@@ -309,12 +309,13 @@ describe('a drive review', () => {
 })
 
 describe('a gates review', () => {
-  it('runs in a worker sandbox on the feature branch, reports findings through the relay, and hands back its package', async () => {
+  it('runs on the host in the feature’s folder, reports findings through the main MCP server, and hands back its package', async () => {
     drive.canDrive = false
     realHost(
-      reviewer(async (w) => {
-        await engine.processes[0]!.tools('report_finding', defect('The typecheck fails'))
-        engine.handbacks.set(w.id, { summary: 'Gates review: typecheck red · 1 defect', at: Date.now() })
+      reviewer((w) => {
+        const session = getSessionRow(ctx, w.id)!
+        toolReportFinding(ctx, { session }, defect('The typecheck fails'))
+        toolReviewHandBack(ctx, session, { summary: 'Gates review: typecheck red · 1 defect' })
       }),
     )
 
@@ -323,10 +324,29 @@ describe('a gates review', () => {
     await until(() => review()?.status === 'handed-back')
 
     const w = review()!
-    expect(engine.created).toEqual([expect.objectContaining({ featureBranch: 'feature/work', baseBranch: 'main' })])
-    expect(engine.launches[0]?.session.mcpServers[0]).toMatchObject({ env: expect.arrayContaining([{ name: 'RUNCASTLE_WORKER_REVIEW', value: '1' }]) })
+    // No sandbox: it reads the feature's own folder, on no branch of its own.
+    expect(engine.created).toEqual([])
+    expect(engine.launches).toEqual([])
+    expect(w.container).toBeNull()
+    expect(w.branch).toBeNull()
+    expect(w.folder).toBeTruthy()
+    expect(getSessionRow(ctx, w.id)?.worktreePath).toBe(w.folder)
     expect(listFindings(ctx, feature.id)).toEqual([expect.objectContaining({ reviewWorkerId: w.id, title: 'The typecheck fails' })])
     expect(leadPackages()).toHaveLength(1)
+    expect(leadPackages()[0]?.text).toContain('The typecheck fails')
+    expect(drive.asks).toBe(0)
+  })
+
+  it('is offered report_finding and hand_back, and review_drive is refused to it when called', async () => {
+    realHost(reviewer(() => {}))
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
+    const session = getSessionRow(ctx, workerId)!
+    const audience = sessionAudience(ctx, session)
+    expect(audience).toBe('review')
+    const offered = toolsForAudience(audience)
+    expect(offered).toContain('report_finding')
+    expect(offered).toContain('hand_back')
+    await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toBeInstanceOf(GateError)
     expect(drive.asks).toBe(0)
   })
 

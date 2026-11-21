@@ -436,6 +436,12 @@ export const workers = sqliteTable(
     engine: text('engine').notNull().$type<WorkerEngine>(),
     container: text('container'),
     branch: text('branch'),
+    /**
+     * Where a worker builds on the host (workers-build-in-the-feature-s-folder): the
+     * feature's own folder (then `branch` is null and it commits on `featureBranch`),
+     * or its own worktree on `branch`. Null for a sandboxed worker and the drive's.
+     */
+    folder: text('folder'),
     featureBranch: text('feature_branch').notNull(),
     previewPort: integer('preview_port'),
     devServer: integer('dev_server', { mode: 'boolean' }).notNull().default(false),

@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
@@ -13,6 +15,7 @@ import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { waitOf } from '../src/services/waits'
 import { setSandboxEngineForTests } from '../src/workers/engine'
+import { writeHostHandback } from '../src/workers/review'
 import {
   getWorker,
   landWorker,
@@ -289,20 +292,32 @@ describe('a stalled turn', () => {
 })
 
 describe('a landing conflict', () => {
-  /** The worker's branch and the feature branch both change README.md since the worker forked. */
+  /**
+   * A first worker holds the feature's folder, so the one under test gets its own folder and branch. Both it and the feature
+   * branch change README.md since it forked, each committed in the folder that has the branch checked out.
+   */
   async function conflictingHandback(id: string, round: number): Promise<void> {
     const w = getWorker(ctx, id)!
-    commitOn(repo, w.branch!, 'README.md', `worker ${round}\n`, `feat: worker side ${round}`)
-    commitOn(repo, feature.branch, 'README.md', `feature ${round}\n`, `feat: feature side ${round}`)
-    engine.handbacks.set(id, { summary: 'Done', at: Date.now() })
+    commitIn(w.folder!, `worker ${round}\n`, `feat: worker side ${round}`)
+    commitIn(getWorker(ctx, holder)!.folder!, `feature ${round}\n`, `feat: feature side ${round}`)
+    writeHostHandback(id, 'Done')
     await workerTurnEnded(ctx, { id })
   }
+  const commitIn = (dir: string, body: string, subject: string): void => {
+    git(dir, 'config', 'user.email', 't@t.t')
+    git(dir, 'config', 'user.name', 't')
+    writeFileSync(join(dir, 'README.md'), body)
+    git(dir, 'add', 'README.md')
+    git(dir, 'commit', '-q', '-m', subject)
+  }
+  let holder: string
 
   it('sends an "on its own" worker back twice with the files and the other side’s commits, then leaves it to the lead', async () => {
     const fake = fakeHost()
     setAgentHostForTests(fake.host)
+    holder = await startWorker('Holder', 'with-you')
     const id = await startWorker('Header', 'on-its-own')
-    const container = getWorker(ctx, id)!.container!
+    expect(getWorker(ctx, id)).toMatchObject({ branch: expect.stringMatching(/^runcastle\/worker\//) })
 
     for (const round of [1, 2]) {
       await conflictingHandback(id, round)
@@ -313,9 +328,9 @@ describe('a landing conflict', () => {
       const told = fake.sent.filter((s) => s.threadId === id).at(-1)!.text
       expect(told).toContain('Conflicting files: README.md')
       expect(told).toContain(`feat: feature side ${round}`)
-      expect(told).toContain(`git merge origin/${feature.branch}`)
+      expect(told).toContain(`git merge ${feature.branch}`)
+      expect(told).not.toContain('origin')
     }
-    expect(engine.refreshed).toEqual([container, container])
 
     await conflictingHandback(id, 3)
     const third = await landWorker(ctx, id)
@@ -327,6 +342,7 @@ describe('a landing conflict', () => {
 
   it('leaves a "with you" worker’s conflict to the lead at once, naming both choices', async () => {
     setAgentHostForTests(fakeHost().host)
+    holder = await startWorker('Holder', 'with-you')
     const id = await startWorker('Header', 'with-you')
     await conflictingHandback(id, 1)
     const res = await landWorker(ctx, id)

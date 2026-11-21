@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type Feature, LABEL_DATA_DIR, LABEL_DOCKERFILE_HASH, LABEL_PROJECT, LABEL_WORKER } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
@@ -12,7 +13,7 @@ import { createShutdown } from '../src/shutdown'
 import { setAgentHostForTests } from '../src/threads/host'
 import type { AgentHost } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
-import { ORIGIN_MOUNT, ownershipOf } from '../src/workers/ownership'
+import { ORIGIN_MOUNT, WORKER_CONTAINER_PREFIX, ownershipOf } from '../src/workers/ownership'
 import { getWorker, keptConversationPath, removeFeatureWorkers, workerStopped, workerTurnEnded } from '../src/workers/service'
 import {
   extraSweepSteps,
@@ -22,7 +23,7 @@ import {
   sweptMessage,
   NOUNS,
 } from '../src/workers/sweep'
-import { runtimeDirName, workerLabels, workerOrigin } from '../src/workers/worker'
+import { runtimeDirName, workerLabels } from '../src/workers/worker'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -31,7 +32,8 @@ import { commitOn, fakeEngine, fakeHost, git, initRepo, type FakeEngine } from '
 /**
  * Runcastle cleans up after itself (docs/features/runcastle-cleans-up-after-itself):
  * which containers each lifecycle path removes or stops, and what the sweep
- * removes for every ownership label case. No container: the fake engine, with
+ * removes for every ownership label case. The container paths run on old worker rows seeded by hand (a
+ * new worker has no container); the folder sweep runs on real host workers. The fake engine has
  * labels and a listing.
  */
 
@@ -77,9 +79,46 @@ afterEach(() => {
 const leadSession = () => getSessionRow(ctx, lead)!
 const containerOf = (id: string) => getWorker(ctx, id)!.container!
 
-async function startWorker(label = 'Header'): Promise<string> {
-  const { workerId } = await toolStartWorker(ctx, leadSession(), { label, purpose: label, kind: 'on-its-own', goal: `Build the ${label}` })
-  return workerId
+/**
+ * A worker made before workers built in the feature's folder: a row with a container and a branch in
+ * the host repo, and no folder. A new worker never gets a container, so the old rows are seeded by
+ * hand. With `branch: false` it is one whose setup a killed server cut off.
+ */
+let legacyCount = 0
+function startWorker(label = 'Header', opts: { branch?: boolean } = {}): string {
+  const n = ++legacyCount
+  const session = createSessionRow(ctx, { featureId: feature.id, kind: 'worker', worktreePath: '/wt' })
+  const container = `${WORKER_CONTAINER_PREFIX}legacy${n}`
+  const branch = `runcastle/worker/legacy${n}`
+  const withBranch = opts.branch !== false
+  if (withBranch) git(repo, 'branch', branch, feature.branch)
+  const now = Date.now()
+  ctx.db
+    .insert(workers)
+    .values({
+      id: session.id,
+      featureId: feature.id,
+      projectId: feature.projectId,
+      label,
+      purpose: label,
+      kind: 'on-its-own',
+      goal: `Build the ${label}`,
+      model: 'm',
+      runtime: 'claude-code',
+      startedBy: 'lead',
+      status: 'working',
+      engine: 'docker',
+      featureBranch: feature.branch,
+      container,
+      branch: withBranch ? branch : null,
+      previewPort: 41000 + n,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+  engine.held.set(container, true)
+  engine.labels.set(container, workerLabels(session.id, feature.projectId))
+  return session.id
 }
 
 /** Give the worker a conversation file inside its sandbox, so keeping it shows in `engine.order` as `copyOut`. */
@@ -99,7 +138,7 @@ const sweptLines = () => listByProject(ctx, feature.projectId).filter((e) => e.t
 
 describe('the lifecycle', () => {
   it('land: keeps the conversation, then removes the container like a drop; the landed worker refuses messages', async () => {
-    const id = await startWorker()
+    const id = startWorker()
     await handBack(id)
     withConversation(id)
     engine.order.length = 0
@@ -116,7 +155,7 @@ describe('the lifecycle', () => {
   })
 
   it('drop: keeps the conversation, then removes the container', async () => {
-    const id = await startWorker()
+    const id = startWorker()
     withConversation(id)
     engine.order.length = 0
     await toolDropWorker(ctx, leadSession(), { workerId: id })
@@ -124,51 +163,8 @@ describe('the lifecycle', () => {
     expect(engine.held.has(containerOf(id))).toBe(false)
   })
 
-  it('records the container on the worker the moment it runs, before setup finishes', async () => {
-    let release = (): void => {}
-    engine.setupGate = new Promise((r) => (release = r))
-    const starting = startWorker()
-    await until(() => (ctx.db.select().from(workers).get()?.container ?? null) !== null)
-    const row = ctx.db.select().from(workers).get()!
-    expect(row.container).toMatch(/^runcastle-worker-/)
-    expect(row.branch).toBeNull()
-    release()
-    await starting
-    expect(getWorker(ctx, row.id)!.branch).toMatch(/^runcastle\/worker\//)
-  })
-
-  it('drop during setup: marked dropped at once, removed when setup finishes, with no kickoff', async () => {
-    let release = (): void => {}
-    engine.setupGate = new Promise((r) => (release = r))
-    const starting = startWorker()
-    await until(() => (ctx.db.select().from(workers).get()?.container ?? null) !== null)
-    const id = ctx.db.select().from(workers).get()!.id
-
-    await toolDropWorker(ctx, leadSession(), { workerId: id })
-    expect(getWorker(ctx, id)!.status).toBe('dropped')
-    // Setup is still under way: nothing is pulled out from under it.
-    expect(engine.removed).toEqual([])
-
-    release()
-    await expect(starting).rejects.toThrow(/dropped while its sandbox was being set up/)
-    expect(engine.removed).toEqual([containerOf(id)])
-    expect(host.sent.filter((s) => s.threadId === id)).toEqual([])
-    expect(getWorker(ctx, id)!.status).toBe('dropped')
-  })
-
-  it('setup failure: the container and bare copy go at once, and the worker is failed', async () => {
-    engine.setupFailure = 'bun install exited 1'
-    await expect(startWorker()).rejects.toThrow(/bun install exited 1/)
-    const w = ctx.db.select().from(workers).get()!
-    expect(w.status).toBe('failed')
-    expect(w.container).toMatch(/^runcastle-worker-/)
-    expect(engine.removed).toEqual([w.container])
-    expect(engine.held.size).toBe(0)
-    expect(existsSync(workerOrigin(w.id))).toBe(false)
-  })
-
   it('fail: stops the container and keeps it', async () => {
-    const id = await startWorker()
+    const id = startWorker()
     await workerStopped(ctx, { id }, 'crashed')
     expect(getWorker(ctx, id)!.status).toBe('failed')
     expect(engine.stopped).toEqual([containerOf(id)])
@@ -177,10 +173,10 @@ describe('the lifecycle', () => {
   })
 
   it('merge: every worker still holding a container has its conversation kept and is removed; a landed one is not removed twice', async () => {
-    const landed = await startWorker('Header')
+    const landed = startWorker('Header')
     await handBack(landed)
     await toolLandWorker(ctx, leadSession(), { workerId: landed })
-    const open = await startWorker('Footer')
+    const open = startWorker('Footer')
     withConversation(open)
     engine.order.length = 0
     engine.removed.length = 0
@@ -193,7 +189,7 @@ describe('the lifecycle', () => {
   })
 
   it('shutdown: stops every running worker container of this install, never another install’s, within the shutdown', async () => {
-    const id = await startWorker()
+    const id = startWorker()
     engine.held.set('runcastle-worker-theirs', true)
     engine.labels.set('runcastle-worker-theirs', { [LABEL_DATA_DIR]: other })
     const codes: number[] = []
@@ -209,7 +205,7 @@ describe('the lifecycle', () => {
   })
 
   it('the copied-database hazard: a worker row naming another install’s container is refused, and the container left alone', async () => {
-    const id = await startWorker()
+    const id = startWorker()
     // As in a drive: this database's row names a container the real install (another live data folder) made.
     engine.labels.set(containerOf(id), workerLabels(id, feature.projectId))
     engine.labels.set(containerOf(id), { ...engine.labels.get(containerOf(id))!, [LABEL_DATA_DIR]: other })
@@ -234,8 +230,8 @@ describe('the sweep', () => {
   }
 
   it('removes this install’s worker containers with no row, a landed row or a closed feature, and stops a live one it leaves', async () => {
-    const live = await startWorker('Live')
-    const landed = await startWorker('Landed')
+    const live = startWorker('Live')
+    const landed = startWorker('Landed')
     await handBack(landed)
     await toolLandWorker(ctx, leadSession(), { workerId: landed })
     // The land's removal did not get it (a failure), so the sweep must, keeping the conversation first.
@@ -255,7 +251,7 @@ describe('the sweep', () => {
   })
 
   it('removes a closed feature’s worker container', async () => {
-    const id = await startWorker()
+    const id = startWorker()
     ctx.db.update(workers).set({ status: 'handed-back' }).run()
     const { features } = await import('../src/db/schema')
     ctx.db.update(features).set({ status: 'archived' }).run()
@@ -264,9 +260,8 @@ describe('the sweep', () => {
   })
 
   it('fails and removes a worker whose setup a killed server cut off', async () => {
-    const id = await startWorker()
-    // As the last server left it: container recorded, setup never finished.
-    ctx.db.update(workers).set({ branch: null }).run()
+    // As the last server left it: container recorded, setup never finished, no branch.
+    const id = startWorker('Header', { branch: false })
     await sweepLeftovers(ctx)
     expect(engine.held.has(containerOf(id))).toBe(false)
     expect(getWorker(ctx, id)).toMatchObject({ status: 'failed', failure: expect.stringMatching(/cut off/) })
@@ -327,7 +322,7 @@ describe('the sweep', () => {
   })
 
   it('removes orphan worker copies and branches, and runtime folders of older versions', async () => {
-    const id = await startWorker()
+    const id = startWorker()
     const origins = join(dataDir(), 'workers', 'origins')
     mkdirSync(join(origins, 'sess_unknown.git'), { recursive: true })
     mkdirSync(join(origins, `${id}.git`), { recursive: true })
@@ -345,6 +340,34 @@ describe('the sweep', () => {
     expect(branches).toContain(getWorker(ctx, id)!.branch!)
     expect(existsSync(join(runtime, 'old-version'))).toBe(false)
     expect(existsSync(join(runtime, runtimeDirName()))).toBe(true)
+  })
+
+  it('removes the own folder of a host worker whose drop was never finished, and of no worker; keeps a live one’s and the feature’s', async () => {
+    const start = async (label: string): Promise<string> =>
+      (await toolStartWorker(ctx, leadSession(), { label, purpose: label, kind: 'on-its-own', goal: `Build the ${label}` })).workerId
+    const first = await start('First')
+    const live = await start('Live')
+    const dropped = await start('Dropped')
+    const featureFolder = getWorker(ctx, first)!.folder!
+    // The first took the feature's folder; the others each got a worktree of their own.
+    expect(getWorker(ctx, first)!.branch).toBeNull()
+    const liveFolder = getWorker(ctx, live)!.folder!
+    const droppedFolder = getWorker(ctx, dropped)!.folder!
+    expect(liveFolder).toBe(join(dataDir(), 'workers', 'folders', live))
+    const orphan = join(dataDir(), 'workers', 'folders', 'sess_gone')
+    mkdirSync(orphan, { recursive: true })
+    // A drop the server never finished: the row says dropped, the folder is still there.
+    ctx.db.update(workers).set({ status: 'dropped' }).where(eq(workers.id, dropped)).run()
+
+    await sweepLeftovers(ctx)
+
+    expect(existsSync(droppedFolder)).toBe(false)
+    expect(existsSync(orphan)).toBe(false)
+    expect(existsSync(liveFolder)).toBe(true)
+    expect(existsSync(featureFolder)).toBe(true)
+    expect(engine.order).toEqual([])
+    expect(git(repo, 'branch', '--list', getWorker(ctx, live)!.branch!)).toContain('runcastle/worker/')
+    expect(git(repo, 'branch', '--list', getWorker(ctx, dropped)!.branch!)).toBe('')
   })
 
   it('removes the burn engine’s clean worktrees and names the dirty ones once', async () => {
@@ -429,7 +452,7 @@ describe('the sweep', () => {
 
   it('leaves a worker whose agent still runs', async () => {
     setAgentHostForTests({ ...host.host, isRunning: () => true } as AgentHost)
-    const id = await startWorker()
+    const id = startWorker()
     ctx.db.update(workers).set({ status: 'dropped' }).run()
     await sweepLeftovers(ctx)
     expect(engine.held.get(containerOf(id))).toBe(true)

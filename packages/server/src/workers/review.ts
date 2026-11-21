@@ -33,7 +33,9 @@ import type { HandbackNote } from './worker'
  * The Review worker (burns-become-workers decisions 3–5): the end-of-feature
  * review as a worker of kind `review`. A **drive** review runs on the host, in
  * the human's checkout while the review drive holds the project's one drive
- * slot; a **gates** review runs in an ordinary worker sandbox. Either runs the
+ * slot; a **gates** review runs on the host too, reading the feature's own
+ * folder (workers-build-in-the-feature-s-folder decision 9; a gates review made
+ * before that ran in a worker sandbox and finishes there). Either runs the
  * project's checks itself, reports findings as it goes, and hands back with the
  * Review Package. A **verify** review (either mode) is given only the findings
  * the lead fixed and the commits that fixed them.
@@ -350,6 +352,27 @@ export function sandboxReviewBriefing(label: string, branch: string): string {
     "- Runcastle's tools for you: report_finding (one review finding), hand_back, read_feature (the feature's state and docs) and show_file (a file into this chat). You have no others, and no route to runcastle.",
     `- ${LINK_WHAT_YOU_NAME}`,
     '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then end your turn so the human can decide.',
+    "- Your assignment says what to review and how. Run the project's checks yourself, as it says.",
+    '- To hand back, call hand_back with your account, as your assignment says. Then end your turn.',
+  ].join('\n')
+}
+
+/**
+ * A gates review's briefing on the host (workers-build-in-the-feature-s-folder
+ * decision 9): it reads the committed feature branch in the feature's own
+ * folder, where the lead works too, and writes no code.
+ */
+export function hostGatesReviewBriefing(w: Pick<WorkerRow, 'label' | 'featureBranch'>, folder: string): string {
+  return [
+    `# You are a runcastle worker: ${w.label}`,
+    '',
+    `Your lead (the agent running this feature) started you to review it. You run on the human's own machine, in the feature's folder, ${folder}, on ${w.featureBranch}. ` +
+      'The human can open this conversation at any time and type to you.',
+    '',
+    '## How you work',
+    "- You write no code and make no commits: leave the folder exactly as you found it. Never switch its branch, reset it, or use git stash: your lead works in this folder too, and runcastle refuses them.",
+    "- Runcastle's tools for you: report_finding (one review finding), hand_back, show_file (a file into this chat), get_feature_context and read_feature_doc (the feature's state and docs).",
+    `- ${LINK_WHAT_YOU_NAME}`,
     "- Your assignment says what to review and how. Run the project's checks yourself, as it says.",
     '- To hand back, call hand_back with your account, as your assignment says. Then end your turn.',
   ].join('\n')

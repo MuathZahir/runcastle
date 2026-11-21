@@ -11,7 +11,7 @@ import type { StatusTone } from '../ui'
 
 /**
  * Interactive workers as the web draws them (docs/features/interactive-workers).
- * A feature's lead hands work to workers: sandboxed threads, each with a label,
+ * A feature's lead hands work to workers: threads on the host, each with a label,
  * a one-line purpose, a kind and a status. These are the view shapes the
  * sidebar's worker list and a worker's chat read; the wire shape is core's
  * `WorkerRow`, and the status and kind here are its own.

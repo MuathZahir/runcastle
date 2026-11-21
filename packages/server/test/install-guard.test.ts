@@ -156,7 +156,7 @@ describe('install guard', () => {
     expect(denied('')).toBe(false)
   })
 
-  it('names docs-only and where verification happens instead', () => {
+  it('names who installs in the feature\'s folder and what to do instead, with no sandbox or docs-only', () => {
     const denial = evaluateInstallGuard({
       kind: 'scenario',
       toolName: 'Bash',
@@ -164,10 +164,46 @@ describe('install guard', () => {
       worktreePath: talk,
       talkWorktreePath: talk,
     })
-    expect(denial?.reason).toMatch(/docs-only/)
-    expect(denial?.reason).toMatch(/worker sandbox/)
-    expect(denial?.reason).toMatch(/review round/)
-    expect(denial?.reason).toMatch(/test drive/)
+    expect(denial?.reason).toMatch(/lead/)
+    expect(denial?.reason).toMatch(/building workers/)
+    expect(denial?.reason).toMatch(/git diff --check/)
+    expect(denial?.reason).not.toMatch(/sandbox|docs-only/)
+  })
+
+  describe('host workers (workers-build-in-the-feature-s-folder)', () => {
+    const worker = (role: 'build' | 'review') =>
+      evaluateInstallGuard({
+        kind: 'worker',
+        toolName: 'Bash',
+        command: 'bun install',
+        worktreePath: talk,
+        talkWorktreePath: talk,
+        hostWorker: { role, placement: 'feature-folder', folder: talk },
+      })
+
+    it("lets a building worker install in the feature's folder", () => {
+      expect(worker('build')).toBeNull()
+      expect(
+        evaluateInstallGuard({
+          kind: 'worker',
+          toolName: 'PowerShell',
+          command: 'npm.cmd ci',
+          worktreePath: 'C:\\wt\\dark-mode',
+          talkWorktreePath: 'C:\\wt\\dark-mode',
+          hostWorker: { role: 'build', placement: 'feature-folder', folder: 'C:\\wt\\dark-mode' },
+        }),
+      ).toBeNull()
+    })
+
+    it('refuses a gates review, saying it checks with what is installed', () => {
+      const reason = worker('review')?.reason
+      expect(reason).toMatch(/review installs nothing/)
+      expect(reason).toMatch(/report_finding/)
+    })
+
+    it('still refuses any other worker in the feature\'s folder (a drive review, a worker from before)', () => {
+      expect(denied('bun install', { kind: 'worker' })).toBe(true)
+    })
   })
 
   it('registers the edit tools and the shell tools in one matcher', () => {

@@ -1024,6 +1024,27 @@ export function unresolvedMergeConflict(events: readonly Pick<EventRow, 'type' |
 export const WorkerKind = z.enum(['with-you', 'on-its-own', 'unassigned', 'review', 'fix-drive', 'scenario'])
 export type WorkerKind = z.infer<typeof WorkerKind>
 
+/** The worker kinds that build: they edit and commit code (workers-build-in-the-feature-s-folder). */
+export const BUILD_WORKER_KINDS = ['with-you', 'on-its-own', 'unassigned'] as const satisfies readonly WorkerKind[]
+export type BuildWorkerKind = (typeof BUILD_WORKER_KINDS)[number]
+
+/** Whether `kind` is a building worker's. */
+export function isBuildWorkerKind(kind: WorkerKind): kind is BuildWorkerKind {
+  return (BUILD_WORKER_KINDS as readonly WorkerKind[]).includes(kind)
+}
+
+/**
+ * Where a host worker builds (workers-build-in-the-feature-s-folder decisions 2, 3, 7):
+ * in the feature's own folder, on the feature branch, or in its own folder on its own branch.
+ */
+export type WorkerPlacement = 'feature-folder' | 'own-folder'
+
+/** A worker's placement, read off its row; null for a sandboxed worker from before, or a drive's. */
+export function workerPlacement(w: { folder: string | null; branch: string | null }): WorkerPlacement | null {
+  if (!w.folder) return null
+  return w.branch ? 'own-folder' : 'feature-folder'
+}
+
 /** The worker kinds docked beside a test drive (drive-chats-become-workers decision 1). */
 export const DRIVE_WORKER_KINDS = ['fix-drive', 'scenario'] as const satisfies readonly WorkerKind[]
 export type DriveWorkerKind = (typeof DRIVE_WORKER_KINDS)[number]
@@ -1119,8 +1140,14 @@ export const WorkerRow = z.object({
   failure: z.string().nullable(),
   engine: WorkerEngine,
   container: z.string().nullable(),
-  /** The worker's own branch, cut from `featureBranch`. */
+  /** The worker's own branch, cut from `featureBranch`; null for one in the feature's folder. */
   branch: z.string().nullable(),
+  /**
+   * Where a worker builds on the host (workers-build-in-the-feature-s-folder decisions 2, 3, 7):
+   * the feature's own folder, or its own worktree on `branch`. Null for a sandboxed worker
+   * (from before) and the drive's workers.
+   */
+  folder: z.string().nullable(),
   featureBranch: z.string(),
   previewPort: z.number().int().nullable(),
   /** Whether the worker has started its dev server: "Open preview" shows only then. */

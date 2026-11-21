@@ -188,6 +188,78 @@ describe('remote guard', () => {
       ]) refused(cmd, 'PowerShell')
       allowed('Remove-Item -Force ..\\one-file.txt', 'PowerShell')
     })
+
+    /** Decision 11 of workers-build-in-the-feature-s-folder: Windows paths and PowerShell's forms, read on every platform. */
+    describe('on Windows', () => {
+      const winOwn = 'C:\\Users\\u\\.runcastle\\worktrees\\p1\\dark-mode'
+      const win = (command: string, toolName = 'PowerShell', cwd?: string) =>
+        evaluateRemoteGuard({
+          toolName,
+          command,
+          worktreePath: winOwn,
+          ...(cwd ? { cwd } : {}),
+          home: 'C:\\Users\\u',
+          tempFolders: ['C:\\Users\\u\\AppData\\Local\\Temp'],
+          ownFolders: ['D:\\scenario-data\\f1'],
+          platform: 'win32',
+        })
+
+      it('allows recursive deletes inside the folder, temp and its own extras, in any case and either slash', () => {
+        for (const cmd of [
+          'Remove-Item -Recurse -Force .\\dist',
+          'Remove-Item -Path node_modules -Recurse -Force -ErrorAction SilentlyContinue',
+          `Remove-Item -Recurse ${winOwn}\\coverage`,
+          'Remove-Item -Recurse c:\\users\\U\\.RUNCASTLE\\worktrees\\p1\\DARK-MODE\\build',
+          'Remove-Item -Recurse C:/Users/u/.runcastle/worktrees/p1/dark-mode/out',
+          'rm -r dist, build',
+          'rmdir .vite -Recurse',
+          'del -Recurse -Force tmp',
+          'ri -r .\\cache',
+          'Remove-Item -Recurse:$true C:\\Users\\u\\AppData\\Local\\Temp\\rc-1',
+          'Remove-Item -Recurse D:\\scenario-data\\f1\\run-3',
+          'Set-Location packages\\web; Remove-Item -Recurse .vite',
+          'cd packages/web && Remove-Item -Recurse .vite',
+        ]) expect(win(cmd), cmd).toBeNull()
+        expect(win('rm -rf node_modules', 'Bash')).toBeNull()
+        expect(win('rm -rf /c/Users/u/.runcastle/worktrees/p1/dark-mode/dist', 'Bash')).toBeNull()
+      })
+
+      it('refuses a recursive delete outside the folder, of it, or above it', () => {
+        for (const cmd of [
+          'Remove-Item -Recurse -Force C:\\Users\\u\\code',
+          'Remove-Item -Recurse -Force c:\\',
+          'Remove-Item -Recurse -Force C:',
+          'Remove-Item -Recurse ..',
+          'Remove-Item -LiteralPath ..\\other-feature -Recurse',
+          `Remove-Item -Recurse ${winOwn.toUpperCase()}`,
+          'Remove-Item -Recurse .\\dist, D:\\data',
+          'rm -r ~\\Documents',
+          'rmdir -Recurse $env:USERPROFILE',
+          'del -Recurse \\Windows\\Temp',
+          'ri -r E:\\backup',
+          'Remove-Item -Recurse D:\\scenario-data\\f1',
+          'Set-Location ..; Remove-Item -Recurse dark-mode',
+          'Get-Date; Remove-Item -Recurse -Force C:\\x',
+          'Get-ChildItem | Out-Null && Remove-Item -Recurse C:\\x',
+          'Write-Host hi `\n  ; Remove-Item -Recurse C:\\x',
+          'cmd /c rd /s /q C:\\x',
+          'pwsh -Command "Remove-Item -Recurse C:\\x"',
+        ]) expect(win(cmd), cmd).not.toBeNull()
+        for (const cmd of ['rm -rf /c/Users/u/code', 'rm -rf /c', 'rm -rf C:\\\\Users\\\\u']) {
+          expect(win(cmd, 'Bash'), cmd).not.toBeNull()
+        }
+      })
+
+      it('reads a PowerShell here-string and an escaped separator as text', () => {
+        expect(win("git commit -F - @'\nRemove-Item -Recurse C:\\x\n'@")).toBeNull()
+        expect(win('Write-Host a`; Remove-Item -Recurse C:\\x')).toBeNull()
+      })
+
+      it('starts from the shell\'s current folder, compared in any case', () => {
+        expect(win('Remove-Item -Recurse .vite', 'PowerShell', 'c:\\users\\u\\.runcastle\\worktrees\\p1\\dark-mode\\web')).toBeNull()
+        expect(win('Remove-Item -Recurse ..\\..', 'PowerShell', `${winOwn}\\web`)).not.toBeNull()
+      })
+    })
   })
 })
 

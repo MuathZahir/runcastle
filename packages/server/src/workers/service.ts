@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process'
+import { connect } from 'node:net'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -21,6 +23,7 @@ import {
   isDriveWorkerKind,
   isUsageLimitText,
   workerFeatureId,
+  workerPlacement,
   type Project,
   modelEntryFor,
   resolveBurnCacheMode,
@@ -29,15 +32,15 @@ import {
   resolveSandboxImage,
 } from '@runcastle/core'
 import { envPath, sessionDir } from '@runcastle/core/paths'
-import { features, workers } from '../db/schema'
+import { features, sessions, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
-import { chatKickoffHeader } from '../launcher/launcher'
+import { chatKickoffHeader, ensureFeatureWorktree } from '../launcher/launcher'
 import { createSessionRow, getLimitHold, getSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
 import { type AgentErrorClass, classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
 import { emit, emitProject, listAfter } from '../services/events'
-import { branchChangesAhead, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
+import { activeTestDriveFeatureId, addWorkerWorktree, branchChangesAhead, deleteTempBranch, discardWorktree, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
 import { featureLandingQueue } from '../services/landing-queue'
 import { deliverToLead } from '../services/lead-delivery'
 import { clearWait, setWait } from '../services/waits'
@@ -64,7 +67,7 @@ import { IDLE_STOP_MS } from '../threads/host'
 import type { WorkerPermissionMode } from './permissions'
 import { codexHomeDir } from '../services/codex-auth'
 import { codexSetup } from './codex-setup'
-import { workerMcpServer } from './sandbox'
+import { pickFreePort, workerMcpServer } from './sandbox'
 import { type WorkerSetup, claudeSetup, setupFingerprint } from './setup-copy'
 import { workerTools } from './tools'
 import {
@@ -84,8 +87,8 @@ import {
   verifyFindings,
 } from './review'
 import { listByFeature as listFindings } from '../services/review-findings'
-import { DRIVE_WORKER_REFUSAL, deliverDriveHandback, isHostWorker, recordDriveTurnCommits } from './drive'
-import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workerOrigin, workersDir } from './worker'
+import { DRIVE_WORKER_REFUSAL, deliverDriveHandback, isHostWorker, noteWorkerTurnBase, recordDriveTurnCommits } from './drive'
+import { type HandbackNote, type HostWorkerPlace, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workerOrigin, workersDir } from './worker'
 import { WORKER_CONTAINER_PREFIX } from './ownership'
 import { mayStartInBackground } from '../services/database-copy'
 import { threadNeed } from '../threads/read'
@@ -261,8 +264,22 @@ export function sandboxOf(ctx: AppCtx, w: WorkerRow): WorkerSandbox | null {
  * sees it in front of {@link workerPreviewPath}; a worker's agent is told this
  * whole address, as the machine runcastle runs on sees it.
  */
-function humanPreviewUrl(ctx: AppCtx, workerId: string): string {
+export function humanPreviewUrl(ctx: AppCtx, workerId: string): string {
   return `http://localhost:${phoneDesignPort(ctx.config)}${workerPreviewPath(workerId)}`
+}
+
+/** Where a host build worker builds, as its briefing tells it (workers-build-in-the-feature-s-folder decisions 2, 3). */
+export function hostWorkerPlace(ctx: AppCtx, w: WorkerRow): HostWorkerPlace | undefined {
+  const placement = workerPlacement(w)
+  if (!placement || !w.folder) return undefined
+  return {
+    placement,
+    folder: w.folder,
+    featureBranch: w.featureBranch,
+    branch: w.branch,
+    port: w.previewPort,
+    previewUrl: w.previewPort !== null ? humanPreviewUrl(ctx, w.id) : null,
+  }
 }
 
 function briefOf(w: WorkerRow): WorkerBrief {
@@ -412,27 +429,110 @@ function recordLeadStart(ctx: AppCtx, w: WorkerRow, leadThreadId: string | undef
 }
 
 /**
- * Start a worker on `feature`: its thread, its record, its sandbox, then its
- * kickoff. Resolves once the sandbox is up and the kickoff is on its way. A
- * sandbox that fails to come up leaves the worker `failed` with what failed.
+ * Start a worker on `feature` (workers-build-in-the-feature-s-folder decisions
+ * 1, 2, 3, 7): its thread, its record, its folder on the host, then its
+ * kickoff. A build worker takes the feature's own folder unless another open
+ * worker of the feature holds it; then it gets its own folder and branch, cut
+ * from the feature branch's tip, with the project's setup command run there. A
+ * gates review reads the feature's folder (decision 9). A folder that cannot
+ * be made leaves the worker `failed` with what failed.
  */
 export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWorkerInput): Promise<StartedWorker> {
   const model = workerModel(ctx, feature, input.model, input.kind)
-  const engine = sandboxEngine(ctx.config.sandbox)
-  if (!(await engine.available())) throw new GateError(noEngineMessage(engine.name))
   const project = projectForFeature(ctx, feature)
   const mainChat = newestThread(ctx, { featureId: feature.id }, 'chat')
-  // Nothing of the worker lives on the host: a stand-in dir, so host-side snapshots find nothing.
-  const placeholder = join(workersDir(), 'host')
-  mkdirSync(placeholder, { recursive: true })
+  // Where it builds and its port are picked one start at a time per feature, so two starts never both take the feature's folder or one port.
+  const placed = await placeOneAtATime(feature.id, () => placeWorker(ctx, project, feature, input, model, mainChat?.id))
+  const { session, folder, branch, own, previewPort } = placed
+  if (input.review) keepReviewAssignment(session.id, input.review.assignment)
+  if (own && branch) {
+    settingUp.add(session.id)
+    try {
+      await addWorkerWorktree(project.repoPath, folder, branch, feature.branch)
+      const setupCommand = resolvePreparedSettings(ctx.config, project).setupCommand
+      if (setupCommand) await runSetupCommand(setupCommand, folder)
+    } catch (err) {
+      settingUp.delete(session.id)
+      const failure = err instanceof Error ? err.message : String(err)
+      // The worker did no work: its folder and branch go at once (cleans-up decision 4).
+      await removeWorkerFolder(ctx, requireWorker(ctx, session.id))
+      if (requireWorker(ctx, session.id).status === 'dropped') throw new GateError(`worker "${input.label}" was dropped while its folder was being set up`)
+      const failed = updateWorker(ctx, session.id, { status: 'failed', failure: failure.slice(0, 2000) })
+      recordLeadStart(ctx, failed, mainChat?.id)
+      emitWorker(ctx, failed, 'worker.failed', `worker "${input.label}" could not set up its folder`, { failure })
+      throw new GateError(`worker "${input.label}" could not set up its folder: ${failure}`)
+    }
+    settingUp.delete(session.id)
+    // A drop that came while setup ran is honoured now: its folder goes, and no kickoff is sent.
+    if (requireWorker(ctx, session.id).status === 'dropped') {
+      await removeWorkerFolder(ctx, requireWorker(ctx, session.id))
+      throw new GateError(`worker "${input.label}" was dropped while its folder was being set up`)
+    }
+  }
+  const started = requireWorker(ctx, session.id)
+  // Its commits land straight on the feature branch: what the branch gains from here is its work (decision 2).
+  if (!own) await noteWorkerTurnBase(ctx, started)
+  recordLeadStart(ctx, started, mainChat?.id)
+  const where = own ? `in its own folder, on ${branch}` : "in the feature's folder"
+  emitWorker(ctx, started, 'worker.started', `worker "${input.label}" started ${where}`, {
+    sessionId: session.id,
+    kind: input.kind,
+    startedBy: input.startedBy,
+    placement: own ? 'own-folder' : 'feature-folder',
+    folder,
+    ...(branch ? { branch } : {}),
+    ...(previewPort !== null ? { previewUrl: humanPreviewUrl(ctx, session.id) } : {}),
+  })
+  await agentHost(ctx).prompt(session.id, { text: workerKickoff(ctx, started) }, { source: 'runcastle' })
+  return { workerId: session.id, branch: branch ?? feature.branch, previewUrl: humanPreviewUrl(ctx, session.id) }
+}
+
+/** Each feature's start in progress: the next waits for it, so placement reads the rows the last one wrote. */
+const placing = new Map<string, Promise<unknown>>()
+
+/** Run `place` after any other start of `featureId` has placed its worker. */
+async function placeOneAtATime<T>(featureId: string, place: () => Promise<T>): Promise<T> {
+  const before = placing.get(featureId) ?? Promise.resolve()
+  const run = before.catch(() => undefined).then(place)
+  placing.set(featureId, run)
+  try {
+    return await run
+  } finally {
+    if (placing.get(featureId) === run) placing.delete(featureId)
+  }
+}
+
+/**
+ * Where a new worker builds (decision 7), its thread, and its row. A build
+ * worker takes the feature's folder unless another holds it or a test drive of
+ * the feature has it on the human's checkout (where its commits would not reach
+ * the feature branch until the drive stops); then it gets its own folder and branch.
+ */
+async function placeWorker(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  input: StartWorkerInput,
+  model: ReturnType<typeof workerModel>,
+  mainChatId: string | undefined,
+): Promise<{ session: SessionRow; folder: string; branch: string | null; own: boolean; previewPort: number | null }> {
+  const featureFolder = await ensureFeatureWorktree(ctx, project, feature)
+  const own =
+    input.kind !== 'review' &&
+    (featureFolderHolder(ctx, feature.id) !== undefined || activeTestDriveFeatureId(project.id) === feature.id)
   const session = createSessionRow(ctx, {
     featureId: feature.id,
     kind: 'worker',
-    worktreePath: placeholder,
+    worktreePath: featureFolder,
     model,
-    ...(mainChat ? { openedBeside: mainChat.id } : {}),
+    ...(mainChatId ? { openedBeside: mainChatId } : {}),
   })
   setSessionTitle(ctx, session.id, input.label)
+  const folder = own ? workerFolder(session.id) : featureFolder
+  const branch = own ? `runcastle/worker/${shortId(session.id)}` : null
+  if (own) ctx.db.update(sessions).set({ worktreePath: folder }).where(eq(sessions.id, session.id)).run()
+  // A review shows no screen; a build worker's dev server gets a port of its own, since agents now share the machine (decision 6).
+  const previewPort = input.kind === 'review' ? null : await pickFreePort(41000, 400, takenPorts(ctx))
   const now = Date.now()
   ctx.db
     .insert(workers)
@@ -449,67 +549,75 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
       runtime: model.runtime,
       startedBy: input.startedBy,
       status: 'working',
-      engine: engine.name,
+      engine: sandboxEngine(ctx.config.sandbox).name,
       featureBranch: feature.branch,
+      folder,
+      branch,
+      previewPort,
       ...(input.review ? { reviewMode: 'gates' as const, reviewVerify: input.review.verify } : {}),
       createdAt: now,
       updatedAt: now,
     })
     .run()
-  if (input.review) keepReviewAssignment(session.id, input.review.assignment)
-  const short = shortId(session.id)
-  const planned = { container: `${WORKER_CONTAINER_PREFIX}${short}`, branch: `runcastle/worker/${short}` }
-  let sb: WorkerSandbox
-  settingUp.add(session.id)
-  try {
-    // The image first: a build that fails fails this start like a setup failure (decision 11).
-    await engine.prepare({ image: imageBuildCtx(ctx, feature, session.id), config: ctx.config })
-    sb = await engine.create({
-      id: session.id,
-      projectId: feature.projectId,
-      // Recorded the moment it runs, before the clone and setup, so nothing can leak it (cleans-up decision 4).
-      onContainer: (container, port) => void updateWorker(ctx, session.id, { container, previewPort: port }),
-      engine: engine.name,
-      runtime: model.runtime,
-      ...planned,
-      // Read again: the build may have adopted a new project image.
-      image: resolveSandboxImage(ctx.config, projectForFeature(ctx, feature)),
-      repoPath: project.repoPath,
-      featureBranch: feature.branch,
-      // A review reads its diff against the base, which a worker's copy of the feature branch alone lacks.
-      ...(input.review && feature.baseBranch ? { baseBranch: feature.baseBranch } : {}),
-      takenPorts: takenPorts(ctx),
-      ...sandboxSetup(ctx, project),
+  return { session, folder, branch, own, previewPort }
+}
+
+/** The statuses in which a worker still holds the folder it works in: at work, waiting on someone, or handed back and not yet settled. */
+const HOLDING: ReadonlySet<WorkerStatus> = new Set(['queued', 'working', 'needs-you', 'stalled', 'handed-back'])
+
+/**
+ * The open build worker of `featureId` that holds the feature's own folder, if
+ * any (decision 7): placed there and not yet landed, dropped or failed. A new
+ * build worker started meanwhile gets its own folder. A review never holds it:
+ * it only reads, and a handed-back review is resolved, never landed.
+ */
+export function featureFolderHolder(ctx: AppCtx, featureId: string): WorkerRow | undefined {
+  return listWorkers(ctx, featureId).find(
+    (w) => w.kind !== 'review' && workerPlacement(w) === 'feature-folder' && HOLDING.has(w.status),
+  )
+}
+
+/** Where a worker's own folder is made (decision 3): under runcastle's data dir, keyed by the worker. */
+export function workerFolder(id: string): string {
+  return join(workersDir(), 'folders', id)
+}
+
+/** How long the project's setup command may run in a new worker folder before the start fails. */
+const SETUP_TIMEOUT_MS = 20 * 60_000
+
+/** Run the project's setup command in a worker's new folder, through the platform's shell; throws with its output's tail when it fails. */
+function runSetupCommand(command: string, cwd: string): Promise<void> {
+  return new Promise((done, fail) => {
+    const child = spawn(command, { cwd, shell: true, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
+    let tail = ''
+    const keep = (chunk: Buffer): void => {
+      tail = (tail + chunk.toString('utf8')).slice(-4000)
+    }
+    child.stdout?.on('data', keep)
+    child.stderr?.on('data', keep)
+    const timer = setTimeout(() => child.kill(), SETUP_TIMEOUT_MS)
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      fail(new Error(`the setup command \`${command}\` could not run: ${err.message}`))
     })
-  } catch (err) {
-    settingUp.delete(session.id)
-    const failure = err instanceof Error ? err.message : String(err)
-    // The worker did no work: what its setup made goes at once (cleans-up decision 4).
-    await removeHalfMade(ctx, requireWorker(ctx, session.id), planned.branch)
-    if (requireWorker(ctx, session.id).status === 'dropped') throw new GateError(`worker "${input.label}" was dropped while its sandbox was being set up`)
-    const failed = updateWorker(ctx, session.id, { status: 'failed', failure: failure.slice(0, 2000) })
-    // Its row in the lead's chat lands with the event that lists it, so the card never names a worker the list lacks.
-    recordLeadStart(ctx, failed, mainChat?.id)
-    emitWorker(ctx, failed, 'worker.failed', `worker "${input.label}" could not start its sandbox`, { failure })
-    throw new GateError(`worker "${input.label}" could not start its sandbox: ${failure}`)
-  }
-  settingUp.delete(session.id)
-  // A drop that came while setup ran is honoured now: what setup made goes, and no kickoff is sent.
-  if (requireWorker(ctx, session.id).status === 'dropped') {
-    await engine.remove(sb).catch((err) => console.error(`worker ${session.id}: removing a sandbox dropped during setup`, err))
-    throw new GateError(`worker "${input.label}" was dropped while its sandbox was being set up`)
-  }
-  const started = updateWorker(ctx, session.id, { container: sb.container, branch: sb.branch, previewPort: sb.port })
-  recordLeadStart(ctx, started, mainChat?.id)
-  emitWorker(ctx, started, 'worker.started', `worker "${input.label}" started in its sandbox`, {
-    sessionId: session.id,
-    kind: input.kind,
-    startedBy: input.startedBy,
-    branch: sb.branch,
-    previewUrl: humanPreviewUrl(ctx, session.id),
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) done()
+      else fail(new Error(`the setup command \`${command}\` failed (exit ${code ?? 'killed'}): ${tail.trim().slice(-1500)}`))
+    })
   })
-  await agentHost(ctx).prompt(session.id, { text: workerKickoff(ctx, started) }, { source: 'runcastle' })
-  return { workerId: session.id, branch: sb.branch, previewUrl: humanPreviewUrl(ctx, session.id) }
+}
+
+/**
+ * Remove a worker's own folder and its branch (decisions 3, 13). A worker in
+ * the feature's folder has none: its commits stay on the feature branch.
+ * Best effort: a failure is logged, and the sweep catches a branch left over.
+ */
+async function removeWorkerFolder(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  if (workerPlacement(w) !== 'own-folder' || !w.folder || !w.branch) return
+  const repoPath = projectForFeature(ctx, getFeatureRow(ctx, workerFeatureId(w))).repoPath
+  if (!(await discardWorktree(repoPath, w.folder))) console.error(`worker ${w.id}: its folder ${w.folder} could not be removed`)
+  await deleteTempBranch(repoPath, w.branch)
 }
 
 /**
@@ -841,6 +949,8 @@ export async function resumeCaughtWorkers(ctx: AppCtx, skip: ReadonlySet<string>
       if (caughtPrompts.length === 0) continue
       const human = caughtPrompts.some((e) => e.source === 'human' || summaryOf(e) === RESUMED_HUMAN_DISPLAY)
       emitWorker(ctx, w, 'worker.resumed', `worker "${w.label}" resumed: a restart caught it before its turn began`, { prompts: caughtPrompts.length })
+      // The restart lost where the branch stood: note it again, so this turn's commits are recorded.
+      await beforeWorkerTurn(ctx, w.id)
       await host.prompt(
         w.id,
         { text: caughtPrompts.map((e) => e.text).join('\n\n') },
@@ -873,8 +983,8 @@ async function giveDriveBack(ctx: AppCtx, w: WorkerRow): Promise<void> {
  */
 async function reviewHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNote): Promise<void> {
   await giveDriveBack(ctx, w)
-  // A drive review's conversation is on the host: its tokens are counted as it hands back (decision 12).
-  if (isHostReview(w)) await keepConversation(ctx, w)
+  // A review on the host (a drive review, a gates review in the feature's folder) has its conversation there: its tokens are counted as it hands back (decision 12).
+  if (isHostWorker(w)) await keepConversation(ctx, w)
   const handed = updateWorker(ctx, w.id, {
     status: 'handed-back',
     handbackSummary: note.summary,
@@ -940,8 +1050,11 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   const engine = sandboxEngine(w.engine)
   const note = sb ? await engine.takeHandback(sb) : isHostWorker(w) ? takeHostHandback(w.id) : undefined
   if (sb && !w.devServer && (await engine.devServerStarted(sb))) updateWorker(ctx, w.id, { devServer: true })
-  // What a drive worker committed on the driven branch this turn joins what it made in this drive (drive-chats-become-workers decision 3).
-  if (isDriveWorkerKind(w.kind)) w = await recordDriveTurnCommits(ctx, w)
+  // What a drive worker, or a build worker in the feature's folder, committed on the branch this turn joins what it made so far
+  // (drive-chats-become-workers decision 3; workers-build-in-the-feature-s-folder decision 2).
+  const placement = workerPlacement(w)
+  if (isDriveWorkerKind(w.kind) || (placement === 'feature-folder' && w.kind !== 'review')) w = await recordDriveTurnCommits(ctx, w)
+  if (placement !== null && w.previewPort !== null && !w.devServer && (await portAnswers(w.previewPort))) w = updateWorker(ctx, w.id, { devServer: true })
   if (!note && failed) return recoverFromError(ctx, w, failed.error, failed.verdict, held)
   forgetRetries(w.id)
   if (note && w.kind === 'review') return reviewHandedBack(ctx, w, note)
@@ -949,25 +1062,46 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   // A drive review stopped mid-turn gives the human their drive back; it takes it again with review_drive.
   if (!note && end?.reason === 'cancelled') await giveDriveBack(ctx, w)
   if (!note) return quietTurnEnded(ctx, w, end)
-  if (!sb) return
-  await engine.fetchBranch(sb)
-  const changes = await branchChangesAhead(sb.repoPath, w.featureBranch, sb.branch)
-  const commits = changes.commits.map((c) => `${c.sha.slice(0, 7)} ${c.subject}`)
+  let changes: { commits: string[]; files: string[] }
+  if (placement === 'feature-folder') changes = { commits: w.handbackCommits ?? [], files: w.handbackFiles ?? [] }
+  else {
+    const branch = w.branch
+    const repoPath = sb?.repoPath ?? projectForFeature(ctx, getFeatureRow(ctx, workerFeatureId(w))).repoPath
+    if (!branch) return
+    if (sb) await engine.fetchBranch(sb)
+    const ahead = await branchChangesAhead(repoPath, w.featureBranch, branch)
+    changes = { commits: ahead.commits.map((c) => `${c.sha.slice(0, 7)} ${c.subject}`), files: ahead.files }
+  }
+  const { commits, files } = changes
   const handed = updateWorker(ctx, w.id, {
     status: 'handed-back',
     handbackSummary: note.summary,
     handbackCommits: commits,
-    handbackFiles: changes.files,
+    handbackFiles: files,
     outcome: null,
     outcomeNote: null,
   })
-  emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`, { commits: commits.length, files: changes.files.length })
+  emitWorker(ctx, handed, 'worker.handed_back', `worker "${w.label}" handed back`, { commits: commits.length, files: files.length })
   const feature = featureOf(ctx, w)
   if (!feature) return
   const display: PromptDisplay = {
-    handback: { workerId: w.id, label: w.label, kind: w.kind, summary: note.summary, commits, files: changes.files, threadId: w.id },
+    handback: { workerId: w.id, label: w.label, kind: w.kind, summary: note.summary, commits, files, threadId: w.id },
   }
-  await deliverToLead(ctx, feature, { text: handbackText(handed, commits, changes.files), source: 'runcastle', display })
+  await deliverToLead(ctx, feature, { text: handbackText(handed, commits, files), source: 'runcastle', display })
+}
+
+/** Whether something listens on `port` on the host's loopback: a host worker's dev server, once it started one. */
+function portAnswers(port: number): Promise<boolean> {
+  return new Promise((done) => {
+    const socket = connect({ host: '127.0.0.1', port })
+    const finish = (up: boolean): void => {
+      socket.destroy()
+      done(up)
+    }
+    socket.setTimeout(500, () => finish(false))
+    socket.once('connect', () => finish(true))
+    socket.once('error', () => finish(false))
+  })
 }
 
 /**
@@ -987,6 +1121,38 @@ async function driveWorkerHandedBack(ctx: AppCtx, w: WorkerRow, note: HandbackNo
 
 /** What the lead reads of a handback: the summary, the work, and its three choices. */
 function handbackText(w: WorkerRow, commits: string[], files: string[]): string {
+  const placement = workerPlacement(w)
+  if (placement === 'feature-folder') {
+    return [
+      `Worker "${w.label}" handed back (worker ${w.id}). It built in the feature's folder: its commits are already on ${w.featureBranch}, so nothing waits to land.`,
+      '',
+      w.handbackSummary ?? '',
+      '',
+      `Commits on ${w.featureBranch} while it worked:`,
+      ...(commits.length ? commits.map((c) => `- ${c}`) : ['- none']),
+      ...(files.length ? ['', `Files: ${files.join(', ')}`] : []),
+      '',
+      `Next: land_worker({ workerId: "${w.id}" }) to accept it (nothing merges; it frees the feature's folder for the next worker), ` +
+        `send_back_worker({ workerId: "${w.id}", note }) to send it back with what to change, ` +
+        `or drop_worker({ workerId: "${w.id}" }) to stop it; its commits stay, so revert any you do not want with new commits.`,
+    ].join('\n')
+  }
+  if (placement === 'own-folder') {
+    return [
+      `Worker "${w.label}" handed back (worker ${w.id}, branch ${w.branch} in its own folder ${w.folder}; nothing has landed).`,
+      '',
+      w.handbackSummary ?? '',
+      '',
+      `Commits on ${w.branch} since ${w.featureBranch}:`,
+      ...(commits.length ? commits.map((c) => `- ${c}`) : ['- none']),
+      ...(files.length ? ['', `Files: ${files.join(', ')}`] : []),
+      '',
+      `Before you land it, run the project's checks in ${w.folder} and skim \`git diff ${w.featureBranch}...${w.branch}\`.`,
+      `Next: land_worker({ workerId: "${w.id}" }) to merge it into ${w.featureBranch} (its folder and branch go), ` +
+        `send_back_worker({ workerId: "${w.id}", note }) to send it back with what to change, ` +
+        `or drop_worker({ workerId: "${w.id}" }) to throw it away.`,
+    ].join('\n')
+  }
   return [
     `Worker "${w.label}" handed back (worker ${w.id}, branch ${w.branch}; nothing has landed).`,
     '',
@@ -1374,8 +1540,8 @@ function refuseDriveWorker(w: WorkerRow): void {
 
 function requireOpen(w: WorkerRow): void {
   if (w.status === 'dropped') throw new GateError(`worker "${w.label}" was dropped`)
-  if (w.status === 'landed') throw new GateError(`worker "${w.label}" already landed: its sandbox is gone, so it cannot answer`)
-  if (w.status === 'failed') throw new GateError(`worker "${w.label}" failed: ${w.failure ?? 'its sandbox is gone'}`)
+  if (w.status === 'landed') throw new GateError(`worker "${w.label}" already landed: its agent has stopped, so it cannot answer`)
+  if (w.status === 'failed') throw new GateError(`worker "${w.label}" failed: ${w.failure ?? 'its agent has stopped'}`)
 }
 
 /**
@@ -1389,8 +1555,23 @@ export async function messageWorker(ctx: AppCtx, id: string, text: string): Prom
   return promptWorker(ctx, w, text)
 }
 
+/**
+ * A turn of a build worker in the feature's folder is about to start: note where
+ * the feature branch stands, so only what it commits from here counts as its own
+ * (workers-build-in-the-feature-s-folder decision 2). Skipped while its agent
+ * still runs, since a message mid-turn starts no new turn. This also gives a
+ * worker its starting point back after a server restart.
+ */
+export async function beforeWorkerTurn(ctx: AppCtx, id: string): Promise<void> {
+  const w = getWorker(ctx, id)
+  if (!w || workerPlacement(w) !== 'feature-folder' || w.kind === 'review' || isDriveWorkerKind(w.kind)) return
+  if (agentHost(ctx).isRunning(id)) return
+  await noteWorkerTurnBase(ctx, w).catch(() => undefined)
+}
+
 async function promptWorker(ctx: AppCtx, w: WorkerRow, text: string): Promise<{ ok: true }> {
   requireOpen(w)
+  await beforeWorkerTurn(ctx, w.id)
   // A message is not the human's word in the worker's chat: a worker that needs them still does (needs-you decision 7).
   // A stalled one is working again: someone told it what to do (a-worker-never-shows-working-with-nothing-running decision 4).
   if (w.status === 'stalled') setStatus(ctx, w, 'working')
@@ -1428,10 +1609,27 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
   refuseDriveWorker(w)
   if (w.kind === 'review') throw new GateError(`worker "${w.label}" is a review: it writes no code, so nothing lands. Resolve its findings instead.`)
   if (w.status !== 'handed-back') throw new GateError(`worker "${w.label}" is ${w.status}: only a handed-back worker lands`)
-  const sb = sandboxOf(ctx, w)
-  if (!sb) throw new GateError(`worker "${w.label}" has no sandbox to land from`)
   const feature = getFeatureRow(ctx, workerFeatureId(w))
-  await sandboxEngine(w.engine).fetchBranch(sb)
+  const placement = workerPlacement(w)
+  // In the feature's folder its commits are on the branch already: landing only settles it (workers-build-in-the-feature-s-folder decision 2).
+  if (placement === 'feature-folder') return settleFeatureFolderWorker(ctx, w, feature.branch)
+  let source: { repoPath: string; branch: string }
+  if (placement === 'own-folder' && w.branch) {
+    // The merge happens in the feature's folder: never under a worker whose turn runs there.
+    const holder = featureFolderHolder(ctx, feature.id)
+    if (holder && agentHost(ctx).isRunning(holder.id)) {
+      throw new GateError(
+        `worker "${holder.label}" is mid-turn in the feature's folder, where this merge would land: land "${w.label}" once its turn ends.`,
+      )
+    }
+    source = { repoPath: projectForFeature(ctx, feature).repoPath, branch: w.branch }
+  } else {
+    const sb = sandboxOf(ctx, w)
+    if (!sb) throw new GateError(`worker "${w.label}" has no branch to land from`)
+    await sandboxEngine(w.engine).fetchBranch(sb)
+    source = { repoPath: sb.repoPath, branch: sb.branch }
+  }
+  const sb = source
   // Read before the merge, which deletes the branch it lands.
   const changes = await branchChangesAhead(sb.repoPath, feature.branch, sb.branch)
   let result: TempBranchMergeResult
@@ -1449,7 +1647,10 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
     const tries = conflictSendBacks(ctx, w)
     if (w.kind === 'on-its-own' && tries < MAX_CONFLICT_SEND_BACKS) {
       const behind = (await branchChangesAhead(sb.repoPath, sb.branch, feature.branch)).commits.map((c) => `${c.sha.slice(0, 7)} ${c.subject}`)
-      await sendBack(ctx, w, conflictSendBackText(feature.branch, files, behind), 'runcastle sent it back to resolve a landing conflict', { conflict: true, files })
+      await sendBack(ctx, w, conflictSendBackText(feature.branch, files, behind, placement === 'own-folder'), 'runcastle sent it back to resolve a landing conflict', {
+        conflict: true,
+        files,
+      })
       return {
         ok: false,
         conflict: true,
@@ -1471,11 +1672,11 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
   }
   const landed = updateWorker(ctx, w.id, { status: 'landed', outcome: 'landed', outcomeNote: null })
   clearWait(ctx, w.id, 'closed')
-  // Its work is on the feature branch: its conversation is kept, then its container and bare copy go, as a drop's do (cleans-up decision 2).
+  // Its work is on the feature branch: its conversation is kept, then its folder (or container and bare copy) go, as a drop's do (cleans-up decision 2).
   try {
     await removeWorkerSandbox(ctx, w)
   } catch (err) {
-    emitWorker(ctx, landed, 'worker.remove_failed', `worker "${w.label}" landed, but its sandbox could not be removed`, {
+    emitWorker(ctx, landed, 'worker.remove_failed', `worker "${w.label}" landed, but its ${placement ? 'folder' : 'sandbox'} could not be removed`, {
       error: err instanceof Error ? err.message : String(err),
     })
   }
@@ -1484,6 +1685,20 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
     files: changes.files.length,
   })
   return { ok: true, commits: changes.commits.length, files: changes.files.length }
+}
+
+/**
+ * Settle a worker that built in the feature's folder (decision 2): its commits are on the branch already, so
+ * nothing merges. It is marked landed, its agent stops and its conversation is kept; the folder is free again.
+ */
+async function settleFeatureFolderWorker(ctx: AppCtx, w: WorkerRow, featureBranch: string): Promise<LandWorkerResult> {
+  const commits = w.handbackCommits?.length ?? 0
+  const files = w.handbackFiles?.length ?? 0
+  const landed = updateWorker(ctx, w.id, { status: 'landed', outcome: 'landed', outcomeNote: null })
+  clearWait(ctx, w.id, 'closed')
+  await removeWorkerSandbox(ctx, w)
+  emitWorker(ctx, landed, 'worker.landed', `worker "${w.label}" accepted: its ${commits} commit(s) were already on ${featureBranch}`, { commits, files })
+  return { ok: true, commits, files }
 }
 
 /** Send a handed-back worker's work back with a note (decision 4): the note goes to the worker, which works again. */
@@ -1507,6 +1722,7 @@ async function sendBack(ctx: AppCtx, w: WorkerRow, text: string, note: string, d
   emitWorker(ctx, sent, 'worker.sent_back', `worker "${w.label}" was sent back`, { note, ...data })
   // A drive review sent back takes the drive slot again first (decision 3).
   if (isHostReview(w)) return driveThenPrompt(ctx, w.id, text)
+  await beforeWorkerTurn(ctx, w.id)
   await agentHost(ctx).prompt(w.id, { text }, { source: 'runcastle' })
 }
 
@@ -1519,7 +1735,7 @@ function conflictSendBacks(ctx: AppCtx, w: WorkerRow): number {
 }
 
 /** What a worker sent back over a landing conflict is told: the files, the commits it lacks, and how to resolve it. */
-function conflictSendBackText(featureBranch: string, files: string[], behind: string[]): string {
+function conflictSendBackText(featureBranch: string, files: string[], behind: string[], host: boolean): string {
   return [
     `Your work could not land: it conflicts with ${featureBranch}, which moved on since you started.`,
     '',
@@ -1528,7 +1744,7 @@ function conflictSendBackText(featureBranch: string, files: string[], behind: st
     `Commits on ${featureBranch} your branch lacks:`,
     ...(behind.length ? behind.map((c) => `- ${c}`) : ['- none listed']),
     '',
-    `Run \`git fetch origin && git merge origin/${featureBranch}\` on your branch, resolve each conflict keeping both sides' intent, ` +
+    `Run \`${host ? `git merge ${featureBranch}` : `git fetch origin && git merge origin/${featureBranch}`}\` on your branch, resolve each conflict keeping both sides' intent, ` +
       'run the checks covering the files you touched, commit the merge, then hand back.',
   ].join('\n')
 }
@@ -1571,6 +1787,8 @@ async function removeWorkerSandbox(ctx: AppCtx, w: WorkerRow): Promise<void> {
   if (retired && sb && !(await engine.inspect(sb.container).catch(() => undefined))) return
   if (hasConversation(w)) await keepConversation(ctx, w)
   if (sb) await engine.remove(sb)
+  // A worker in its own folder: the folder and its branch go (decision 3). One in the feature's folder leaves both, and its commits (decision 13).
+  await removeWorkerFolder(ctx, w)
 }
 
 /** Where a worker's own copy of its agent's conversation file is kept: beside its thread log. */
@@ -1715,10 +1933,18 @@ function previewSandbox(ctx: AppCtx, id: string): { w: WorkerRow; sb: WorkerSand
 export function workerPreviews(ctx: AppCtx, idleMs = IDLE_STOP_MS): WorkerPreviews {
   return {
     url(id) {
+      // A worker on the host runs its dev server on its own port, on this machine (workers-build-in-the-feature-s-folder).
+      const host = getWorker(ctx, id)
+      if (host && host.folder !== null) {
+        if (host.status === 'dropped' || host.status === 'failed' || host.status === 'landed' || host.previewPort === null) return undefined
+        return `http://127.0.0.1:${host.previewPort}/`
+      }
       const found = previewSandbox(ctx, id)
       return found ? `http://127.0.0.1:${found.sb.port}/` : undefined
     },
     async wake(id) {
+      // Nothing to wake on the host: the dev server is up or it is not.
+      if (getWorker(ctx, id)?.folder) return
       const found = previewSandbox(ctx, id)
       if (!found) return
       const { w, sb } = found
@@ -1781,6 +2007,8 @@ export interface LeadWorker {
   startedBy: WorkerStartedBy
   model: string
   branch: string | null
+  /** Where it builds on this machine: the feature's folder, or its own (where the lead runs the checks before landing it). */
+  folder?: string
   updatedAt: number
   handback?: { summary: string; commits: string[]; files: string[] }
   outcome?: { did: NonNullable<WorkerRow['outcome']>; note?: string }
@@ -1796,6 +2024,7 @@ export function leadWorkers(ctx: AppCtx, featureId: string): LeadWorker[] {
     startedBy: w.startedBy,
     model: w.model,
     branch: w.branch,
+    ...(w.folder !== null ? { folder: w.folder } : {}),
     updatedAt: w.updatedAt,
     ...(w.handbackSummary !== null
       ? { handback: { summary: w.handbackSummary, commits: w.handbackCommits ?? [], files: w.handbackFiles ?? [] } }

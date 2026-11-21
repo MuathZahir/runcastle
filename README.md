@@ -108,6 +108,12 @@ must-haves.)
 | **Before your first round** | **A container runtime: Docker or Podman, running** | Workers build tickets inside a container. See [The unattended sandbox](#the-unattended-sandbox). |
 | **Before your first round** | **Agent credentials** | For **Claude Code**, run `runcastle token`: it has you run `claude setup-token` and saves the token to `~/.runcastle/.env` (`--stdin` reads it from a pipe). For **Codex**, run `codex login`; workers borrow the credentials the login wrote. |
 
+Workers run on your machine, in the feature's folder, and Docker is not needed
+for them. runcastle checks every tool call before it runs: edits stay in the
+agent's own folder, and destructive git commands and deletes are refused. A
+script an agent runs can still reach outside its folder, so run runcastle only
+on projects you trust.
+
 Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
 
 You can install and talk a feature through without the last two rows, but the

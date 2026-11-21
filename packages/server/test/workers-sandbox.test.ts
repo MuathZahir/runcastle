@@ -1,19 +1,14 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { mkdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type * as acp from '@agentclientprotocol/sdk/unstable'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolStartWorker, toolsForAudience } from '../src/mcp/server'
-import { listAfter } from '../src/services/events'
-import { list as listFeatures } from '../src/services/features'
-import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
-import { threadLifecycle } from '../src/threads/lifecycle'
-import { readThreadEvents, type AgentHost } from '../src/threads/types'
+import { toolStartWorker } from '../src/mcp/server'
+import { setAgentHostForTests } from '../src/threads/host'
 import { setSandboxEngineForTests } from '../src/workers/engine'
-import { getWorker, withWorkers, workerTurnSlot } from '../src/workers/service'
+import { getWorker } from '../src/workers/service'
 import { readFeatureForWorker } from '../src/workers/tools'
 import { SETUP_MANAGED, claudeSetup, setupFingerprint } from '../src/workers/setup-copy'
 import { serveToolRelay } from '../src/workers/tool-relay'
@@ -21,15 +16,13 @@ import { WORKER_MCP_SCRIPT, WORKER_RELAY_SCRIPT } from '../src/workers/worker-mc
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
-import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
 import { fakeEngine, fakeHost, initRepo, type FakeEngine } from './support/fake-workers'
 
 /**
- * A worker inside its sandbox (interactive-workers decisions 8, 9, 10, 11): the
- * human's setup the engine is asked to copy in, the permission mode and its
- * fallback, and runcastle's tools reached through the relay runcastle opens
- * into the container. No container: a fake engine, and the in-sandbox scripts
- * run as plain processes on a socket in a temp dir.
+ * The pieces of the sandbox an old worker still runs on (interactive-workers decisions 8, 9, 10):
+ * the setup copied in, and the in-sandbox tool scripts with the relay into the container. A new
+ * worker runs on the host, so what it gets is checked in workers.test.ts. No container here: the
+ * scripts run as plain processes on a socket in a temp dir.
  */
 
 let ctx: AppCtx
@@ -157,29 +150,6 @@ describe("the human's setup in the sandbox", () => {
     })
   })
 
-  it('is copied in at the start, skipped at a wake while it is unchanged, and copied again once it changed', async () => {
-    fakeUserHome(userHome)
-    const host = fakeHost()
-    setAgentHostForTests(host.host)
-    const { workerId } = await toolStartWorker(ctx, getSessionRow(ctx, lead)!, { label: 'Header', purpose: 'The header', kind: 'on-its-own', goal: 'Build it' })
-    engine.transport = createFakeAcp().transport
-    const transport = withWorkers(ctx, () => {
-      throw new Error('only workers run here')
-    })
-    const row = getSessionRow(ctx, workerId)!
-    await transport({} as never, row)
-    await transport({} as never, row)
-    const container = getWorker(ctx, workerId)!.container
-    expect(engine.setups).toEqual([{ container, setup: claudeSetup(userHome), guard: true }])
-
-    // A new skill reaches the worker at its next wake (decision 8).
-    put(join(userHome, '.claude', 'skills', 'ship', 'SKILL.md'), 'ship\n')
-    await transport({} as never, row)
-    expect(engine.setups).toHaveLength(2)
-    expect(engine.setups[1]).toEqual({ container, setup: claudeSetup(userHome), guard: true })
-    expect(engine.processes).toHaveLength(3)
-  })
-
   it('fingerprints a setup by its paths, sizes and times, so any change to it is seen', () => {
     fakeUserHome(userHome)
     const before = setupFingerprint(claudeSetup(userHome))
@@ -208,87 +178,6 @@ describe("the human's setup in the sandbox", () => {
     expect(SETUP_MANAGED).toContain('.claude/plugins/cache')
     const clone = '.claude/plugins/marketplaces/acme/.claude-plugin/marketplace.json'
     expect(SETUP_MANAGED.filter((managed) => clone === managed || clone.startsWith(`${managed}/`))).toEqual([])
-  })
-})
-
-// --- the permission mode ------------------------------------------------------------
-
-/** A real agent host over the fake ACP agent, the worker transport and the server's lifecycle. */
-function realHost(fake: FakeAcp): AgentHost {
-  engine.transport = fake.transport
-  const host = createAgentHost({
-    ctx,
-    transport: withWorkers(ctx, () => {
-      throw new Error('only workers run here')
-    }),
-    launch: FAKE_LAUNCH,
-    lifecycle: threadLifecycle(ctx),
-    turnSlot: workerTurnSlot(ctx),
-    idleMs: 60_000,
-  })
-  setAgentHostForTests(host)
-  return host
-}
-
-async function until(done: () => boolean, ms = 3000): Promise<void> {
-  const deadline = Date.now() + ms
-  while (!done()) {
-    if (Date.now() > deadline) throw new Error('never got there')
-    await new Promise((r) => setTimeout(r, 5))
-  }
-}
-
-const bash: acp.ToolCallUpdate = { toolCallId: 'c1', title: 'Bash', kind: 'execute' }
-const neon: acp.ToolCallUpdate = {
-  toolCallId: 'c2',
-  title: 'mcp__neon__run_sql',
-  kind: 'other',
-  _meta: { claudeCode: { toolName: 'mcp__neon__run_sql', mcpServer: { name: 'neon', source: 'user' } } },
-}
-
-/** A worker whose first turn asks to run `calls` in order, recording each answer the agent got. */
-async function workerAsking(mode: string, calls: acp.ToolCallUpdate[]): Promise<{ id: string; host: AgentHost; answers: acp.RequestPermissionResponse[] }> {
-  const answers: acp.RequestPermissionResponse[] = []
-  const fake = createFakeAcp({
-    mode,
-    turn: async (t) => {
-      for (const call of calls) answers.push(await t.permission(call))
-      await t.say('Done.')
-    },
-  })
-  const host = realHost(fake)
-  const { workerId } = await toolStartWorker(ctx, getSessionRow(ctx, lead)!, { label: 'Data', purpose: 'The data', kind: 'on-its-own', goal: 'Do it' })
-  return { id: workerId, host, answers }
-}
-
-const modeEvents = () =>
-  listAfter(ctx, feature.id, 0)
-    .filter((e) => e.type === 'worker.permission_mode')
-    .map((e) => (e.data as { mode: string }).mode)
-
-const asks = (id: string) => readThreadEvents(id).filter((e) => e.type === 'ask')
-
-describe('the permission mode', () => {
-  const allowed = { outcome: { outcome: 'selected', optionId: 'allow-once' } }
-
-  it('runs in auto mode when the session opens in it, and allows whatever auto mode still asks without the human', async () => {
-    const { id, host, answers } = await workerAsking('auto', [bash])
-    await until(() => answers.length === 1)
-    expect(answers).toEqual([allowed])
-    expect(asks(id)).toEqual([])
-    expect(modeEvents()).toEqual(['auto'])
-    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
-    await host.stopAll('shutdown')
-  })
-
-  it('falls back when auto mode is unavailable: every request, a call to one of the human’s MCP servers too, is allowed without the human', async () => {
-    const { id, host, answers } = await workerAsking('acceptEdits', [bash, neon])
-    await until(() => answers.length === 2)
-    expect(answers).toEqual([allowed, allowed])
-    expect(asks(id)).toEqual([])
-    expect(modeEvents()).toEqual(['fallback'])
-    expect(getWorker(ctx, id)?.status).not.toBe('needs-you')
-    await host.stopAll('shutdown')
   })
 })
 
@@ -346,13 +235,12 @@ describe("the worker's runcastle tools", () => {
     rmTemp(dir)
   })
 
-  it('are exactly hand_back, wait_for_you, start_dev_server, read_feature, show_file and park_feature, and runcastle offers a worker none of its own', async () => {
+  it('are exactly hand_back, wait_for_you, start_dev_server, read_feature, show_file and park_feature in the in-sandbox server an old sandbox worker still runs', async () => {
     const mcp = runScript(dir, 'worker-mcp.cjs', WORKER_MCP_SCRIPT)
     children.push(mcp)
     const ask = mcpClient(mcp)
     const listed = await ask('tools/list')
     expect(listed.result?.tools?.map((t) => t.name)).toEqual(['hand_back', 'wait_for_you', 'start_dev_server', 'read_feature', 'show_file', 'park_feature'])
-    expect(toolsForAudience('worker')).toEqual([])
   })
 
   it('reach runcastle over the relay’s stdio and come back to the call that asked', async () => {
@@ -388,49 +276,25 @@ describe("the worker's runcastle tools", () => {
 })
 
 describe("runcastle's answers to a worker's tools", () => {
+  /** A host worker: the feature's folder, no container. */
   async function startedWorker(): Promise<string> {
-    const host = fakeHost()
-    setAgentHostForTests(host.host)
+    setAgentHostForTests(fakeHost().host)
     const { workerId } = await toolStartWorker(ctx, getSessionRow(ctx, lead)!, { label: 'Header', purpose: 'The header', kind: 'with-you', goal: 'Build it' })
-    engine.transport = createFakeAcp().transport
-    await withWorkers(ctx, () => {
-      throw new Error('only workers run here')
-    })({} as never, getSessionRow(ctx, workerId)!)
     return workerId
   }
 
-  it('show_file posts the sandbox’s file into the worker’s own chat', async () => {
+  it('read_feature gives the feature’s state, and a Review worker the feature without the lead’s latest turns', async () => {
     const id = await startedWorker()
-    engine.sandboxFiles.set('/home/agent/repo/shots/header.png', 'png bytes')
-    const answer = await engine.processes[0]!.tools('show_file', { path: '/home/agent/repo/shots/header.png', caption: 'The header' })
-    expect(answer).toBe('Shown header.png in this chat.')
-    const shown = readThreadEvents(id).filter((e) => e.type === 'file_shown')
-    expect(shown).toHaveLength(1)
-    expect(shown[0]).toMatchObject({ file: { name: 'header.png', path: 'shots/header.png', caption: 'The header', size: 9 } })
-    expect(readThreadEvents(lead).some((e) => e.type === 'file_shown')).toBe(false)
-  })
-
-  it('park_feature makes a draft backlog feature in the worker’s project', async () => {
-    await startedWorker()
-    const answer = await engine.processes[0]!.tools('park_feature', { title: 'Dark mode', oneLiner: 'A dark theme', brief: 'Deferred: not this feature.' })
-    expect(answer).toMatch(/^Parked as a draft in the backlog: dark-mode\./)
-    const parked = listFeatures(ctx, feature.projectId).find((f) => f.slug === 'dark-mode')
-    expect(parked).toMatchObject({ title: 'Dark mode', status: 'draft' })
-  })
-
-  it('read_feature gives the feature’s state', async () => {
-    await startedWorker()
-    const answer = JSON.parse(await engine.processes[0]!.tools('read_feature', {})) as { feature: { feature: { slug: string } }; leadLatestTurns: unknown }
+    const w = getWorker(ctx, id)!
+    expect(w.container).toBeNull()
+    const answer = (await readFeatureForWorker(ctx, w)) as { feature: { feature: { slug: string } }; leadLatestTurns: unknown }
     expect(answer.feature.feature.slug).toBe('work')
     expect(answer).toHaveProperty('leadLatestTurns')
-  })
 
-  it('read_feature gives a Review worker the feature without the lead’s latest turns', async () => {
-    const id = await startedWorker()
-    const reviewer = { ...getWorker(ctx, id)!, kind: 'review' as const }
-    const answer = (await readFeatureForWorker(ctx, reviewer)) as { feature: { feature: { slug: string } } }
-    expect(answer.feature.feature.slug).toBe('work')
-    expect(answer).not.toHaveProperty('leadLatestTurns')
-    expect(JSON.stringify(answer)).not.toContain('lead chat quote')
+    const reviewer = { ...w, kind: 'review' as const }
+    const reviewed = (await readFeatureForWorker(ctx, reviewer)) as { feature: { feature: { slug: string } } }
+    expect(reviewed.feature.feature.slug).toBe('work')
+    expect(reviewed).not.toHaveProperty('leadLatestTurns')
+    expect(engine.order).toEqual([])
   })
 })

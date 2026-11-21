@@ -1,4 +1,5 @@
-import type { Need, WorkerRow } from '@runcastle/core'
+import { workerPlacement } from '@runcastle/core'
+import type { Need, WorkerPlacement, WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../../db/types'
 import { askWorkerToHandBack, listLiveWorkers, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, startUnassignedWorker, turnRunning } from '../../workers/service'
@@ -8,7 +9,7 @@ import { publicProcedure, router } from '../context'
 import { threadNeed } from '../../threads/read'
 
 /** A worker as the web lists it: its row, its preview's entry path and port, and any account hold it waits behind. */
-type ListedWorker = WorkerRow & { previewPath: string | null; passPort: number; heldBy: string | null; need: Need | null; turnRunning: boolean }
+type ListedWorker = WorkerRow & { previewPath: string | null; passPort: number; heldBy: string | null; placement: WorkerPlacement | null; need: Need | null; turnRunning: boolean }
 
 function listed(ctx: AppCtx, w: WorkerRow): ListedWorker {
   return {
@@ -16,6 +17,7 @@ function listed(ctx: AppCtx, w: WorkerRow): ListedWorker {
     previewPath: w.previewPort !== null && w.devServer ? workerPreviewPath(w.id) : null,
     passPort: phoneDesignPort(ctx.config),
     heldBy: queueHoldOf(ctx, w),
+    placement: workerPlacement(w),
     need: threadNeed(ctx, w),
     // A worker `working` by status with no turn running reads Idle (needs-you decision 6).
     turnRunning: turnRunning(ctx, w.id),

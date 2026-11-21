@@ -79,12 +79,14 @@ describe('owner', () => {
 })
 
 describe('host placement', () => {
-  it('runs the drive review and both drive kinds on the host, and no other kind', () => {
+  it('runs the drive review, both drive kinds and any row with a folder on the host, and a sandbox row not', () => {
     expect(isHostWorker({ kind: 'review', reviewMode: 'drive' })).toBe(true)
     expect(isHostWorker({ kind: 'fix-drive', reviewMode: null })).toBe(true)
     expect(isHostWorker({ kind: 'scenario', reviewMode: null })).toBe(true)
-    expect(isHostWorker({ kind: 'review', reviewMode: 'gates' })).toBe(false)
-    expect(isHostWorker({ kind: 'on-its-own', reviewMode: null })).toBe(false)
+    expect(isHostWorker({ kind: 'review', reviewMode: 'gates', folder: '/feature' })).toBe(true)
+    expect(isHostWorker({ kind: 'on-its-own', reviewMode: null, folder: '/feature' })).toBe(true)
+    expect(isHostWorker({ kind: 'on-its-own', reviewMode: null, folder: null })).toBe(false)
+    expect(isHostWorker({ kind: 'review', reviewMode: 'gates', folder: null })).toBe(false)
   })
 
   it.each([

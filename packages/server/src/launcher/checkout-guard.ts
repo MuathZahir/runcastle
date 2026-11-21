@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import type { SessionKind, SessionPurpose } from '@runcastle/core'
 import { DRIVE_MACHINERY_WRITABLE, type EditDenial, SCENARIO_WRITABLE } from './edit-guard'
 import { SHELL_TOOLS } from './install-guard'
-import { CD_VERBS, commandsOf, isGit, VALUE_OPTIONS, within } from './lead-guard'
+import { CD_VERBS, commandsOf, dialectOf, isGit, VALUE_OPTIONS, within } from './lead-guard'
 
 /**
  * The checkout guard (`small-fixes-before-publish` decisions 1 and 2): a
@@ -146,7 +146,7 @@ export function evaluateCheckoutGuard(input: CheckoutGuardInput): EditDenial | n
   }
 
   let cwd = root
-  for (const words of commandsOf(input.command)) {
+  for (const words of commandsOf(input.command, dialectOf(input.toolName))) {
     const [verb, ...args] = words
     if (!verb) continue
     if (CD_VERBS.has(verb.toLowerCase())) {
@@ -197,7 +197,7 @@ function pathsOf(args: string[], valueOptions: ReadonlySet<string>): string[] {
 }
 
 /** Skip git's global options (tracking `-C`), returning the subcommand, its args and its directory. */
-function gitSub(args: string[], cwd = '.'): { sub: string; rest: string[]; dir: string } | null {
+export function gitSub(args: string[], cwd = '.'): { sub: string; rest: string[]; dir: string } | null {
   let dir = cwd
   let i = 0
   for (; i < args.length; i++) {
