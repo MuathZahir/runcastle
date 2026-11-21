@@ -15,3 +15,15 @@
 ## 4. "Set all to…" lives on the epic, with all four levels
 **Decision:** The bulk control lives on the epic, not only on the creation card, and it is "Set all to…" offering all four levels, not a button fixed to "Nothing".
 **Why:** "Yes to both." At bedtime the features already exist, so the control must reach them where they are; and merging unseen is the riskiest level to put behind one tap, so the safer overnight level ("Result") is as easy to pick. Chosen over the human's first idea, a creation-card button that turns all to "Nothing".
+
+## 5. The names: "Involve me in" with four levels
+**Decision:** The setting is named "Involve me in". Its levels are "Everything" (the default), "Designs and result", "Result only" and "Nothing". On a feature it shows as e.g. "Involve me in: Result only". Supersedes the working names in 1.
+**Why:** "Yes to all." Each level names everything it covers, so the nesting reads at a glance; the working names "Designs" and "Nothing" could read as "only designs" and "do nothing". Chosen over keeping the working names, or a "Stop me for:" label.
+
+## 6. Below "Designs and result", the lead designs screens itself
+**Decision:** At "Result only" and "Nothing", the lead settles a new screen's look itself, records it as decided without the human, and the human sees it when they try the result.
+**Why:** "Yes to all." Stopping for designs at every level would stop "Result only" mid-way and defeat leaving it overnight. Chosen over stopping for designs at every level.
+
+## 7. "Set all to…" has no undo
+**Decision:** After "Set all to…", the human sets levels again themselves (another "Set all to…" or per feature); runcastle keeps no memory of the earlier levels.
+**Why:** "Yes to all." Remembering old levels adds hidden state for a rare need. Chosen over an "Undo" that restores each feature's earlier level.
