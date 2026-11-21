@@ -1051,17 +1051,37 @@ export type ReviewVerify = z.infer<typeof ReviewVerify>
 /**
  * Where a worker is (spec, "Statuses"): at a turn, in line for a slot, waiting
  * on the human, handed back to its lead, landed on the feature branch, dropped,
- * or failed.
+ * or failed; or stalled, its turn having ended twice with no handback, the
+ * second time after runcastle nudged it (a-worker-never-shows-working-with-
+ * nothing-running decisions 4, 5). Not the turn watch's `stalled` stop reason,
+ * which kills one turn that shows no progress.
  */
-export const WorkerStatus = z.enum(['working', 'queued', 'needs-you', 'handed-back', 'landed', 'dropped', 'failed'])
+export const WorkerStatus = z.enum(['working', 'queued', 'needs-you', 'handed-back', 'landed', 'dropped', 'failed', 'stalled'])
 export type WorkerStatus = z.infer<typeof WorkerStatus>
 
 /**
- * A worker still in play: waiting on the human (or failed, so someone must
- * act), or at work (or queued for a slot): the workers the sidebar nests
- * under every feature row (workers-nest-under-their-feature decision 2).
+ * A worker still in play: waiting on the human (or failed or stalled, so
+ * someone must act), or at work (or queued for a slot): the workers the
+ * sidebar nests under every feature row (workers-nest-under-their-feature
+ * decision 2).
  */
-export const IN_PLAY_WORKER_STATUSES: readonly WorkerStatus[] = ['needs-you', 'failed', 'working', 'queued']
+export const IN_PLAY_WORKER_STATUSES: readonly WorkerStatus[] = ['needs-you', 'failed', 'stalled', 'working', 'queued']
+
+/** A worker's status as it shows: its stored one, or `idle` for one in play with no turn running. */
+export type ShownWorkerStatus = WorkerStatus | 'idle'
+
+/**
+ * A worker's status as every view shows it, the lead's and the orchestrator's
+ * as well as the web's (needs-you-is-the-agent-s-call decision 6;
+ * a-worker-never-shows-working-with-nothing-running decision 1): its own need,
+ * else Working only while a turn of it runs, else Idle; a settled, queued,
+ * failed or stalled worker its own word.
+ */
+export function shownWorkerStatus(w: { status: WorkerStatus; need?: { why: string } | null; turnRunning?: boolean }): ShownWorkerStatus {
+  if (w.need) return 'needs-you'
+  if (w.status === 'working' || w.status === 'needs-you') return w.turnRunning ? 'working' : 'idle'
+  return w.status
+}
 
 /** What the lead did with a worker's latest handback (decision 4). */
 export const WorkerOutcome = z.enum(['landed', 'sent-back', 'dropped'])

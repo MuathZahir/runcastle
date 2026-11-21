@@ -875,10 +875,12 @@ describe('project-session MCP tools', () => {
     ])
     seedWorker(f.id, { status: 'working' })
     seedWorker(f.id, { status: 'working' })
-    seedWorker(f.id, { status: 'needs-you' })
+    seedWorker(f.id, { status: 'queued' })
+    seedWorker(f.id, { status: 'stalled' })
     seedWorker(f.id, { status: 'landed' })
     const out = await toolGetProjectContext(ctx, session, { full: true })
-    expect(out.featureIndex).toEqual(['busy — Busy [in flight: 2 working, 1 needs you]'])
+    // As shown: no turn of them runs, so the two stored as working read idle (a-worker-never-shows-working-with-nothing-running decision 1).
+    expect(out.featureIndex).toEqual(['busy — Busy [in flight: 1 queued, 1 stalled, 2 idle]'])
   })
 
   it('refuses seq sent with a seam but no featureSlug over MCP, instead of running a seam search', async () => {

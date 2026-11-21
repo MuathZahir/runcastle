@@ -1,5 +1,7 @@
+import { shownWorkerStatus } from '@runcastle/core'
 import type {
   Need,
+  ShownWorkerStatus,
   ThreadEntry,
   WorkerKind as CoreWorkerKind,
   WorkerRow as CoreWorkerRow,
@@ -22,17 +24,18 @@ import type { StatusTone } from '../ui'
  * branch, failed, or dropped. `idle` is the web's own word for a worker in
  * play with no turn running.
  */
-export type WorkerStatus = CoreWorkerStatus | 'idle'
+export type WorkerStatus = ShownWorkerStatus
 
 /**
  * A worker's status as it shows (decision 6): its own need, else Working while
- * a turn of it runs, else Idle; a settled, queued or failed worker its own word.
+ * a turn of it runs, else Idle; a settled, queued, failed or stalled worker its
+ * own word. Core's, so the lead and the epic read the same (a-worker-never-
+ * shows-working-with-nothing-running decision 1).
  */
-export function shownWorkerStatus(w: { status: CoreWorkerStatus; need?: Need | null; turnRunning?: boolean }): WorkerStatus {
-  if (w.need) return 'needs-you'
-  if (w.status === 'working' || w.status === 'needs-you') return w.turnRunning ? 'working' : 'idle'
-  return w.status
-}
+export { shownWorkerStatus }
+
+/** The line after a stalled worker's status, and its notice in the lead's chat (decision 5). */
+export const WORKER_STALLED_WHY = 'stopped twice without handing back'
 
 /** How many workers are at work, counted as their cards read them: a turn running, not a stored status (needs-you decision 6). */
 export function workersAtWork(rows: readonly { status: CoreWorkerStatus; need?: Need | null; turnRunning?: boolean }[]): number {
@@ -116,6 +119,8 @@ const GROUP: Record<WorkerStatus, keyof WorkerGroups> = {
   working: 'working',
   idle: 'working',
   queued: 'working',
+  // The lead's to act on, not the human's (decision 5): with the live workers, its amber word says it.
+  stalled: 'working',
   'handed-back': 'done',
   landed: 'done',
   dropped: 'done',
@@ -161,6 +166,7 @@ export const WORKER_STATUS_WORDS: Record<WorkerStatus, string> = {
   landed: 'Landed',
   failed: 'Failed',
   dropped: 'Dropped',
+  stalled: 'Stalled',
 }
 
 /** A status's dot in the chat header: shape first, the hue confirms. */
@@ -173,6 +179,7 @@ export const WORKER_STATUS_TONE: Record<WorkerStatus, StatusTone> = {
   landed: 'success',
   failed: 'danger',
   dropped: 'neutral',
+  stalled: 'warning',
 }
 
 /**
@@ -189,6 +196,7 @@ export function workerStatusWhy(w: {
 }): string | undefined {
   if (w.need) return w.need.why
   if (w.status === 'failed' && w.failure) return w.failure
+  if (w.status === 'stalled') return WORKER_STALLED_WHY
   if (w.status === 'queued' && w.heldBy) return `held: ${w.heldBy}`
   return undefined
 }
@@ -268,9 +276,13 @@ export function workerAssignment(w: WireWorker): WorkerAssignment {
   }
 }
 
-/** Whether the human can ask a worker to hand back (decision 5): while it works or waits, not once it has, landed, dropped or failed. */
+/**
+ * Whether the human can ask a worker to hand back (decision 5): while it works
+ * or waits, or has stalled (its prompt sets it working again: a-worker-never-
+ * shows-working-with-nothing-running), not once it has, landed, dropped or failed.
+ */
 export function workerCanHandBack(status: WorkerStatus): boolean {
-  return status === 'needs-you' || status === 'working' || status === 'idle' || status === 'queued'
+  return status === 'needs-you' || status === 'working' || status === 'idle' || status === 'queued' || status === 'stalled'
 }
 
 /**

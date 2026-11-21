@@ -10,10 +10,13 @@ import {
   type ReviewVerify,
   type ReviewWorkerMode,
   type SessionRow,
+  type ThreadEvent,
   type WorkerKind,
   type WorkerRow,
   type WorkerStartedBy,
   type WorkerStatus,
+  type ShownWorkerStatus,
+  shownWorkerStatus,
   IN_PLAY_WORKER_STATUSES,
   isDriveWorkerKind,
   isUsageLimitText,
@@ -30,7 +33,7 @@ import { features, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader } from '../launcher/launcher'
-import { createSessionRow, getSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
+import { createSessionRow, getLimitHold, getSessionRow, newestThread, setSessionTitle } from '../launcher/sessions'
 import { type AgentErrorClass, classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
 import { emit, emitProject, listAfter } from '../services/events'
@@ -84,6 +87,8 @@ import { listByFeature as listFindings } from '../services/review-findings'
 import { DRIVE_WORKER_REFUSAL, deliverDriveHandback, isHostWorker, recordDriveTurnCommits } from './drive'
 import { type HandbackNote, type NewSandboxInput, type WorkerBrief, type WorkerSandbox, workerBriefing, workerOrigin, workersDir } from './worker'
 import { WORKER_CONTAINER_PREFIX } from './ownership'
+import { mayStartInBackground } from '../services/database-copy'
+import { threadNeed } from '../threads/read'
 
 /**
  * Interactive workers (docs/features/interactive-workers): a feature's lead
@@ -781,6 +786,74 @@ export async function resumeDriveReviewWaits(ctx: AppCtx, skip: ReadonlySet<stri
   return waiting.length
 }
 
+/** What a resumed worker's chat shows in place of the message it already shows (a-worker-never-shows-working-with-nothing-running decision 9). */
+export const RESUMED_DISPLAY = 'The server restarted before this message reached the worker: sent again'
+/**
+ * The same, when the human wrote one of the caught messages. The resend is
+ * runcastle's, so this line is how the turn-end rule still knows the human
+ * opened the turn (decision 3).
+ */
+export const RESUMED_HUMAN_DISPLAY = 'The server restarted before your message reached the worker: sent again'
+
+type PromptEvent = Extract<ThreadEvent, { type: 'prompt' }>
+const isPrompt = (e: ThreadEvent): e is PromptEvent => e.type === 'prompt'
+const summaryOf = (e: PromptEvent): string | undefined => (e.display && 'summary' in e.display ? e.display.summary : undefined)
+const isResend = (e: PromptEvent): boolean => summaryOf(e) === RESUMED_DISPLAY || summaryOf(e) === RESUMED_HUMAN_DISPLAY
+
+/**
+ * The messages a restart caught before their turn began (decision 9): logged
+ * as sent, but no turn has started since, so nothing will ever answer them.
+ * Held and steered ones are not among them (a held one rides the next prompt;
+ * a steered one joined a turn), nor runcastle's own commands. An earlier
+ * resend a second restart caught already carries the ones before it.
+ */
+export function undeliveredPrompts(id: string): PromptEvent[] {
+  const log = readThreadEvents(id)
+  const after = log.slice(log.findLastIndex((e) => e.type === 'turn_started') + 1).filter(isPrompt)
+  return after
+    .slice(Math.max(0, after.findLastIndex(isResend)))
+    .filter((e) => !e.held && !e.steered && !e.hidden && !e.compaction)
+}
+
+/**
+ * At boot (decision 9): a worker at work whose message a restart caught
+ * before its turn began, waiting for its slot or for its process, is sent
+ * that message again, so it takes its place in line rather than staying
+ * "queued" with nothing behind it. Skipped: a worker the carry-on wake already
+ * told, a drive worker (handed back at boot), a drive review waiting for the
+ * drive (its wait is armed again), one the usage limit holds (its wake is
+ * armed again), one already running, and a copied database's own.
+ */
+export async function resumeCaughtWorkers(ctx: AppCtx, skip: ReadonlySet<string> = new Set()): Promise<number> {
+  const host = agentHost(ctx)
+  const caught = ctx.db
+    .select()
+    .from(workers)
+    .where(inArray(workers.status, ['working', 'queued']))
+    .all()
+    .filter((w) => !skip.has(w.id) && !isDriveWorkerKind(w.kind) && !host.isRunning(w.id) && !getLimitHold(ctx, w.id))
+    .filter((w) => !(isHostReview(w) && w.status === 'queued'))
+  let resumed = 0
+  for (const w of caught) {
+    try {
+      if (!mayStartInBackground(getSessionRow(ctx, w.id))) continue
+      const caughtPrompts = undeliveredPrompts(w.id)
+      if (caughtPrompts.length === 0) continue
+      const human = caughtPrompts.some((e) => e.source === 'human' || summaryOf(e) === RESUMED_HUMAN_DISPLAY)
+      emitWorker(ctx, w, 'worker.resumed', `worker "${w.label}" resumed: a restart caught it before its turn began`, { prompts: caughtPrompts.length })
+      await host.prompt(
+        w.id,
+        { text: caughtPrompts.map((e) => e.text).join('\n\n') },
+        { source: 'runcastle', display: { summary: human ? RESUMED_HUMAN_DISPLAY : RESUMED_DISPLAY } },
+      )
+      resumed++
+    } catch (err) {
+      console.error(`worker ${w.id}: resuming it after the restart`, err)
+    }
+  }
+  return resumed
+}
+
 /** A drive review is done with the drive (handed back, failed, dropped, stopped): give the slot back and stop its recorder. */
 async function giveDriveBack(ctx: AppCtx, w: WorkerRow): Promise<void> {
   if (!isHostReview(w)) return
@@ -849,9 +922,10 @@ export function workerKickoff(ctx: AppCtx, w: WorkerRow): string {
  * A worker's turn ended. A new handback records the worker branch's commits and
  * files, marks it handed back and wakes the lead once (decision 4). A turn that
  * failed is recovered from by itself where it can be ({@link recoverFromError});
- * one that ended otherwise without a handback leaves the worker as it is: it
- * reads idle until a turn of it runs, and needs the human only if it said so
- * with `wait_for_you` (needs-you-is-the-agent-s-call decisions 2, 6).
+ * one that ended otherwise without a handback goes to {@link quietTurnEnded}:
+ * an assigned worker is nudged once, then stalls; any other reads idle until a
+ * turn of it runs, and needs the human only if it said so with `wait_for_you`
+ * (needs-you-is-the-agent-s-call decisions 2, 6).
  */
 export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, end?: TurnEnding): Promise<void> {
   let w = getWorker(ctx, row.id)
@@ -874,7 +948,8 @@ export async function workerTurnEnded(ctx: AppCtx, row: Pick<SessionRow, 'id'>, 
   if (note && isDriveWorkerKind(w.kind)) return driveWorkerHandedBack(ctx, w, note)
   // A drive review stopped mid-turn gives the human their drive back; it takes it again with review_drive.
   if (!note && end?.reason === 'cancelled') await giveDriveBack(ctx, w)
-  if (!note || !sb) return
+  if (!note) return quietTurnEnded(ctx, w, end)
+  if (!sb) return
   await engine.fetchBranch(sb)
   const changes = await branchChangesAhead(sb.repoPath, w.featureBranch, sb.branch)
   const commits = changes.commits.map((c) => `${c.sha.slice(0, 7)} ${c.subject}`)
@@ -927,12 +1002,104 @@ function handbackText(w: WorkerRow, commits: string[], files: string[]): string 
   ].join('\n')
 }
 
+// --- a turn that ended with no handback (a-worker-never-shows-working-with-nothing-running) ---
+
+/** The kinds that work on an assignment of their own, so a quiet turn of theirs means they stopped short (decision 2). */
+const NUDGED_KINDS: ReadonlySet<WorkerKind> = new Set(['on-its-own', 'review'])
+
+/** What runcastle tells a worker whose turn ended with no handback (decision 4): one line, and the log knows it by it. */
+export function workerNudgeText(kind: WorkerKind): string {
+  const work = kind === 'review' ? 'the review' : 'your assignment'
+  const done = kind === 'review' ? 'When it is done, hand back your Review Package' : 'When it is done, hand back'
+  return (
+    `[runcastle] Your turn ended without a handback. Carry on with ${work}. ` +
+    `${done}; if you are blocked on the human, call wait_for_you.`
+  )
+}
+
+/** What the worker's chat shows of the nudge. */
+const NUDGE_DISPLAY = 'Turn ended without a handback: runcastle nudged it to carry on'
+
+/**
+ * The prompts of the turn that just ended, read off its log: the one that
+ * opened it (none for a turn the agent started by itself) and every one from
+ * there on, steered ones included.
+ */
+function endedTurnPrompts(id: string): { opening?: PromptEvent; prompts: PromptEvent[] } {
+  const log = readThreadEvents(id)
+  const started = log.findLastIndex((e) => e.type === 'turn_started')
+  if (started < 0) return { prompts: [] }
+  const self = (log[started] as Extract<ThreadEvent, { type: 'turn_started' }>).source === 'agent'
+  let from = started
+  let opening: PromptEvent | undefined
+  if (!self) {
+    // Back to the turn before, not just its end: a runtime that cannot steer
+    // logs a prompt sent mid-turn before that turn's end, then queues it.
+    for (let i = started - 1; i >= 0; i--) {
+      const e = log[i]!
+      if (e.type === 'turn_started') break
+      if (isPrompt(e) && !e.steered && !e.held) {
+        opening = e
+        from = i
+        break
+      }
+    }
+  }
+  return { ...(opening ? { opening } : {}), prompts: log.slice(from).filter(isPrompt) }
+}
+
+/**
+ * A worker's turn ended with no handback (decisions 2–6). An "on its own" or
+ * Review worker still working, whose turn nobody stopped, that the usage limit
+ * does not hold, with nothing waiting to run next or still running in the
+ * background, and that the human did not talk to in that turn, is nudged once;
+ * if the turn the nudge opened also ends so, it stalls and its lead is told.
+ * Every other worker is left as it is and reads idle.
+ */
+async function quietTurnEnded(ctx: AppCtx, w: WorkerRow, end?: TurnEnding): Promise<void> {
+  if (w.status !== 'working' || !NUDGED_KINDS.has(w.kind)) return
+  if (end?.reason === 'cancelled' || end?.reason === 'error' || end?.usageLimit || end?.queued || end?.background) return
+  if (getLimitHold(ctx, w.id)) return
+  const { opening, prompts } = endedTurnPrompts(w.id)
+  if (opening?.compaction) return
+  // A worker that just answered the human waits for them, not stuck (decision 3).
+  if (prompts.some((p) => p.source === 'human' && !p.hidden) || (opening && summaryOf(opening) === RESUMED_HUMAN_DISPLAY)) return
+  if (opening?.source === 'runcastle' && opening.text === workerNudgeText(w.kind)) return stallWorker(ctx, w)
+  emitWorker(ctx, w, 'worker.nudged', `worker "${w.label}" ended its turn without a handback; nudged to carry on`)
+  await agentHost(ctx).prompt(w.id, { text: workerNudgeText(w.kind) }, { source: 'runcastle', display: { summary: NUDGE_DISPLAY } })
+}
+
+/**
+ * The turn runcastle's nudge opened ended with no handback too (decisions 5,
+ * 6): the worker is stalled, and its lead gets a card and is woken once. Not
+ * the orchestrator: the lead decides whether its epic needs to know.
+ */
+async function stallWorker(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  const stalled = setStatus(ctx, w, 'stalled')
+  emitWorker(ctx, stalled, 'worker.stalled', `worker "${w.label}" stalled: it stopped twice without handing back`, { from: w.status })
+  const feature = featureOf(ctx, w)
+  if (!feature) return
+  await deliverToLead(ctx, feature, {
+    text:
+      `Worker "${w.label}" stalled (worker ${w.id}): its turn ended without a handback twice, the second time after runcastle nudged it. ` +
+      'Nothing of it is running.\n\n' +
+      `Next: read its chat, then message_worker({ workerId: "${w.id}", text }) with what to do (that counts as a try), ` +
+      `drop_worker({ workerId: "${w.id}" }), or do the job yourself.`,
+    source: 'runcastle',
+    display: { workerStalled: { workerId: w.id, label: w.label } },
+  })
+}
+
 // --- recovering by itself (burns-become-workers decisions 8, 9, 21) ---------------
 
 /** How many times a worker's failed turn is retried on a transient error before it fails. */
 export const MAX_TRANSIENT_RETRIES = 3
 
-/** A worker turn's stall bounds (decision 9): ten quiet minutes with no command running, or one command for 45. */
+/**
+ * A worker turn's stall bounds (decision 9): ten quiet minutes with no command running, or one command for 45.
+ * Not the worker status `stalled` (a-worker-never-shows-working-with-nothing-running spec, "Naming"): this watches a
+ * turn that runs and hangs; that one marks a worker whose turns ended twice with no handback. Both keep their names.
+ */
 export const WORKER_STALL: StallBounds = { silenceMs: 10 * 60_000, commandMs: 45 * 60_000 }
 
 /** The stall bounds for the agent host's `stallBounds`: worker threads only. */
@@ -1087,10 +1254,21 @@ export function workerAskAnswered(ctx: AppCtx, id: string): void {
   workerPrompted(ctx, id)
 }
 
-/** The human typed to a worker, pressed its Stop, or it withdrew its wait: a worker waiting on them is working again. */
+/** The human typed to a worker, pressed its Stop, answered its ask, or it withdrew its wait: a worker waiting on them is working again. */
 export function workerPrompted(ctx: AppCtx, id: string): void {
   const w = getWorker(ctx, id)
   if (w?.status === 'needs-you') setStatus(ctx, w, 'working')
+}
+
+/**
+ * The human typed to a worker: as `workerPrompted`, and a stalled one is
+ * working again (a-worker-never-shows-working-with-nothing-running decision 4).
+ * Only a message does that; a Stop leaves it stalled, with nothing to run.
+ */
+export function workerTypedTo(ctx: AppCtx, id: string): void {
+  const w = getWorker(ctx, id)
+  if (w?.status === 'stalled') setStatus(ctx, w, 'working')
+  else workerPrompted(ctx, id)
 }
 
 /**
@@ -1214,6 +1392,8 @@ export async function messageWorker(ctx: AppCtx, id: string, text: string): Prom
 async function promptWorker(ctx: AppCtx, w: WorkerRow, text: string): Promise<{ ok: true }> {
   requireOpen(w)
   // A message is not the human's word in the worker's chat: a worker that needs them still does (needs-you decision 7).
+  // A stalled one is working again: someone told it what to do (a-worker-never-shows-working-with-nothing-running decision 4).
+  if (w.status === 'stalled') setStatus(ctx, w, 'working')
   await agentHost(ctx).prompt(w.id, { text }, { source: 'runcastle' })
   emitWorker(ctx, w, 'worker.messaged', `message sent to worker "${w.label}"`, { text })
   return { ok: true }
@@ -1483,7 +1663,7 @@ export async function removeFeatureWorkers(ctx: AppCtx, featureId: string, after
 }
 
 /** The statuses that keep a feature from being ready: at work, or holding work not landed (decision 19). */
-const HOLDS_READY: ReadonlySet<WorkerStatus> = new Set(['working', 'queued', 'needs-you', 'handed-back'])
+const HOLDS_READY: ReadonlySet<WorkerStatus> = new Set(['working', 'queued', 'needs-you', 'stalled', 'handed-back'])
 
 /**
  * The feature's workers still at work or holding work that has not landed; a
@@ -1577,13 +1757,27 @@ async function stopIdlePreview(ctx: AppCtx, id: string): Promise<void> {
 
 // --- reads ----------------------------------------------------------------------
 
+/**
+ * Whether a turn of the worker runs now: its agent runs and is not waiting on
+ * an ask. The fact "Working" reads by, everywhere (a-worker-never-shows-working-with-nothing-running decision 1).
+ */
+export function turnRunning(ctx: AppCtx, id: string): boolean {
+  return agentHost(ctx).isRunning(id) && getSessionRow(ctx, id)?.awaitingInput === false
+}
+
+/** The status a worker shows, the web's and the agents' alike: a `working` one with no turn running reads idle. */
+export function shownStatusOf(ctx: AppCtx, w: WorkerRow): ShownWorkerStatus {
+  return shownWorkerStatus({ status: w.status, need: threadNeed(ctx, w), turnRunning: turnRunning(ctx, w.id) })
+}
+
 /** A worker as the lead reads it in `get_feature_context` (spec, "Lead tools"). */
 export interface LeadWorker {
   id: string
   label: string
   purpose: string
   kind: WorkerKind
-  status: WorkerStatus
+  /** As shown: Working only while a turn runs (decision 1). */
+  status: ShownWorkerStatus
   startedBy: WorkerStartedBy
   model: string
   branch: string | null
@@ -1598,7 +1792,7 @@ export function leadWorkers(ctx: AppCtx, featureId: string): LeadWorker[] {
     label: w.label,
     purpose: w.purpose,
     kind: w.kind,
-    status: w.status,
+    status: shownStatusOf(ctx, w),
     startedBy: w.startedBy,
     model: w.model,
     branch: w.branch,

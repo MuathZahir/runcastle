@@ -20,6 +20,7 @@ import { workerTools } from '../src/workers/tools'
 import { sweepLeftovers } from '../src/workers/sweep'
 import {
   getWorker,
+  shownStatusOf,
   workerPrompted,
   startUnassignedWorker,
 
@@ -231,11 +232,11 @@ describe('a worker that needs the human', () => {
   const waitForYou = (id: string, args: Record<string, unknown>) =>
     workerTools(ctx, getWorker(ctx, id)!, {} as never, engine)('wait_for_you', args)
 
-  it('stays working with no need when its turn ends without a handback', async () => {
+  it('reads idle with no need, not working, when its turn ends without a handback', async () => {
     setAgentHostForTests(fakeHost().host)
     const a = await startWorker('Header')
     await workerTurnEnded(ctx, { id: a })
-    expect(status(a)).toBe('working')
+    expect(shownStatusOf(ctx, getWorker(ctx, a)!)).toBe('idle')
     expect(needOf(ctx, feature)).toBeNull()
   })
 

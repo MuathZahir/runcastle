@@ -37,11 +37,13 @@ export const WORKER_STATUS_PLAIN: Record<WorkerStatus, string> = {
   landed: 'Landed',
   dropped: 'Dropped',
   failed: 'Failed',
+  stalled: 'Stalled',
 }
 
 /** The words that call the human: amber for a worker waiting on them, red for one that failed. */
 const STATUS_TEXT: Partial<Record<WorkerStatus, string>> = {
   'needs-you': 'text-warning-text',
+  stalled: 'text-warning-text',
   failed: 'text-danger-text',
 }
 
