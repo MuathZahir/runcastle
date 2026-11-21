@@ -25,7 +25,7 @@ packs/
         ├── feature/
         │   ├── SKILL.md
         │   └── references/         # loaded on demand by SKILL.md, never up front
-        │       ├── decisions-and-spec.md
+        │       ├── feature-file.md
         │       ├── design.md
         │       ├── planning-alone.md
         │       ├── preview.md
@@ -126,7 +126,7 @@ The standing convention across this pack:
   rule lives there, backed by `launcher/edit-guard.ts`, and is *not* restated in
   any skill).
 - **Procedures belong to the skill.** One skill owns each procedure in full;
-  `feature/references/decisions-and-spec.md` is the whole decisions-and-spec
+  `feature/references/feature-file.md` is the whole feature-file
   procedure.
 - **Where a skill names a fact the prompt also names, it points instead of
   restating** — "the injected system prompt carries the slug and paths; trust

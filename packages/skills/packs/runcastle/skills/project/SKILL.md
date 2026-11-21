@@ -37,7 +37,7 @@ Each feature's brief is prose, written into its `brief.md` for its lead to read:
 - **open**: what is still unsure, for the feature's own grill;
 - **ordering**: what must merge before it, and what waits on it.
 
-What the human adds later goes in with `add_to_brief`.
+What the human adds later goes in with `add_to_brief`. Its lead grows it into the feature's one file; it ends in a review summary at merge.
 
 ## Pages
 
