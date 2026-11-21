@@ -243,19 +243,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
-    ['Only runcastle\'s own stop or crash ends a chat\'s session', 'runcastle already watches every chat\'s process, so Claude Code\'s extra "session ended" signal is dropped: it is the one that arrives late and from the wrong process.', 'assumed'],
-    ['A chat runcastle is running is alive, even if its record says ended', 'A turn or tool call from the running chat revives it; a late signal from a killed process does not, which keeps what the old rule protected.', 'assumed'],
-    ['The fix covers every kind of chat, not only the orchestrator', 'Leads, workers and question chats share the faulty code, so the same change fixes them.', 'assumed'],
-    ['A refusal that remains says what to do', 'Only a stray process can still be refused; it is told to stop, never to open a new session.', 'assumed']
+    ['Only runcastle\'s own stop or crash ends a chat\'s session', 'runcastle already watches every chat\'s process, so Claude Code\'s extra "session ended" signal is dropped: it is the one that arrives late and from the wrong process.'],
+    ['A chat runcastle is running is alive, even if its record says ended', 'A turn or tool call from the running chat revives it; a late signal from a killed process does not, which keeps what the old rule protected.'],
+    ['The fix covers every kind of chat, not only the orchestrator', 'Leads, workers and question chats share the faulty code, so the same change fixes them.'],
+    ['A refusal that remains says what to do', 'Only a stray process can still be refused; it is told to stop, never to open a new session.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [1, 'Keep the signal but tag each process and ignore a stale one (the audit\'s idea)', 'A different mechanism from the audit\'s; simpler, but it stops trusting a signal Claude Code sends', 'forces 2 and 4'],
-    [2, 'Any turn revives the record, as the audit worded it', 'Answers the brief\'s open question about why ended rows stayed ended', 'intent'],
-    [3, 'Fix the orchestrator only', 'The brief names the orchestrator; widening to every chat kind is my call', 'scope']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
