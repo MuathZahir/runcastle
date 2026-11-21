@@ -249,25 +249,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['One alert, from runcastle, to the human', 'The rule you agreed: features open, nothing running, nothing waiting on you.'],
-    ['Only started features count as open; drafts never do', 'A draft has nothing that could run, so its silence is normal.', 'assumed'],
-    ['Anything in "Needs you" holds the alert back', 'Your agreed rule read literally; you were already pinged for that item.', 'assumed'],
-    ['A feature that is your move never raises the alert', 'Otherwise every chat with a lead would raise it ten minutes after you walk away.', 'assumed'],
-    ['Ten quiet minutes before the alert', 'Normal gaps are seconds and restarts take minutes; ten is small next to hours lost.', 'assumed'],
-    ['One alert per stop', 'It stays until work runs again or you write; limit retries do not reset it.', 'assumed'],
-    ['The alert is a "needs you" on the project\'s orchestrator chat', 'Reuses Needs you, the phone ping, the tab title and the project dot; no new screen.', 'assumed'],
-    ['The alert says why, feature by feature', 'Usage limit until a time, a worker stopped, waiting on a merge, or stopped after its last turn.', 'assumed'],
-    ['On for everyone, with no setting', 'It fires only when work has really stopped; a switch can come later.', 'assumed']
+    ['Only started features count as open; drafts never do', 'A draft has nothing that could run, so its silence is normal.', 'decided by autopilot'],
+    ['Anything in "Needs you" holds the alert back', 'Your agreed rule read literally; you were already pinged for that item.', 'decided by autopilot'],
+    ['A feature that is your move never raises the alert', 'Otherwise every chat with a lead would raise it ten minutes after you walk away.', 'decided by autopilot'],
+    ['Ten quiet minutes before the alert', 'Normal gaps are seconds and restarts take minutes; ten is small next to hours lost.', 'decided by autopilot'],
+    ['One alert per stop', 'It stays until work runs again or you write; limit retries do not reset it.', 'decided by autopilot'],
+    ['The alert is a "needs you" on the project\'s orchestrator chat', 'Reuses Needs you, the phone ping, the tab title and the project dot; no new screen.', 'decided by autopilot'],
+    ['The alert says why, feature by feature', 'Usage limit until a time, a worker stopped, waiting on a merge, or stopped after its last turn.', 'decided by autopilot'],
+    ['On for everyone, with no setting', 'It fires only when work has really stopped; a switch can come later.', 'decided by autopilot']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [7, 'A new project-wide row in Needs you and a banner across the app, tied to no chat (new screens)', 'The brief names "needs you" and the phone but not where in the app; every needs-you today belongs to a chat', 'where'],
-    [4, 'Only Needs you counts as your move, so any idle feature can raise the alert', 'Your guess of what "a feature you have not come back to" means; it decides how often hands-on work alerts'],
-    [3, 'A Needs you item older than a day stops holding the alert back', 'An old forgotten question could silence the alert for good'],
-    [5, '30 minutes, the audit\'s default', 'The brief left the wait open'],
-    [2, 'Count an "up next" draft whose dependency is stuck', 'The brief left drafts open']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
