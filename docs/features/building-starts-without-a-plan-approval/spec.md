@@ -52,20 +52,25 @@ lead from building before a yes. So the work is three removals and a rewrite.
   migration drops them), marking a plan shown or seen, the `plan.shown` /
   `plan.seen` events, the plan figures and `plan.isNew` in the designs list, and
   the `planSeen` mutation.
-- Old `plan_shown` thread events stay in stored threads. The thread model turns
-  them into an ordinary shown-file card for that feature's `preview.html` (6).
-  `show_plan` leaves the talk-only tool list.
+- Old `plan_shown` thread events stay in stored threads, and the thread model
+  keeps turning them into a plan card, so old chats read as before. Turning them
+  into shown-file cards was dropped: a shown file needs a stored copy that old
+  events never made. `show_plan` stays on the talk-only tool list for the same
+  reason: old transcripts still call it.
 
 **Web app.**
 - The Plan view goes from the panel: its view name, label, icon and unseen dot;
-  the Plan body (Overview / Decisions / Spec); the plan card in chat; the
+  the Plan body (Overview / Decisions / Spec); the plan card's counts and dot; the
   "Preview ready" and "Spec written" chat notices that open it; the phone's Plan
   screen. `NewMark` / `OlderMark` move out of the plan card file first: design
   cards use them.
 - Addresses: `/f/<slug>/plan`, the retired `/preview`, and the chat link
   `feature:<slug>/plan` all open the Details view (6).
-- The plan-page frame and the full-window preview dialog stay where the file
-  viewer uses them; the rest goes.
+- An old plan card becomes a small "Plan page" card. It opens that feature's
+  current `preview.html` full-window in the sandboxed plan-page frame, or the
+  Details panel when the feature has none (6). The frame and full-window dialog
+  stay for it and for the file viewer; the rest of the Plan's preview panel goes.
+  The server keeps returning the plan page's summary in a feature's full data.
 - Words that promise a plan yes are rewritten: the glossary's "Plan" entry, the
   planning stage's "say yes to its plan", and the "Plan automatically" button's
   hint ("Plans the feature without you, then asks you what it decided").
@@ -81,7 +86,8 @@ machinery, the docs the lead writes, and the charter (the orchestrator rewrites
   chat and project sessions; tool descriptions carry no plan yes.
 - **Launch artifacts and kickoff text (existing):** the planning run's prompt asks
   for decision 5's ending; no "human's yes".
-- **Thread model (existing):** an old `plan_shown` event reads as a shown-file card.
+- **Thread model (existing):** an old `plan_shown` event still reads as a plan card;
+  the web opens it as the plan page or Details.
 - **Panel views (existing, pure):** no feature offers a Plan view; `plan` and
   `preview` addresses map to Details.
 - **Database migration (existing migrate-on-boot):** a database with the two plan
