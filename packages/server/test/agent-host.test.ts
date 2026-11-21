@@ -407,6 +407,92 @@ describe('a turn', () => {
     expect(fake.last().received[1].method).toBe('session/load')
   })
 
+  /**
+   * the-orchestrator-is-never-locked-out decision 1: the SessionEnd hook no
+   * longer ends a row, so the host must, for an orchestrator too, whenever the
+   * process goes by itself: no chat may read alive with nothing running.
+   */
+  it('ends an orchestrator row whose process exits by itself, with no hook to say so', async () => {
+    setup()
+    const id = createSessionRow(ctx, { projectId: seedProject(ctx).id, kind: 'project', worktreePath: '/wt' }).id
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
+    await logUntil(id, turnsEnded(1))
+    expect(getSessionRow(ctx, id)!.status).toBe('live')
+
+    fake.last().crash('')
+    await logUntil(id, (e) => e.some((x) => x.type === 'process' && x.state === 'stopped'))
+    expect(getSessionRow(ctx, id)!.status).toBe('ended')
+    expect(host.isRunning(id)).toBe(false)
+  })
+
+  /**
+   * the-orchestrator-is-never-locked-out: a stop marked its row ended after its
+   * slow steps, so a prompt that started the conversation again meanwhile was
+   * ended under its running process. The late stop leaves the newer one live.
+   */
+  it('never lets a stop that finishes late end the process that replaced it', async () => {
+    const stops: string[] = []
+    setup({ turn: (t) => t.cancelled.then(() => undefined) }, { lifecycle: { stopped: (_row, reason) => void stops.push(reason) } })
+    const id = thread()
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
+    await logUntil(id, has('turn_started'))
+    // Hold the stop in its slowest step, after its process is gone.
+    let release!: () => void
+    const held = new Promise<[]>((r) => (release = () => r([])))
+    const slow = host as unknown as { turnFiles: () => Promise<unknown> }
+    vi.spyOn(slow, 'turnFiles').mockReturnValueOnce(held)
+    const stopping = host.stop(id, 'archived')
+
+    fake.script.turn = undefined
+    await host.prompt(id, { text: 'Again' }, { source: 'human' })
+    await logUntil(id, (e) => e.filter((x) => x.type === 'process' && x.state === 'running').length >= 2)
+    expect(getSessionRow(ctx, id)!.status).toBe('live')
+
+    release()
+    await stopping
+    expect(host.isRunning(id)).toBe(true)
+    expect(getSessionRow(ctx, id)!.status).toBe('live')
+    // Nor does it say the session stopped, or run the stop's cleanup on the live one.
+    expect(stops).toEqual([])
+    expect(readThreadEvents(id).filter((x) => x.type === 'process').at(-1)).toMatchObject({ state: 'running' })
+  })
+
+  it('never lets a stalled-turn kill that finishes late end the process that replaced it', async () => {
+    const stops: string[] = []
+    const errors: string[] = []
+    setup(
+      // Deaf to the cancel: only the kill ends this turn.
+      { turn: () => new Promise(() => {}) },
+      {
+        stallBounds: () => ({ silenceMs: 20, commandMs: 60_000, killGraceMs: 20 }),
+        lifecycle: {
+          stopped: (_row, reason) => void stops.push(reason),
+          turnEnded: (_row, _source, end) => void (end.reason === 'error' && errors.push(end.error ?? '')),
+        },
+      },
+    )
+    const id = thread()
+    // Hold the kill in its slowest step, after its process is gone.
+    let release!: () => void
+    const held = new Promise<[]>((r) => (release = () => r([])))
+    const slow = host as unknown as { turnFiles: () => Promise<unknown> }
+    vi.spyOn(slow, 'turnFiles').mockReturnValueOnce(held)
+    await host.prompt(id, { text: 'Go' }, { source: 'human' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'notice' && x.text.includes('stopped its process')))
+
+    fake.script.turn = undefined
+    await host.prompt(id, { text: 'Again' }, { source: 'human' })
+    await logUntil(id, (e) => e.filter((x) => x.type === 'process' && x.state === 'running').length >= 2)
+
+    release()
+    await logUntil(id, (e) => e.some((x) => x.type === 'turn_ended' && x.reason === 'error'))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(host.isRunning(id)).toBe(true)
+    expect(getSessionRow(ctx, id)!.status).toBe('live')
+    expect(stops).toEqual([])
+    expect(errors).toEqual([])
+  })
+
   it('shows a crash whose stderr is only the adapter’s debug log as one short line, and keeps the log in the session dir', async () => {
     setup({ turn: (t) => t.cancelled.then(() => undefined) })
     const id = thread()

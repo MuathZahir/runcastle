@@ -11,6 +11,8 @@ import { features, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launcher/sessions'
+import { setAgentHostForTests } from '../src/threads/host'
+import type { AgentHost } from '../src/threads/types'
 import { toolsForAudience } from '../src/mcp/server'
 import hooksApp from '../src/routes/hooks'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
@@ -236,11 +238,44 @@ describe('hooks route', () => {
       expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
     })
 
-    it('never brings an ended session back', async () => {
+    it('never brings back an ended session whose process runcastle is not running', async () => {
       markSessionEnded(ctx, sessionId)
       await post(mount(), 'stop', { sessionId, payload: { session_id: 'cc-late', hook_event_name: 'Stop' } })
 
       expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'ended', ccSessionId: undefined })
+    })
+
+    /**
+     * REGRESSION (the-orchestrator-is-never-locked-out decision 2): a turn on a
+     * row a stale signal ended left it ended while its chat kept working. A turn
+     * from the process the agent host runs is proof it is alive.
+     */
+    for (const [event, payload] of Object.entries(turnPayloads)) {
+      it(`revives an ended session on a ${event} while runcastle runs its process`, async () => {
+        markSessionEnded(ctx, sessionId)
+        setAgentHostForTests({ isRunning: (id: string) => id === sessionId } as unknown as AgentHost)
+        try {
+          await post(mount(), event, { sessionId, payload: { ...payload, session_id: 'cc-on', transcript_path: '/tmp/on.jsonl' } })
+        } finally {
+          setAgentHostForTests(undefined)
+        }
+
+        expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'live', ccSessionId: 'cc-on', transcriptPath: '/tmp/on.jsonl' })
+        const started = listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')
+        expect(started.map((e) => e.data?.source)).toEqual(['revived'])
+      })
+    }
+
+    it('revives a project-scoped session the same way', async () => {
+      const project = createSessionRow(ctx, { projectId: seedProject(ctx).id, kind: 'project', worktreePath: 'C:\\wt\\proj' })
+      markSessionEnded(ctx, project.id)
+      setAgentHostForTests({ isRunning: (id: string) => id === project.id } as unknown as AgentHost)
+      try {
+        await post(mount(), 'user-prompt', { sessionId: project.id, payload: { session_id: 'cc-p', hook_event_name: 'UserPromptSubmit', prompt: 'go' } })
+      } finally {
+        setAgentHostForTests(undefined)
+      }
+      expect(getSessionRow(ctx, project.id)?.status).toBe('live')
     })
 
     it('checks in a project-scoped session the same way', async () => {
@@ -346,14 +381,28 @@ describe('hooks route', () => {
     })
   })
 
-  it('claude session-end marks the session ended and emits session.ended', async () => {
+  /**
+   * REGRESSION (the-orchestrator-is-never-locked-out decision 1): the hook names
+   * the session only by the env var all its processes share, so a leftover
+   * killed at boot, or an old process exiting after a new one started, ended the
+   * open chat. The agent host owns the row; the hook is a timeline note.
+   */
+  it('claude session-end from a stale process leaves a live session live, and is only a note', async () => {
+    await post(mount(), 'session-start', {
+      sessionId,
+      payload: { session_id: 'cc-now', hook_event_name: 'SessionStart', source: 'startup' },
+    })
     const { json } = await post(mount(), 'session-end', {
       sessionId,
-      payload: { hook_event_name: 'SessionEnd' },
+      payload: { session_id: 'cc-old', hook_event_name: 'SessionEnd', reason: 'other' },
     })
     expect(json).toEqual({})
-    expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
-    expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.ended')).toHaveLength(1)
+    expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'live', ccSessionId: 'cc-now' })
+    const events = listAfter(ctx, featureId, 0)
+    expect(events.filter((e) => e.type === 'session.ended')).toHaveLength(0)
+    expect(events.filter((e) => e.type === 'session.conversation_ended').map((e) => e.message)).toEqual([
+      'conversation ended (reason: other)',
+    ])
   })
 
   it('codex session-end only records the ended conversation and preserves live state', async () => {
@@ -955,12 +1004,13 @@ describe('hooks route, project-scoped sessions', () => {
     expect(live?.ccSessionId).toBe('cc-p2')
     expect(live?.transcriptPath).toBe('/tmp/p.jsonl')
 
+    // Only the agent host ends it (the-orchestrator-is-never-locked-out decision 1).
     const { json } = await post(mount(), 'session-end', {
       sessionId,
       payload: { hook_event_name: 'SessionEnd' },
     })
     expect(json).toEqual({})
-    expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
+    expect(getSessionRow(ctx, sessionId)?.status).toBe('live')
   })
 
   it('labels an orchestrator as one on every turn', async () => {
@@ -984,7 +1034,7 @@ describe('hooks route, project-scoped sessions', () => {
       await post(mount(), 'session-end', { sessionId, payload: { hook_event_name: 'SessionEnd' } })
 
       const messages = listByProject(ctx, projectId, before).map((e) => e.message)
-      expect(messages).toEqual([`${noun} live`, `${noun} ended`])
+      expect(messages).toEqual([`${noun} live`, 'conversation ended (reason: unknown)'])
     }
   })
 })

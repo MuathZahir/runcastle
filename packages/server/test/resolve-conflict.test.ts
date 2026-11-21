@@ -340,14 +340,16 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
     expect(resolved()).toHaveLength(0)
   })
 
-  /** Teardown outranks detection: a probe that cannot run still ends the session. */
-  it('still ends the session when the worktree cannot be probed', async () => {
+  /**
+   * A probe that cannot run never breaks the hook. The hook only notes the end
+   * on the timeline: the agent host ends the row (the-orchestrator-is-never-locked-out decision 1).
+   */
+  it('still answers and notes the end when the worktree cannot be probed', async () => {
     const id = resolveSession(join(tmpdir(), 'runcastle-does-not-exist', 'gone'))
     expect(await endSession(id)).toEqual({})
 
-    expect(getSessionRow(ctx, id)?.status).toBe('ended')
     expect(resolved()).toHaveLength(0)
-    expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.ended')).toHaveLength(1)
+    expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.conversation_ended')).toHaveLength(1)
   })
 })
 
