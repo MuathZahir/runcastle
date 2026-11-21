@@ -39,6 +39,8 @@ import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
+import { serverUrlFor } from './launcher/artifacts'
+import { sweepLeftoverAgents } from './services/leftover-agents'
 import { agentHost } from './threads/types'
 import { resumeDriveReviewWaits, workerPreviews } from './workers/service'
 import { startHourlySweep, stopOwnWorkerContainers, sweepLeftovers } from './workers/sweep'
@@ -235,6 +237,16 @@ export async function startServer(): Promise<void> {
     `runcastle${process.env.RUNCASTLE_DEV ? ' [dev]' : ''} server listening on ` +
       `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
   )
+
+  // Agent processes an earlier run of this server never stopped are ended once
+  // (stopping-a-session-kills-its-process decisions 5, 6). After the listen: only
+  // one server holds the port, so anything still marked with its URL is a dead
+  // run's. Not awaited; the server's own agents are its descendants and skipped.
+  void sweepLeftoverAgents({ serverUrl: serverUrlFor(config), dataDir: dataDir(), selfPid: process.pid }).then(({ found, ended }) => {
+    if (found === 0) return
+    const survived = found - ended
+    console.log(`leftover agents: ended ${ended} process(es) an earlier server run left running${survived ? `; ${survived} survived its stop` : ''}`)
+  })
 
   // The phone's way to a feature's design server (routes/design-pass.ts), on its
   // own port so project code never shares runcastle's API origin.

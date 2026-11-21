@@ -5,7 +5,7 @@ import { DEFAULT_SANDBOX_IMAGE, type RuncastleConfig } from '@runcastle/core'
 import { dataDir } from '@runcastle/core/paths'
 import type { ExecFn } from '../doctor/doctor'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
-import { killProcessTree } from '../pty/kill-tree'
+import { OWN_GROUP, stopProcessTree } from '../pty/kill-tree'
 import { containHostProcess } from '../util/contain-host'
 import { failureCause } from '../util/failure-line'
 import { resolveSpawnTarget } from '../util/resolve-executable'
@@ -208,7 +208,8 @@ function lineSplitter(onLine: (line: string) => void): { push(chunk: string): vo
 export const spawnBuildStep: BuildStepRunner = ({ command, args, cwd, quietMs, signal, onLine }) =>
   new Promise<BuildStepOutcome>((resolve) => {
     const { file, args: spawnArgs } = resolveSpawnTarget(command, args)
-    const child = spawn(file, spawnArgs, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    // Its own process group off Windows, so a stop reaches what the build started.
+    const child = spawn(file, spawnArgs, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: OWN_GROUP })
     const containment = child.pid === undefined ? null : containHostProcess(child.pid)
     let stopped: BuildStepOutcome['stopped']
     let quietTimer: ReturnType<typeof setTimeout> | undefined
@@ -225,7 +226,7 @@ export const spawnBuildStep: BuildStepRunner = ({ command, args, cwd, quietMs, s
     const stop = (why: NonNullable<BuildStepOutcome['stopped']>) => {
       stopped = why
       if (containment) void containment.kill()
-      else if (child.pid !== undefined) void killProcessTree(child.pid)
+      else if (child.pid !== undefined) void stopProcessTree(child.pid, { group: OWN_GROUP, label: `${command} (image build)` })
       // Not waiting for `close`: a shim's grandchild can hold the pipes open past the kill.
       settle({ code: null, stopped: why })
     }
