@@ -34,6 +34,7 @@ const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   failure: null,
   engine: 'docker',
   container: null,
+  folder: null,
   branch: null,
   featureBranch: 'feature/sidebar-refresh',
   previewPort: null,
@@ -155,9 +156,9 @@ describe('a Review worker in the feature’s worker list', () => {
   it('is listed by its label and status, and says where it runs', () => {
     const review = row({ id: 'w_review', kind: 'review', label: 'Review', status: 'queued', reviewMode: 'drive' })
     expect(workerEntry(review)).toMatchObject({ label: 'Review', kind: 'review', status: 'queued' })
-    expect(workerWhere(review, 'feature/x')).toBe('Your checkout · reviewing feature/x on the drive')
-    expect(workerWhere({ kind: 'review', reviewMode: 'gates', featureBranch: 'feature/x' }, 'feature/x')).toBe('Sandbox · reviewing feature/x')
-    expect(workerWhere(row(), 'feature/x')).toBe('Sandbox · its own branch off feature/x')
+    expect(workerWhere({ ...review, placement: null }, 'feature/x')).toBe('Your checkout · reviewing feature/x on the drive')
+    expect(workerWhere({ kind: 'review', reviewMode: 'gates', featureBranch: 'feature/x', placement: null }, 'feature/x')).toBe('Sandbox · reviewing feature/x')
+    expect(workerWhere({ ...row(), placement: null }, 'feature/x')).toBe('Sandbox · its own branch off feature/x')
   })
 })
 
@@ -178,7 +179,7 @@ describe('a drive worker (drive-chats-become-workers decisions 3, 5)', () => {
   }
 
   it('says it works in your checkout and names the branch it commits on', () => {
-    expect(workerWhere(drive(), 'feature/x')).toBe('Your checkout · commits on main')
+    expect(workerWhere({ ...drive(), placement: null }, 'feature/x')).toBe('Your checkout · commits on main')
   })
 
   it('draws its handback card with the branch its commits landed on, and no Landed line', () => {

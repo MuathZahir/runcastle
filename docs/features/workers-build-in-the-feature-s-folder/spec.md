@@ -68,3 +68,13 @@ A gates review (one that does not drive the app) runs in the feature's folder on
 
 - Nothing stops the lead editing code while a worker holds the folder; the skill's rule is the only line. Revisit if clashes show up.
 - Two parallel workers' folders each install packages; on a heavy project that is slow and uses disk. The setup command is the lever; nothing more is built here.
+
+## Build notes
+
+- **Placement is derived, not stored.** The row gains only a `folder` column (migration 0076). A host worker with no branch is in the feature's folder; one with a `runcastle/worker/…` branch is in its own (`workerPlacement` in core).
+- **The engine column stays required.** New host workers still record the configured engine's name, unused. "Sandboxes are removed" drops the column with the rest of the sandbox fields.
+- **Commit record per turn.** A feature-folder worker's commits are what the feature branch gained during each of its turns. The tip is noted when each turn starts (a message, a send-back, the human typing) and read when it ends, so the lead's commits between turns are not counted. Commits the lead makes *during* a worker's turn are counted as the worker's; the skill's "only docs while a worker is in your folder" rule keeps that rare.
+- **Guards and the data folder.** A path inside runcastle's data folder never counts as temp, even when the data folder sits in `/tmp`, so a worker cannot edit or delete another session's folder through the temp allowance.
+- **The lead's worker list shows each worker's folder**, so the lead knows where to run the checks before landing an own-folder worker.
+- **Known guard gaps** (decision 11, best effort): `git reset <ref>` without `--hard` and `git clean` are allowed; paths piped into `Remove-Item` are not read.
+- **For the orchestrator at merge:** `CONTEXT.md` still describes the git topology with sandboxed workers and lists Docker as a prerequisite; both need rewriting. The README's Docker requirement row is left for "Sandboxes are removed".

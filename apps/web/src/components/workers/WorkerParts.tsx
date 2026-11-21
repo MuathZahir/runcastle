@@ -357,7 +357,6 @@ export function HandbackOutcomeLine({ outcome }: { outcome: HandbackOutcome }) {
     <p className="m-0 flex items-center gap-1.5 text-sm text-text-tertiary">
       <IconX size={14} className="shrink-0 text-icon" />
       <span className="text-text-secondary">Dropped</span>
-      <span>· its sandbox and branch were removed</span>
     </p>
   )
 }
