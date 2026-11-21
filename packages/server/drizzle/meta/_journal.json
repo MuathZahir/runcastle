@@ -533,6 +533,13 @@
       "when": 1795248891857,
       "tag": "0075_drop_plan_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "6",
+      "when": 1795265937027,
+      "tag": "0076_worker_folder",
+      "breakpoints": true
     }
   ]
 }
