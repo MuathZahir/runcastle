@@ -116,15 +116,15 @@ export function reviewDriveHost(): ReviewDriveHost {
 }
 
 /**
- * The mode a review starts in (decision 3): a drive when this host can drive
- * the project, else gates. The lead may ask for gates (the feature has nothing
- * to drive); a drive it asks for on a host that cannot is refused with why.
+ * The mode a review starts in: the one the lead picked (one-file-per-feature
+ * decision 9), with no default. A drive asked for on a host that cannot drive
+ * the project is refused with why.
  */
-export function chooseReviewMode(project: Project, requested?: ReviewWorkerMode): ReviewWorkerMode {
+export function chooseReviewMode(project: Project, requested: ReviewWorkerMode): ReviewWorkerMode {
   if (requested === 'gates') return 'gates'
   const withheld = host.withheld(project)
-  if (requested === 'drive' && withheld) throw new GateError(`a drive review cannot run here: ${withheld} Start a gates review instead.`)
-  return withheld ? 'gates' : 'drive'
+  if (withheld) throw new GateError(`a drive review cannot run here: ${withheld} Start a gates review (read the diff) instead.`)
+  return 'drive'
 }
 
 // --- the assignment ---------------------------------------------------------------
@@ -444,7 +444,8 @@ export function reviewHandbackText(w: Pick<WorkerRow, 'id' | 'label' | 'handback
     '',
     defects.length
       ? 'Next: fix the defects you judge real (yourself or with workers) and close each with resolve_finding (`addressed` or `dismissed`, with a note). ' +
-        'Once you fixed some, start_review({ verify: { findingIds, commits } }) with those findings and the fix commits. ' +
+        'Only after a large fix set (more than a handful of findings, or fixes that reached into code the feature had not touched) ' +
+        'start a verify review, start_review({ mode, verify: { findingIds, commits } }); after a small one, passing checks and your skim are enough. ' +
         `send_back_worker({ workerId: "${w.id}", note }) asks this review for more; drop_worker({ workerId: "${w.id}" }) closes it.`
       : `Next: nothing to fix. send_back_worker({ workerId: "${w.id}", note }) asks this review for more; drop_worker({ workerId: "${w.id}" }) closes it.`,
   ].join('\n')

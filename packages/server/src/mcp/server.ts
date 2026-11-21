@@ -784,7 +784,7 @@ export async function toolStartReview(
   ctx: AppCtx,
   session: SessionRow,
   input: {
-    mode?: 'drive' | 'gates'
+    mode: 'drive' | 'gates'
     verify?: { findingIds: string[]; commits: string[] }
     model?: string
     checksPassed?: { commit: string; commands: string[] }
@@ -3394,11 +3394,17 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Start the Review worker',
         description:
           'Start the feature’s Review worker once the work is done. It writes no code: it runs the project’s checks, ' +
-          'then drives the app on this machine when it can (holding the one drive slot, waiting while the human ' +
-          'drives) or reads the diff (`gates`), and hands back a Review Package. After fixing defects you judged real, ' +
-          'start one with `verify`. Refused after the human presses Stop, until they reply.',
+          'then either drives or reads the diff, and hands back a Review Package. You pick which with `mode`. ' +
+          'Pick `drive` when the change reaches something a user of the project meets: a screen, a command’s output ' +
+          'or options, an API’s responses, a library’s public functions. The reviewer then uses it as that user would: ' +
+          'opens the screen, runs the command, calls the API. For a project with no screen, driving is running the ' +
+          'command or calling the API as its user would. Pick `gates` (read the diff) otherwise: refactors, tests, docs, ' +
+          'build setup. A drive holds the one drive slot on this machine and waits while the human drives; a machine ' +
+          'that cannot drive the project refuses it, with why. Start a `verify` review only after a large fix set: more ' +
+          'than a handful of findings, or fixes that reached into code the feature had not touched. You judge. ' +
+          'Refused after the human presses Stop, until they reply.',
         inputSchema: {
-          mode: z.enum(['drive', 'gates']).optional().describe('`gates` when there is nothing to drive; omit to drive whenever this machine can.'),
+          mode: z.enum(['drive', 'gates']).describe('`drive`: use what the change reaches as its user would. `gates`: read the diff.'),
           verify: z
             .object({
               findingIds: z.array(z.string().min(1)).min(1).describe('The findings you fixed.'),
