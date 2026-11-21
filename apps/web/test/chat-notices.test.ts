@@ -8,53 +8,6 @@ function ev(type: string, message = '', over: Partial<EventRow> = {}): EventRow 
 }
 
 describe('noticeFor', () => {
-  it('maps a docs.changed naming spec.md to "Spec written" on the planning hue', () => {
-    const e = ev('docs.changed', 'docs changed: decisions.md, spec.md', {
-      data: { files: ['decisions.md', 'spec.md'] },
-    })
-    expect(noticeFor(e)).toEqual({
-      kind: 'spec',
-      hue: 'planning',
-      title: 'Spec written',
-      subtitle: 'spec.md',
-      actionLabel: 'View spec',
-      target: 'plan',
-      count: 1,
-      eventId: e.id,
-    })
-  })
-
-  it('maps a docs.changed naming preview.html to "Preview ready" on the planning hue', () => {
-    const e = ev('docs.changed', 'docs changed: preview.html', { data: { files: ['preview.html'] } })
-    expect(noticeFor(e)).toEqual({
-      kind: 'preview',
-      hue: 'planning',
-      title: 'Preview ready',
-      subtitle: 'preview.html',
-      actionLabel: 'View preview',
-      target: 'plan',
-      count: 1,
-      eventId: e.id,
-    })
-  })
-
-  it('raises the preview, not the spec, for a write naming both', () => {
-    const e = ev('docs.changed', 'docs changed', {
-      data: { files: ['docs/features/x/preview.html', 'spec.md'] },
-    })
-    expect(noticeFor(e)?.kind).toBe('preview')
-  })
-
-  it('collapses two preview redraws into one card counting 2', () => {
-    const redraw = () => ev('docs.changed', 'docs changed: preview.html', { data: { files: ['preview.html'] } })
-    const deck = [noticeFor(redraw()), noticeFor(redraw())].reduce<ChatNotice[]>(
-      (cards, notice) => (notice ? deckReducer(cards, { type: 'push', notice }) : cards),
-      [],
-    )
-    expect(deck).toHaveLength(1)
-    expect(deck[0]).toMatchObject({ kind: 'preview', count: 2 })
-  })
-
   it.each([
     ['tickets.stored', '3 ticket(s) stored'],
     ['ticket.edited', 'ticket 3 content edited (title)'],
@@ -91,6 +44,9 @@ describe('noticeFor', () => {
   it.each([
     ev('review.agentic-minted', 'agentic review minted as ticket 7 for lap 1', { ticketId: 't-rev' }),
     ev('docs.changed', 'docs changed: decisions.md', { data: { files: ['decisions.md'] } }),
+    // The Plan view these opened is gone (building-starts-without-a-plan-approval decision 3).
+    ev('docs.changed', 'docs changed: spec.md', { data: { files: ['decisions.md', 'spec.md'] } }),
+    ev('docs.changed', 'docs changed: preview.html', { data: { files: ['preview.html'] } }),
     ev('docs.changed', 'docs changed'),
     ev('note.created', 'note added'),
     ev('waypoint.resolved', 'waypoint 2 resolved'),
@@ -123,7 +79,7 @@ describe('deckReducer', () => {
   }
 
   it('keeps notices newest first', () => {
-    expect(pushAll(n('spec'), n('history'), n('drive')).map((x) => x.kind)).toEqual(['drive', 'history', 'spec'])
+    expect(pushAll(n('history'), n('drive')).map((x) => x.kind)).toEqual(['drive', 'history'])
   })
 
   it('collapses a repeated kind into one card: count up, new subtitle, moved to front', () => {
@@ -134,8 +90,8 @@ describe('deckReducer', () => {
   })
 
   it('removes a card on dismiss and on act', () => {
-    const deck = pushAll(n('spec'), n('history'), n('drive'))
-    expect(deckReducer(deck, { type: 'dismiss', kind: 'history' }).map((x) => x.kind)).toEqual(['drive', 'spec'])
-    expect(deckReducer(deck, { type: 'act', kind: 'drive' }).map((x) => x.kind)).toEqual(['history', 'spec'])
+    const deck = pushAll(n('history'), n('drive'))
+    expect(deckReducer(deck, { type: 'dismiss', kind: 'history' }).map((x) => x.kind)).toEqual(['drive'])
+    expect(deckReducer(deck, { type: 'act', kind: 'drive' }).map((x) => x.kind)).toEqual(['history'])
   })
 })

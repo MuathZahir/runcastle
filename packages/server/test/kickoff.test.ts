@@ -55,9 +55,11 @@ describe('kickoff registry + override', () => {
       expect(line).toContain('no human is present')
       expect(line).toContain(feature)
       expect(line).toContain('`references/planning-alone.md`')
-      expect(line).toContain('do not build it')
+      expect(line).not.toContain('do not build it')
       expect(line).toContain('design its screens where it adds or reshapes them')
-      expect(line).toContain("end by asking for the human's yes; if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead.")
+      expect(line).toContain('end by asking the human about the decisions you made for them, or, with none made and no design waiting, say what you will build and build it')
+      expect(line).toContain('if the brief leaves open what the human gets, where it lives or who sees it, stop and ask that instead.')
+      expect(line).not.toContain("human's yes")
       expect(line).not.toMatch(/[\r\n]/)
     }
   })
@@ -76,7 +78,7 @@ describe('kickoff registry + override', () => {
       expect(selfPlan).toContain('unless its text is already in this conversation')
       // The rest of the self-plan briefing is untouched.
       expect(selfPlan).toContain('no human is present')
-      expect(selfPlan).toContain('end by asking for the human')
+      expect(selfPlan).toContain('end by asking the human')
       // Recognised in a transcript from either form, so it stays out of the quotes.
       expect(promptMatchesKickoff(chatKickoffFor(runtime), chat)).toBe(true)
       expect(promptMatchesKickoff(selfPlanKickoffFor(runtime), selfPlan)).toBe(true)

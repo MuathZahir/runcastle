@@ -4,7 +4,6 @@ import {
   PANEL_VIEWS,
   availableViews,
   panelTabs,
-  hasPlan,
   panelReducer,
   panelViewOf,
   type PanelAction,
@@ -18,14 +17,13 @@ import {
  */
 describe('panelTabs', () => {
   it('leaves the drive out: it is the page, not a tab', () => {
-    expect(panelTabs(['plan', 'work', 'details', 'design', 'drive'])).toEqual(['plan', 'work', 'details', 'design'])
+    expect(panelTabs(['work', 'details', 'design', 'drive'])).toEqual(['work', 'details', 'design'])
   })
 })
 
 describe('availableViews', () => {
   const none: PanelFacts = {
     isDraft: false,
-    hasPlan: false,
     hasTickets: false,
     shipped: false,
     driveActive: false,
@@ -36,7 +34,6 @@ describe('availableViews', () => {
   })
 
   it('offers each view once its fact holds, in the switcher’s order', () => {
-    expect(availableViews({ ...none, hasPlan: true })).toEqual(['plan', 'details', 'design'])
     expect(availableViews({ ...none, hasTickets: true })).toEqual(['work', 'details', 'design'])
     expect(availableViews({ ...none, driveActive: true })).toEqual(['details', 'design', 'drive'])
   })
@@ -45,37 +42,36 @@ describe('availableViews', () => {
     expect(availableViews({ ...none, shipped: true })).toEqual(['details'])
   })
 
-  it('lists plan, tickets, details, design, drive when every fact holds', () => {
-    const all = { isDraft: false, hasPlan: true, hasTickets: true, shipped: false, driveActive: true }
-    expect(availableViews(all)).toEqual(['plan', 'work', 'details', 'design', 'drive'])
+  it('lists tickets, details, design, drive when every fact holds', () => {
+    const all = { isDraft: false, hasTickets: true, shipped: false, driveActive: true }
+    expect(availableViews(all)).toEqual(['work', 'details', 'design', 'drive'])
   })
 
   it('gives a draft no panel at all', () => {
-    const all = { isDraft: true, hasPlan: true, hasTickets: true, shipped: false, driveActive: true }
+    const all = { isDraft: true, hasTickets: true, shipped: false, driveActive: true }
     expect(availableViews(all)).toEqual([])
   })
 
-  it('has no phase-keyed body, no separate preview view and no Review', () => {
-    expect(PANEL_VIEWS).toEqual(['plan', 'work', 'details', 'design', 'drive'])
+  it('has no phase-keyed body, no separate preview view, no Review and no Plan', () => {
+    expect(PANEL_VIEWS).toEqual(['work', 'details', 'design', 'drive'])
+  })
+
+  it('never offers a Plan view, whatever the feature has (building-starts-without-a-plan-approval decision 3)', () => {
+    for (const isDraft of [false, true])
+      for (const hasTickets of [false, true])
+        for (const shipped of [false, true])
+          for (const driveActive of [false, true])
+            expect(availableViews({ isDraft, hasTickets, shipped, driveActive })).not.toContain('plan')
   })
 })
 
 describe('panelViewOf', () => {
-  it('reads the retired body, preview and review names as Tickets and Plan', () => {
+  it('reads the retired body and review names as History, and plan and preview as Details', () => {
     expect(panelViewOf('body')).toBe('work')
-    expect(panelViewOf('preview')).toBe('plan')
+    expect(panelViewOf('plan')).toBe('details')
+    expect(panelViewOf('preview')).toBe('details')
     expect(panelViewOf('review')).toBe('work')
     expect(panelViewOf('nonsense')).toBeNull()
-  })
-})
-
-describe('the facts behind Plan', () => {
-  it('has a plan with a preview, decisions.md or spec.md, and none with only the brief', () => {
-    const doc = (relPath: string) => ({ relPath })
-    expect(hasPlan({ docs: [doc('docs/features/x/brief.md')] })).toBe(false)
-    expect(hasPlan({ preview: { relPath: 'preview.html' }, docs: [] })).toBe(true)
-    expect(hasPlan({ docs: [doc('docs/features/x/decisions.md')] })).toBe(true)
-    expect(hasPlan({ docs: [doc('docs/features/x/spec.md')] })).toBe(true)
   })
 })
 
@@ -124,7 +120,7 @@ describe('panelReducer', () => {
     expect(list).toMatchObject({ view: 'design', origin: 'human' })
     expect(list.path).toBeUndefined()
     expect(list.width).toBeUndefined()
-    expect(panelReducer({ ...open, view: 'plan' }, { type: 'designList' })).toMatchObject({ view: 'design', last: 'design' })
+    expect(panelReducer({ ...open, view: 'details' }, { type: 'designList' })).toMatchObject({ view: 'design', last: 'design' })
   })
 
   it("holds the agent's screen width for that design open only", () => {

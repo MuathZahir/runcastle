@@ -7,14 +7,14 @@
  */
 
 /**
- * What the panel can show, one at a time: Plan, History (`work`: old tickets, read only), Details,
+ * What the panel can show, one at a time: History (`work`: old tickets, read only), Details,
  * Design (the list of the feature's designs), and Drive while it runs
  * (the-feature-s-right-panel decisions 14, 17).
  */
-export type PanelView = 'plan' | 'work' | 'details' | 'design' | 'drive'
+export type PanelView = 'work' | 'details' | 'design' | 'drive'
 
 /** Every view, in the order the switcher and the topbar list them. */
-export const PANEL_VIEWS: readonly PanelView[] = ['plan', 'work', 'details', 'design', 'drive']
+export const PANEL_VIEWS: readonly PanelView[] = ['work', 'details', 'design', 'drive']
 
 export function isPanelView(value: string): value is PanelView {
   return (PANEL_VIEWS as readonly string[]).includes(value)
@@ -22,12 +22,19 @@ export function isPanelView(value: string): value is PanelView {
 
 /**
  * The retired views' names, and the fixed view each became: the phase body's
- * tickets, the plan preview, and Review, whose findings are the review
- * ticket's row now (the-feature-s-right-panel decision 15).
+ * tickets, Review, whose findings are the review ticket's row now
+ * (the-feature-s-right-panel decision 15), and the Plan with its older name
+ * `preview`, whose brief, decisions and spec are read from Details' docs
+ * (building-starts-without-a-plan-approval decisions 4, 6).
  */
-const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = { body: 'work', preview: 'plan', review: 'work' }
+const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = {
+  body: 'work',
+  review: 'work',
+  plan: 'details',
+  preview: 'details',
+}
 
-/** A view name read from an address or an event, the retired `body`, `preview` and `review` mapped onto History and Plan. */
+/** A view name read from an address or an event, the retired names mapped onto History and Details. */
 export function panelViewOf(value: string): PanelView | null {
   return isPanelView(value) ? value : (RETIRED_VIEWS[value] ?? null)
 }
@@ -47,8 +54,6 @@ const FOLLOWS: Record<PanelFollowedClick, PanelView> = { testDrive: 'drive' }
 export interface PanelFacts {
   /** A draft has no chat, so its body is the page and it has no panel at all. */
   isDraft: boolean
-  /** A plan preview, decisions.md or spec.md exists. */
-  hasPlan: boolean
   /** The feature has any ticket. */
   hasTickets: boolean
   shipped: boolean
@@ -56,17 +61,9 @@ export interface PanelFacts {
   driveActive: boolean
 }
 
-/** The plan documents the Plan view leads with, after the preview. */
-export const PLAN_DOCS = ['decisions.md', 'spec.md'] as const
-
-/** Whether a feature has a plan to read: a preview, decisions.md or spec.md. */
-export function hasPlan(full: { preview?: unknown; docs: readonly { relPath: string }[] }): boolean {
-  return !!full.preview || full.docs.some((doc) => PLAN_DOCS.some((name) => doc.relPath.endsWith(name)))
-}
-
 /**
  * The views a feature offers right now, each once it has something to show:
- * Plan once there is a plan to read, History once there is an old ticket, Details
+ * History once there is an old ticket, Details
  * always, Design on every feature not yet shipped — its home is the list of
  * the feature's designs, server or not (designs-and-the-plan-get-their-own-place
  * decision 6) — and Drive only while it runs.
@@ -74,7 +71,6 @@ export function hasPlan(full: { preview?: unknown; docs: readonly { relPath: str
 export function availableViews(facts: PanelFacts): PanelView[] {
   if (facts.isDraft) return []
   const offered: Record<PanelView, boolean> = {
-    plan: facts.hasPlan,
     work: facts.hasTickets,
     details: true,
     design: !facts.shipped,
@@ -138,7 +134,6 @@ export function panelShowRequest(
 }
 
 export const PANEL_VIEW_LABEL: Record<PanelView, string> = {
-  plan: 'Plan',
   work: 'History',
   design: 'Design',
   drive: 'Drive',

@@ -3,17 +3,21 @@ import { isChatLinkHref, parseChatLink } from '../src/lib/chat-links'
 import { markdownUrlTransform } from '../src/components/Markdown'
 
 describe('parseChatLink', () => {
-  it('reads a feature, and its Plan or Design tab', () => {
+  it('reads a feature, and its Design tab', () => {
     expect(parseChatLink('feature:faster-cheaper-reviews')).toEqual({ kind: 'feature', slug: 'faster-cheaper-reviews' })
-    expect(parseChatLink('feature:faster-cheaper-reviews/plan')).toEqual({
-      kind: 'feature',
-      slug: 'faster-cheaper-reviews',
-      view: 'plan',
-    })
     expect(parseChatLink('feature:faster-cheaper-reviews/design')).toEqual({
       kind: 'feature',
       slug: 'faster-cheaper-reviews',
       view: 'design',
+    })
+  })
+
+  // building-starts-without-a-plan-approval decision 6: the Plan tab is gone, its docs are in Details.
+  it('opens an old link to the Plan tab on Details', () => {
+    expect(parseChatLink('feature:faster-cheaper-reviews/plan')).toEqual({
+      kind: 'feature',
+      slug: 'faster-cheaper-reviews',
+      view: 'details',
     })
   })
 

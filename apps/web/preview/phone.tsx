@@ -8,9 +8,8 @@ import '../src/theme.css'
 import '../src/styles.css'
 import { TooltipProvider } from '../src/ui/tooltip'
 import { ToastProvider } from '../src/lib/toast'
-import { cx, IconButton, List, ListRow, StatusDot, StatusLabel, Tabs } from '../src/ui'
+import { cx, IconButton, List, ListRow, StatusDot, StatusLabel } from '../src/ui'
 import { OrchestratorCard, Shelf, SidebarBackdrop, SidebarFeatureRow, ThreadGlyph, WorkingShelf } from '../src/components/SidebarParts'
-import { Markdown } from '../src/components/Markdown'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Composer } from '../src/components/chat/thread/Composer'
 import { ContextMeter, ModelControls, PlanStrip } from '../src/components/chat/thread/ComposerParts'
@@ -20,7 +19,6 @@ import {
   IconArrowLeft,
   IconChevronDown,
   IconClock,
-  IconDoc,
   IconGitMerge,
   IconList,
   IconMessage,
@@ -85,7 +83,7 @@ interface Open {
   threads?: boolean
 }
 
-type Screen = 'plan' | 'tickets' | 'design'
+type Screen = 'tickets' | 'design'
 
 const READY = 'Changelog file per release'
 const QUESTION = 'Rounds see blockers outside the round'
@@ -97,7 +95,7 @@ function openOf(f: FeatureListItem): Open {
     words: f.title === READY ? 'Ready to test' : moment === 'working' ? 'Working' : moment === 'idle' ? 'In progress' : 'Waiting for you',
     moment,
     ready: f.title === READY,
-    menu: f.title === QUESTION ? ['plan', 'tickets', 'design'] : ['plan', 'tickets'],
+    menu: f.title === QUESTION ? ['tickets', 'design'] : ['tickets'],
     threads: f.title === QUESTION,
   }
 }
@@ -150,29 +148,6 @@ function ScreenBar({ title, sub, onBack, right }: { title: string; sub?: string;
       </div>
       {right}
     </header>
-  )
-}
-
-const DECISIONS = `## 1. Retries stay inside the round
-**Decision:** A blocked ticket waits for its blocker within the round, and the round says so.
-**Why:** The landing queue already holds the order.
-
-## 2. A blocker outside the round stops the ticket
-**Decision:** The ticket fails with the blocker's name, and the lead decides.
-**Why:** Waiting on another round could wait forever.`
-
-function PlanScreen({ open, onBack }: { open: Open; onBack: () => void }) {
-  const [tab, setTab] = useState('decisions')
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
-      <ScreenBar title="Plan" sub={open.title} onBack={onBack} />
-      <div className="flex h-11 shrink-0 items-center border-b border-border-subtle px-3">
-        <Tabs size="sm" label="Plan" value={tab} onChange={setTab} items={[{ id: 'preview', label: 'Preview' }, { id: 'decisions', label: 'Decisions' }, { id: 'spec', label: 'Spec' }]} />
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-base text-text">
-        <Markdown source={tab === 'decisions' ? DECISIONS : 'The preview and the spec read the same way, the width of the phone.'} />
-      </div>
-    </div>
   )
 }
 
@@ -260,7 +235,6 @@ function ChatScreen({ open, onBack }: { open: Open; onBack: () => void }) {
   const [screen, setScreen] = useState<Screen | null>(() => (params.get('screen') as Screen | null) ?? null)
   const ask = moment.ask
   const waiting = open.words === 'Waiting for you' || open.ready
-  if (screen === 'plan') return <PlanScreen open={open} onBack={() => setScreen(null)} />
   if (screen === 'tickets') return <TicketsScreen open={open} onBack={() => setScreen(null)} />
   if (screen === 'design') return <DesignScreen open={open} onBack={() => setScreen(null)} />
   const titleBody = (
@@ -320,7 +294,6 @@ function ChatScreen({ open, onBack }: { open: Open; onBack: () => void }) {
       {sheet === 'threads' && <ThreadsSheet onClose={() => setSheet(null)} onPick={() => setSheet(null)} />}
       {sheet === 'menu' && (
         <Sheet onClose={() => setSheet(null)}>
-          {open.menu.includes('plan') && <SheetRow icon={<IconDoc />} label="Plan" hint="Decisions and spec, to read" onClick={() => setScreen('plan')} />}
           {open.menu.includes('tickets') && <SheetRow icon={<IconList />} label="Tickets" hint="3 of 4 landed" onClick={() => setScreen('tickets')} />}
           {open.menu.includes('design') && <SheetRow icon={<IconPen />} label="Design" hint="Running now" onClick={() => setScreen('design')} />}
         </Sheet>

@@ -12,7 +12,7 @@ const design = (id: string, state: DesignEntry['state']): DesignEntry => ({ id, 
 
 describe('the phone sheet\'s Design line', () => {
   it('is left out while the feature has no design', () => {
-    expect(phoneViewChoices(['plan', 'design'], [], []).map((c) => c.view)).toEqual(['plan'])
+    expect(phoneViewChoices(['work', 'design'], [], []).map((c) => c.view)).toEqual(['work'])
   })
 
   it('says how many designs wait, else how many there are', () => {

@@ -47,12 +47,12 @@ decisions they did not touch keep their marks.
 
 **Check first.** A plan made with nobody present carries one line under the
 intro, `Check first: 2, 5, 7`: at most five decision numbers the human should
-look at first. Keep it in step with the Plan's Check first group, and drop a
-number once the human confirms that decision. A plan made with the human has no
+look at first. Keep it in step with any plan page's Check first group, and drop
+a number once the human confirms that decision. A plan made with the human has no
 such line.
 
-Whenever `decisions.md` changes and a `preview.html` exists, redraw the Plan in
-the same move (`./preview.md`). Commit it like any other doc.
+Whenever `decisions.md` changes and a `preview.html` exists, redraw the plan page
+in the same move (`./preview.md`).
 
 ## `spec.md`: what the feature is
 
@@ -107,7 +107,7 @@ set up (`setUp`: a runner recorded and the folder on the base branch).
   sibling `.http` request, and prints `TOKEN=` when authenticated.
 - **When `setUp` is false and the feature has a slow state**, you set scenarios
   up yourself before the first review, by `./scenario-setup.md`, and say so in
-  the Plan's who builds what. Never hand setup to a worker: it needs a drive.
+  your playback of who builds what. Never hand setup to a worker: it needs a drive.
 - **Prove each new scenario** before any review: run it on `feature_drive`
   and have an `agent-browser` subagent confirm the `ENTRY_URL` shows the state,
   signed in. Stop the drive when done.

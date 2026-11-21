@@ -27,27 +27,30 @@ must see; build detail goes to the spec.
 
 **Check first.** Pick at most five decisions for the human to look at first:
 guesses about their intent, and decisions that force several others. Write
-their numbers in `decisions.md`'s `Check first:` line and the Plan's `C` list.
+their numbers in `decisions.md`'s `Check first:` line, and in the plan page's
+`C` list if you draw one.
 
-**Plan, never build.** Never call `start_worker` or `start_review` here. Write
-the docs (`decisions.md`, `spec.md`, `preview.html`) and, where the feature
-reshapes screens, design them (below). Write no other code.
+**Plan, then build only when nothing is the human's.** Write the docs
+(`decisions.md`, `spec.md`, and `preview.html` only when a picture helps:
+`./preview.md`) and, where the feature reshapes screens, design them (below).
+While any decision is marked `**Assumed.**` or any design waits, write no other
+code and call neither `start_worker` nor `start_review`.
 
 **Tools.** A refused tool is no wait: decide without it and put that decision
 in check first. A timeout may have landed: check, retry once, and if it times
 out again carry on and say so at the end.
 
-**Cards, never the panel.** `show_plan` and `show_design` post cards the human
+**Cards, never the panel.** `show_design` and `show_file` post cards the human
 finds when back; never call `show_panel`.
 
 ## Designing alone
 
 Design only when the feature **adds a screen or changes a screen's layout**. A
-small visual change (a colour, a label, one control) is described in the Plan
-instead. Never design a screen whose what, where or who you guessed.
+small visual change (a colour, a label, one control) is described in the spec
+and your closing message instead. Never design a screen whose what, where or who you guessed.
 
-- **When:** once the decisions are recorded and before the spec, so the spec and
-  the Plan can name the designed components.
+- **When:** once the decisions are recorded and before the spec, so the spec can
+  name the designed components.
 - **How:** as `./design.md` says: one design page per screen, its states on a
   switcher, sample data, real components, the project's design docs. Design
   against the feature's base branch, never another feature's worktree. If a
@@ -64,27 +67,30 @@ instead. Never design a screen whose what, where or who you guessed.
 - **Record each page:** `show_design({ path, title, width, picture })` once per
   page, never once per state, with the subagent's picture.
 - **A screen you cannot serve** (a page the server builds, native mobile) is a
-  hand mock in the Plan; say so at the end.
+  hand mock on a plan page (`./preview.md`); say so at the end.
 - **Leave the designs uncommitted:** only the human's approval commits them.
   Commit your docs by path, so nothing designed rides along.
 
 ## The end
 
-1. Write `spec.md`, plan the workers you would offer (label, purpose, kind,
-   none started; for a small feature, usually you alone), draw the Plan and run
-   its self-check (`./preview.md`), commit the docs.
-2. Call `show_plan()` once.
-3. One closing message: that the plan was made without the human, how many
-   decisions it holds and which to check first (number and title), the workers
-   it offers and what you would do yourself, and anything that stopped you (a
-   refused or failed tool, and what you decided without it). If you designed:
-   each screen and its states, the open Tweaks, any shared component changed,
-   whether you saw the screens or only checked they compile, and that only
-   designs the human approves are committed. End by asking for their yes to
-   start the work.
+1. Write `spec.md`, choose the workers you would start (label, purpose, kind;
+   for a small feature, usually you alone), and commit the docs. If you drew a
+   plan page, run its self-check (`./preview.md`) and show it with `show_file`.
+2. **With nothing of the human's open** (no `**Assumed.**` decision, no design
+   waiting): write in a few lines what you will build and who builds what
+   before any edit, install or worker, then build in this same run, as
+   SKILL.md says.
+3. **Otherwise** one closing message: that you planned without the human, then
+   the decisions you made for them, check-first ones first, each by number,
+   title and its main alternative, and any design waiting (each screen, its
+   states, the open Tweaks, any shared component changed, whether you saw the
+   screens or only checked they compile, and that only approved designs are
+   committed). Then the workers you would start and what you would do yourself,
+   and anything that stopped you (a refused or failed tool, and what you decided
+   without it). End by asking them to change any decision or say go; their
+   answer starts the build, and a design still needs its own approval.
 4. With the question written last in that message, call `wait_for_you` with a
-   label such as `why: "start the work?"`, naming any design waiting for
-   approval, and end the turn. **On autopilot** the
-   yes is the epic's: call `hand_back({ summary })` instead, with the plan, its
-   check-first decisions and any design waiting, and say the plan went to the
-   epic.
+   label such as `why: "change any decision, or go?"`, naming any design
+   waiting, and end the turn. **On autopilot** the answer is the epic's: call
+   `hand_back({ summary })` instead, with the decisions, the check-first ones
+   and any design waiting, and say they went to the epic.

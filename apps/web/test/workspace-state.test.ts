@@ -67,9 +67,10 @@ describe('initialTab — which view a feature opens on', () => {
     expect(initialTab({ ...none, stored: 'tickets' })).toBe('work')
   })
 
-  it('reopens a feature left on the retired body or preview on Work or Plan', () => {
+  it('reopens a feature left on the retired body on Work, and the retired plan or preview on Details', () => {
     expect(initialTab({ ...none, stored: 'body' })).toBe('work')
-    expect(initialTab({ ...none, stored: 'preview' })).toBe('plan')
+    expect(initialTab({ ...none, stored: 'plan' })).toBe('details')
+    expect(initialTab({ ...none, stored: 'preview' })).toBe('details')
   })
 
   it('always lands a draft on the bare address, its body being its page', () => {

@@ -183,10 +183,6 @@ export const features = sqliteTable('features', {
   lastHumanMessageAt: integer('last_human_message_at'),
   /** When the lead last dispatched a round (ms). */
   lastDispatchAt: integer('last_dispatch_at'),
-  /** When the lead last showed the plan (`show_plan`, ms); null until it has. */
-  planShownAt: integer('plan_shown_at'),
-  /** When the human last opened the plan (ms): new to them while older than `planShownAt`. */
-  planSeenAt: integer('plan_seen_at'),
 })
 
 /**

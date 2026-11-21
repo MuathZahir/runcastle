@@ -202,16 +202,6 @@ function SidebarRows() {
 
 const NOTICES: ChatNotice[] = [
   {
-    kind: 'preview',
-    hue: 'planning',
-    title: 'Preview ready',
-    subtitle: 'The plan preview has three screens to look at',
-    actionLabel: 'Open the preview',
-    target: 'preview',
-    count: 1,
-    eventId: 1,
-  },
-  {
     kind: 'ticket-failed',
     hue: 'danger',
     title: 'Ticket 4 failed',

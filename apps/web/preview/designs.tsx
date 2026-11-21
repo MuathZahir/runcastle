@@ -17,12 +17,11 @@ import { nextWaiting, orderDesigns, type DesignEntry } from '../src/lib/feature-
 import { applyStoredTheme, useTheme } from '../src/lib/theme'
 import { ChatThread } from '../src/components/chat/thread/ChatThread'
 import { Markdown } from '../src/components/Markdown'
-import { PlanCard } from '../src/components/chat/thread/PlanCard'
 import { DesignCards } from '../src/components/design/DesignCard'
 import { DesignBar, DesignList } from '../src/components/design/DesignList'
 import { DrivePanel } from '../src/components/review/DrivePanel'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
-import { CLOSING, DESIGNS, NOW, OPENING, PLAN_COUNTS, PLAN_ONE_LINER, TITLE } from './designs-data'
+import { CLOSING, DESIGNS, NOW, OPENING, TITLE } from './designs-data'
 
 /**
  * The plan and the designs in their own place
@@ -65,7 +64,6 @@ function FeaturePage({ stage }: { stage: Stage }) {
   const [designs, setDesigns] = useState<DesignEntry[]>(
     none ? [] : stage === 'done' ? DESIGNS.map((d) => ({ ...d, state: 'approved', isNew: false })) : DESIGNS,
   )
-  const [planNew, setPlanNew] = useState(true)
   const [view, setView] = useState<PanelView | null>(stage === 'chat' ? null : 'design')
   const [openId, setOpenId] = useState<string | null>(stage === 'open' ? (orderDesigns(DESIGNS)[0]?.id ?? null) : null)
   // The one message the agent gets, once the last waiting design is approved (decision 25).
@@ -74,7 +72,7 @@ function FeaturePage({ stage }: { stage: Stage }) {
   const ordered = orderDesigns(designs)
   const open = ordered.find((d) => d.id === openId)
   const designNew = designs.some((d) => d.isNew)
-  const fresh: PanelView[] = [...(planNew ? (['plan'] as const) : []), ...(designNew ? (['design'] as const) : [])]
+  const fresh: PanelView[] = designNew ? ['design'] : []
 
   const seen = (id: string) => setDesigns((ds) => ds.map((d) => (d.id === id ? { ...d, isNew: false } : d)))
   const openDesign = (id: string) => {
@@ -97,13 +95,11 @@ function FeaturePage({ stage }: { stage: Stage }) {
   }
   const switchTo = (next: PanelView) => {
     setView(next)
-    if (next === 'plan') setPlanNew(false)
     if (next === 'design') setOpenId(null)
   }
 
   const cards = (
     <div className="flex flex-col gap-3">
-      <PlanCard oneLiner={PLAN_ONE_LINER} counts={none ? { ...PLAN_COUNTS, designs: 0 } : PLAN_COUNTS} isNew={planNew} onOpen={() => switchTo('plan')} />
       {!none && <DesignCards designs={designs} onOpen={openDesign} onOpenList={() => switchTo('design')} />}
       <Markdown source={CLOSING} size="base" tone="primary" breaks />
       {told && (
@@ -157,7 +153,7 @@ function FeaturePage({ stage }: { stage: Stage }) {
         actions={
           <>
             <IconButton label="More — Merge & ship is here" icon={<IconMore />} />
-            <PanelToggle open={view !== null} dot={fresh.length > 0} views={['plan', 'design']} onToggle={() => setView(view ? null : 'design')} />
+            <PanelToggle open={view !== null} dot={fresh.length > 0} views={['details', 'design']} onToggle={() => setView(view ? null : 'design')} />
           </>
         }
       />
@@ -171,7 +167,7 @@ function FeaturePage({ stage }: { stage: Stage }) {
           view && (
             <FeaturePanel
               view={view}
-              views={['plan', 'work', 'details', 'design']}
+              views={['work', 'details', 'design']}
               fresh={fresh}
               label={(v) => PANEL_VIEW_LABEL[v]}
               onSwitch={switchTo}

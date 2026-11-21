@@ -104,7 +104,7 @@ function FeatureChat({ state, onEnd }: { state: StateKey; onEnd: () => void }) {
               </span>
             )}
             <FeatureActionsMenu actions={MENU} size="md" />
-            <PanelToggle open={false} views={['plan', 'work', 'details']} onToggle={noop} />
+            <PanelToggle open={false} views={['work', 'details']} onToggle={noop} />
           </>
         }
       />

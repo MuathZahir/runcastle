@@ -102,7 +102,6 @@ import {
   copyDesignPicture,
   leadDesigns,
   listDesigns,
-  markPlanShown,
   recordDesign,
   setDesignState,
 } from '../services/designs'
@@ -938,17 +937,17 @@ function unattended(session: SessionRow): boolean {
 }
 
 /**
- * The views `show_panel` opens (decision 8). The plan and a design are not among
- * them: `show_plan` and `show_design` show those, leaving a card in the chat
+ * The views `show_panel` opens (decision 8). A design is not among them:
+ * `show_design` shows it, leaving a card in the chat
  * (designs-and-the-plan-get-their-own-place decision 3).
  */
 const PanelView = z.enum(['work', 'review', 'details', 'drive'], {
-  error: 'show_panel opens work, review, details or drive. Show the plan with show_plan and a design with show_design',
+  error: 'show_panel opens work, review, details or drive. Show a design with show_design and a plan page with show_file',
 })
 type PanelViewT = z.infer<typeof PanelView>
 
-/** Every view a `panel.show` event can open: `show_panel`'s, and the plan and the design view the card tools open. */
-type PanelOpenView = PanelViewT | 'plan' | 'design'
+/** Every view a `panel.show` event can open: `show_panel`'s, and the design view `show_design` opens. */
+type PanelOpenView = PanelViewT | 'design'
 
 /**
  * The `panel.show` event the web opens a view on — always the agent's own act,
@@ -1011,35 +1010,6 @@ export function toolShowDesign(
     emitPanelShow(ctx, featureId, { view: 'design', path: design.path, ...(input.width ? { width: input.width } : {}) })
   }
   return { recorded: true, state: design.state }
-}
-
-/** The docs that make a feature's plan: one of them must exist before the plan can be shown. */
-const PLAN_DOCS = ['preview.html', 'decisions.md', 'spec.md']
-
-/**
- * Show the feature's plan (decisions 2, 15): post a plan card in this chat, make
- * the plan new to the human, and, with a human watching, open the Plan view.
- */
-export function toolShowPlan(ctx: AppCtx, session: SessionRow, input: { slug?: string } = {}): { shown: true } {
-  // An orchestrator chat posts a feature's plan card in its own chat (every-feature-has-one-owner
-  // decision 3): the same card, opening the feature's Plan tab. It reads, so it needs no hold,
-  // and it leaves the plan's "new to the human" mark to the lead.
-  const fromChat = !session.featureId
-  const feature = fromChat
-    ? requireProjectFeature(ctx, session, input.slug ?? '')
-    : getFeatureRow(ctx, requireChatFeatureId(session))
-  const featureId = feature.id
-  const docsDir = featureDocsDir(projectForFeature(ctx, feature), feature)
-  if (!PLAN_DOCS.some((doc) => existsSync(join(docsDir, doc)))) {
-    throw new GateError(
-      `${feature.slug} has no plan yet: write its plan page (preview.html), decisions.md or spec.md in ${docsDir} first`,
-    )
-  }
-  if (!fromChat) markPlanShown(ctx, featureId)
-  seedFromTranscript(ctx, session.id)
-  appendThreadEvent(session.id, { type: 'plan_shown', featureId })
-  if (!fromChat && !unattended(session)) emitPanelShow(ctx, featureId, { view: 'plan' })
-  return { shown: true }
 }
 
 /**
@@ -2693,9 +2663,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
   start_design_server: ['chat'],
   show_panel: ['chat'],
-  // The plan and the designs (`designs-and-the-plan-get-their-own-place`): the feature's chat;
+  // The designs (`designs-and-the-plan-get-their-own-place`): the feature's chat;
   // an orchestrator chat posts their cards by slug (every-feature-has-one-owner decision 3).
-  show_plan: ['chat', 'project'],
   show_design: ['chat', 'project'],
   set_design_state: ['chat'],
   // Every session with a thread to show it in.
@@ -3393,7 +3362,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start a worker',
         description:
-          'Start a worker on the human’s yes: an agent in its own sandbox and branch off this feature branch, with ' +
+          'Start a worker: an agent in its own sandbox and branch off this feature branch, with ' +
           'one assignment. `with-you` is taste work the human iterates on and hands back when happy (never a design: that is yours); ' +
           '`on-its-own` ' +
           'hands back when done. Past the machine’s agent limit it waits queued. Nothing lands until land_worker. ' +
@@ -3603,7 +3572,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Hand back to your epic',
         description:
-          'On autopilot only: report to the epic running this feature (questions, plans and designs for a yes, ready to test, ' +
+          'On autopilot only: report to the epic running this feature (questions, designs for a yes, ready to test, ' +
           'failures, merge conflicts). It answers or asks the human. Wakes it once with your summary and a line of the ' +
           'feature’s state. Off autopilot the feature is the human’s: refused, ask them in your reply and call wait_for_you.',
         inputSchema: {
@@ -3684,26 +3653,6 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolShowDesign(rs.ctx, rs.session, args))
-      },
-    )
-  }
-
-  if (wants('show_plan')) {
-    server.registerTool(
-      'show_plan',
-      {
-        title: 'Show the human the plan',
-        description:
-          'Post the plan card (plan page, decisions, spec) in this chat and open the Plan tab when someone is ' +
-          'present (an orchestrator chat only posts the card); call it when asking for the yes and after every redraw.',
-        inputSchema: {
-          slug: z.string().optional().describe("The feature's slug. A feature's own chat leaves it out."),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        return ok(toolShowPlan(rs.ctx, rs.session, args))
       },
     )
   }
