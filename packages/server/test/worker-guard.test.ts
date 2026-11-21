@@ -209,6 +209,14 @@ describe('worker git guard', () => {
     ]) allowed(inOwn, cmd, 'PowerShell')
   })
 
+  it("refuses git pointed at a folder outside the worker's own with -C", () => {
+    refused(inOwn, 'git -C /home/u/projects/app status')
+    refused(inOwn, `git -C ${feature} commit -m x`)
+    refused(inFeature, 'git -C .. log')
+    allowed(inOwn, `git -C ${ownFolder}/packages/web status`)
+    allowed(inFeature, 'git -C packages/web diff')
+  })
+
   it('leaves every other session, and the non-shell tools, alone', () => {
     expect(verdict(undefined, 'git push --force')).toBeNull()
     expect(verdict(inOwn, 'git push', 'Edit')).toBeNull()

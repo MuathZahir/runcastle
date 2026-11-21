@@ -1,4 +1,5 @@
 import { gitSub } from './checkout-guard'
+import { within } from './guard-paths'
 import type { EditDenial, HostWorker } from './edit-guard'
 import { SHELL_TOOLS } from './install-guard'
 import { commandsOf, dialectOf, isGit, type ShellDialect } from './lead-guard'
@@ -73,8 +74,12 @@ function evaluateScript(worker: HostWorker, script: string, dialect: ShellDialec
       continue
     }
     if (!isGit(verb)) continue
-    const parsed = gitSub(args)
+    const parsed = gitSub(args, worker.folder)
     if (!parsed) continue
+    // `git -C <dir>` aimed outside its folder would reach another checkout, which the edit guard never sees.
+    if (!within(worker.folder, parsed.dir)) {
+      return `A worker runs git only in its own folder (${worker.folder}); \`git -C ${parsed.dir}\` reaches outside it.`
+    }
     const why = evaluateSub(worker, parsed.sub, parsed.rest)
     if (why) return why
   }

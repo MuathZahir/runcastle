@@ -21,7 +21,7 @@ import { readThreadEvents } from '../src/threads/log'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import { writeHostHandback } from '../src/workers/review'
 import { forgetDriveTurnBasesForTests } from '../src/workers/drive'
-import { getWorker, messageWorker, workerFolder, workerPrompted, workerTurnEnded } from '../src/workers/service'
+import { getWorker, messageWorker, startWorker, workerFolder, workerPrompted, workerTurnEnded } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -266,6 +266,39 @@ describe("where a worker builds (workers-build-in-the-feature-s-folder)", () => 
     expect(git(repo, 'show', 'feature/work:header.txt')).toBe('header\n')
     expect(existsSync(folder!)).toBe(false)
     expect(branchExists(branch!)).toBe(false)
+  })
+
+  it("places two workers started at once one at a time: one in the feature's folder, one in its own, on different ports", async () => {
+    const [a, b] = await Promise.all([startHeader('with-you', 'A'), startHeader('on-its-own', 'B')])
+    const rows = [getWorker(ctx, a)!, getWorker(ctx, b)!]
+    expect(rows.filter((w) => w.branch === null)).toHaveLength(1)
+    expect(rows.filter((w) => w.branch?.startsWith('runcastle/worker/'))).toHaveLength(1)
+    expect(rows[0]!.previewPort).not.toBe(rows[1]!.previewPort)
+  })
+
+  it("never lets a review hold the feature's folder, so a worker started after one hands back gets it", async () => {
+    const review = await startWorker(ctx, feature, {
+      label: 'Review',
+      purpose: 'Reads the feature for review',
+      kind: 'review',
+      startedBy: 'lead',
+      review: { verify: null, assignment: 'Review the feature.' },
+    })
+    writeHostHandback(review.workerId, 'No findings.')
+    await workerTurnEnded(ctx, { id: review.workerId })
+    const next = await startHeader('with-you', 'Next')
+    expect(getWorker(ctx, next)).toMatchObject({ branch: null, folder: getWorker(ctx, review.workerId)!.folder })
+  })
+
+  it("refuses to land an own-folder worker while the one in the feature's folder is mid-turn there", async () => {
+    const holder = await startHeader('with-you', 'Holder')
+    const id = await startHeader('on-its-own')
+    await handBack(id)
+    setAgentHostForTests({ ...host.host, isRunning: (threadId: string) => threadId === holder })
+    await expect(toolLandWorker(ctx, leadSession(), { workerId: id })).rejects.toThrow(/mid-turn/)
+    expect(getWorker(ctx, id)!.status).toBe('handed-back')
+    setAgentHostForTests(host.host)
+    expect(await toolLandWorker(ctx, leadSession(), { workerId: id })).toEqual({ ok: true, commits: 1, files: 1 })
   })
 
   it('lands a feature-folder worker by settling it: nothing merges, it is marked landed', async () => {

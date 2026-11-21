@@ -610,6 +610,16 @@ describe('the preview through the design pass-through', () => {
     expect(workerPreviews(ctx).url(id)).toBeUndefined()
   })
 
+  it('serves nothing for a landed worker', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const id = await startWorker()
+    writeHostHandback(id, 'Done.')
+    await workerTurnEnded(ctx, { id })
+    await toolLandWorker(ctx, leadSession(), { workerId: id })
+    expect(getWorker(ctx, id)!.status).toBe('landed')
+    expect(workerPreviews(ctx).url(id)).toBeUndefined()
+  })
+
   it('is on worker.list as the pass-through path once something listens on the worker’s port', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker()

@@ -40,7 +40,7 @@ import { createSessionRow, getLimitHold, getSessionRow, newestThread, setSession
 import { type AgentErrorClass, classifyAgentError, retryDelayMs } from '../services/agent-errors'
 import { agentSlots } from '../services/agent-slots'
 import { emit, emitProject, listAfter } from '../services/events'
-import { addWorkerWorktree, branchChangesAhead, deleteTempBranch, discardWorktree, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
+import { activeTestDriveFeatureId, addWorkerWorktree, branchChangesAhead, deleteTempBranch, discardWorktree, mergeTempBranch, type TempBranchMergeResult } from '../services/git'
 import { featureLandingQueue } from '../services/landing-queue'
 import { deliverToLead } from '../services/lead-delivery'
 import { clearWait, setWait } from '../services/waits'
@@ -441,47 +441,9 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
   const model = workerModel(ctx, feature, input.model, input.kind)
   const project = projectForFeature(ctx, feature)
   const mainChat = newestThread(ctx, { featureId: feature.id }, 'chat')
-  const featureFolder = await ensureFeatureWorktree(ctx, project, feature)
-  const own = input.kind !== 'review' && featureFolderHolder(ctx, feature.id) !== undefined
-  const session = createSessionRow(ctx, {
-    featureId: feature.id,
-    kind: 'worker',
-    worktreePath: featureFolder,
-    model,
-    ...(mainChat ? { openedBeside: mainChat.id } : {}),
-  })
-  setSessionTitle(ctx, session.id, input.label)
-  const folder = own ? workerFolder(session.id) : featureFolder
-  const branch = own ? `runcastle/worker/${shortId(session.id)}` : null
-  if (own) ctx.db.update(sessions).set({ worktreePath: folder }).where(eq(sessions.id, session.id)).run()
-  // A review shows no screen; a build worker's dev server gets a port of its own, since agents now share the machine (decision 6).
-  const previewPort = input.kind === 'review' ? null : await pickFreePort(41000, 400, takenPorts(ctx))
-  const now = Date.now()
-  ctx.db
-    .insert(workers)
-    .values({
-      id: session.id,
-      featureId: feature.id,
-      projectId: feature.projectId,
-      label: input.label,
-      purpose: input.purpose,
-      kind: input.kind,
-      goal: input.goal?.trim() || null,
-      doneWhen: input.doneWhen?.trim() || null,
-      model: model.id,
-      runtime: model.runtime,
-      startedBy: input.startedBy,
-      status: 'working',
-      engine: sandboxEngine(ctx.config.sandbox).name,
-      featureBranch: feature.branch,
-      folder,
-      branch,
-      previewPort,
-      ...(input.review ? { reviewMode: 'gates' as const, reviewVerify: input.review.verify } : {}),
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run()
+  // Where it builds and its port are picked one start at a time per feature, so two starts never both take the feature's folder or one port.
+  const placed = await placeOneAtATime(feature.id, () => placeWorker(ctx, project, feature, input, model, mainChat?.id))
+  const { session, folder, branch, own, previewPort } = placed
   if (input.review) keepReviewAssignment(session.id, input.review.assignment)
   if (own && branch) {
     settingUp.add(session.id)
@@ -525,16 +487,94 @@ export async function startWorker(ctx: AppCtx, feature: Feature, input: StartWor
   return { workerId: session.id, branch: branch ?? feature.branch, previewUrl: humanPreviewUrl(ctx, session.id) }
 }
 
+/** Each feature's start in progress: the next waits for it, so placement reads the rows the last one wrote. */
+const placing = new Map<string, Promise<unknown>>()
+
+/** Run `place` after any other start of `featureId` has placed its worker. */
+async function placeOneAtATime<T>(featureId: string, place: () => Promise<T>): Promise<T> {
+  const before = placing.get(featureId) ?? Promise.resolve()
+  const run = before.catch(() => undefined).then(place)
+  placing.set(featureId, run)
+  try {
+    return await run
+  } finally {
+    if (placing.get(featureId) === run) placing.delete(featureId)
+  }
+}
+
+/**
+ * Where a new worker builds (decision 7), its thread, and its row. A build
+ * worker takes the feature's folder unless another holds it or a test drive of
+ * the feature has it on the human's checkout (where its commits would not reach
+ * the feature branch until the drive stops); then it gets its own folder and branch.
+ */
+async function placeWorker(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  input: StartWorkerInput,
+  model: ReturnType<typeof workerModel>,
+  mainChatId: string | undefined,
+): Promise<{ session: SessionRow; folder: string; branch: string | null; own: boolean; previewPort: number | null }> {
+  const featureFolder = await ensureFeatureWorktree(ctx, project, feature)
+  const own =
+    input.kind !== 'review' &&
+    (featureFolderHolder(ctx, feature.id) !== undefined || activeTestDriveFeatureId(project.id) === feature.id)
+  const session = createSessionRow(ctx, {
+    featureId: feature.id,
+    kind: 'worker',
+    worktreePath: featureFolder,
+    model,
+    ...(mainChatId ? { openedBeside: mainChatId } : {}),
+  })
+  setSessionTitle(ctx, session.id, input.label)
+  const folder = own ? workerFolder(session.id) : featureFolder
+  const branch = own ? `runcastle/worker/${shortId(session.id)}` : null
+  if (own) ctx.db.update(sessions).set({ worktreePath: folder }).where(eq(sessions.id, session.id)).run()
+  // A review shows no screen; a build worker's dev server gets a port of its own, since agents now share the machine (decision 6).
+  const previewPort = input.kind === 'review' ? null : await pickFreePort(41000, 400, takenPorts(ctx))
+  const now = Date.now()
+  ctx.db
+    .insert(workers)
+    .values({
+      id: session.id,
+      featureId: feature.id,
+      projectId: feature.projectId,
+      label: input.label,
+      purpose: input.purpose,
+      kind: input.kind,
+      goal: input.goal?.trim() || null,
+      doneWhen: input.doneWhen?.trim() || null,
+      model: model.id,
+      runtime: model.runtime,
+      startedBy: input.startedBy,
+      status: 'working',
+      engine: sandboxEngine(ctx.config.sandbox).name,
+      featureBranch: feature.branch,
+      folder,
+      branch,
+      previewPort,
+      ...(input.review ? { reviewMode: 'gates' as const, reviewVerify: input.review.verify } : {}),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+  return { session, folder, branch, own, previewPort }
+}
+
 /** The statuses in which a worker still holds the folder it works in: at work, waiting on someone, or handed back and not yet settled. */
 const HOLDING: ReadonlySet<WorkerStatus> = new Set(['queued', 'working', 'needs-you', 'stalled', 'handed-back'])
 
 /**
- * The open worker of `featureId` that holds the feature's own folder, if any
- * (decision 7): a build worker or a gates review placed there and not yet
- * landed, dropped or failed. A new build worker started meanwhile gets its own folder.
+ * The open build worker of `featureId` that holds the feature's own folder, if
+ * any (decision 7): placed there and not yet landed, dropped or failed. A new
+ * build worker started meanwhile gets its own folder. A review never holds it:
+ * it only reads, and a handed-back review is resolved, never landed.
  */
 export function featureFolderHolder(ctx: AppCtx, featureId: string): WorkerRow | undefined {
-  return listWorkers(ctx, featureId).find((w) => workerPlacement(w) === 'feature-folder' && HOLDING.has(w.status))
+  return listWorkers(ctx, featureId).find(
+    (w) => w.kind !== 'review' && workerPlacement(w) === 'feature-folder' && HOLDING.has(w.status),
+  )
 }
 
 /** Where a worker's own folder is made (decision 3): under runcastle's data dir, keyed by the worker. */
@@ -909,6 +949,8 @@ export async function resumeCaughtWorkers(ctx: AppCtx, skip: ReadonlySet<string>
       if (caughtPrompts.length === 0) continue
       const human = caughtPrompts.some((e) => e.source === 'human' || summaryOf(e) === RESUMED_HUMAN_DISPLAY)
       emitWorker(ctx, w, 'worker.resumed', `worker "${w.label}" resumed: a restart caught it before its turn began`, { prompts: caughtPrompts.length })
+      // The restart lost where the branch stood: note it again, so this turn's commits are recorded.
+      await beforeWorkerTurn(ctx, w.id)
       await host.prompt(
         w.id,
         { text: caughtPrompts.map((e) => e.text).join('\n\n') },
@@ -1572,8 +1614,16 @@ export async function landWorker(ctx: AppCtx, id: string): Promise<LandWorkerRes
   // In the feature's folder its commits are on the branch already: landing only settles it (workers-build-in-the-feature-s-folder decision 2).
   if (placement === 'feature-folder') return settleFeatureFolderWorker(ctx, w, feature.branch)
   let source: { repoPath: string; branch: string }
-  if (placement === 'own-folder' && w.branch) source = { repoPath: projectForFeature(ctx, feature).repoPath, branch: w.branch }
-  else {
+  if (placement === 'own-folder' && w.branch) {
+    // The merge happens in the feature's folder: never under a worker whose turn runs there.
+    const holder = featureFolderHolder(ctx, feature.id)
+    if (holder && agentHost(ctx).isRunning(holder.id)) {
+      throw new GateError(
+        `worker "${holder.label}" is mid-turn in the feature's folder, where this merge would land: land "${w.label}" once its turn ends.`,
+      )
+    }
+    source = { repoPath: projectForFeature(ctx, feature).repoPath, branch: w.branch }
+  } else {
     const sb = sandboxOf(ctx, w)
     if (!sb) throw new GateError(`worker "${w.label}" has no branch to land from`)
     await sandboxEngine(w.engine).fetchBranch(sb)
@@ -1886,7 +1936,7 @@ export function workerPreviews(ctx: AppCtx, idleMs = IDLE_STOP_MS): WorkerPrevie
       // A worker on the host runs its dev server on its own port, on this machine (workers-build-in-the-feature-s-folder).
       const host = getWorker(ctx, id)
       if (host && host.folder !== null) {
-        if (host.status === 'dropped' || host.status === 'failed' || host.previewPort === null) return undefined
+        if (host.status === 'dropped' || host.status === 'failed' || host.status === 'landed' || host.previewPort === null) return undefined
         return `http://127.0.0.1:${host.previewPort}/`
       }
       const found = previewSandbox(ctx, id)
