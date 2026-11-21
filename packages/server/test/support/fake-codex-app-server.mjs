@@ -2,7 +2,18 @@
 // usage side channel's test: it answers `initialize`, pushes a notification of
 // its own, and answers `account/rateLimits/read` only once initialized, the way
 // the real app server refuses requests before the handshake.
+//
+// `--child <tag>` makes it start a child of its own (tagged on its command line)
+// and outlive its stdin closing, so a test can see the read's stop end them both.
+import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
+
+const childAt = process.argv.indexOf('--child')
+if (childAt > 0) {
+  const tag = process.argv[childAt + 1]
+  spawn(process.execPath, ['-e', `setInterval(() => {}, 1 << 30) // ${tag}-child`], { stdio: 'ignore' })
+  setInterval(() => {}, 1 << 30)
+}
 
 let initialized = false
 const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`)

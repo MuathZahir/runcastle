@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readCodexRateLimits } from '../src/threads/side-channels'
+import { processesWith, until } from './helpers/processes'
 import { claudeUsageReport, codexUsageReport, formatResets, limitLiftsAt } from '../src/threads/usage'
 
 /** Local-time epoch seconds / ISO, so the expected clock text does not depend on the machine's zone. */
@@ -82,6 +83,13 @@ describe("a Codex thread's usage limits", () => {
       plan: 'ChatGPT Pro',
     })
   })
+
+  it.skipIf(process.platform === 'win32')('leave no app server or anything it started running after the read', async () => {
+    const tag = `rc-usage-read-${process.pid}`
+    const appServer = { file: process.execPath, args: [join(import.meta.dirname, 'support', 'fake-codex-app-server.mjs'), '--child', tag] }
+    await readCodexRateLimits(appServer)
+    await until(() => processesWith(tag).length === 0, 'the app server and its child to exit', 8000)
+  }, 15_000)
 })
 
 describe('claudeUsageReport', () => {

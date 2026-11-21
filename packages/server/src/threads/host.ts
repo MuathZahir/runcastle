@@ -43,7 +43,7 @@ import {
   setSessionModel,
   setSessionTitle,
 } from '../launcher/sessions'
-import { killProcessTree } from '../pty/kill-tree'
+import { OWN_GROUP, stopProcessTree } from '../pty/kill-tree'
 import { publishLive } from '../services/bus'
 import { emitForSession } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -114,8 +114,12 @@ export interface AgentProcess {
   target: acp.Stream | acp.AgentApp
   /** Resolves when the process exits, for whatever reason, with the tail of its stderr. */
   exited: Promise<{ stderr: string }>
-  /** End the process and everything it started. */
-  kill(): Promise<void>
+  /**
+   * End the process and everything it started, resolving once they are gone (or
+   * forced and still not gone, which is logged). `graceMs` is how long it may
+   * take to quit when asked before it is forced.
+   */
+  kill(opts?: { graceMs?: number }): Promise<void>
   /**
    * How the session opens, when the process runs somewhere the row's own paths
    * do not exist (a worker's sandbox, workers spike decision 2): its cwd, MCP
@@ -364,6 +368,12 @@ const NOT_REOPENED = 'this conversation would not reopen. It is still on disk an
 
 /** How much of a crashed adapter's stderr is kept: it goes to the session dir's {@link STDERR_LOG}, not the thread. */
 const STDERR_TAIL = 2000
+
+/**
+ * How long a server shutdown lets each agent quit before forcing it: short of the
+ * shutdown's own 5s budget, so the force lands before the server exits.
+ */
+const SHUTDOWN_GRACE_MS = 3000
 const STDERR_LOG = 'agent-stderr.log'
 
 /** Updates a `session/load` replays from history, which the log already holds. */
@@ -433,7 +443,11 @@ const ASK_NOUN: Record<Ask['kind'], string> = { question: 'a question', form: 'a
 export const spawnAdapter: AgentTransport = (spec, row) => {
   const env: Record<string, string | undefined> = { ...process.env, ...spec.env }
   for (const name of spec.envScrub) delete env[name]
-  const child = spawn(spec.command, spec.args, { cwd: row.worktreePath, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  // Off Windows the adapter leads its own process group, so a stop reaches
+  // `claude`/`codex` and everything they started; on Windows `detached` would
+  // open a console, and `taskkill /T` walks the tree instead.
+  const group = OWN_GROUP
+  const child = spawn(spec.command, spec.args, { cwd: row.worktreePath, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: group })
   let stderr = ''
   child.stderr.on('data', (chunk: Buffer) => {
     stderr = (stderr + chunk.toString('utf8')).slice(-STDERR_TAIL)
@@ -445,8 +459,18 @@ export const spawnAdapter: AgentTransport = (spec, row) => {
   return {
     target: acp.ndJsonStream(Writable.toWeb(child.stdin) as WritableStream<Uint8Array>, Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>),
     exited,
-    kill: async () => {
-      if (child.pid !== undefined && child.exitCode === null) await killProcessTree(child.pid)
+    kill: async (opts) => {
+      if (child.pid === undefined) return
+      // On Windows a pid whose process exited may already be someone else's: never taskkill it.
+      if (!group && child.exitCode !== null) return
+      // Ask first: the adapter shuts down (and closes its runtime) on stdin EOF.
+      try {
+        child.stdin.end()
+      } catch {
+        // Already closed.
+      }
+      // Its group can outlive it (a runtime still shutting down), so a POSIX stop runs even once it has exited.
+      await stopProcessTree(child.pid, { group, label: `adapter ${row.id}`, ...(opts?.graceMs !== undefined ? { graceMs: opts.graceMs } : {}) })
     },
   }
 }
@@ -664,6 +688,12 @@ function failedStartText(err: unknown): string {
 
 class Host implements AgentHost {
   private readonly threads = new Map<string, Thread>()
+  /**
+   * Each thread's processes still being stopped: a start waits on its entry, so a
+   * conversation never runs in two processes at once (decision 4 of
+   * stopping-a-session-kills-its-process).
+   */
+  private readonly stopping = new Map<string, Promise<void>>()
   private readonly ctx: AppCtx
   private readonly transport: AgentTransport
   private readonly launch: (ctx: AppCtx, row: SessionRow) => Promise<AcpLaunchSpec>
@@ -870,7 +900,7 @@ class Host implements AgentHost {
     // Read before the stop's lifecycle makes the thread the lead's ordinary chat again.
     const planning = turn !== null && this.unattended(t)
     this.detach(t)
-    await t.proc?.kill().catch(() => {})
+    await this.endProcess(t, reason === 'shutdown' ? SHUTDOWN_GRACE_MS : undefined)
     if (turn) {
       // The turn is over, and says so: "Stopped by you", with what it changed by then.
       if (turn.quiet) clearTimeout(turn.quiet)
@@ -1219,6 +1249,8 @@ class Host implements AgentHost {
   }
 
   private async connect(t: Thread, given: SessionRow): Promise<void> {
+    // The conversation's last process must be gone before this one resumes it.
+    await this.stopping.get(t.id)
     const followed = this.followSettings(given)
     // Read before the session opens: the adapter announces its own model as it
     // opens (claude-agent-acp), and that logged announcement is not a pick.
@@ -1237,7 +1269,7 @@ class Host implements AgentHost {
     t.proc = proc
     void proc.exited.then(({ stderr }) => this.crashed(t, stderr))
     // Stopped while it spawned: the stop found no process to kill, so this one goes now.
-    if (t.state === 'stopped') return void (await proc.kill().catch(() => {}))
+    if (t.state === 'stopped') return void (await this.endProcess(t))
     const app = acp
       .client({ name: 'runcastle' })
       .onNotification(acp.methods.client.session.update, ({ params }) => this.onUpdate(t, params.sessionId, params.update))
@@ -1382,7 +1414,7 @@ class Host implements AgentHost {
   private async failStart(t: Thread, err: unknown): Promise<void> {
     if (t.state === 'stopped') return
     this.detach(t)
-    await t.proc?.kill().catch(() => {})
+    await this.endProcess(t)
     appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: failedStartText(err) })
     this.ended(t, 'crashed')
   }
@@ -1390,6 +1422,8 @@ class Host implements AgentHost {
   private crashed(t: Thread, stderr: string): void {
     if (t.state === 'stopped') return
     this.detach(t)
+    // The adapter is gone, but what it started may not be.
+    void this.endProcess(t)
     this.keepStderr(t.id, stderr)
     appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: crashText(stderr) })
     this.ended(t, 'crashed')
@@ -1422,6 +1456,23 @@ class Host implements AgentHost {
       console.error('thread lifecycle hook failed', err)
       return undefined
     }
+  }
+
+  /**
+   * End the thread's process and everything it started, resolving once they are
+   * gone. Until then the thread's entry in `stopping` holds any new start of the
+   * same conversation.
+   */
+  private endProcess(t: Thread, graceMs?: number): Promise<void> {
+    const proc = t.proc
+    if (!proc) return Promise.resolve()
+    const ending = proc.kill(graceMs !== undefined ? { graceMs } : undefined).catch((err) => console.error(`thread ${t.id}: stopping its process failed`, err))
+    const all = Promise.all([this.stopping.get(t.id), ending]).then(() => {})
+    this.stopping.set(t.id, all)
+    void all.then(() => {
+      if (this.stopping.get(t.id) === all) this.stopping.delete(t.id)
+    })
+    return ending
   }
 
   /** Forget the thread's process: no more events from it, no asks left waiting. */
@@ -1758,7 +1809,7 @@ class Host implements AgentHost {
     const error = `${watch.stalled}, and its agent ignored the cancel`
     appendThreadEvent(t.id, { type: 'notice', text: 'The agent did not stop the stalled turn, so runcastle stopped its process.' })
     this.detach(t)
-    await t.proc?.kill().catch(() => {})
+    await this.endProcess(t)
     if (turn.quiet) clearTimeout(turn.quiet)
     const files = await this.turnFiles(t, turn)
     appendThreadEvent(t.id, { type: 'turn_ended', reason: 'error', error, ...(files.length ? { files } : {}) })
