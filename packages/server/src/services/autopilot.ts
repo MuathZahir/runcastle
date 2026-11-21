@@ -303,7 +303,7 @@ async function tellLeft(ctx: AppCtx, left: readonly Feature[]): Promise<void> {
       source: 'runcastle',
       reason: 'question',
       background: true,
-      text: 'This feature is the human\'s again: autopilot is off for it. Re-ask any open question with wait_for_you.',
+      text: 'This feature is the human\'s again: autopilot is off for it. Re-ask any open question in your reply and call wait_for_you.',
     })
   }
 }

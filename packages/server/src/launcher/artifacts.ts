@@ -146,8 +146,8 @@ function headlessRule(): string {
     'Runcastle runs this conversation headless: nobody is watching this run.',
     '- Act on your opening prompt in this one run.',
     '- Never end your turn waiting on an answer — ending the turn ends the run. To ask the human',
-    '  anything, call `wait_for_you` with why, then end your turn: their reply reaches you later',
-    '  in this same conversation.',
+    '  anything, write the question in full in your reply, call `wait_for_you` with a few-word why',
+    '  as its label, then end your turn: their reply reaches you later in this same conversation.',
     '- A refused tool is not a wait: do not retry it or wait for approval. Decide on what you',
     '  know and treat that decision as a candidate to check first.',
   ].join('\n')
