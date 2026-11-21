@@ -42,6 +42,7 @@ function server(withPage: readonly string[] = ['f1']) {
       designs: [design('cart', 'Cart'), design('menu', 'Menu', { state: 'approved', isNew: false })],
     }),
     'feature.get': ({ id }: { id: string }) => ({
+      feature: { id, title: `Feature ${id}` },
       preview: withPage.includes(id) ? { relPath: 'preview.html', updatedAt: 1 } : null,
     }),
     'docs.read': () => ({ content: '<!doctype html><p>the plan page</p>' }),
@@ -70,6 +71,8 @@ describe('the plan and design cards in a thread', () => {
     expect(plans[1]!.textContent).toContain('Plan page')
     expect(plans[1]!.textContent).not.toContain('New')
     expect(plans[1]!.textContent).not.toContain('decisions')
+    // In the feature's own chat the card need not name it.
+    expect(plans[1]!.textContent).not.toContain('Feature f1')
     fireEvent.click(plans[1]!)
     const dialog = await screen.findByRole('dialog', { name: 'Plan page' })
     const frame = await waitFor(() => {
@@ -104,7 +107,7 @@ describe('the plan and design cards in a thread', () => {
     expect(t.onOpenDesignList).toHaveBeenCalledTimes(1)
   })
 
-  it('in an orchestrator chat, draws the cards of the feature each names and opens that feature on its view', async () => {
+  it('in an orchestrator chat, draws the cards of the feature each names, the plan card saying which, and opens that feature on its view', async () => {
     const links: FeatureLinks = {
       features: [{ ...listItem({ id: 'f9', slug: 'f9-slug' }), oneLiner: 'The chat owns this one.' }],
       openFeature: vi.fn(),
@@ -121,8 +124,9 @@ describe('the plan and design cards in a thread', () => {
       </FeatureLinksContext.Provider>,
       { wrapper: server([]).Wrapper },
     )
-    const plans = await screen.findAllByRole('button', { name: 'Open the plan page' })
+    const plans = await screen.findAllByRole('button', { name: 'Open the plan page of Feature f9' })
     expect(plans).toHaveLength(1)
+    expect(plans[0]!.textContent).toContain('Feature f9')
     fireEvent.click(plans[0]!)
     expect(links.openFeature).toHaveBeenCalledWith('f9', 'details')
     fireEvent.click(await screen.findByRole('button', { name: 'Open the design Cart' }))

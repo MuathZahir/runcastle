@@ -50,15 +50,18 @@ function useCardsTarget(featureId: string | undefined): ThreadCardsTarget | null
  * reads.
  */
 export function PlanCardItem({ older, featureId: named }: { older?: boolean; featureId?: string }) {
+  const page = useContext(ThreadCardsContext)
   const target = useCardsTarget(named)
   const featureId = target?.featureId ?? ''
   const full = trpc.feature.get.useQuery({ id: featureId }, { enabled: !!target, refetchInterval: useLivePoll() })
   const [open, setOpen] = useState(false)
   if (!target || !full.data) return null
   const preview = full.data.preview
+  // In another chat (the orchestrator's), the card names its feature: several read alike otherwise.
+  const elsewhere = named !== undefined && named !== page?.featureId
   return (
     <>
-      <PlanCard {...(older ? { older } : {})} onOpen={() => (preview ? setOpen(true) : target.onOpenDetails())} />
+      <PlanCard {...(older ? { older } : {})} {...(elsewhere ? { feature: full.data.feature.title } : {})} onOpen={() => (preview ? setOpen(true) : target.onOpenDetails())} />
       {open && preview && <PlanPageDialog featureId={featureId} preview={preview} onClose={() => setOpen(false)} />}
     </>
   )
