@@ -50,6 +50,12 @@ A Review worker's nudge names its handback (the review package) instead of "your
 
 `worker.stalled` follows `failWorker`'s pattern: an event, then `deliverToLead` with a new `PromptDisplay` variant `workerStalled { workerId, label, kind }`, which wakes the lead once. Its text tells the lead the worker stopped twice without handing back and its choices: `message_worker` with what to do (counts as a try), or `drop_worker`. The web renders it with the existing worker-failed card's component, with "Stalled" in place of "Failed" and no error block. The orchestrator is not told (decision 6; `orchestrator-notify` already ignores worker events).
 
+### Resuming workers a restart caught before their turn (decision 9)
+
+The agent host logs a prompt as it is sent, then the turn waits for the worker's slot before `turn_started`. A thread folds `working` only once a turn has started, so the boot reconciliation sees a worker waiting for its slot (or for its process to start) as idle: it is not closed as cut off, and the carry-on wake skips it. Its row stays `queued` (or `working`) with nothing behind it.
+
+At boot, once the server listens, beside the carry-on wake: every worker that is `working` or `queued`, not a drive worker, not a host review waiting for the drive (the drive-review wait already re-arms those), not running, not among the chats the carry-on wake already told, and not on a copied database's background ban (`mayStartInBackground`), whose thread log holds prompts after its last `turn_started` that are neither held nor steered nor hidden, is resumed. Those prompts' texts, joined in order, are sent again as one `runcastle` prompt marked hidden: the agent receives it, and the chat (which already shows the original messages) does not show it twice. The host's `PromptOptions` gains `hidden` for this. A `worker.resumed` event says so. The slot code then sets it `queued` or `working` as for any turn.
+
 ### The lead's guidance
 
 The feature skill's "two failed tries" rule gains: runcastle's nudge is not a try; a message you send a stalled worker is (decision 7).
@@ -66,6 +72,8 @@ The worker test that locks in "stays working with no need when its turn ends wit
 - **The web's worker status maps** (existing, component tests): "Stalled" renders with its tone and line; the stalled card renders in the lead chat.
 - **A scenario** (new): `workers/feature-with-a-stalled-worker.ts`, seeding a feature with one stalled worker and its card in the lead's chat, for the drive and the review.
 
+Boot seam (existing, the reconcile and wake functions with a real host on a fake agent): a worker whose log ends with a prompt and no turn started, status `queued`, gets that text sent again, hidden, once; one cut off mid-turn gets only the carry-on; a drive worker and a dropped one get nothing.
+
 Cases the handler tests cover: on-its-own nudged then stalled; Review worker likewise; with-you, unassigned and drive workers never nudged; a turn the human started not nudged; a cancelled turn, a limit-held chat, background work and a queued prompt not nudged; the lead's message to a stalled worker sets it working and the next quiet turn nudges again; a restart between nudge and turn end still stalls.
 
 ## Out of scope
@@ -77,4 +85,4 @@ Cases the handler tests cover: on-its-own nudged then stalled; Review worker lik
 
 ## Open questions
 
-None beyond the assumed decisions waiting on the yes.
+None.

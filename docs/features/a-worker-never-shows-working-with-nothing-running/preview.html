@@ -174,7 +174,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <div class="arrow">↓ the lead or the human writes to it</div>
       <div class="step"><span class="n">4</span><p><b>It is working again</b>, with a fresh nudge if it stops short again. Or the lead drops it.</p></div>
     </div>
-    <p class="hint" style="margin-top:10px">Everywhere else, a worker with no turn running reads Idle, in the lead's tools as on its card. <a class="pin" data-d="1">1</a> <a class="pin" data-d="8">8</a></p>
+    <p class="hint" style="margin-top:10px">After a server restart, a worker caught waiting for its turn to begin gets its waiting message again and takes its place in line, instead of staying "Queued" forever. <a class="pin" data-d="9">9</a></p>
+    <p class="hint" style="margin-top:4px">Everywhere else, a worker with no turn running reads Idle, in the lead's tools as on its card. <a class="pin" data-d="1">1</a> <a class="pin" data-d="8">8</a></p>
   </div>
   <div class="sub">
     <h3>What the human sees</h3>
@@ -198,9 +199,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <div class="sub">
   <h3>Who builds what</h3>
   <ul class="who">
-    <li><b>Me, the lead</b>: the whole feature. It is one server rule, one new status, and a few UI words, too small to split. Plus a scenario with a stalled worker.</li>
+    <li><b>Me, the lead</b>: the whole feature, with my own subagents for parallel parts: the turn-end rule, the restart resume, the new status and its words, a scenario with a stalled worker.</li>
     <li><b>No workers.</b></li>
-    <li><b>Review</b>: one standard review at the end, then a verify review of any fixes.</li>
+    <li><b>Review</b>: by my own review subagents (the code-review skill), not a Review worker, per the epic: containers keep running the machine out of memory and disk.</li>
   </ul>
 </div>
 </section>
@@ -259,24 +260,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['"Working" means a turn is running, everywhere', 'The human approved fixing the stuck "working" and agreed status comes from facts; the lead read the stored status and waited 587 minutes.'],
-    ['Only workers on an assignment of their own are nudged', '"With you", unassigned and test-drive workers wait on the human by design, so they read Idle and are never nudged.', 'assumed'],
-    ['A turn the human started never leads to a nudge', 'A worker that just answered the human is waiting for them, not stuck; the brief says it must not stall.', 'assumed'],
-    ['One nudge, then "Stalled"', 'One nudge lets a worker that forgot to hand back get through cheaply, without looping on a stuck one.', 'assumed'],
-    ['"Stalled" is a new worker status', 'No status fits: Failed says the agent broke, Needs you pings the phone, Idle is what hid this.', 'assumed'],
-    ['Its lead is told and woken, not the orchestrator', 'Events go to the agent that owns the work; the lead decides if its epic needs to know.', 'assumed'],
-    ['The nudge is not a try; the lead\'s message to a stalled worker is', 'The nudge is runcastle\'s; what the lead does about a stalled worker is a real attempt.', 'assumed'],
-    ['A worker with no assignment never reads as working', 'After its short opening turn it reads Idle until the human writes, in the lead\'s view as on its card.']
+    ['Only workers on an assignment of their own are nudged', '"With you", unassigned and test-drive workers wait on the human by design, so they read Idle and are never nudged.'],
+    ['A turn the human started never leads to a nudge', 'A worker that just answered the human is waiting for them, not stuck; the brief says it must not stall.'],
+    ['One nudge, then "Stalled"', 'One nudge lets a worker that forgot to hand back get through cheaply, without looping on a stuck one.'],
+    ['"Stalled" is a new worker status', 'No status fits: Failed says the agent broke, Needs you pings the phone, Idle is what hid this.'],
+    ['Its lead is told and woken, not the orchestrator', 'Events go to the agent that owns the work; the lead decides if its epic needs to know.'],
+    ['The nudge is not a try; the lead\'s message to a stalled worker is', 'The nudge is runcastle\'s; what the lead does about a stalled worker is a real attempt.'],
+    ['A worker with no assignment never reads as working', 'After its short opening turn it reads Idle until the human writes, in the lead\'s view as on its card.'],
+    ['A restart never leaves a worker waiting on a turn that will not come', 'Added by the epic: 5 workers stayed Queued after a restart; resuming them needs nobody to act.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [2, 'Nudge every kind, "with you" workers included', 'Guesses which workers wait on the human by design'],
-    [3, 'Nudge after a turn the human started too', 'The brief left this open; it decides what an idle worker the human entered shows'],
-    [4, 'No nudge: stall on the first quiet turn', 'Sets how patient runcastle is before telling the lead'],
-    [5, 'Mark it "Failed" instead of a new status', 'A new word the human will see on worker rows'],
-    [6, 'Also tell the epic on autopilot', 'The audit asked for the orchestrator too; the project rule says the lead only']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

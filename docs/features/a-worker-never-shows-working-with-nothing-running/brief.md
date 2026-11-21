@@ -33,3 +33,7 @@ Accept when: a test ends a worker's turn without a handback twice; the worker is
 Waits on "A usage limit never strands work", because both change the same turn-end handling for workers. Nothing waits on it.
 
 Planning mode: automatic
+
+## Added scope (from the epic, 2026-11-21)
+
+A server restart leaves queued workers dead: their rows stay "queued" with no process and never start (seen at 08:36 UTC, 5 workers stuck). At boot, resume them or mark them stopped so their lead is told. The lead picked resume (decisions.md, 9).
