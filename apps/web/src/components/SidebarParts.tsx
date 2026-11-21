@@ -903,7 +903,7 @@ export function SidebarThreadList({
 /**
  * A worker's 12px mark on its row's second line, where a feature row shows its
  * progress glyph: a chat bubble waiting on you or idle, a spinner working, a
- * clock queued, a red alert failed, an arrow handed back, the merge glyph
+ * clock queued, a red alert failed, an amber one stalled, an arrow handed back, the merge glyph
  * landed, a cross dropped, a lock for an old chat's read-only transcript.
  */
 export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'old'> }) {
@@ -918,6 +918,8 @@ export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'o
       return <IconClock size={12} className="shrink-0 text-icon" />
     case 'failed':
       return <IconAlert size={12} className="shrink-0 text-danger" />
+    case 'stalled':
+      return <IconAlert size={12} className="shrink-0 text-warning" />
     case 'handed-back':
       return <IconArrowLeft size={12} className="shrink-0 text-icon" />
     case 'landed':
@@ -966,7 +968,8 @@ export function SidebarWorkerItem({
   const words = w.old ? OLD_CHAT_WORDS[w.old] : why ? `${WORKER_STATUS_WORDS[w.status]} · ${why}` : WORKER_STATUS_WORDS[w.status]
   const acts = !w.old && (w.status === 'needs-you' || w.status === 'failed')
   const asks = !locked && acts
-  const quiet = !!w.old || !(acts || w.status === 'working' || w.status === 'idle')
+  // A stalled worker is the lead's to act on (a-worker-never-shows-working-with-nothing-running decision 5): amber words, no dot.
+  const quiet = !!w.old || !(acts || w.status === 'working' || w.status === 'idle' || w.status === 'stalled')
   return (
     <TwoLineRow
       title={w.label}
@@ -977,6 +980,7 @@ export function SidebarWorkerItem({
         !w.old && w.status === 'working' && 'text-shimmer',
         !w.old && w.status === 'needs-you' && 'text-text-secondary',
         !w.old && w.status === 'failed' && 'text-danger-text',
+        !w.old && w.status === 'stalled' && 'text-warning-text',
       )}
       aside={w.updatedAt > 0 ? relTime(w.updatedAt) : undefined}
       {...(asks ? { dot: w.status === 'failed' ? ('danger' as const) : ('warning' as const) } : {})}

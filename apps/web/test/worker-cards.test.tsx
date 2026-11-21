@@ -204,3 +204,13 @@ describe('a failed worker in the lead’s chat', () => {
     expect(open).toHaveBeenCalledWith('w_head')
   })
 })
+
+describe('a stalled worker in the lead’s chat (a-worker-never-shows-working-with-nothing-running decision 6)', () => {
+  it('draws the notice saying it stopped twice without handing back, and opens the worker’s chat', () => {
+    const open = draw({ workerStalled: { workerId: 'w_head', label: 'Header' } }, [row({ status: 'stalled', kind: 'on-its-own' })])
+    expect(screen.getByRole('status').textContent).toContain('Worker “Header” stalled: stopped twice without handing back')
+    expect(screen.getByRole('status').textContent).not.toContain('failed')
+    fireEvent.click(screen.getByRole('button', { name: 'Open its chat' }))
+    expect(open).toHaveBeenCalledWith('w_head')
+  })
+})

@@ -43,13 +43,8 @@ export const QUIET_SETTLE_MS = 50
 
 /** The worker kinds that carry an assignment of their own: a quiet one has stopped short. */
 const ASSIGNED_KINDS: readonly WorkerKind[] = ['on-its-own', 'review']
-/**
- * A worker still at its assignment, by status; whether a turn runs is read
- * from the host. "stalled" is the status "A worker never shows working with
- * nothing running" adds: read already, so the alert words it the day it lands.
- */
-const STILL_ASSIGNED: readonly string[] = ['working', 'stalled']
-const IN_PLAY = [...IN_PLAY_WORKER_STATUSES, 'stalled'] as WorkerStatus[]
+/** A worker still at its assignment, by status; whether a turn runs is read from the host. */
+const STILL_ASSIGNED: readonly WorkerStatus[] = ['working', 'stalled']
 
 /** The project as the watcher reads it: the rule's snapshot, the chat the alert would go on, and what runs. */
 export interface QuietRead extends QuietSnapshot {
@@ -79,7 +74,7 @@ export function quietSnapshot(ctx: AppCtx, projectId: string): QuietRead {
     ? ctx.db
         .select({ id: workers.id, featureId: workers.featureId, kind: workers.kind, status: workers.status })
         .from(workers)
-        .where(and(inArray(workers.featureId, ids), inArray(workers.status, IN_PLAY)))
+        .where(and(inArray(workers.featureId, ids), inArray(workers.status, [...IN_PLAY_WORKER_STATUSES])))
         .all()
     : []
   // Every chat of the project the usage limit holds, with when it tries again.

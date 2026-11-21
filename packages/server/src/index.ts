@@ -43,7 +43,7 @@ import { createShutdown } from './shutdown'
 import { serverUrlFor } from './launcher/artifacts'
 import { sweepLeftoverAgents } from './services/leftover-agents'
 import { agentHost } from './threads/types'
-import { resumeDriveReviewWaits, workerPreviews } from './workers/service'
+import { resumeCaughtWorkers, resumeDriveReviewWaits, workerPreviews } from './workers/service'
 import { startHourlySweep, stopOwnWorkerContainers, sweepLeftovers } from './workers/sweep'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
@@ -283,7 +283,11 @@ export async function startServer(): Promise<void> {
   const quietWatch = isDatabaseCopy() ? undefined : startQuietWatch(ctx)
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
+  // Then a worker it caught before its turn began gets its message again (a-worker-never-shows-working-with-nothing-running decision 9).
   void wakeCutOffChats(ctx, cutOffChats)
+    .catch((err) => console.error('could not wake the chats a restart cut off', err))
+    .then(() => resumeCaughtWorkers(ctx, new Set(cutOffChats.map((row) => row.id))))
+    .catch((err) => console.error('could not resume the workers a restart caught before their turn', err))
   // …and every chat the usage limit holds gets its wake again, kept on its row (a-usage-limit-never-strands-work decision 5).
   // A copied database's chats are the live install's, never this server's to wake.
   if (!isDatabaseCopy()) agentHost(ctx).rearmLimitWakes()

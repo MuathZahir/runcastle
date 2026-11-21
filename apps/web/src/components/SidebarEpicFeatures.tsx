@@ -271,7 +271,7 @@ function EpicFeatureRow({
   )
 }
 
-/** One live worker under its feature, as one line: its mark in front (asks, failed, working) and its label. */
+/** One live worker under its feature, as one line: its mark in front (asks, failed, stalled, working) and its label. */
 function EpicWorkerRow({
   worker: w,
   active,
@@ -289,7 +289,19 @@ function EpicWorkerRow({
   const asks = !locked && w.status === 'needs-you'
   const failed = w.status === 'failed'
   const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} label="Worker actions" /> : undefined
-  const mark = locked ? lock : asks ? <NeedMark kind="question" /> : failed ? <NeedMark kind="failed" /> : w.status === 'working' ? <WorkingMark /> : null
+  // A stalled worker is its lead's to act on, not the human's (a-worker-never-shows-working-with-nothing-running decision 6): amber, not lit.
+  const stalled = w.status === 'stalled'
+  const mark = locked ? (
+    lock
+  ) : asks ? (
+    <NeedMark kind="question" />
+  ) : failed ? (
+    <NeedMark kind="failed" />
+  ) : stalled ? (
+    <IconAlert size={14} className="text-warning" aria-label="Stalled" />
+  ) : w.status === 'working' ? (
+    <WorkingMark />
+  ) : null
   return (
     <div
       className={cx(
@@ -310,7 +322,7 @@ function EpicWorkerRow({
       <span
         className={cx(
           'pointer-events-none min-w-0 flex-1 truncate text-sm',
-          active || asks || failed ? 'text-text' : 'text-text-secondary',
+          active || asks || failed ? 'text-text' : stalled ? 'text-warning-text' : 'text-text-secondary',
           active && 'font-medium',
           w.status === 'queued' && 'text-text-tertiary',
           menu && HOVER_ROOM_ONE,
