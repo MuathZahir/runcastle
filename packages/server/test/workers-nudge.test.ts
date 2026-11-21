@@ -11,6 +11,7 @@ import { appendThreadEvent } from '../src/threads/types'
 import { setSandboxEngineForTests } from '../src/workers/engine'
 import {
   RESUMED_DISPLAY,
+  RESUMED_HUMAN_DISPLAY,
   getWorker,
   leadWorkers,
   resumeCaughtWorkers,
@@ -18,6 +19,7 @@ import {
   workerNudgeText,
   workerPrompted,
   workerTurnEnded,
+  workerTypedTo,
 } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -163,6 +165,19 @@ describe('a turn that ends with no handback', () => {
     expect(status(a)).toBe('working')
   })
 
+  it('does not nudge a worker that answered the human on a runtime that cannot steer: their message was logged before the last turn ended', async () => {
+    const a = await start()
+    appendThreadEvent(a, { type: 'prompt', id: 'p-r', text: 'Build the header', source: 'runcastle' })
+    appendThreadEvent(a, { type: 'turn_started' })
+    appendThreadEvent(a, { type: 'prompt', id: 'p-h', text: 'Make it blue', source: 'human' })
+    appendThreadEvent(a, { type: 'turn_ended', reason: 'end_turn' })
+    await workerTurnEnded(ctx, { id: a }, { reason: 'end_turn', queued: true })
+    appendThreadEvent(a, { type: 'turn_started' })
+    appendThreadEvent(a, { type: 'turn_ended', reason: 'end_turn' })
+    await workerTurnEnded(ctx, { id: a }, { reason: 'end_turn' })
+    expect(nudges(a)).toHaveLength(0)
+  })
+
   it('does not nudge a stopped turn, a failed one, one the usage limit holds, one with background work or a queued message', async () => {
     const a = await start()
     turn(a, 'Build the header', 'runcastle', 'cancelled')
@@ -221,9 +236,11 @@ describe('a stalled worker', () => {
     expect(nudges(a)).toHaveLength(1)
   })
 
-  it('works again when the human writes to it', async () => {
+  it('works again when the human writes to it, but not when they press Stop', async () => {
     const a = await stalled()
     workerPrompted(ctx, a)
+    expect(status(a)).toBe('stalled')
+    workerTypedTo(ctx, a)
     expect(status(a)).toBe('working')
   })
 
@@ -264,7 +281,27 @@ describe('a restart that caught a worker before its turn began', () => {
     appendThreadEvent(a, { type: 'prompt', id: 'p-3', text: '/compact', source: 'runcastle', hidden: true })
     appendThreadEvent(a, { type: 'prompt', id: 'p-4', text: 'and wide', source: 'human' })
     await resumeCaughtWorkers(ctx)
-    expect(host.sent.at(-1)).toMatchObject({ threadId: a, text: 'Make it blue\n\nand wide' })
+    expect(host.sent.at(-1)).toMatchObject({ threadId: a, text: 'Make it blue\n\nand wide', display: { summary: RESUMED_HUMAN_DISPLAY } })
+  })
+
+  it('after a second restart, sends the earlier resend and what came after it, not its messages twice', async () => {
+    const a = await start()
+    turn(a, 'Build the header', 'runcastle')
+    appendThreadEvent(a, { type: 'prompt', id: 'p-1', text: 'Make it blue', source: 'human' })
+    appendThreadEvent(a, { type: 'prompt', id: 'p-r', text: 'Make it blue', source: 'runcastle', display: { summary: RESUMED_HUMAN_DISPLAY } })
+    appendThreadEvent(a, { type: 'prompt', id: 'p-2', text: 'a note', source: 'runcastle' })
+    await resumeCaughtWorkers(ctx)
+    expect(host.sent.at(-1)).toMatchObject({ threadId: a, text: 'Make it blue\n\na note', display: { summary: RESUMED_HUMAN_DISPLAY } })
+  })
+
+  it('does not nudge a worker whose resent turn carried the human’s message', async () => {
+    const a = await start()
+    turn(a, 'Build the header', 'runcastle')
+    appendThreadEvent(a, { type: 'prompt', id: 'p-r', text: 'Make it blue', source: 'runcastle', display: { summary: RESUMED_HUMAN_DISPLAY } })
+    appendThreadEvent(a, { type: 'turn_started' })
+    appendThreadEvent(a, { type: 'turn_ended', reason: 'end_turn' })
+    await workerTurnEnded(ctx, { id: a }, { reason: 'end_turn' })
+    expect(nudges(a)).toHaveLength(0)
   })
 
   it('leaves alone a worker the carry-on wake told, one whose last turn began, a stalled, a drive and a limit-held one', async () => {

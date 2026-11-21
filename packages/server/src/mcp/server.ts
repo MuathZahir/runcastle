@@ -658,7 +658,6 @@ export interface FeatureStatusView {
   /** The epic running it on autopilot; null when it is the human's. */
   autopilot: { epic: string; chatId: string } | null
   humanTypedAt: number | null
-  /** How many of the feature's workers are in each status; a status with none is absent. */
   /** How many of the feature's workers show each status (Working only while a turn runs); a status with none is absent. */
   workerCounts: Partial<Record<ShownWorkerStatus, number>>
   latestReady: ReadyDeclaration | null

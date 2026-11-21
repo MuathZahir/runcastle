@@ -281,6 +281,7 @@ export async function startServer(): Promise<void> {
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   // Then a worker it caught before its turn began gets its message again (a-worker-never-shows-working-with-nothing-running decision 9).
   void wakeCutOffChats(ctx, cutOffChats)
+    .catch((err) => console.error('could not wake the chats a restart cut off', err))
     .then(() => resumeCaughtWorkers(ctx, new Set(cutOffChats.map((row) => row.id))))
     .catch((err) => console.error('could not resume the workers a restart caught before their turn', err))
   // …and every chat the usage limit holds gets its wake again, kept on its row (a-usage-limit-never-strands-work decision 5).

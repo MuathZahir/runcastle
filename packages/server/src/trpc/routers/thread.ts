@@ -26,7 +26,7 @@ import { threadModels } from '../../threads/model-catalog'
 import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
 import { agentHost, appendThreadEvent } from '../../threads/types'
 import { driveWorkerBetweenDrives } from '../../workers/drive'
-import { workerPrompted } from '../../workers/service'
+import { workerPrompted, workerTypedTo } from '../../workers/service'
 import { clearWait } from '../../services/waits'
 import { refuseHumanMessage } from '../../services/autopilot'
 import { publicProcedure, router } from '../context'
@@ -107,7 +107,7 @@ export const threadRouter = router({
         { text, ...(images ? { images } : {}) },
         { source: 'human', ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) },
       )
-      if (row.kind === 'worker') workerPrompted(ctx, id)
+      if (row.kind === 'worker') workerTypedTo(ctx, id)
       return sent
     }),
 
