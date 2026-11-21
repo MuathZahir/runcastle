@@ -1,6 +1,8 @@
-import { isAbsolute, relative, resolve } from 'node:path'
 import type { EditDenial } from './edit-guard'
+import { type PathFlavor, pathApi, within } from './guard-paths'
 import { blankHeredocBodies, SHELL_TOOLS } from './install-guard'
+
+export { within }
 
 /**
  * The feature lead's line guard (`the-feature-lead-runs-rounds` decision 27): a
@@ -44,14 +46,17 @@ export interface LeadGuardInput {
   featureBranch: string
   /** The branch the feature merges into; unset on a draft, when only the deletion rule applies. */
   baseBranch?: string
+  /** The path rules to read folders by; the host's by default. */
+  platform?: PathFlavor
 }
 
 /** Evaluate one tool call; `null` means the guard has no objection. */
 export function evaluateLeadGuard(input: LeadGuardInput): EditDenial | null {
   if (!input.toolName || !(SHELL_TOOLS as readonly string[]).includes(input.toolName)) return null
   if (!input.command) return null
+  const { resolve } = pathApi(input.platform)
   let cwd = resolve(input.worktreePath)
-  for (const words of commandsOf(input.command)) {
+  for (const words of commandsOf(input.command, dialectOf(input.toolName))) {
     const [verb, ...args] = words
     if (!verb) continue
     if (CD_VERBS.has(verb.toLowerCase())) {
@@ -84,6 +89,7 @@ export function isGit(word: string): boolean {
 export const VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env'])
 
 function evaluateGit(input: LeadGuardInput, cwd: string, args: string[]): string | null {
+  const { resolve } = pathApi(input.platform)
   let dir = cwd
   let i = 0
   for (; i < args.length; i++) {
@@ -126,11 +132,11 @@ function evaluateGit(input: LeadGuardInput, cwd: string, args: string[]): string
 
 /** Why `dir` is off limits — the main checkout or another worktree — or null for the lead's own. */
 function foreignCheckout(input: LeadGuardInput, dir: string): string | null {
-  if (within(input.worktreePath, dir)) return null
-  if (within(input.mainCheckout, dir)) {
+  if (within(input.worktreePath, dir, input.platform)) return null
+  if (within(input.mainCheckout, dir, input.platform)) {
     return `Git on the project's main checkout (${input.mainCheckout}) is refused.`
   }
-  if (within(input.worktreesDir, dir)) return `Git on another feature's worktree (${dir}) is refused.`
+  if (within(input.worktreesDir, dir, input.platform)) return `Git on another feature's worktree (${dir}) is refused.`
   return null
 }
 
@@ -204,21 +210,38 @@ function isBranch(branch: string, ref: string): boolean {
   return ref === branch || ref === `refs/heads/${branch}`
 }
 
-/** Is `target` inside `dir`, or `dir` itself? Case-insensitive on Windows. */
-export function within(dir: string, target: string): boolean {
-  const fold = (p: string) => (process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p))
-  const rel = relative(fold(dir), fold(target))
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+/**
+ * Which shell a command line is written for: Claude Code's `PowerShell` tool, or
+ * `Bash` (Git Bash on Windows, and Codex's shell everywhere).
+ */
+export type ShellDialect = 'bash' | 'powershell'
+
+/** The dialect of a hook payload's `tool_name`. */
+export function dialectOf(toolName: string | undefined): ShellDialect {
+  return toolName === 'PowerShell' ? 'powershell' : 'bash'
 }
 
 /**
  * The simple commands in a shell line, each as its words: split on separators
  * outside quotes, quotes removed, heredoc bodies dropped, leading `VAR=value`
  * assignments and PowerShell's `&` call operator skipped.
+ *
+ * The separators are both shells' (workers-build-in-the-feature-s-folder decision
+ * 11): `;`, newlines, `|` and `||`, `&` and `&&` (PowerShell 7 has the last two
+ * too), and the brackets of groups, sub-expressions and script blocks. A line
+ * continuation joins its two lines — a trailing backslash in bash, a trailing
+ * backtick in PowerShell — and in PowerShell a backtick escapes the character
+ * after it, so `` `; `` is no separator and `` `" `` no closing quote. A
+ * PowerShell here-string (`@'…'@`, `@"…"@`) is one argument, its body unread.
+ * A backslash is kept as written: it is a Windows path's separator.
  */
-export function commandsOf(command: string): string[][] {
-  // `2>&1` / `&>` redirect; their `&` is not PowerShell's call operator or a separator.
-  const text = blankHeredocBodies(command).replace(/\d*>&\d*|&>/g, ' ')
+export function commandsOf(command: string, dialect: ShellDialect = 'bash'): string[][] {
+  const joined =
+    dialect === 'powershell'
+      ? blankHereStrings(command).replace(/`\r?\n/g, ' ')
+      : blankHeredocBodies(command).replace(/\\\r?\n/g, ' ')
+  // `2>&1` / `*>&1` / `&>` redirect; their `&` is not PowerShell's call operator or a separator.
+  const text = joined.replace(/[\d*]*>&\d*|&>/g, ' ')
   const commands: string[][] = []
   let words: string[] = []
   let word: string | null = null
@@ -234,9 +257,14 @@ export function commandsOf(command: string): string[][] {
   }
   for (let i = 0; i < text.length; i++) {
     const ch = text[i] as string
-    if (ch === "'" || ch === '"') {
-      const close = text.indexOf(ch, i + 1)
-      const end = close < 0 ? text.length : close
+    if (dialect === 'powershell' && ch === '`') {
+      // The escaped character is taken as it is; a backtick at the very end is nothing.
+      if (i + 1 < text.length) word = (word ?? '') + (text[++i] as string)
+    } else if (ch === "'" || ch === '"') {
+      let end = text.indexOf(ch, i + 1)
+      // Inside PowerShell's double quotes a backtick escapes a quote too.
+      while (dialect === 'powershell' && ch === '"' && end > 0 && text[end - 1] === '`') end = text.indexOf(ch, end + 1)
+      if (end < 0) end = text.length
       word = (word ?? '') + text.slice(i + 1, end)
       i = end
     } else if (ch === ';' || ch === '&' || ch === '|' || ch === '\n' || ch === '(' || ch === ')' || ch === '{' || ch === '}') {
@@ -249,4 +277,12 @@ export function commandsOf(command: string): string[][] {
   }
   endCommand()
   return commands
+}
+
+/** A PowerShell here-string, opened by `@'`/`@"` at a line's end and closed by `'@`/`"@` at a line's start. */
+const HERE_STRING = /@(['"])[ \t]*\r?\n[\s\S]*?\r?\n\1@/g
+
+/** Each here-string made an empty quoted argument: its body is text, not commands. */
+function blankHereStrings(command: string): string {
+  return command.replace(HERE_STRING, "''")
 }

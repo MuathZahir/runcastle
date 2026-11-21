@@ -1,12 +1,24 @@
-import { COMPACT_TEXT, DEFAULT_RUNTIME, type Feature, type Project, type SessionKind, type SessionRow } from '@runcastle/core'
-import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, scenarioDataDir, worktreeDir } from '@runcastle/core/paths'
+import {
+  COMPACT_TEXT,
+  DEFAULT_RUNTIME,
+  type Feature,
+  isBuildWorkerKind,
+  type Project,
+  type SessionKind,
+  type SessionRow,
+  workerPlacement,
+} from '@runcastle/core'
+import { PROJECT_WORKTREE_SLUG, dataDir, projectWorktreesDir, scenarioDataDir, worktreeDir } from '@runcastle/core/paths'
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
-import { type EditDenial, editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
+import { type EditDenial, editDenyResponse, evaluateEditGuard, type HostWorker } from '../launcher/edit-guard'
 import { evaluateCheckoutGuard, guardsCheckout, mentionsCommit } from '../launcher/checkout-guard'
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { evaluateRemoteGuard } from '../launcher/remote-guard'
+import { evaluateWorkerGuard } from '../launcher/worker-guard'
 import { guardKindOf } from '../workers/drive'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { sessionAudience, toolsForAudience } from '../mcp/server'
@@ -466,7 +478,10 @@ function emitConversationEnded(
  * install guards pass the orchestrator, the one kind that may write anywhere.
  *
  * A host-side session's shell call also meets the checkout guard
- * ({@link evaluateCheckoutGuard}).
+ * ({@link evaluateCheckoutGuard}), and a host worker's — a building worker or a
+ * gates review in a folder on this machine — the worker git guard
+ * ({@link evaluateWorkerGuard}); a host worker's edits and installs are judged
+ * by its folder and role ({@link hostWorkerOf}).
  *
  * Anything allowed answers `{}`, "no opinion": every Claude session runs in
  * `bypassPermissions`, so no `allow` answer is needed to skip a prompt, and a
@@ -498,6 +513,12 @@ async function handlePreToolUse(
     session.purpose === 'resolve-conflict' ? await mergeInProgressAt(session.worktreePath) : false
   // A drive worker is guarded as the drive chat it replaces (drive-chats-become-workers decision 9).
   const guardKind = guardKindOf(ctx, session)
+  const hostWorker = hostWorkerOf(ctx, session)
+  const command = typeof toolInput.command === 'string' ? toolInput.command : undefined
+  const ownFolders = [
+    ...(feature && feature.slug !== PROJECT_WORKTREE_SLUG ? [scenarioDataDir(feature.id)] : []),
+    ...(hostWorker ? [hostWorker.folder] : []),
+  ]
 
   const denial =
     evaluateEditGuard({
@@ -509,27 +530,52 @@ async function handlePreToolUse(
       filePath: path,
       featureSlug: feature?.slug,
       ...(feature && feature.slug !== PROJECT_WORKTREE_SLUG ? { scenarioDataDir: scenarioDataDir(feature.id) } : {}),
+      ...(hostWorker ? { hostWorker, dataDir: dataDir() } : {}),
     }) ??
     evaluateInstallGuard({
       kind: guardKind,
       worktreePath: session.worktreePath,
       toolName,
-      command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
+      command,
       talkWorktreePath:
         feature && feature.slug !== PROJECT_WORKTREE_SLUG
           ? worktreeDir(feature.projectId, feature.slug)
           : undefined,
+      ...(hostWorker ? { hostWorker } : {}),
     }) ??
     (feature && (session.kind === 'chat' || session.kind === 'side') ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null) ??
+    evaluateWorkerGuard({ toolName, command, ...(hostWorker ? { hostWorker } : {}) }) ??
     evaluateRemoteGuard({
       toolName,
-      command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
+      command,
       worktreePath: session.worktreePath,
       ...(typeof payload?.cwd === 'string' ? { cwd: payload.cwd } : {}),
-      ...(feature && feature.slug !== PROJECT_WORKTREE_SLUG ? { ownFolders: [scenarioDataDir(feature.id)] } : {}),
+      ...(ownFolders.length > 0 ? { ownFolders } : {}),
+      dataDir: dataDir(),
     }) ??
     (await checkoutGuardDenial(session, guardKind, toolName, toolInput))
   return denial ? editDenyResponse(denial) : {}
+}
+
+/**
+ * The host worker a session is (workers-build-in-the-feature-s-folder decisions 9
+ * and 10): a building worker (with-you, on-its-own, unassigned) or a gates review,
+ * whose row records the folder it works in on this machine. Undefined for every
+ * other session — a lead, a drive worker or drive review, a sandboxed worker from
+ * before (no folder). Read straight off the `workers` table, as the drive's
+ * lookup does, so the route stays free of the worker service.
+ */
+function hostWorkerOf(ctx: AppCtx, session: Pick<SessionRow, 'id' | 'kind'>): HostWorker | undefined {
+  if (session.kind !== 'worker') return undefined
+  const w = ctx.db.select().from(workers).where(eq(workers.id, session.id)).get()
+  if (!w?.folder) return undefined
+  if (isBuildWorkerKind(w.kind)) {
+    return { role: 'build', placement: workerPlacement(w) ?? 'feature-folder', folder: w.folder }
+  }
+  if (w.kind === 'review' && w.reviewMode === 'gates') {
+    return { role: 'review', placement: 'feature-folder', folder: w.folder }
+  }
+  return undefined
 }
 
 /**

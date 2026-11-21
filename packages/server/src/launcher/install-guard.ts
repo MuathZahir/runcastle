@@ -1,14 +1,14 @@
-import { resolve } from 'node:path'
 import type { SessionKind } from '@runcastle/core'
-import { EDIT_TOOLS, type EditDenial, guardsEdits, isUnguardedLead } from './edit-guard'
+import { EDIT_TOOLS, type EditDenial, guardsEdits, type HostWorker, isUnguardedLead } from './edit-guard'
+import { samePath } from './guard-paths'
 
 /**
  * The talk-worktree install guard — the edit guard's sibling on the same
  * `PreToolUse` hook, denying package-manager installs run through a shell in a
  * feature's talk worktree.
  *
- * Why: charter decision 6 makes talk worktrees docs-only with no dependency
- * install, yet feature worktrees accumulated their own `node_modules` (~0.6 GB
+ * Why (history): charter decision 6 once made talk worktrees docs-only with no
+ * dependency install, yet feature worktrees accumulated their own `node_modules` (~0.6 GB
  * each; 129 of them filled a disk). No runcastle code installs there — agents
  * did, running `bun install` from Bash to typecheck or test a merge, mostly in
  * conflict-resolve sessions. The edit guard never saw it: it covers file-write
@@ -20,7 +20,10 @@ import { EDIT_TOOLS, type EditDenial, guardsEdits, isUnguardedLead } from './edi
  * session's one `__project` worktree is bounded and reused. And unlike the edit
  * guard there is NO resolve-conflict exemption — resolve sessions are the main
  * offenders (decisions §4). A feature's `chat` and `side` sessions install freely
- * (`isUnguardedLead`), so they can typecheck and test their own code edits.
+ * (`isUnguardedLead`), so they can typecheck and test their own code edits, and
+ * so does a host worker that builds (workers-build-in-the-feature-s-folder
+ * decision 2): the first one builds in that very folder. A gates review there
+ * stays refused — it writes no code, so it checks with what is installed.
  */
 
 /**
@@ -90,6 +93,8 @@ export interface InstallGuardInput {
    * session has no feature, which is never guarded.
    */
   talkWorktreePath?: string
+  /** Set when the session is a host worker's; a building one installs freely. */
+  hostWorker?: HostWorker
 }
 
 /**
@@ -99,6 +104,7 @@ export interface InstallGuardInput {
 export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | null {
   if (!guardsEdits(input.kind)) return null
   if (isUnguardedLead(input.kind)) return null
+  if (input.hostWorker?.role === 'build') return null
   if (!input.toolName || !(SHELL_TOOLS as readonly string[]).includes(input.toolName)) return null
   if (!input.command || !input.talkWorktreePath) return null
   if (!samePath(input.worktreePath, input.talkWorktreePath)) return null
@@ -110,14 +116,19 @@ export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | nul
   const stripped = blankHeredocBodies(input.command).replace(/'[^']*'|"[^"]*"/g, ' ')
   if (!INSTALL_PATTERNS.some((pattern) => pattern.test(stripped))) return null
 
+  if (input.hostWorker?.role === 'review') {
+    return {
+      reason:
+        "A review installs nothing: it checks the feature in the feature's folder with the packages " +
+        'already installed there, and an install would change the folder the lead builds in. Run the ' +
+        "checks as they are; if one cannot run for a missing package, report that with report_finding.",
+    }
+  }
   return {
     reason:
-      'Package installs are blocked in this worktree: a talk worktree is docs-only, with no ' +
-      'dependency install (charter decision 6), and every install here costs a full ' +
-      '`node_modules` per feature. Verification that needs dependencies happens elsewhere — ' +
-      'in the worker sandbox, in the review round, or in a test drive of the branch, which runs in ' +
-      'the main checkout with dependencies installed. Check what you can without them ' +
-      '(`git diff --check`, grep, re-reading the code).',
+      "Package installs are blocked for this session in the feature's folder: only the feature's lead " +
+      'and its building workers install there. Check what you can without them (`git diff --check`, ' +
+      'grep, re-reading the code), or say in your reply what needs installing and why.',
   }
 }
 
@@ -147,8 +158,3 @@ export function blankHeredocBodies(command: string): string {
   return kept.join('\n')
 }
 
-/** Same directory? Case-insensitive on Windows, where the filesystem is. */
-function samePath(a: string, b: string): boolean {
-  const [x, y] = [resolve(a), resolve(b)]
-  return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y
-}

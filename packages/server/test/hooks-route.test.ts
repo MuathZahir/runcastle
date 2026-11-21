@@ -669,10 +669,8 @@ describe('hooks route', () => {
           permissionDecision: 'deny',
         })
         const reason = json.hookSpecificOutput.permissionDecisionReason
-        expect(reason).toMatch(/docs-only/)
-        expect(reason).toMatch(/worker sandbox/)
-        expect(reason).toMatch(/review round/)
-        expect(reason).toMatch(/test drive/)
+        expect(reason).toMatch(/only the feature's lead/)
+        expect(reason).not.toMatch(/sandbox|docs-only/)
       }
     })
 
