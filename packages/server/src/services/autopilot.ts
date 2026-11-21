@@ -290,7 +290,7 @@ async function tellJoined(ctx: AppCtx, epicName: string, joined: readonly Featur
       background: true,
       text:
         `This feature is on autopilot now, in the epic "${epicName}": the human watches but does not type here. ` +
-        `Report to the epic with hand_back (questions, plans and designs for a yes, ready to test, failures); it answers or asks the human.${reask}`,
+        `Report to the epic with hand_back (questions, designs for a yes, ready to test, failures); it answers or asks the human.${reask}`,
     })
   }
 }
