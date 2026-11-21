@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Sandboxes are removed preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Sandboxes are removed</h1>
+  <p class="lede">Runcastle stops needing Docker. The container machinery, its images and caches, and every screen and setting made for it are deleted, and the first start after upgrading cleans up what containers left on disk.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">[sandboxes-are-removed] · planned with nobody present</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+<style>
+.ba{display:grid;grid-template-columns:150px 1fr 1fr;gap:0;border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;margin-top:12px;font-size:13px;line-height:19px}
+.ba>div{padding:9px 12px;border-top:1px solid var(--color-border-subtle)}
+.ba>.h{border-top:none;background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.ba>.k{color:var(--color-text-secondary)}
+.ba .was{color:var(--color-text-tertiary);text-decoration:line-through;text-decoration-color:var(--color-text-disabled)}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.step{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 12px;background:var(--color-surface-raised);font-size:13px;line-height:19px}
+.step b{display:block;font-size:12px;color:var(--color-text-secondary);margin-bottom:4px}
+.who{margin-top:12px;display:grid;gap:8px}
+.who div{font-size:13px;line-height:19px;padding:8px 12px;border-left:2px solid var(--color-accent);background:var(--color-surface-raised);border-radius:var(--radius-sm)}
+@media (max-width:720px){.ba{grid-template-columns:1fr}.flow{grid-template-columns:1fr}}
+</style>
+  <h3>What a user meets, before and after</h3>
+  <div class="ba">
+    <div class="h">Where</div><div class="h">Today</div><div class="h">After</div>
+    <div class="k">Install and setup</div><div class="was">Installs Docker, adds you to the docker group, asks you to log out</div><div>Nothing about Docker <a class="pin" data-d="6">6</a></div>
+    <div class="k">First-run wizard</div><div class="was">An "Unattended workers" step: container runtime, image build, build cache, a token to mint</div><div>The step is gone; runtimes lead straight on <a class="pin" data-d="5">5</a></div>
+    <div class="k">Settings</div><div class="was">A Sandboxes page: runtime, image, CPU limit, guard, cache, workers at once</div><div>No Sandboxes page; "workers at once" sits on General, unchanged <a class="pin" data-d="5">5</a></div>
+    <div class="k">Doctor</div><div class="was">Checks Docker, the image, the cache volume, user mapping, the token</div><div>None of those; no Docker reads as healthy <a class="pin" data-d="6">6</a></div>
+    <div class="k">README and website</div><div class="was">"Docker or Podman, running"; "Every ticket runs in its own sandbox"</div><div>No Docker; two plain sentences on what protects you, and what does not <a class="pin" data-d="7">7</a> <a class="pin" data-d="8">8</a></div>
+    <div class="k">Disk</div><div class="was">Stopped containers, images, volumes, builders pile up (96 GB filled on the owner's machine)</div><div>Cleaned once on the first start after upgrading <a class="pin" data-d="3">3</a></div>
+  </div>
+
+  <h3 class="sub">The first start after upgrading</h3>
+  <div class="flow">
+    <div class="step"><b>1 · Unfinished container worker</b>Its commits are kept on a branch in the project, it is marked failed with a plain reason, and the lead is told. Its container stays, named with the command to remove it. <a class="pin" data-d="4">4</a></div>
+    <div class="step"><b>2 · Finished workers and the rest</b>Only things labelled as this install's: finished workers' containers (conversation kept first), images, cache volumes, runcastle's own builders, project copies. <a class="pin" data-d="3">3</a></div>
+    <div class="step"><b>3 · Tell</b>One timeline line with the space freed, and the one command for Docker's shared build cache, which runcastle does not touch. Runs once; no Docker means it does nothing.</div>
+  </div>
+
+  <h3 class="sub">Who builds what</h3>
+  <div class="who">
+    <div><b>No workers.</b> The human asked features to build on their own to save memory and disk <a class="pin" data-d="2">2</a>.</div>
+    <div><b>The lead, with its own subagents in parallel</b>, on folders that do not overlap: server workers and boot (with the upgrade step); doctor, setup, CLI, config and API; the web app; docs, website and skills.</div>
+    <div><b>Review</b> by the lead's own subagents against the brief and the repo's standards, then fixes, typecheck and the tests, then ready.</div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>A new landing-page section in place of the sandbox one (offered as a backlog feature)</li>
+      <li><i class="dot"></i>Deleting the one-off upgrade step in a later release</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Making host workers work (merged already)</li>
+      <li><i class="dot"></i>The workers-at-once default, its final home and the visible queue</li>
+      <li><i class="dot"></i>Old features' history: stays readable, not migrated</li>
+      <li><i class="dot"></i>CONTEXT.md and the ADRs: the orchestrator rewrites them</li>
+      <li><i class="dot"></i>Deploying the website</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <ul>
+        <li><i class="dot"></i><b>Deleted:</b> the sandbox engine, container scripts and push hook, the project copy and the fetch that landed commits, setup copy into containers, the in-container tool relay and guard, UID mapping, images and their build, the cache volume, the Dockerfiles and their packaging, the hourly container sweep, the shutdown stop.</li>
+        <li><i class="dot"></i><b>Worker service:</b> host path only; new rows record no engine; boot no longer resumes or wakes container workers.</li>
+        <li><i class="dot"></i><b>Upgrade step:</b> one small module, the only Docker caller left; runs once after migrations, best-effort, filtered by the <span class="mono">runcastle.owner</span> and <span class="mono">runcastle.data-dir</span> labels; keeps an unfinished worker's commits with plain git from its copy in the data folder.</li>
+        <li><i class="dot"></i><b>Config:</b> <span class="mono">sandbox</span>, <span class="mono">sandboxImage</span>, <span class="mono">burnCpus</span>, <span class="mono">burnGuard</span>, <span class="mono">burnCache</span> go and are ignored if present; <span class="mono">burnConcurrency</span> and <span class="mono">setupCommand</span> stay.</li>
+        <li><i class="dot"></i><b>Database:</b> one migration drops <span class="mono">projects.sandbox</span>, <span class="mono">projects.sandbox_image</span>, <span class="mono">workers.engine</span>, <span class="mono">workers.container</span>; preview port and dev-server columns stay.</li>
+        <li><i class="dot"></i><b>Checks:</b> repo typecheck; the upgrade step against a fake container CLI; host-only worker tests; doctor, setup plan, config load and web tests; a grep where every leftover Docker word is justified.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Sandboxes are removed entirely, not kept as an option', 'The human: "if sandboxes are causing all these issues I dont think it should even be opt in."'],
+    ['Build it now, in the agreed order, with no workers', 'The human asked features to build on their own, since workers keep running out of memory and disk.'],
+    ['Leftovers are cleaned up by themselves, once, on the first start after upgrading', 'The owner\'s disk filled on 2026-11-21; most users would never run a command they were only told about. Only this install\'s labelled things of finished workers are removed.', 'assumed'],
+    ['A worker still in a container at upgrade is stopped, and its commits are kept as a branch', 'Its commits already sit on the host, so plain git keeps them; only its container, which may hold uncommitted edits, stays.', 'assumed'],
+    ['The wizard loses "Unattended workers", Settings loses "Sandboxes"', 'Only containers used them; "workers at once" moves unchanged to General.', 'assumed'],
+    ['Docker is no longer a prerequisite anywhere', 'Setup, doctor, README and website stop asking for it; Docker already installed is left alone.'],
+    ['The README and website say plainly what protects the user now', 'ADR-0023: the remaining risk is accepted and stated plainly to users.', 'assumed'],
+    ['The website\'s sandbox section is removed, not replaced', 'It describes something runcastle no longer does; a new section is landing-page taste work for the human.', 'assumed']
+  ]
+  // <!-- FILL:C -->
+  // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [3, 'Never run Docker again; only tell users the commands', 'Leaves one small Docker-calling module in the server for a while', 'guess'],
+    [4, 'Drop such workers outright, removing their containers', 'Keeps a container on disk to protect uncommitted edits'],
+    [5, 'Keep the Sandboxes page, renamed "Workers"', 'Where the concurrency number lives until its own feature'],
+    [7, 'Only remove the Docker text, say nothing about safety', 'Wording users read about the risk of host workers', 'guess'],
+    [8, 'Replace it with a section about workers in the feature\'s folder', 'You steer the landing page yourself']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
