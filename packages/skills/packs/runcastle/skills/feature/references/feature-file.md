@@ -63,7 +63,8 @@ One review per feature. Pass `mode`:
 - `gates` (reads the diff) for everything else: refactors, tests, docs, build
   setup.
 
-Accept or send back from its findings and a skim of the diff's shape. Start a
+Accept or send back from its findings and a skim of the diff's shape, never a
+line-by-line review of your own. Start a
 second review (`verify`) only after a large fix set: more than a handful of
 findings, or fixes that reached code the feature had not touched. After a small
 one, green checks and your skim are enough.
