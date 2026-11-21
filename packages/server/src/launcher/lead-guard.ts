@@ -69,7 +69,7 @@ export function evaluateLeadGuard(input: LeadGuardInput): EditDenial | null {
 const GUARD_FOOTER =
   'This line is the human\'s (decision 27): Merge stays the human\'s click, and other checkouts ' +
   'belong to other sessions. Work on the feature branch in your own worktree; if you need this ' +
-  'done, call wait_for_you and ask the human.'
+  'done, ask the human in your reply and call wait_for_you.'
 
 /** The directory-changing verbs whose first non-flag argument becomes the cwd. */
 export const CD_VERBS = new Set(['cd', 'pushd', 'set-location', 'sl', 'chdir'])

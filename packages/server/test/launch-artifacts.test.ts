@@ -477,7 +477,7 @@ describe('renderSystemPrompt', () => {
     for (const purpose of [undefined, 'self-plan', 'relay'] as const) {
       const p = renderSystemPrompt(feature(), 'chat', purpose, undefined, true)
       expect(p).toContain('## No human is present')
-      expect(p).toContain('call `wait_for_you` with why, then end your turn')
+      expect(p).toContain('write the question in full in your reply, call `wait_for_you` with a few-word why')
       expect(p).toContain('A refused tool is not a wait')
       expect(p).toContain('do what your opening prompt asks, in this one run')
     }

@@ -119,7 +119,7 @@ export async function mergeFeatureFlow(
       text:
         `[runcastle] Merging ${feature.branch} into ${res.target} stopped on a conflict` +
         (files.length ? ` in: ${files.join(', ')}` : '') +
-        `. Bring ${res.target} into the feature branch and resolve it, or call wait_for_you if the human must decide.`,
+        `. Bring ${res.target} into the feature branch and resolve it, or, if the human must decide, ask them in your reply and call wait_for_you.`,
       source: 'runcastle',
     }).catch((err) => console.error(`feature ${featureId}: conflict delivery`, err))
   }
