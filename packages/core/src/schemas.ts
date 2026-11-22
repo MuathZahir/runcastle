@@ -2,7 +2,7 @@ import * as z from 'zod'
 import { AgentRuntime, ModelEntry } from './config'
 import { ReviewGateRun } from './review-gates'
 import { EPIC_COLORS, EPIC_ICON_IDS } from './epic-look'
-import { InvolvementSchema } from './involvement'
+import { DEFAULT_INVOLVEMENT, InvolvementSchema } from './involvement'
 
 /**
  * Wire types for tRPC and MCP. Every schema here is the single source of
@@ -594,7 +594,7 @@ export const Feature = z.object({
   /** When the lead last dispatched a round (ms); null before the first. */
   lastDispatchAt: z.number().nullable().default(null),
   /** "Involve me in": which moments the feature stops for the human — see `involvement.ts`. */
-  involvement: InvolvementSchema.default('everything'),
+  involvement: InvolvementSchema.default(DEFAULT_INVOLVEMENT),
 })
 export type Feature = z.infer<typeof Feature>
 

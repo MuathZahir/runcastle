@@ -1,6 +1,6 @@
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { AgentRuntime } from './config'
-import type { Involvement } from './involvement'
+import { DEFAULT_INVOLVEMENT, type Involvement } from './involvement'
 import type {
   FeatureStatus,
   FindingKind,
@@ -189,7 +189,7 @@ export const features = sqliteTable('features', {
    * feature stops for the human. Every feature before the column is
    * `everything`, which is what it was.
    */
-  involvement: text('involvement').notNull().$type<Involvement>().default('everything'),
+  involvement: text('involvement').notNull().$type<Involvement>().default(DEFAULT_INVOLVEMENT),
 })
 
 /**
