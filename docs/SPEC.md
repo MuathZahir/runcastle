@@ -7,7 +7,7 @@
 
 Read `CONTEXT.md` first for vision + locked decisions. This spec pins the contracts every implementation agent builds against. **Names in this file are law**; if a research note (docs/research/) contradicts a *format detail* here (e.g. a hook JSON field), the research note wins — record the correction in docs/research/CORRECTIONS.md.
 
-M1 tracer bullet: one repo, one feature at a time: create feature → grilling terminal opens (context injected) → spec/tickets land in store → click Burn → sandcastle runs one AFK agent per ticket on the feature branch → test-drive → merge.
+M1 tracer bullet: one repo, one feature at a time: create feature → grilling terminal opens (context injected) → spec/tickets land in store → click Burn → one AFK agent per ticket runs (in a container, at the time; workers now run on the host, ADR-0023) on the feature branch → test-drive → merge.
 
 ## 0. Monorepo
 
@@ -28,7 +28,7 @@ runcastle/
 - Package names: `@runcastle/core`, `@runcastle/server`, `@runcastle/skills`, `@runcastle/web`.
 - Root scripts: `bun run dev` (server + web concurrently), `bun run typecheck` (tsc -b or per-package `tsc --noEmit`), `bun run test` (vitest), `bun run dev:tool` (dev-only test-state surgery — `scripts/devtool.ts` over `packages/server/src/dev/`, unreachable from the published bundle).
 - Ports: server **4512**, web dev **4513** (vite `server.port`). Server URL: `http://localhost:4512`.
-- Data dir: `~/.runcastle/` → `runcastle.db`, `config.json`, `.env` (CLAUDE_CODE_OAUTH_TOKEN for sandboxed Claude Code agents; Codex ones borrow the host's `codex login` instead, though a hand-set CODEX_API_KEY here still overrides it), `sessions/<sessionId>/` (launch artifacts), `worktrees/<projectId>/<slug>/` (talk worktrees), `logs/`.
+- Data dir: `~/.runcastle/` → `runcastle.db`, `config.json`, `.env` (optional hand-set keys such as CODEX_API_KEY; workers use the host's own `claude` and `codex` logins), `sessions/<sessionId>/` (launch artifacts), `worktrees/<projectId>/<slug>/` (talk worktrees), `logs/`.
 - Dev/prod split: `dataDir()` honours `RUNCASTLE_DATA_DIR`, and `scripts/dev.ts` points `bun run dev` at `~/.runcastle-dev/`. Everything else in `paths.ts` derives from `dataDir()`, so the two trees are fully independent; the published bin never sets the var. `GET /health` reports `{ ok, dataDir }` so a live server's tree is identifiable.
 
 ## 1. packages/core (file → exports)
@@ -71,7 +71,7 @@ runcastle/
     run(ctx: WorkflowCtx): Promise<{ status: 'succeeded'|'failed'; summary: string }>;
   }
   ```
-- `src/config.ts` — `RuncastleConfig` zod (defaults): `{ serverPort: 4512, model: 'claude-opus-5', stepModels: { smoke: 'claude-haiku-4-5' } (sparse per-step overrides, issue #48; keyed by `ModelStep`), sandbox: 'docker'|'noSandbox' (default 'docker'), mainBranch: 'main' }`, loader merging `~/.runcastle/config.json` + env. Legacy `smokeModel` folds into `stepModels.smoke` (read-compat). `resolveModel(step, config, project?, runOverride?)` picks a step's model as `runOverride ?? project.model ?? stepModels[step] ?? model` — the global values are the machine-wide setup, so a project's own `model` overrides them (there is no per-project per-step matrix).
+- `src/config.ts` — `RuncastleConfig` zod (defaults): `{ serverPort: 4512, model: 'claude-opus-5', stepModels: { smoke: 'claude-haiku-4-5' } (sparse per-step overrides, issue #48; keyed by `ModelStep`), mainBranch: 'main' }`, loader merging `~/.runcastle/config.json` + env. Legacy `smokeModel` folds into `stepModels.smoke` (read-compat). `resolveModel(step, config, project?, runOverride?)` picks a step's model as `runOverride ?? project.model ?? stepModels[step] ?? model` — the global values are the machine-wide setup, so a project's own `model` overrides them (there is no per-project per-step matrix).
 
 ## 2. Database (drizzle + bun:sqlite)
 
@@ -114,7 +114,7 @@ A1 creates B-owned files as typed stubs (`throw new NotImplementedError('B1')`) 
 Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/outputs zod from core.
 
 - `project.get(): Project | null`
-- `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch. Per-project overrides (devCommand, model, sandbox) are set later via `settings.update({ projectId, key, value })` — `project.update` is retired (issue #46).
+- `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch. Per-project overrides (devCommand, model) are set later via `settings.update({ projectId, key, value })` — `project.update` is retired (issue #46).
 - `project.branches({ projectId }): { current, mainBranch, branches: string[], remoteBranches: string[] }` — branches for the create-feature base picker (`feature/*` excluded); `current` is the main checkout's branch; `remoteBranches` are `origin/*` refs with no local twin (picking one materializes a local base — see §7 `resolveBaseBranch`).
 - `project.prep({ projectId }): { pendingKeys: PreparedKey[], findings: ProjectFinding[], prepared: boolean }` — the preparation surface the UI polls (§14); `prepared` is what decides whether the call-to-action shows
 - `feature.create({ title, oneLiner, size, baseBranch? }): Feature` — slugify title; resolve `baseBranch` (default `mainBranch`) to a local branch (a remote pick materializes a local tracking branch); git branch `feature/<slug>` forked off it; scaffold docs; phase=`ideation`. Stores the resolved local base; the feature merges back into it at ship (not unconditionally main).
@@ -172,12 +172,14 @@ Mounted at `POST /mcp` (Streamable HTTP; use @hono/mcp if STACK-NOTES confirms, 
 
 ## 8. Ticket burner (B3) — `workflows/ticket-burner.ts` + `@ai-hero/sandcastle`
 
+> Build-era history. The burn engine, sandcastle and the containers are gone (ADR-0020, ADR-0023); workers run on the host in the feature's folder. Kept as the record of what was built.
+
 Consult docs/research/SANDCASTLE-NOTES.md for exact `run()` API (branch targeting, merge-back, cwd, streaming). Requirements:
 
 - Topo-order tickets by `blockedBy`; detect cycles → fail run with event. Process queue with `concurrency = 1` (M1) but code shaped as a worker pool so M2 raises the constant.
 - Per ticket: status `burning` + event → render prompt from `packages/skills/burner/implement-ticket.md` template (placeholders: ticket JSON, feature brief, docs digest, commit convention `ticket(<seq>): <summary>`) → `sandcastle.run()` with: claudeCode(config.model), sandbox from config (`docker()` | `noSandbox()`), repo = project.repoPath, work on branch `feature/<slug>` (per sandcastle's branch strategy; commits must land on the feature branch) → on success: collect `result.commits`, status `done` + event; on failure/zero-commits: status `failed`, event with error, **continue** with other non-blocked tickets.
 - Landing (ADR-0007): each ticket lands through the run's serial merge queue. A landing conflict is NOT a ticket outcome — the burner runs a resolver agent (`packages/skills/burner/resolve-conflict.md`, same ticket + feature-docs context, plus the conflicting paths and the sibling commits) on the ticket's branch, which merges the feature branch IN and resolves there so the next merge fast-forwards; bounded by `config.burnConflictAttempts`. Only when that budget is spent does the ticket fail, carrying `attemptBranch` + `conflictFiles` — the state that makes the next burn of it resolve rather than re-implement.
-- Auth, per runtime: a Claude Code burn loads `~/.runcastle/.env` (CLAUDE_CODE_OAUTH_TOKEN) into the sandbox env per sandcastle's mechanism; a Codex burn borrows the operator's own login instead, bind-mounting the host Codex home read-only and copying `auth.json` into the container's Codex home on sandbox-ready (a `CODEX_API_KEY` left in `~/.runcastle/.env` by hand is still passed through and wins). If the runtime's credential is missing and sandbox=docker → fail fast with actionable event, per run and per ticket.
+- Auth, per runtime (build era; retired with the containers, ADR-0023): workers now use the host's own `claude` and `codex` logins.
 - Run summary: `X/Y tickets done`. Succeeded iff all done. After run: server auto-advances to `review` if G4 satisfied.
 - The burner prompt embeds our forked implement+tdd+code-review discipline (single agent run per ticket does implement→self-review→fix→commit; M1 has no separate review run).
 
@@ -187,7 +189,7 @@ Plugin dir consumed via `--plugin-dir` (exact manifest format per CC-INTEGRATION
 
 - `ideate` (entry): orchestrates the unbroken ideation session: relentless grilling (fork of grilling/grill-with-docs) writing `docs/features/<slug>/decisions.md` incrementally → size branch: full → `/runcastle:spec` then `/runcastle:tickets`; collapsed → `/runcastle:tickets` directly. Calls `record_event` at milestones, `complete_phase` at each boundary, and ends after emit_tickets telling the user to review tickets in the runcastle UI and click Burn.
 - `spec` (fork of to-spec): writes `docs/features/<slug>/spec.md`, calls `complete_phase({phase:'spec'})`.
-- `tickets` (fork of to-tickets): vertical slices, each sized to **earn** one fresh agent session and land inside it (the per-ticket container + install + re-orientation is fixed overhead — ADR-0008 — and a ticket that overruns pays it again, so fine granularity lives in `acceptanceCriteria`, not in the ticket count), blockedBy edges by seq; calls `emit_tickets` (NOT files), then `complete_phase({phase:'tickets'})`.
+- `tickets` (fork of to-tickets): vertical slices, each sized to **earn** one fresh agent session and land inside it (the per-ticket install + re-orientation is fixed overhead — ADR-0008 — and a ticket that overruns pays it again, so fine granularity lives in `acceptanceCriteria`, not in the ticket count), blockedBy edges by seq; calls `emit_tickets` (NOT files), then `complete_phase({phase:'tickets'})`.
 - `qa`: read-only helper for kind=qa sessions (answer questions from docs + code; may `record_event`; never advances phases).
 - `burner/implement-ticket.md`: NOT a skill — prompt template (see §8) embedding forked implement+tdd+code-review rules: pre-agreed seams from ticket, red-green per criterion, typecheck+tests before commit, conventional message.
 
@@ -203,7 +205,7 @@ Vite + React + @trpc/react-query + TanStack Query v5, plain CSS (one stylesheet,
 - Vitest: core (pipeline nextPhase/gate data, ticket seq/blockedBy resolution, topo-sort incl. cycle), server services against in-memory sqlite (`:memory:`), git service against a temp fixture repo (init, branch, worktree, test-drive guard, merge + conflict case). No UI tests in M1.
 - `bun run typecheck` green across workspace; `bun run test` green.
 - Scripted smoke (`scripts/smoke.ts`, integration agent writes/runs): temp target repo (git init + tiny bun app + initial commit) → project.init → feature.create → simulate hooks POST session-start → call MCP emit_tickets with 2 trivial tickets → feature.burn with `{sandbox:'noSandbox', model: smokeModel}` → expect commits on feature branch + tickets done → testDrive start/stop → merge → phase shipped. (noSandbox runs claude on host — trivial tickets like "add HEALTH.md with the word ok" keep it cheap/safe.)
-- Demo (docker sandbox) follows as task #7.
+- Demo follows as task #7.
 
 ## 12. Conventions for all agents
 
