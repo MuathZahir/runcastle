@@ -1366,6 +1366,8 @@ export interface QueueEntry {
   label: string
   kind: WorkerRow['kind']
   featureId: string | null
+  /** For opening its feature from another project's sidebar. */
+  featureSlug: string | null
   featureTitle: string | null
   projectId: string
   projectName: string
@@ -1397,7 +1399,7 @@ export function workQueue(ctx: AppCtx): WorkQueue {
     ids.length === 0
       ? []
       : ctx.db
-          .select({ w: workers, featureTitle: features.title, projectName: projects.name })
+          .select({ w: workers, featureSlug: features.slug, featureTitle: features.title, projectName: projects.name })
           .from(workers)
           .leftJoin(features, eq(features.id, workers.featureId))
           .innerJoin(projects, eq(projects.id, workers.projectId))
@@ -1413,6 +1415,7 @@ export function workQueue(ctx: AppCtx): WorkQueue {
         label: r.w.label,
         kind: r.w.kind,
         featureId: r.w.featureId,
+        featureSlug: r.featureSlug,
         featureTitle: r.featureTitle,
         projectId: r.w.projectId,
         projectName: r.projectName,

@@ -61,7 +61,7 @@ describe('worker.queue', () => {
     const q = await caller.worker.queue()
     expect(q.limit).toBe(1)
     expect(q.working).toEqual([
-      expect.objectContaining({ workerId: a.id, label: 'Review', kind: 'review', featureId: coupons.id, featureTitle: 'Coupons', projectId: project.id, projectName: project.name, heldBy: null }),
+      expect.objectContaining({ workerId: a.id, label: 'Review', kind: 'review', featureId: coupons.id, featureSlug: coupons.slug, featureTitle: 'Coupons', projectId: project.id, projectName: project.name, heldBy: null }),
     ])
     expect(q.waiting.map((e) => [e.workerId, e.featureTitle, e.projectName])).toEqual([
       [b.id, 'Search', other.name],
