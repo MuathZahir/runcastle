@@ -11,7 +11,6 @@ import { projects, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { getSessionRow } from '../launcher/sessions'
 import { emitProject } from '../services/events'
-import { tryGetFeature } from '../services/repo'
 import { readTranscriptUsage } from '../services/usage'
 import { isHostWorker } from './drive'
 import { failWorker, keptConversationPath, updateWorker } from './service'
@@ -26,19 +25,18 @@ import { folderBytes, formatBytes } from './sweep'
  *   fetched from its copy in the data folder onto its branch in the project
  *   repo, and it is failed through the usual path, which tells its lead. Its
  *   container is left in place, since it may hold uncommitted edits.
- * - What this install made for containers (finished workers' containers,
- *   images, cache volumes, image builders, legacy burn-engine containers, the
- *   project copies and runtime folders) is either removed or named with the
- *   exact commands that remove it, by {@link LEFTOVERS_MODE}.
+ * - What this install made for containers is removed only when it belongs to a
+ *   worker that finished, landed or dropped (the human, on decision 3: "just
+ *   make sure this doesnt affect existing work in runcastle"): those workers'
+ *   containers and project copies, the images and cache volumes nothing kept
+ *   needs, its image builders and the runtime folders. Anything that may hold
+ *   unfinished work (a container or copy of a worker that is not landed or
+ *   dropped, or whose worker is unknown, the volumes of its project, the image
+ *   it was made from) is kept and named with the command that removes it.
  *
  * Every container call is best effort with a timeout: a failure becomes part
  * of the event, never a failed boot. A later release may delete this module.
  */
-
-/** "remove" removes what this install made; "tell" removes nothing and names the commands. Ships "tell" until the human answers decision 3. */
-export const LEFTOVERS_MODE: 'remove' | 'tell' = 'tell'
-
-export type LeftoversMode = 'remove' | 'tell'
 
 /** One container CLI call's result; `code` is null when the binary could not run or timed out. */
 export interface CliResult {
@@ -51,7 +49,6 @@ export interface CliResult {
 export type CliRun = (bin: string, args: string[], timeoutMs: number) => Promise<CliResult>
 
 export interface LeftoversDeps {
-  mode?: LeftoversMode
   dataDir?: string
   run?: CliRun
   platform?: NodeJS.Platform
@@ -64,11 +61,11 @@ export interface LeftoversOutcome {
   bin: string | null
   /** The workers closed because they were still in a container. */
   closed: string[]
-  /** What was found (tell) or removed (remove), by name. */
+  /** What was removed, as `<kind> <name>`. */
   things: string[]
-  /** The containers of unfinished workers, left in place. */
-  keptContainers: string[]
-  /** The exact commands named to the user. */
+  /** What was kept because it may hold unfinished work, as `<kind> <name>`. */
+  kept: string[]
+  /** The exact commands named to the user: what removes each kept thing, and Docker's shared build cache when large. */
   commands: string[]
   bytes: number
   failures: string[]
@@ -83,7 +80,8 @@ const BUILDER_PREFIX = 'runcastle-build-'
 /** The names the retired burn engine gave its containers: sandcastle's own and the burner's. */
 const BURN_ENGINE_NAME = /^(sandcastle-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|runcastle-run_[A-Za-z0-9_-]+-t\d+)$/
 const UNFINISHED = new Set<WorkerRow['status']>(['working', 'queued', 'needs-you', 'stalled', 'handed-back'])
-const ENDED = new Set<WorkerRow['status']>(['landed', 'dropped', 'failed'])
+/** The only statuses whose container and copy may go: the worker's work landed, or its lead dropped it. A failed worker's work may never have landed. */
+const FINISHED = new Set<WorkerRow['status']>(['landed', 'dropped'])
 const QUICK = 30_000
 const SLOW = 120_000
 /** Docker's shared build cache is named only when it holds at least this much. */
@@ -141,7 +139,7 @@ export function startContainerLeftovers(ctx: AppCtx, deps: LeftoversDeps = {}): 
   const done = runLeftovers(ctx, deps, () => closedSettled())
     .catch((err): LeftoversOutcome => {
       console.error('container leftovers: the upgrade step failed', err)
-      return { ran: true, bin: null, closed: [], things: [], keptContainers: [], commands: [], bytes: 0, failures: [errText(err)] }
+      return { ran: true, bin: null, closed: [], things: [], kept: [], commands: [], bytes: 0, failures: [errText(err)] }
     })
     .finally(() => closedSettled())
   return { closed, done }
@@ -166,18 +164,19 @@ interface Thing {
   name: string
   bytes?: number
   projectId?: string
-  /** A finished worker's container: its conversation is kept before it goes. */
+  /** The worker a container or a project copy belongs to; a finished one's conversation is kept before its container goes. */
   workerId?: string
+  /** An image's id, to match the images containers that stay were made from. */
+  imageId?: string
 }
 
 async function runLeftovers(ctx: AppCtx, deps: LeftoversDeps, onClosed: () => void): Promise<LeftoversOutcome> {
   const dir = deps.dataDir ?? installDataDir()
-  const mode = deps.mode ?? LEFTOVERS_MODE
   const run = deps.run ?? runCli
   const platform = deps.platform ?? process.platform
   const markerPath = join(dir, MARKER)
   const marker = readMarker(markerPath)
-  const out: LeftoversOutcome = { ran: false, bin: null, closed: [], things: [], keptContainers: [], commands: [], bytes: 0, failures: [] }
+  const out: LeftoversOutcome = { ran: false, bin: null, closed: [], things: [], kept: [], commands: [], bytes: 0, failures: [] }
   if (marker?.stage === 'done') {
     onClosed()
     return out
@@ -230,65 +229,83 @@ async function runLeftovers(ctx: AppCtx, deps: LeftoversDeps, onClosed: () => vo
 
   // (b) No container CLI answers: nothing else to look at.
   if (!bin) {
-    report(ctx, mode, out, projectRows, closedIds, { counted: [], unknown: 0 })
+    report(ctx, out, projectRows, closedIds, { removed: [], kept: [], unknown: 0 })
     writeMarker(markerPath, { stage: 'done', closed: [...closedIds], at: Date.now() })
     return out
   }
 
-  // (c) What this install made, read only.
+  // (c) What this install made, and what of it may hold unfinished work.
   const rows = ctx.db.select().from(workers).all()
+  /** Only a known worker that landed or was dropped is finished; anything unsure is not. */
   const finished = (workerId: string | undefined): boolean => {
-    if (!workerId) return true
-    if (closedIds.has(workerId)) return false
-    const w = rows.find((r) => r.id === workerId)
-    if (!w) return true
-    if (ENDED.has(w.status)) return true
-    if (w.featureId === null) return false
-    const f = tryGetFeature(ctx, w.featureId)
-    return !f || f.status === 'shipped' || f.status === 'archived'
+    const status = workerId && !closedIds.has(workerId) ? rows.find((r) => r.id === workerId)?.status : undefined
+    return status !== undefined && FINISHED.has(status)
   }
-  const things: Thing[] = []
-  const kept = own.filter((c) => !finished(workerOf(c)))
-  out.keptContainers = kept.map((c) => c.name)
-  const going = own.filter((c) => !kept.includes(c))
-  for (const c of going) {
+  const keptContainers = own.filter((c) => !finished(workerOf(c)))
+  const goingNames = new Set(own.filter((c) => !keptContainers.includes(c)).map((c) => c.name))
+  const staying = containers.filter((c) => !goingNames.has(c.name))
+  const inUse = new Set(staying.map((c) => normaliseId(c.image)))
+  const mounted = new Set(staying.flatMap((c) => c.mounts.filter((m) => m.type === 'volume').map((m) => m.source)))
+  const projectOfWorker = (id: string | undefined): string | undefined => rows.find((r) => r.id === id)?.projectId
+  const keptProjects = new Set([
+    ...keptContainers.map((c) => c.labels[LABEL_PROJECT] ?? projectOfWorker(workerOf(c))),
+    ...[...closedIds].map(projectOfWorker),
+  ].filter((p): p is string => !!p))
+
+  const owned: Thing[] = own.map((c) => {
     const workerId = workerOf(c)
-    const projectId = c.labels[LABEL_PROJECT] ?? rows.find((r) => r.id === workerId)?.projectId
-    things.push({ kind: 'container', name: c.name, bytes: c.sizeBytes, ...(projectId ? { projectId } : {}), ...(workerId ? { workerId } : {}) })
+    const projectId = c.labels[LABEL_PROJECT] ?? projectOfWorker(workerId)
+    return { kind: 'container', name: c.name, bytes: c.sizeBytes, ...(projectId ? { projectId } : {}), ...(workerId ? { workerId } : {}) }
+  })
+  owned.push(...(await ownImages(run, bin, dir, projectIds, out)))
+  owned.push(...(await ownVolumes(run, bin, dir, projectIds, out)))
+  if (bin === 'docker') owned.push(...(await ownBuilders(run, dir)))
+  owned.push(...(await ownFolders(dir)))
+  const keep = (t: Thing): boolean => {
+    switch (t.kind) {
+      case 'container':
+        return !goingNames.has(t.name)
+      case 'image':
+        return !!t.imageId && inUse.has(t.imageId)
+      case 'volume':
+        // A project's cache stays with its kept containers; the old shared one while any is kept.
+        return mounted.has(t.name) || (t.name === LEGACY_CACHE_VOLUME ? keptContainers.length > 0 : !t.projectId || keptProjects.has(t.projectId))
+      case 'folder':
+        // A project copy stays unless its worker finished; the runtime folders hold no work.
+        return t.workerId !== undefined && !finished(t.workerId)
+      case 'builder':
+        return false
+    }
   }
-  const goingNames = new Set(going.map((c) => c.name))
-  const inUse = new Set(containers.filter((c) => !goingNames.has(c.name)).map((c) => normaliseId(c.image)))
-  things.push(...(await ownImages(run, bin, dir, projectIds, inUse, out)))
-  const mounted = new Set(containers.filter((c) => !goingNames.has(c.name)).flatMap((c) => c.mounts.filter((m) => m.type === 'volume').map((m) => m.source)))
-  things.push(...(await ownVolumes(run, bin, dir, projectIds, mounted, out)))
-  if (bin === 'docker') things.push(...(await ownBuilders(run, dir)))
-  things.push(...(await ownFolders(dir, closedIds)))
+  const kept = owned.filter(keep)
+  const going = owned.filter((t) => !keep(t))
   const buildCache = bin === 'docker' ? await buildCacheBytes(run) : undefined
 
-  // (d) Remove, or only name.
+  // (d) Remove what goes; name what stays.
   let unknown = 0
-  const counted: Thing[] = []
-  for (const t of things) {
-    if (mode === 'remove') {
-      try {
-        if (t.kind === 'container' && t.workerId) await keepConversationOutOf(ctx, run, bin, t.name, t.workerId)
-        await removeThing(run, bin, t)
-      } catch (err) {
-        out.failures.push(`${t.kind} ${t.name}: ${errText(err)}`)
-        continue
-      }
+  const removed: Thing[] = []
+  for (const t of going) {
+    try {
+      if (t.kind === 'container' && t.workerId) await keepConversationOutOf(ctx, run, bin, t.name, t.workerId)
+      await removeThing(run, bin, t)
+    } catch (err) {
+      out.failures.push(`${t.kind} ${t.name}: ${errText(err)}`)
+      continue
     }
-    counted.push(t)
+    removed.push(t)
     out.things.push(`${t.kind} ${t.name}`)
     out.bytes += t.bytes ?? 0
     if (t.bytes === undefined) unknown++
   }
-  if (mode === 'tell') out.commands = removeCommands(bin, things, platform)
+  removeIfEmpty(join(dir, 'workers', 'origins'))
+  removeIfEmpty(join(dir, 'workers'))
+  out.kept = kept.map((t) => `${t.kind} ${t.name}`)
+  out.commands = removeCommands(bin, kept, platform)
   const nameCache = buildCache !== undefined && buildCache >= BUILD_CACHE_WORTH_NAMING
   if (nameCache) out.commands.push('docker builder prune')
 
   // (e) One log line and one project event.
-  report(ctx, mode, out, projectRows, closedIds, { counted, unknown, ...(nameCache ? { buildCache } : {}) })
+  report(ctx, out, projectRows, closedIds, { removed, kept, unknown, ...(nameCache ? { buildCache } : {}) })
   writeMarker(markerPath, { stage: 'done', closed: [...closedIds], at: Date.now() })
   return out
 }
@@ -383,9 +400,8 @@ function bareTag(tag: string): string {
  * Runcastle's images of this install: built by runcastle (the Dockerfile-hash
  * label), wearing only runcastle's tags, and either labelled with this data
  * folder or, unlabelled, the stock image or one of this install's projects'.
- * Never one a container that stays was made from.
  */
-async function ownImages(run: CliRun, bin: string, dir: string, projectIds: ReadonlySet<string>, inUse: ReadonlySet<string>, out: LeftoversOutcome): Promise<Thing[]> {
+async function ownImages(run: CliRun, bin: string, dir: string, projectIds: ReadonlySet<string>, out: LeftoversOutcome): Promise<Thing[]> {
   const listed = await run(bin, ['images', '-q', '--no-trunc', '--filter', `label=${LABEL_DOCKERFILE_HASH}`], QUICK)
   if (listed.code !== 0) {
     out.failures.push(`listing ${bin}'s images: ${listed.stderr.trim().split('\n')[0] || `exit ${listed.code}`}`)
@@ -403,7 +419,7 @@ async function ownImages(run: CliRun, bin: string, dir: string, projectIds: Read
     const [id = '', size, tagsJson, labelsJson] = line.split('\t')
     const tags = (parseJson(tagsJson) as unknown[] | null ?? []).filter((t): t is string => typeof t === 'string' && !t.includes('<none>'))
     const labels = (parseJson(labelsJson) ?? {}) as Record<string, string>
-    if (!id || !(LABEL_DOCKERFILE_HASH in labels) || inUse.has(normaliseId(id))) continue
+    if (!id || !(LABEL_DOCKERFILE_HASH in labels)) continue
     if ((labels[LABEL_OWNER] ?? OWNER_VALUE) !== OWNER_VALUE) continue
     if (!tags.every((t) => bareTag(t) === STOCK_IMAGE || bareTag(t).startsWith(`${STOCK_IMAGE}-`))) continue
     const labelled = labels[LABEL_DATA_DIR]
@@ -412,7 +428,7 @@ async function ownImages(run: CliRun, bin: string, dir: string, projectIds: Read
       if (!sameDataDir(labelled, dir)) continue
     } else if (tags.length === 0 || !tags.every((t) => bareTag(t) === STOCK_IMAGE || projectIds.has(projectOf(t) ?? ''))) continue
     const projectId = labels[LABEL_PROJECT] ?? tags.map(projectOf).find((p) => p && projectIds.has(p))
-    things.push({ kind: 'image', name: tags.length ? tags.join(' ') : id, bytes: Number(size) || 0, ...(projectId ? { projectId } : {}) })
+    things.push({ kind: 'image', name: tags.length ? tags.join(' ') : id, imageId: normaliseId(id), bytes: Number(size) || 0, ...(projectId ? { projectId } : {}) })
   }
   return things
 }
@@ -425,8 +441,8 @@ function parseJson(text: string | undefined): unknown {
   }
 }
 
-/** This install's cache volumes: labelled with this data folder, or unlabelled and named for one of its projects, and the legacy shared one; none a staying container mounts. */
-async function ownVolumes(run: CliRun, bin: string, dir: string, projectIds: ReadonlySet<string>, mounted: ReadonlySet<string>, out: LeftoversOutcome): Promise<Thing[]> {
+/** This install's cache volumes: labelled with this data folder, or unlabelled and named for one of its projects, and the legacy shared one. */
+async function ownVolumes(run: CliRun, bin: string, dir: string, projectIds: ReadonlySet<string>, out: LeftoversOutcome): Promise<Thing[]> {
   const listed = await run(bin, ['volume', 'ls', '-q'], QUICK)
   if (listed.code !== 0) {
     out.failures.push(`listing ${bin}'s volumes: ${listed.stderr.trim().split('\n')[0] || `exit ${listed.code}`}`)
@@ -439,14 +455,13 @@ async function ownVolumes(run: CliRun, bin: string, dir: string, projectIds: Rea
   const sizes = await volumeSizes(run, bin)
   const things: Thing[] = []
   for (const name of names) {
-    if (mounted.has(name)) continue
     const labels = raw.find((v) => v.Name === name)?.Labels ?? {}
     const labelled = labels[LABEL_DATA_DIR]
     const projectId = labels[LABEL_PROJECT] ?? name.match(/^runcastle-(proj_[A-Za-z0-9_-]+)$/)?.[1]
     const mine = labelled ? sameDataDir(labelled, dir) : name === LEGACY_CACHE_VOLUME || (!!projectId && projectIds.has(projectId))
     if (!mine) continue
     const bytes = sizes.get(name)
-    things.push({ kind: 'volume', name, ...(bytes !== undefined ? { bytes } : {}), ...(projectId && projectIds.has(projectId) ? { projectId } : {}) })
+    things.push({ kind: 'volume', name, ...(bytes !== undefined ? { bytes } : {}), ...(projectId ? { projectId } : {}) })
   }
   return things
 }
@@ -492,24 +507,32 @@ async function ownBuilders(run: CliRun, dir: string): Promise<Thing[]> {
   return [...new Set(names.filter((n) => n.startsWith(prefix)))].map((name) => ({ kind: 'builder' as const, name }))
 }
 
-/** The workers' project copies and runtime folders under the data folder; the copies of the workers just closed stay. */
-async function ownFolders(dir: string, closedIds: ReadonlySet<string>): Promise<Thing[]> {
+/** The workers' project copies (one per worker, named for it) and the runtime folders under the data folder. */
+async function ownFolders(dir: string): Promise<Thing[]> {
   const things: Thing[] = []
   const origins = join(dir, 'workers', 'origins')
-  if (existsSync(origins)) {
-    let entries: string[] = []
-    try {
-      entries = readdirSync(origins)
-    } catch {
-      // Unreadable: left alone.
-    }
-    const keep = entries.filter((e) => closedIds.has(e.replace(/\.git$/, '')))
-    const paths = keep.length ? entries.filter((e) => !keep.includes(e)).map((e) => join(origins, e)) : [origins]
-    for (const path of paths) things.push({ kind: 'folder', name: path, ...withBytes(await folderBytes(path)) })
+  let entries: string[] = []
+  try {
+    entries = existsSync(origins) ? readdirSync(origins) : []
+  } catch {
+    // Unreadable: left alone.
+  }
+  for (const e of entries) {
+    const path = join(origins, e)
+    things.push({ kind: 'folder', name: path, workerId: e.replace(/\.git$/, ''), ...withBytes(await folderBytes(path)) })
   }
   const runtime = join(dir, 'workers', 'runtime')
   if (existsSync(runtime)) things.push({ kind: 'folder', name: runtime, ...withBytes(await folderBytes(runtime)) })
   return things
+}
+
+/** Remove a folder the step emptied; one that still holds anything stays. */
+function removeIfEmpty(path: string): void {
+  try {
+    if (existsSync(path) && readdirSync(path).length === 0) rmSync(path, { recursive: true })
+  } catch {
+    // Best effort.
+  }
 }
 
 function withBytes(bytes: number | undefined): { bytes?: number } {
@@ -607,7 +630,7 @@ function quoted(path: string): string {
   return `"${path}"`
 }
 
-/** The exact commands that remove what was found, by name: grouped per kind, a folder each. */
+/** The exact commands that remove what was kept, by name: grouped per kind, a folder each. */
 function removeCommands(bin: string, things: Thing[], platform: NodeJS.Platform): string[] {
   const of = (kind: Thing['kind']): Thing[] => things.filter((t) => t.kind === kind)
   const commands: string[] = []
@@ -643,39 +666,35 @@ function listOf(things: Thing[]): string {
 /** One log line and one project event saying what the step did, on the project most of it belonged to (else the oldest). */
 function report(
   ctx: AppCtx,
-  mode: LeftoversMode,
   out: LeftoversOutcome,
   projectRows: { id: string }[],
   closedIds: ReadonlySet<string>,
-  found: { counted: Thing[]; unknown: number; buildCache?: number },
+  found: { removed: Thing[]; kept: Thing[]; unknown: number; buildCache?: number },
 ): void {
   const sentences: string[] = []
   if (out.closed.length) {
     const one = out.closed.length === 1
     sentences.push(`Closed ${out.closed.length} worker${one ? '' : 's'} still in a container, which runcastle no longer has, and told ${one ? 'its lead' : 'their leads'} where ${one ? 'its' : 'their'} commits are.`)
   }
-  if (found.counted.length) {
+  if (found.removed.length) {
     const size = found.unknown === 0 ? formatBytes(out.bytes) : out.bytes > 0 ? `at least ${formatBytes(out.bytes)}` : 'size unknown'
-    sentences.push(
-      mode === 'remove'
-        ? `Runcastle no longer uses containers, so it removed what it made for them: ${listOf(found.counted)} (${size} freed).`
-        : `Runcastle no longer uses containers, and this machine still holds what it made for them: ${listOf(found.counted)} (${size}). These commands remove exactly those: ${out.commands.filter((c) => c !== 'docker builder prune').map((c) => `\`${c}\``).join('; ')}.`,
-    )
+    sentences.push(`Runcastle no longer uses containers, so it removed what it made for them for workers that landed or were dropped: ${listOf(found.removed)} (${size} freed).`)
   }
-  if (out.keptContainers.length && out.bin) {
+  if (found.kept.length) {
+    const removes = out.commands.filter((c) => c !== 'docker builder prune')
     sentences.push(
-      `Left in place, since ${out.keptContainers.length === 1 ? 'it' : 'they'} may hold uncommitted edits of an unfinished worker: ${out.keptContainers.map((n) => `\`${out.bin} rm -f ${n}\``).join('; ')} removes ${out.keptContainers.length === 1 ? 'it' : 'each'}.`,
+      `It kept what may still hold unfinished work: ${listOf(found.kept)}. Once nothing in ${found.kept.length === 1 ? 'it' : 'them'} is needed, ${removes.map((c) => `\`${c}\``).join('; ')} ${removes.length === 1 ? 'removes it' : 'remove them'}.`,
     )
   }
   if (found.buildCache !== undefined) {
     sentences.push(`Docker's shared build cache holds ${formatBytes(found.buildCache)}, other projects' builds included; \`docker builder prune\` clears it.`)
   }
-  if (out.failures.length) sentences.push(`Could not ${mode === 'remove' ? 'remove or read' : 'read'}: ${out.failures.join('; ')}.`)
+  if (out.failures.length) sentences.push(`Could not remove or read: ${out.failures.join('; ')}.`)
   if (!sentences.length) return
   const message = sentences.join(' ')
   console.log(`container leftovers: ${message}`)
   const counts = new Map<string, number>()
-  for (const t of found.counted) if (t.projectId) counts.set(t.projectId, (counts.get(t.projectId) ?? 0) + 1)
+  for (const t of [...found.removed, ...found.kept]) if (t.projectId) counts.set(t.projectId, (counts.get(t.projectId) ?? 0) + 1)
   const closedRows = ctx.db.select().from(workers).all().filter((w) => closedIds.has(w.id))
   for (const w of closedRows) counts.set(w.projectId, (counts.get(w.projectId) ?? 0) + 1)
   const known = [...counts].filter(([id]) => projectRows.some((p) => p.id === id)).sort((a, b) => b[1] - a[1])
@@ -683,14 +702,13 @@ function report(
   if (!projectId) return
   try {
     emitProject(ctx, projectId, {
-      type: mode === 'remove' ? 'workers.leftovers_removed' : 'workers.leftovers_found',
+      type: 'workers.leftovers_removed',
       message: message.slice(0, 4000),
       data: {
-        mode,
         bin: out.bin,
         closed: out.closed,
-        things: out.things,
-        keptContainers: out.keptContainers,
+        removed: out.things,
+        kept: out.kept,
         commands: out.commands,
         bytes: out.bytes,
         sizeUnknown: found.unknown,

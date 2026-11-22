@@ -11,7 +11,7 @@ import { workers } from '../src/db/schema'
 import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { listByProject } from '../src/services/events'
 import { setAgentHostForTests } from '../src/threads/host'
-import { startContainerLeftovers, type LeftoversMode } from '../src/workers/container-leftovers'
+import { startContainerLeftovers } from '../src/workers/container-leftovers'
 import { getWorker, keptConversationPath } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -21,8 +21,9 @@ import { commitOn, fakeCli, fakeHost, type FakeCli, git, initRepo } from './supp
 /**
  * The upgrade step (sandboxes-are-removed decisions 3 and 4) against a fake
  * container CLI: it closes every worker still in a container with its commits
- * on a branch, removes (or only names) what this install made and nothing
- * else, and runs once.
+ * on a branch, removes what this install made for workers that landed or were
+ * dropped and nothing else, keeps and names whatever may hold unfinished work,
+ * and runs once.
  */
 
 let ctx: AppCtx
@@ -33,6 +34,7 @@ let repo: string
 let feature: Feature
 let host: ReturnType<typeof fakeHost>
 let cli: FakeCli
+let repos: string[]
 
 beforeEach(async () => {
   home = tmpRepo()
@@ -47,6 +49,7 @@ beforeEach(async () => {
   host = fakeHost()
   setAgentHostForTests(host.host)
   cli = fakeCli()
+  repos = []
 })
 
 afterEach(() => {
@@ -54,21 +57,23 @@ afterEach(() => {
   restoreDataDir()
   rmTemp(home)
   rmTemp(repo)
+  for (const r of repos) rmTemp(r)
 })
 
 const ours = (extra: Record<string, string> = {}) => ({ [LABEL_OWNER]: 'runcastle', [LABEL_DATA_DIR]: dir, ...extra })
 const leftoverEvents = () => listByProject(ctx, feature.projectId).filter((e) => e.type.startsWith('workers.leftovers'))
 
 /** A worker row from the container era: no folder, a branch named for it. */
-function containerWorker(status: WorkerRow['status'], opts: { branch?: boolean } = {}): string {
-  const session = createSessionRow(ctx, { featureId: feature.id, kind: 'worker', worktreePath: '/wt' })
+function containerWorker(status: WorkerRow['status'], opts: { branch?: boolean; on?: Feature } = {}): string {
+  const f = opts.on ?? feature
+  const session = createSessionRow(ctx, { featureId: f.id, kind: 'worker', worktreePath: '/wt' })
   const now = Date.now()
   ctx.db
     .insert(workers)
     .values({
       id: session.id,
-      featureId: feature.id,
-      projectId: feature.projectId,
+      featureId: f.id,
+      projectId: f.projectId,
       label: `Worker ${status}`,
       purpose: 'p',
       kind: 'on-its-own',
@@ -77,7 +82,7 @@ function containerWorker(status: WorkerRow['status'], opts: { branch?: boolean }
       runtime: 'claude-code',
       startedBy: 'lead',
       status,
-      featureBranch: feature.branch,
+      featureBranch: f.branch,
       branch: opts.branch === false ? null : `runcastle/worker/${session.id}`,
       createdAt: now,
       updatedAt: now,
@@ -99,13 +104,23 @@ function originWithCommit(id: string, subject: string): void {
 
 const builder = (suffix: string) => `runcastle-build-${createHash('sha256').update(dir).digest('hex').slice(0, 8)}-${suffix}`
 
-/** A machine the container era left: one unfinished worker, one finished, and things of this install, another install and the user. */
-function seedMachine(): { unfinished: string; finished: string } {
+/**
+ * A machine the container era left: in this project a working worker, a
+ * landed one and a failed one; in a second project only a dropped one; and
+ * things of this install, another install and the user.
+ */
+function seedMachine(): { unfinished: string; finished: string; failed: string; dropped: string; other: string } {
   const unfinished = containerWorker('working')
   originWithCommit(unfinished, 'feat: half a header')
   const finished = containerWorker('landed')
   markSessionLive(ctx, finished, { ccSessionId: `conv-${finished}` })
   markSessionEnded(ctx, finished)
+  const failed = containerWorker('failed')
+  const otherRepo = initRepo('other')
+  repos.push(otherRepo)
+  const otherFeature = seedFeature(ctx, seedProject(ctx, otherRepo).id, { slug: 'other' })
+  const other = otherFeature.projectId
+  const dropped = containerWorker('dropped', { on: otherFeature })
   const p = feature.projectId
   cli.containers = [
     { id: 'c1', name: `runcastle-worker-${unfinished}`, labels: ours({ [LABEL_WORKER]: unfinished, [LABEL_PROJECT]: p }), image: 'sha256:projimg', size: 5e6 },
@@ -116,6 +131,8 @@ function seedMachine(): { unfinished: string; finished: string } {
       size: 7e6,
       files: { [`/home/agent/.claude/projects/-home-agent-repo/conv-${finished}.jsonl`]: '{"type":"user"}\n' },
     },
+    { id: 'c5', name: `runcastle-worker-${failed}`, labels: ours({ [LABEL_WORKER]: failed, [LABEL_PROJECT]: p }), size: 1e6 },
+    { id: 'c6', name: `runcastle-worker-${dropped}`, labels: ours({ [LABEL_WORKER]: dropped, [LABEL_PROJECT]: other }), size: 2e6 },
     { id: 'c3', name: 'runcastle-worker-elsewhere', labels: { [LABEL_OWNER]: 'runcastle', [LABEL_DATA_DIR]: '/other/install', [LABEL_WORKER]: 'sess_x' } },
     { id: 'c4', name: 'my-postgres', labels: {} },
   ]
@@ -127,24 +144,26 @@ function seedMachine(): { unfinished: string; finished: string } {
   ]
   cli.volumes = [
     { name: `runcastle-${p}`, size: 4e8 },
+    { name: `runcastle-${other}`, size: 3e8 },
     { name: 'runcastle-worker-cache', size: 1e8 },
     { name: 'runcastle-proj_gone', size: 1e8, labels: { [LABEL_DATA_DIR]: '/other/install' } },
     { name: 'pgdata', size: 1e9 },
   ]
   cli.builders = [builder('stock'), 'runcastle-build-00000000-stock', 'default']
   cli.buildCache = '2.5GB'
-  mkdirSync(join(dir, 'workers', 'origins', 'sess_old.git'), { recursive: true })
+  for (const id of [finished, dropped, 'sess_unknown']) mkdirSync(join(dir, 'workers', 'origins', `${id}.git`), { recursive: true })
   mkdirSync(join(dir, 'workers', 'runtime', 'v1'), { recursive: true })
   writeFileSync(join(dir, 'workers', 'runtime', 'v1', 'worker-mcp.cjs'), 'x'.repeat(1000))
-  return { unfinished, finished }
+  return { unfinished, finished, failed, dropped, other }
 }
 
-const start = (mode: LeftoversMode, run = cli.run) => startContainerLeftovers(ctx, { mode, dataDir: dir, run, platform: 'linux' })
+const origin = (id: string) => join(dir, 'workers', 'origins', `${id}.git`)
+const start = (run = cli.run) => startContainerLeftovers(ctx, { dataDir: dir, run, platform: 'linux' })
 
 describe('a worker still in a container', () => {
   it('is failed with the plain reason, its commits kept on its branch, its lead told and its container named', async () => {
     const { unfinished } = seedMachine()
-    const { closed, done } = start('tell')
+    const { closed, done } = start()
     await closed
     const w = getWorker(ctx, unfinished)!
     expect(w.status).toBe('failed')
@@ -155,7 +174,7 @@ describe('a worker still in a container', () => {
     expect(host.sent.some((s) => s.text.includes(`Worker "Worker working" failed (worker ${unfinished})`))).toBe(true)
     const out = await done
     expect(out.closed).toEqual([unfinished])
-    expect(out.keptContainers).toEqual([`runcastle-worker-${unfinished}`])
+    expect(out.kept).toContain(`container runcastle-worker-${unfinished}`)
   })
 
   it('says it made no commits when it never started building, and leaves host workers alone', async () => {
@@ -163,77 +182,100 @@ describe('a worker still in a container', () => {
     const hostWorker = containerWorker('working')
     ctx.db.update(workers).set({ folder: '/feature' }).where(eq(workers.id, hostWorker)).run()
     cli.bin = null
-    const out = await start('tell').done
+    const out = await start().done
     expect(out.closed).toEqual([early])
     expect(getWorker(ctx, early)!.failure).toContain('it had not started building, so it made no commits')
     expect(getWorker(ctx, hostWorker)!.status).toBe('working')
   })
 })
 
-describe("in 'remove' mode", () => {
-  it('removes only what this install made for finished workers, keeping their conversation first', async () => {
-    const { unfinished, finished } = seedMachine()
-    const out = await start('remove').done
+describe('what it removes and what it keeps', () => {
+  it("removes a finished worker's container and keeps an unfinished worker's", async () => {
+    const { unfinished, finished, failed, dropped } = seedMachine()
+    await start().done
+    const left = cli.containers.map((c) => c.name)
+    expect(left).not.toContain(`runcastle-worker-${finished}`)
+    expect(left).not.toContain(`runcastle-worker-${dropped}`)
+    // Working when the upgrade came, failed before it: either may hold work that never landed.
+    expect(left).toContain(`runcastle-worker-${unfinished}`)
+    expect(left).toContain(`runcastle-worker-${failed}`)
+  })
+
+  it('removes only what this install made for landed or dropped workers, in every project, keeping their conversation first', async () => {
+    const { unfinished, finished, failed, dropped, other } = seedMachine()
+    const p = feature.projectId
+    const out = await start().done
 
     expect(cli.removed.sort()).toEqual(
       [
         `container runcastle-worker-${finished}`,
+        `container runcastle-worker-${dropped}`,
         'image sandcastle:runcastle',
-        `volume runcastle-${feature.projectId}`,
-        'volume runcastle-worker-cache',
+        `volume runcastle-${other}`,
         `builder ${builder('stock')}`,
       ].sort(),
     )
-    // The unfinished worker's container, its image, and everything not this install's stay.
-    expect(cli.containers.map((c) => c.name)).toEqual([`runcastle-worker-${unfinished}`, 'runcastle-worker-elsewhere', 'my-postgres'])
+    // What may hold unfinished work stays: its containers, the image one was made from,
+    // its project's cache and the shared one, the copies of workers not landed or dropped.
+    expect(cli.containers.map((c) => c.name)).toEqual([`runcastle-worker-${unfinished}`, `runcastle-worker-${failed}`, 'runcastle-worker-elsewhere', 'my-postgres'])
     expect(cli.images.map((i) => i.id)).toEqual(['sha256:projimg', 'sha256:theirs', 'sha256:mixed'])
+    expect(cli.volumes.map((v) => v.name)).toEqual([`runcastle-${p}`, 'runcastle-worker-cache', 'runcastle-proj_gone', 'pgdata'])
     expect(readFileSync(keptConversationPath(finished), 'utf8')).toBe('{"type":"user"}\n')
-    // The copies and runtime folders go; the closed worker's copy stays.
     expect(existsSync(join(dir, 'workers', 'runtime'))).toBe(false)
-    expect(existsSync(join(dir, 'workers', 'origins', 'sess_old.git'))).toBe(false)
-    expect(existsSync(join(dir, 'workers', 'origins', `${unfinished}.git`))).toBe(true)
+    expect(existsSync(origin(finished))).toBe(false)
+    expect(existsSync(origin(dropped))).toBe(false)
+    expect(existsSync(origin(unfinished))).toBe(true)
+    expect(existsSync(origin('sess_unknown'))).toBe(true)
     // Docker's shared build cache is only named, never pruned.
     expect(cli.calls.some((c) => c.startsWith('builder prune'))).toBe(false)
-    expect(out.commands).toEqual(['docker builder prune'])
+
+    // Everything kept is named with the exact command that removes it.
+    expect(out.kept).toEqual(
+      expect.arrayContaining([
+        `container runcastle-worker-${unfinished}`,
+        `container runcastle-worker-${failed}`,
+        `image sandcastle:runcastle-${p}`,
+        `volume runcastle-${p}`,
+        'volume runcastle-worker-cache',
+        `folder ${origin(unfinished)}`,
+        `folder ${origin('sess_unknown')}`,
+      ]),
+    )
+    expect(out.kept).toHaveLength(7)
+    expect(out.commands.slice(0, 3)).toEqual([
+      `docker rm -f runcastle-worker-${unfinished} runcastle-worker-${failed}`,
+      `docker rmi sandcastle:runcastle-${p}`,
+      `docker volume rm runcastle-${p} runcastle-worker-cache`,
+    ])
+    expect(out.commands.slice(3, 5).sort()).toEqual([`rm -rf "${origin(unfinished)}"`, `rm -rf "${origin('sess_unknown')}"`].sort())
+    expect(out.commands[5]).toBe('docker builder prune')
+
     const [event] = leftoverEvents()
     expect(event).toMatchObject({ type: 'workers.leftovers_removed' })
-    expect(event!.message).toContain('removed what it made for them: 1 container, 1 image, 2 cache volumes, 1 image builder and 2 folders')
+    expect(event!.message).toContain('removed what it made for them for workers that landed or were dropped: 2 containers, 1 image, 1 cache volume, 1 image builder and 3 folders')
+    expect(event!.message).toContain('It kept what may still hold unfinished work: 2 containers, 1 image, 2 cache volumes and 2 folders.')
+    expect(event!.message).toContain(`\`docker rm -f runcastle-worker-${unfinished} runcastle-worker-${failed}\``)
     expect(event!.message).toContain("Docker's shared build cache holds 2.5 GB")
   })
-})
 
-describe("in 'tell' mode", () => {
-  it('removes nothing and names the exact commands, by name', async () => {
-    const { unfinished, finished } = seedMachine()
-    const out = await start('tell').done
-
+  it("keeps a container whose worker it cannot find, and the burn engine's", async () => {
+    const p = feature.projectId
+    cli.containers = [
+      { id: 'c1', name: 'runcastle-worker-sess_gone', labels: ours({ [LABEL_WORKER]: 'sess_gone', [LABEL_PROJECT]: p }) },
+      { id: 'c2', name: 'sandcastle-12345678-1234-1234-1234-123456789abc', labels: { [LABEL_DOCKERFILE_HASH]: 'h' } },
+    ]
+    const out = await start().done
     expect(cli.removed).toEqual([])
-    expect(cli.calls.filter((c) => /^(rm|rmi|cp)\b|^volume rm|^buildx rm/.test(c))).toEqual([])
-    expect(existsSync(join(dir, 'workers', 'runtime'))).toBe(true)
-    expect(out.commands).toEqual([
-      `docker rm -f runcastle-worker-${finished}`,
-      'docker rmi sandcastle:runcastle',
-      `docker volume rm runcastle-${feature.projectId} runcastle-worker-cache`,
-      `docker buildx rm ${builder('stock')}`,
-      `rm -rf "${join(dir, 'workers', 'origins', 'sess_old.git')}"`,
-      `rm -rf "${join(dir, 'workers', 'runtime')}"`,
-      'docker builder prune',
-    ])
-    // The unfinished worker's container is never in them; it is named on its own.
-    expect(out.commands.join('\n')).not.toContain(`runcastle-worker-${unfinished} `)
-    const [event] = leftoverEvents()
-    expect(event).toMatchObject({ type: 'workers.leftovers_found' })
-    expect(event!.message).toContain(`\`docker rm -f runcastle-worker-${finished}\``)
-    expect(event!.message).toContain(`Left in place, since it may hold uncommitted edits of an unfinished worker: \`docker rm -f runcastle-worker-${unfinished}\``)
+    expect(out.kept).toEqual(['container runcastle-worker-sess_gone', 'container sandcastle-12345678-1234-1234-1234-123456789abc'])
   })
 })
 
 describe('once per install', () => {
   it('runs only once', async () => {
     seedMachine()
-    expect((await start('tell').done).ran).toBe(true)
+    expect((await start().done).ran).toBe(true)
     const calls = cli.calls.length
-    const again = await start('remove').done
+    const again = await start().done
     expect(again.ran).toBe(false)
     expect(cli.calls).toHaveLength(calls)
     expect(leftoverEvents()).toHaveLength(1)
@@ -242,22 +284,27 @@ describe('once per install', () => {
   it('with no docker or podman, only closes the unfinished workers, then is done', async () => {
     const { unfinished } = seedMachine()
     cli.bin = null
-    const out = await start('remove').done
-    expect(out).toMatchObject({ ran: true, bin: null, closed: [unfinished], things: [], commands: [] })
+    const out = await start().done
+    expect(out).toMatchObject({ ran: true, bin: null, closed: [unfinished], things: [], kept: [], commands: [] })
     expect(cli.calls).toEqual([])
     expect(existsSync(join(dir, 'workers', 'runtime'))).toBe(true)
     expect(getWorker(ctx, unfinished)!.failure).not.toContain('rm -f')
     cli.bin = 'docker'
-    expect((await start('remove').done).ran).toBe(false)
+    expect((await start().done).ran).toBe(false)
   })
 
   it('uses podman when it is the one that answers', async () => {
-    seedMachine()
+    const { unfinished } = seedMachine()
     cli.bin = 'podman'
-    const out = await start('tell').done
+    const out = await start().done
     expect(out.bin).toBe('podman')
-    expect(out.commands[0]).toMatch(/^podman rm -f /)
+    expect(out.commands[0]).toBe(`podman rm -f runcastle-worker-${unfinished} runcastle-worker-${getWorkerIdByStatus('failed')}`)
     // Builders and the shared build cache are Docker's own.
+    expect(cli.calls.some((c) => c.startsWith('buildx'))).toBe(false)
     expect(out.commands.some((c) => c.includes('buildx') || c.includes('builder prune'))).toBe(false)
   })
 })
+
+function getWorkerIdByStatus(status: WorkerRow['status']): string {
+  return ctx.db.select().from(workers).all().find((w) => w.status === status && w.label === `Worker ${status}`)!.id
+}
