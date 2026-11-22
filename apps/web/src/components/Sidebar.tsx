@@ -112,6 +112,8 @@ export interface SidebarProps {
   /** The feature test drive this shell started, or null. */
   driving?: DriveState | null
   onDriveChange?: (d: DriveState | null) => void
+  /** The machine's line of workers (a `WorkQueue`), in the foot under the drives; nothing while none work or wait. */
+  queue?: ReactNode
 }
 
 /**
@@ -685,6 +687,8 @@ export interface SidebarFootState {
   onOpenPhoneSetup?: () => void
   /** Rows above the status line (live drives). */
   rows?: ReactNode
+  /** The machine's line of workers (a `WorkQueue`), between the rows and the status line. */
+  queue?: ReactNode
 }
 
 /**
@@ -704,6 +708,7 @@ export function SidebarFootChrome({
   onOpenGlossary,
   onOpenPhoneSetup,
   rows,
+  queue,
 }: SidebarFootState) {
   const healthTip =
     health === 'ok'
@@ -716,6 +721,7 @@ export function SidebarFootChrome({
   return (
     <div className="flex shrink-0 flex-col gap-2 pt-2">
       {rows}
+      {queue}
       <SidebarStatusLine
         healthTone={HEALTH_TONE[health]}
         healthTip={healthTip}
@@ -747,6 +753,7 @@ function SidebarFoot({
   onOpenWorkerChat,
   driving = null,
   onDriveChange,
+  queue,
 }: SidebarProps) {
   const toast = useToast()
   const openGlossary = useOpenGlossary()
@@ -808,6 +815,7 @@ function SidebarFoot({
       onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
       onOpenPhoneSetup={onOpenPhoneSetup}
       rows={rows}
+      queue={queue}
     />
   )
 }

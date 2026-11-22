@@ -14,10 +14,12 @@ import {
   DEFAULT_DOCS_COMMIT_PREFIX,
   RuncastleConfig as RuncastleConfigSchema,
   foldLegacyModelConfig,
-  resolveDefaultBurnConcurrency,
+  memoryGb,
+  resolveDefaultWorkersAtOnce,
+  WORKERS_AT_ONCE_MAX,
   stepDefaultModel,
 } from '@runcastle/core'
-import { hostLogicalCpus, migrateCollapsedModelSteps } from '@runcastle/core/config-load'
+import { hostTotalMemory, migrateCollapsedModelSteps } from '@runcastle/core/config-load'
 import { configPath } from '@runcastle/core/paths'
 import * as z from 'zod'
 import { eq } from 'drizzle-orm'
@@ -169,7 +171,7 @@ const DESCRIPTORS: FieldDescriptor[] = [
     configKey: 'burnConcurrency',
     envVar: 'RUNCASTLE_BURN_CONCURRENCY',
     restartRequired: false,
-    valueSchema: z.number().int().min(1).max(8),
+    valueSchema: z.number().int().min(1).max(WORKERS_AT_ONCE_MAX),
     parseEnv: (raw) => Number(raw),
   },
   {
@@ -305,13 +307,13 @@ const DEFAULTS = RuncastleConfigSchema.parse({})
 
 /**
  * The defaults an operator who set nothing gets on THIS machine: the schema's,
- * with `burnConcurrency` resolved from the host's core count exactly as
+ * with `burnConcurrency` resolved from the host's memory exactly as
  * `loadConfig` resolves it. The settings view is where that number is read out,
- * so it has to be the width a run would really use rather than the schema's
- * host-blind 3 — a UI that promises 3 on a box that burns 1 is just wrong.
+ * so it has to be the number a run would really use rather than the schema's
+ * host-blind floor.
  */
-function hostDefaults(logicalCpus: number): RuncastleConfig {
-  return { ...DEFAULTS, burnConcurrency: resolveDefaultBurnConcurrency(logicalCpus) }
+function hostDefaults(totalMemBytes: number): RuncastleConfig {
+  return { ...DEFAULTS, burnConcurrency: resolveDefaultWorkersAtOnce(totalMemBytes) }
 }
 
 export interface SettingsIO {
@@ -319,8 +321,8 @@ export interface SettingsIO {
   env?: Record<string, string | undefined>
   /** Config-file path (default `~/.runcastle/config.json`); tests inject a temp file. */
   configFile?: string
-  /** Host core count behind the `burnConcurrency` default; tests inject a fixed one. */
-  logicalCpus?: number
+  /** Host memory in bytes behind the `burnConcurrency` default; tests inject a fixed one. */
+  totalMemBytes?: number
 }
 
 /**
@@ -458,7 +460,8 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
   const fileRaw = readRawConfig(io.configFile ?? configPath())
   const overrides = projectId !== undefined ? projectOverrides(ctx, projectId) : null
 
-  const defaults = hostDefaults(io.logicalCpus ?? hostLogicalCpus())
+  const totalMemBytes = io.totalMemBytes ?? hostTotalMemory()
+  const defaults = hostDefaults(totalMemBytes)
 
   const visible = DESCRIPTORS.filter((d) => projectId !== undefined || d.configKey !== undefined)
   const fields = visible.map((d) => resolveField(d, { env, fileRaw, overrides, defaults }))
@@ -468,6 +471,7 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
     projectId,
     fields: [...fields, ...stepModelFields(fileRaw, rosterConfig(ctx))],
     discovery: discoverySnapshot(ctx),
+    hostMemoryGb: memoryGb(totalMemBytes),
   }
 }
 

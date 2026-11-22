@@ -7,8 +7,9 @@ import { showsSetting, type SettingsPageProps } from './types'
 
 /**
  * Sandboxes: what a worker's sandbox needs before it can start (the image, the
- * dependency cache), and how many workers work at once and on how many cores
- * (burns-become-workers decision 18).
+ * dependency cache), and how many cores each worker gets. How many workers
+ * work at once is a General setting (one-number-for-how-many-build-at-once
+ * decision 7).
  *
  * The prerequisites come first because they are the difference between a
  * worker that starts and one that cannot — and because every "Settings →

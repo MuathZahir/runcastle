@@ -35,7 +35,7 @@ import type { FilterState, SettingsPageProps } from './types'
 const PAGE_SUBTITLE: Record<SettingsPage, string> = {
   general: 'How runcastle looks, where its server listens, and how chats are sandboxed.',
   models: 'The default model, the roster this machine offers, and which model runs each step.',
-  sandboxes: 'What a worker’s sandbox needs before it starts, and how many workers run at once.',
+  sandboxes: 'What a worker’s sandbox needs before it starts, and how many cores each worker gets.',
   project: 'Values this project sets for itself. Unset fields inherit the global value, shown as ghost text.',
 }
 

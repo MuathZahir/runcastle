@@ -37,6 +37,7 @@ type LiveSignal =
   | { kind: 'transcript'; ticketId: string }
   | { kind: 'turn'; sessionId: string }
   | { kind: 'thread'; threadId: string }
+  | { kind: 'queue' }
 
 export type LiveStatus = 'connecting' | 'live' | 'offline'
 
@@ -358,6 +359,7 @@ export const LIVE_COVERED_PATHS: readonly string[] = [
   'thread.list',
   'thread.events',
   'worker.list',
+  'worker.queue',
   'worker.listLive',
   'worker.listProject',
   'notes',
@@ -466,6 +468,9 @@ export function useLiveSync(): LiveStatus {
       refetches.push(u.worker.list.invalidate())
       refetches.push(u.worker.listLive.invalidate())
       refetches.push(u.worker.listProject.invalidate())
+      // The machine's line of workers waiting for a place: it moves at every
+      // turn's start and end (the `queue` signal) and with the limit itself.
+      refetches.push(u.worker.queue.invalidate())
       // The scenarios a drive can land on. A scenario chat commits a new file
       // and records the runner mid-drive (`scenario.*`, `settings.updated`), and
       // the Scenario menu and the Test drive picker have no poll of their own —

@@ -1013,6 +1013,7 @@ describe('the project drive’s Scenarios worker (drive-chats-become-workers dec
         previewPath: null,
         passPort: 4514,
         heldBy: null,
+        queuePlace: null,
         placement: null,
         need: null,
         turnRunning: false,
