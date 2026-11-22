@@ -1,9 +1,11 @@
 # Decisions — Sandboxes are removed
 
 Planned with nobody present (2026-11-21), on the epic "Runcastle Rethink". Decisions
-marked **Assumed.** are the lead's picks, waiting for the human's word.
+marked **Assumed.** are the lead's picks, waiting for the human's word. Those marked
+**Decided by autopilot.** were taken by the epic, which runs this feature; the human
+can overturn any of them.
 
-Check first: 3, 4, 5, 7, 8
+Check first: 3
 
 ## 1. Sandboxes are removed entirely, not kept as an option
 **Decision:** Workers run only on the host. No container engine, no switch, no dormant
@@ -35,6 +37,9 @@ feature; most users would never run a command they were only told about. Removin
 labelled things of finished workers cannot lose work or touch other projects.
 **Assumed.** Alternative: never run Docker from runcastle again, and only tell the user
 the commands to run.
+**Changed by the orchestrator:** this deletes things outside git that cannot be undone,
+so the epic put it to the human. Until they answer, the cleanup is built to do either,
+and it ships as "only tells the user the commands" unless their answer comes first.
 
 ## 4. A worker still in a container at upgrade is stopped, and its commits are kept as a branch
 **Decision:** A worker that was not finished when the upgrade happened (working, queued
@@ -46,7 +51,7 @@ uncommitted edits, and the timeline names it with the command that removes it.
 **Why:** Workers' commits already sit on the host (each container pushed every commit to
 a copy in the data folder), so plain git keeps them without any container code. Only the
 uncommitted edits would need the container, so it is the one thing not removed.
-**Assumed.** Alternative: drop such workers outright, removing their containers and
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: drop such workers outright, removing their containers and
 copies, and let the lead start the work again.
 
 ## 5. The first-run wizard loses its "Unattended workers" step, and Settings loses its "Sandboxes" page
@@ -58,7 +63,7 @@ to the concurrency feature. The unattended token (`CLAUDE_CODE_OAUTH_TOKEN`, min
 `claude setup-token`) and the `runcastle token` and `runcastle build-image` commands go
 too: only containers used them; host workers use the human's own sign-in.
 **Why:** The brief: settings and screens that only made sense for containers are gone.
-**Assumed.** Alternative: keep the Sandboxes page renamed "Workers", holding only the
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: keep the Sandboxes page renamed "Workers", holding only the
 concurrency number.
 
 ## 6. Docker is no longer a prerequisite anywhere
@@ -76,7 +81,7 @@ outside the agent's own folder and a short list of destructive commands, and tha
 script an agent runs can still reach outside its folder.
 **Why:** ADR-0023 decision 1: the remaining risk "is accepted and stated plainly to
 users".
-**Assumed.** Alternative: say nothing about safety and only remove the Docker text.
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: say nothing about safety and only remove the Docker text.
 
 ## 8. The website's sandbox section is removed, not replaced
 **Decision:** The landing page's "Every ticket runs in its own sandbox" section and its
@@ -86,5 +91,5 @@ stays the human's step.
 **Why:** The section now describes something runcastle does not do. Designing a new
 section is landing-page taste work the human steers, so it is offered as a backlog
 feature instead.
-**Assumed.** Alternative: replace it with a section about workers running in the
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: replace it with a section about workers running in the
 feature's folder.

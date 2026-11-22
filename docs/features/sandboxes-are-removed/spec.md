@@ -57,6 +57,13 @@ The shape:
     large.
   Every Docker call is best-effort: a failure is an event, never a failed boot. A later
   release may delete this module; that is outside this feature.
+  Until the human answers decision 3, the step has two modes picked by one constant in
+  the module. "Remove" does the above. "Tell" removes nothing and calls Docker only to
+  list: it closes unfinished container workers (plain git, as above), then writes one
+  project event and log line naming what is left, its size, and the commands that
+  remove exactly those things (by name, not by a label filter, so an unfinished
+  worker's container is never in them). "Tell" ships unless the human's answer arrives
+  first.
 - **Setup, doctor and CLI.** `runcastle setup` loses the Docker install, the docker group
   and the log-out step. The doctor loses its container runtime, image, cache volume, user
   mapping and unattended-token checks. The `build-image` and `token` commands go. The

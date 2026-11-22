@@ -174,7 +174,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <div class="flow">
     <div class="step"><b>1 · Unfinished container worker</b>Its commits are kept on a branch in the project, it is marked failed with a plain reason, and the lead is told. Its container stays, named with the command to remove it. <a class="pin" data-d="4">4</a></div>
     <div class="step"><b>2 · Finished workers and the rest</b>Only things labelled as this install's: finished workers' containers (conversation kept first), images, cache volumes, runcastle's own builders, project copies. <a class="pin" data-d="3">3</a></div>
-    <div class="step"><b>3 · Tell</b>One timeline line with the space freed, and the one command for Docker's shared build cache, which runcastle does not touch. Runs once; no Docker means it does nothing.</div>
+    <div class="step"><b>3 · Tell</b>Until the human answers decision 3, this ships as tell-only: nothing is removed and the line names the exact commands. One timeline line with the space freed, and the one command for Docker's shared build cache, which runcastle does not touch. Runs once; no Docker means it does nothing.</div>
   </div>
 
   <h3 class="sub">Who builds what</h3>
@@ -244,21 +244,17 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Sandboxes are removed entirely, not kept as an option', 'The human: "if sandboxes are causing all these issues I dont think it should even be opt in."'],
     ['Build it now, in the agreed order, with no workers', 'The human asked features to build on their own, since workers keep running out of memory and disk.'],
     ['Leftovers are cleaned up by themselves, once, on the first start after upgrading', 'The owner\'s disk filled on 2026-11-21; most users would never run a command they were only told about. Only this install\'s labelled things of finished workers are removed.', 'assumed'],
-    ['A worker still in a container at upgrade is stopped, and its commits are kept as a branch', 'Its commits already sit on the host, so plain git keeps them; only its container, which may hold uncommitted edits, stays.', 'assumed'],
-    ['The wizard loses "Unattended workers", Settings loses "Sandboxes"', 'Only containers used them; "workers at once" moves unchanged to General.', 'assumed'],
+    ['A worker still in a container at upgrade is stopped, and its commits are kept as a branch', 'Its commits already sit on the host, so plain git keeps them; only its container, which may hold uncommitted edits, stays Decided by the epic.'],
+    ['The wizard loses "Unattended workers", Settings loses "Sandboxes"', 'Only containers used them; "workers at once" moves unchanged to General Decided by the epic.'],
     ['Docker is no longer a prerequisite anywhere', 'Setup, doctor, README and website stop asking for it; Docker already installed is left alone.'],
-    ['The README and website say plainly what protects the user now', 'ADR-0023: the remaining risk is accepted and stated plainly to users.', 'assumed'],
-    ['The website\'s sandbox section is removed, not replaced', 'It describes something runcastle no longer does; a new section is landing-page taste work for the human.', 'assumed']
+    ['The README and website say plainly what protects the user now', 'ADR-0023: the remaining risk is accepted and stated plainly to users Decided by the epic.'],
+    ['The website\'s sandbox section is removed, not replaced', 'It describes something runcastle no longer does; a new section is landing-page taste work for the human Decided by the epic.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [3, 'Never run Docker again; only tell users the commands', 'Leaves one small Docker-calling module in the server for a while', 'guess'],
-    [4, 'Drop such workers outright, removing their containers', 'Keeps a container on disk to protect uncommitted edits'],
-    [5, 'Keep the Sandboxes page, renamed "Workers"', 'Where the concurrency number lives until its own feature'],
-    [7, 'Only remove the Docker text, say nothing about safety', 'Wording users read about the risk of host workers', 'guess'],
-    [8, 'Replace it with a section about workers in the feature\'s folder', 'You steer the landing page yourself']
+    [3, 'Never run Docker again; only tell users the commands', 'It deletes things outside git that cannot be undone; the epic asked the human. Built both ways; ships as "only tells" unless they answer first.', 'guess']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {
