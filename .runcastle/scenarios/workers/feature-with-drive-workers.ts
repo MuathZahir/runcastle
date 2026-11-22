@@ -106,7 +106,6 @@ function seedWorker(ctx: AppCtx, w: SeededWorker, worktreePath: string, now: num
       startedBy: w.startedBy,
       status: w.status,
       failure: null,
-      engine: 'docker',
       featureBranch: w.branch,
       handbackSummary: w.handback?.summary ?? null,
       handbackCommits: w.handback?.commits ?? null,
