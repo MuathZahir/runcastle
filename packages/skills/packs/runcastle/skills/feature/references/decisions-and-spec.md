@@ -26,6 +26,9 @@ session that dies keeps what was settled:
 - `**Changed by the orchestrator:** <why>` A decision an orchestrator message
   changed or made. It keeps its `**Assumed.**` line, or gains one: the human
   has not seen it.
+- `**Decided without you.**` A decision you made yourself because the feature's
+  level ("Involve me in") does not ask it. The review package lists these for the
+  human, who overturns one by telling you.
 - `**Decided by autopilot.**` A decision the epic made while it runs this
   feature on autopilot, where its answer counts as the human's.
 - `Supersedes: <n>` A later decision that replaces an earlier one. Never

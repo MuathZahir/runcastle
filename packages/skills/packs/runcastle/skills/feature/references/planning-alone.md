@@ -88,7 +88,8 @@ and your closing message instead. Never design a screen whose what, where or who
    committed). Then the workers you would start and what you would do yourself,
    and anything that stopped you (a refused or failed tool, and what you decided
    without it). End by asking them to change any decision or say go; their
-   answer starts the build, and a design still needs its own approval.
+   answer starts the build, and a design still needs its own approval (unless the level settles designs
+   itself: `resultOnly` and `nothing`).
 4. With the question written last in that message, call `wait_for_you` with a
    label such as `why: "change any decision, or go?"`, naming any design
    waiting, and end the turn. **On autopilot** the answer is the epic's: call

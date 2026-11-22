@@ -102,6 +102,8 @@ is back:
   only those whose state in `get_feature_context`'s `designs[]` is approved,
   name every other waiting one, and build no screen still waiting. Leave a
   rejected screen out.
+- At `resultOnly` and `nothing` there is no approval wait: settle the design
+  yourself, commit it, and record it with `**Decided without you.**`.
 - An orchestrator message approves a design only when it relays the human's own
   answer, or the epic runs this feature on autopilot; then record it with
   `set_design_state`.
