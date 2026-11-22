@@ -72,7 +72,7 @@ async function upgradeOne(ctx: AppCtx, featureId: string): Promise<AutopilotUpgr
   const ask = open && lead && !waitOf(ctx, lead.id) ? openAsk(ctx, featureId) : null
   const returnedWait = (ask && lead && setWait(ctx, lead.id, ask, 'agent')?.why) || null
   const leveled = open && feature.involvement === 'everything'
-  if (leveled) await setInvolvement(ctx, featureId, 'resultOnly')
+  if (leveled) await setInvolvement(ctx, featureId, 'resultOnly', { by: 'upgrade' })
   if (open && talked && lead) {
     await agentHost(ctx)
       .prompt(lead.id, { text: AUTOPILOT_GONE_NOTE }, { source: 'runcastle', hold: true, display: { summary: 'Autopilot is retired' } })

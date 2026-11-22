@@ -72,12 +72,17 @@ export function involvementLine(level: Involvement): string {
  * same features "Set all to…" skips); a level it already has changes nothing
  * and emits nothing. Returns the feature as it now is.
  */
-export async function setInvolvement(ctx: AppCtx, featureId: string, level: Involvement): Promise<Feature> {
+export async function setInvolvement(
+  ctx: AppCtx,
+  featureId: string,
+  level: Involvement,
+  opts: { by?: ChangedBy } = {},
+): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   if (feature.status === 'shipped' || feature.status === 'archived') {
     throw new GateError(`\`${feature.slug}\` is ${feature.status}, so its "${INVOLVEMENT_NAME}" no longer changes.`)
   }
-  return change(ctx, feature, level)
+  return change(ctx, feature, level, opts.by ?? 'human')
 }
 
 /**
@@ -97,13 +102,16 @@ export async function setEpicInvolvement(ctx: AppCtx, chatId: string, level: Inv
   let changed = 0
   for (const feature of open) {
     if (feature.involvement === level) continue
-    await change(ctx, feature, level)
+    await change(ctx, feature, level, 'human')
     changed += 1
   }
   return { changed }
 }
 
-async function change(ctx: AppCtx, feature: Feature, to: Involvement): Promise<Feature> {
+/** Who changed a level: the human, or runcastle's one-off upgrade off autopilot (autopilot-retires decision 13). */
+export type ChangedBy = 'human' | 'upgrade'
+
+async function change(ctx: AppCtx, feature: Feature, to: Involvement, by: ChangedBy): Promise<Feature> {
   const from = feature.involvement
   if (from === to) return feature
   ctx.db.update(features).set({ involvement: to }).where(eq(features.id, feature.id)).run()
@@ -114,7 +122,7 @@ async function change(ctx: AppCtx, feature: Feature, to: Involvement): Promise<F
     data: { from, to },
   })
   // The level is set; a lead that cannot be told now reads it from its context.
-  await tellLead(ctx, updated, to).catch((err) => console.error(`telling ${feature.slug}'s lead its level changed failed`, err))
+  await tellLead(ctx, updated, to, by).catch((err) => console.error(`telling ${feature.slug}'s lead its level changed failed`, err))
   return updated
 }
 
@@ -137,7 +145,8 @@ function leadWait(ctx: AppCtx, leadId: string): 'answer' | 'ready' | null {
  * a notice never makes a never-opened chat look started. `background` (as the spec asks) keeps a
  * test drive's copied database from waking a conversation it did not start.
  */
-async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement): Promise<void> {
+async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement, by: ChangedBy): Promise<void> {
+  const who = by === 'upgrade' ? 'Runcastle, retiring autopilot,' : 'The human'
   const lead = leadToTell(ctx, feature)
   if (!lead) return
   // The human sees the change in the chat as a notice row, ahead of the line the lead is sent.
@@ -151,7 +160,7 @@ async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement): Promise
       source: 'runcastle',
       reason: 'question',
       text:
-        `The human changed "${INVOLVEMENT_NAME}" to ${label}; you no longer wait on them for decisions${designs}. ` +
+        `${who} changed "${INVOLVEMENT_NAME}" to ${label}; you no longer wait on them for decisions${designs}. ` +
         'If your wait is on something this level still asks (a design’s yes while designs are shown; money, accounts, ' +
         'anything outside git that cannot be undone, or what the brief names as the human’s), keep waiting. ' +
         'Otherwise decide your open question yourself (your recommendation), record it under your decisions with the mark ' +
@@ -166,7 +175,7 @@ async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement): Promise
       source: 'runcastle',
       reason: 'question',
       text:
-        `The human changed "${INVOLVEMENT_NAME}" to ${label} while the feature waits as Ready to test. ` +
+        `${who} changed "${INVOLVEMENT_NAME}" to ${label} while the feature waits as Ready to test. ` +
         'Call declare_ready again with the same scenario and checksPassed: true once your checks pass, and runcastle merges it when no defect is open.',
       background: true,
     })
@@ -175,7 +184,7 @@ async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement): Promise
   await deliverToLead(ctx, feature, {
     source: 'runcastle',
     reason: 'news',
-    text: `The human changed "${INVOLVEMENT_NAME}" to ${label}. From now on: ${INVOLVEMENT_STOPS_FOR[to]}`,
+    text: `${who} changed "${INVOLVEMENT_NAME}" to ${label}. From now on: ${INVOLVEMENT_STOPS_FOR[to]}`,
     background: true,
   })
 }
