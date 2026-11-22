@@ -1,1 +1,0 @@
-ALTER TABLE `features` ADD `involvement` text DEFAULT 'everything' NOT NULL;
