@@ -174,7 +174,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div><h3>After</h3><ul>
       <li>No locks, no lock note, no autopilot marks. <a class="pin" data-d="1">1</a></li>
       <li>Leads ask you, or decide by their level. They tell the epic only about trouble that crosses features. <a class="pin" data-d="9">9</a></li>
-      <li>The orchestrator creates, starts, briefs drafts and messages leads; you or runcastle merge. <a class="pin" data-d="8">8</a></li>
+      <li>The orchestrator creates, starts, briefs drafts, messages leads, and merges when you ask it; it no longer drives or stops. <a class="pin" data-d="12">12</a></li>
       <li>One Start button that acts by the level. <a class="pin" data-d="4">4</a></li>
     </ul></div>
   </div>
@@ -185,7 +185,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <div class="flow">
     <div class="step"><b>Starts by itself</b><p>Its dependency merges; runcastle cuts the branch and launches the lead. <a class="pin" data-d="5">5</a></p></div>
     <div class="step"><b>Builds alone</b><p>Decides by its level; still stops for money, accounts and anything irreversible. <a class="pin" data-d="9">9</a></p></div>
-    <div class="step"><b>Merges if clean</b><p>A review ran, checks passed, no open defect. Else it waits for you as Ready to test. <a class="pin" data-d="6">6</a></p></div>
+    <div class="step"><b>Merges if clean</b><p>The lead says ready and checks passed, and no defect is open. Else it waits for you as Ready to test. <a class="pin" data-d="11">11</a></p></div>
     <div class="step"><b>Epic hears</b><p>Every merge wakes the epic with the review summary and decisions made without you. A revert line goes in the chat. <a class="pin" data-d="2">2</a> <a class="pin" data-d="7">7</a></p></div>
   </div>
 </div>
@@ -205,7 +205,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
 <div class="sub">
   <h3>Upgrade</h3>
-  <p class="hint">Open features of an epic on autopilot that are still at "Everything" move to "Nothing"; a level you set by hand stays. Their leads are told. <a class="pin" data-d="10">10</a></p>
+  <p class="hint">Open features of an epic on autopilot that are still at "Everything" move to "Result only"; a level you set by hand stays. Their leads are told. <a class="pin" data-d="13">13</a></p>
 </div>
 
 <div class="sub">
@@ -250,11 +250,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <!-- FILL:hood -->
       <ul class="who">
         <li><b>Deleted:</b> the autopilot service, the set-autopilot tool, the "end autopilot" call, the hook that refuses typed prompts, the lock checks in sending, editing, waits, ready, notify and design approval, the web autopilot folder and marks, the autopilot previews and scenario.</li>
-        <li><b>Orchestrator rule:</b> one check replaces the autopilot gate: own features only; create, start, read, dependencies, level, message pass; brief edits on drafts only. Merge, drive and stop tools leave its list; "plan feature" folds into start.</li>
+        <li><b>Orchestrator rule:</b> one check replaces the autopilot gate: own features only; create, start, read, dependencies, level, message pass; brief edits on drafts only. Drive and stop tools leave its list; merge stays; "plan feature" folds into start.</li>
         <li><b>Start by level:</b> one start path picks the interactive opening at Everything and the headless plan-and-build run below; the dependency-merge start calls it after cutting the branch.</li>
         <li><b>Merge wake:</b> every merge of an epic's feature wakes it; the message carries the review summary text, decided-without-you list and dismissed defects.</li>
-        <li><b>Clean review:</b> the review stores whether checks passed; the merge at Nothing needs a completed review, checks passed on the newest, and no open defect.</li>
-        <li><b>Upgrade:</b> an idempotent boot step moves autopilot epics' features at Everything to Nothing through the involvement service, returns epic-held waits to their features, then a migration drops the sessions' autopilot column.</li>
+        <li><b>Clean review:</b> declare_ready takes checksPassed; the merge at Nothing needs it true and no open defect. Leads may record findings themselves.</li>
+        <li><b>Upgrade:</b> an idempotent boot step moves autopilot epics' features at Everything to Result only through the involvement service, returns epic-held waits to their features, then a migration drops the sessions' autopilot column.</li>
         <li><b>Skills:</b> project and feature skills lose autopilot, the run plan and the "Decided by autopilot" mark; hard-limit stops become their own rule; the lead's hand-back is for cross-feature trouble only.</li>
         <li><b>Size:</b> about 65 source and test files plus ~17 preview files.</li>
       </ul>
@@ -276,12 +276,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['One per-feature setting replaces autopilot and the planning mode', 'Your words: "this setting will be for every feature" and "Do we really need something called Autopilot?"'],
     ['The orchestrator is woken on every merge of its features', 'You wanted it kept; the message carries the review summary and decisions made without you.'],
     ['Strict dependencies; a waiting feature starts by itself', 'You said "Yes" to the orchestrator\'s proposal.'],
-    ['One Start button, acting by the level', 'The level already says how much the lead asks, so "Plan automatically" would say it twice.', 'assumed'],
-    ['"Starts by itself" means its lead starts working', 'Today it only gets a branch and sits until someone clicks Start.', 'assumed'],
+    ['One Start button, acting by the level', 'The level already says how much the lead asks, so "Plan automatically" would say it twice.'],
+    ['"Starts by itself" means its lead starts working', 'Today it only gets a branch and sits until someone clicks Start.'],
     ['What "the review is clean" means at "Nothing"', 'A review ran, checks passed, and no defect of any severity is open; else it waits for you.', 'assumed'],
-    ['Undoing a merge made without you is a git revert', 'The chat names the merge commit and the revert command; no undo button.', 'assumed'],
+    ['Undoing a merge made without you is a git revert', 'The chat names the merge commit and the revert command; no undo button.'],
     ['What the orchestrator may still do inside its features', 'Create, start, read, set dependencies and levels, edit draft briefs, message leads; no merging, driving or stopping.', 'assumed'],
-    ['Leads tell the epic only about trouble that crosses features', 'Unsettled conflicts, stuck after three tries, and stops for money, accounts or irreversible things.', 'assumed'],
+    ['Leads tell the epic only about trouble that crosses features', 'Unsettled conflicts, stuck after three tries, and stops for money, accounts or irreversible things.'],
     ['Epics on autopilot at the upgrade', 'Their open features at "Everything" move to "Nothing"; levels set by hand stay.', 'assumed'],
     ['"The review is clean" means the lead\'s word, with findings recorded', 'Lead declares ready, says checks passed, and no defect is open; no review worker required. Supersedes 6.'],
     ['The orchestrator keeps merging when you ask it to', 'It keeps merge_feature; it loses drive and stop. Supersedes 8.'],
@@ -290,13 +290,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [4, 'Keep "Plan automatically" as a second button', 'Folding it changes what Start does at the lower levels'],
-    [5, 'Only cut the branch; you or the epic press Start', 'A feature at "Everything" will now open and wait on you by itself'],
-    [6, 'Let low defects stay open, or accept the lead\'s own subagent review', 'This epic told leads to start no review workers, so its "Nothing" features would wait for you', 'clash'],
-    [8, 'Let the orchestrator merge, drive or stop when you ask it to', 'It narrows what you can ask the orchestrator for'],
-    [10, 'Move them to "Result only" instead', 'Guess at "the level that matches"; it lets runcastle merge the rest of Runcastle Rethink']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')
