@@ -407,9 +407,13 @@ export function resolveDefaultWorkersAtOnce(totalMemBytes: number): number {
   return Math.min(DEFAULT_WORKERS_AT_ONCE_MAX, Math.max(DEFAULT_WORKERS_AT_ONCE_MIN, byMemory))
 }
 
-/** Whole gigabytes in `bytes`, rounded to the nearest, as Settings names the machine's memory. */
+/**
+ * Whole gigabytes in `bytes`, rounded down, as Settings names the machine's
+ * memory. Down, like {@link resolveDefaultWorkersAtOnce}, so the hint's figures
+ * add up: a machine reporting 11.7 GB says "2, from 11 GB", not "from 12 GB".
+ */
 export function memoryGb(bytes: number): number {
-  return Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / GIB) : 0
+  return Number.isFinite(bytes) && bytes > 0 ? Math.floor(bytes / GIB) : 0
 }
 
 /**

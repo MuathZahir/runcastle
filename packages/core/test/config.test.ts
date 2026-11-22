@@ -265,9 +265,9 @@ describe('resolveDefaultWorkersAtOnce', () => {
 })
 
 describe('memoryGb', () => {
-  it('rounds to whole gigabytes', () => {
+  it('rounds down to whole gigabytes, as the default does', () => {
     expect(memoryGb(12 * GIB)).toBe(12)
-    expect(memoryGb(11.6 * GIB)).toBe(12)
+    expect(memoryGb(11.6 * GIB)).toBe(11)
     expect(memoryGb(7.4 * GIB)).toBe(7)
   })
 

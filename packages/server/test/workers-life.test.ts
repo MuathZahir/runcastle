@@ -179,6 +179,29 @@ describe('one limit for agents working at once', () => {
     await host.stopAll('shutdown')
   })
 
+  it('takes a waiting turn cancelled before its slot comes out of the line at once (one-number decision 5)', async () => {
+    const turns = heldTurns()
+    const host = realHost(turns.fake)
+    const slots = agentSlots(ctx.config.burnConcurrency)
+    const a = await startWorker('Header')
+    await until(() => turns.waiting() === 1)
+    const b = await startWorker('Thread list')
+    await until(() => status(b) === 'queued')
+    expect(slots.snapshot().waiting.map((e) => e.holder)).toEqual([b])
+
+    await host.cancel(b)
+    // Out of the line while the slot it waited for is still held, and idle, not queued.
+    expect(slots.snapshot().waiting).toEqual([])
+    expect(slots.snapshot().holding.map((e) => e.holder)).toEqual([a])
+    await until(() => status(b) === 'working')
+
+    turns.release()
+    await until(() => turnEnded(a))
+    expect(slots.held()).toBe(0)
+    expect(turns.waiting()).toBe(0)
+    await host.stopAll('shutdown')
+  })
+
   it('counts a ticket agent mid-run, and a stopped worker holds no slot', async () => {
     const turns = heldTurns()
     const host = realHost(turns.fake)

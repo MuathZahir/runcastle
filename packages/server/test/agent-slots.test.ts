@@ -88,6 +88,29 @@ describe('the snapshot', () => {
     expect(slots.snapshot().holding.map((h) => h.holder)).toEqual(['w-a', 'w-b'])
   })
 
+  it('lets a waiter withdraw: it leaves the line at once, holding nothing, and the next keeps its turn', async () => {
+    let moves = 0
+    const slots = createAgentSlots(1, () => moves++)
+    const a = slots.tryTake(undefined, 'w-a')!
+    const withdraw = new AbortController()
+    const gone = slots.take(undefined, 'w-gone', withdraw.signal)
+    const next = slots.take(undefined, 'w-next')
+    const before = moves
+
+    withdraw.abort()
+    expect(moves).toBe(before + 1)
+    expect(slots.snapshot().waiting.map((w) => w.holder)).toEqual(['w-next'])
+    ;(await gone)() // a release that does nothing
+    expect(slots.held()).toBe(1)
+
+    a()
+    await next
+    expect(slots.snapshot().holding.map((h) => h.holder)).toEqual(['w-next'])
+    withdraw.abort() // aborting again does nothing
+    await expect(slots.take(undefined, 'late', withdraw.signal)).resolves.toBeTypeOf('function')
+    expect(slots.waiting()).toBe(0)
+  })
+
   it('says the line-up moved on every grant, release, wait, retune, hold and lift', () => {
     let moves = 0
     const slots = createAgentSlots(1, () => moves++)

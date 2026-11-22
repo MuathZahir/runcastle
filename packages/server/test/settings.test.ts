@@ -309,11 +309,11 @@ describe('settings service (#46)', () => {
     expect(small.editable).toBe(true)
   })
 
-  it('reports the host memory in rounded whole GB', () => {
+  it('reports the host memory in whole GB, rounded down like the default', () => {
     expect(getSettings(ctx, undefined, io()).hostMemoryGb).toBe(64)
     expect(
       getSettings(ctx, undefined, { env: {}, configFile, totalMemBytes: 11.6 * GIB }).hostMemoryGb,
-    ).toBe(12)
+    ).toBe(11)
   })
 
   it('a config-file number still wins on a small host', () => {

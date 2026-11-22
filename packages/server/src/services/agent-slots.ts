@@ -43,8 +43,12 @@ export interface SlotSnapshot {
 export interface AgentSlots {
   /** A slot now when one is free and `runtime` is not on hold, else undefined. */
   tryTake(runtime?: string, holder?: string): ReleaseSlot | undefined
-  /** A slot as soon as one frees and `runtime` is not on hold, in the order asked. */
-  take(runtime?: string, holder?: string): Promise<ReleaseSlot>
+  /**
+   * A slot as soon as one frees and `runtime` is not on hold, in the order
+   * asked. Aborting `withdraw` while it waits takes it out of the line: it
+   * resolves at once with a release that does nothing.
+   */
+  take(runtime?: string, holder?: string, withdraw?: AbortSignal): Promise<ReleaseSlot>
   /** Count an agent that does not wait (a ticket agent), over the limit if need be. */
   occupy(): ReleaseSlot
   /** Slots held now. */
@@ -116,15 +120,28 @@ export function createAgentSlots(limit: number, onMove: () => void = () => {}, n
 
   return {
     tryTake: (runtime, holder) => (freeFor(runtime) ? grant(holder) : undefined),
-    take(runtime, holder) {
+    take(runtime, holder, withdraw) {
+      if (withdraw?.aborted) return Promise.resolve(() => {})
       if (freeFor(runtime)) return Promise.resolve(grant(holder))
       return new Promise((resolve) => {
-        queue.push({
+        const onAbort = (): void => {
+          const i = queue.indexOf(waiter)
+          if (i === -1) return
+          queue.splice(i, 1)
+          resolve(() => {})
+          onMove()
+        }
+        const waiter: Waiter = {
           ...(runtime !== undefined ? { runtime } : {}),
           ...(holder !== undefined ? { holder } : {}),
           since: now(),
-          admit: resolve,
-        })
+          admit: (release) => {
+            withdraw?.removeEventListener('abort', onAbort)
+            resolve(release)
+          },
+        }
+        queue.push(waiter)
+        withdraw?.addEventListener('abort', onAbort, { once: true })
         onMove()
       })
     },

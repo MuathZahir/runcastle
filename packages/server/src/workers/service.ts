@@ -1453,26 +1453,27 @@ export function humanWrote(ctx: AppCtx, row: Pick<SessionRow, 'id' | 'kind'>): v
  * sits beside the drive waiting for it (drive-chats-become-workers decision 7),
  * so it is never queued nor held by an account hold.
  */
-export function workerTurnSlot(ctx: AppCtx): (row: SessionRow) => Promise<() => void> | undefined {
-  return (row) => {
+export function workerTurnSlot(ctx: AppCtx): (row: SessionRow, withdraw: AbortSignal) => Promise<() => void> | undefined {
+  return (row, withdraw) => {
     if (row.kind !== 'worker') return undefined
     const w = getWorker(ctx, row.id)
-    return w && isDriveWorkerKind(w.kind) ? undefined : takeWorkerSlot(ctx, row.id)
+    return w && isDriveWorkerKind(w.kind) ? undefined : takeWorkerSlot(ctx, row.id, withdraw)
   }
 }
 
-async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
+/** A worker turn's slot; a turn withdrawn while it waits leaves the line, holding nothing. */
+async function takeWorkerSlot(ctx: AppCtx, id: string, withdraw: AbortSignal): Promise<() => void> {
   const slots = agentSlots(ctx.config.burnConcurrency)
   const w = getWorker(ctx, id)
   const now = slots.tryTake(w?.runtime, id)
   if (now) return now
   // A worker that needs the human keeps saying so while its turn waits (needs-you decision 18).
   if (w?.status === 'working') setStatus(ctx, w, 'queued')
-  let release = await slots.take(w?.runtime, id)
+  let release = await slots.take(w?.runtime, id, withdraw)
   // Admitted by a slot freed by a turn whose failure then held this runtime: wait again.
-  while (w && slots.holdOf(w.runtime) !== undefined) {
+  while (w && !withdraw.aborted && slots.holdOf(w.runtime) !== undefined) {
     release()
-    release = await slots.take(w.runtime, id)
+    release = await slots.take(w.runtime, id, withdraw)
   }
   const after = getWorker(ctx, id)
   if (after?.status === 'queued') setStatus(ctx, after, 'working')

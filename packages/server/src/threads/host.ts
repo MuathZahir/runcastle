@@ -172,9 +172,10 @@ export interface AgentHostDeps {
    * The slot a thread's turn must hold to run, under the machine's limit of
    * agents working at once (interactive-workers decision 14): resolves, maybe
    * later, with the slot's release, which the host calls as the turn ends.
-   * Undefined for a thread that needs none.
+   * Undefined for a thread that needs none. `withdraw` aborts when the turn
+   * ends before its slot comes (a cancel, a stop): it leaves the line then.
    */
-  turnSlot?: (row: SessionRow) => Promise<() => void> | undefined
+  turnSlot?: (row: SessionRow, withdraw: AbortSignal) => Promise<() => void> | undefined
   /**
    * The bounds a thread's prompted turn is watched with (burns-become-workers
    * decision 9), undefined for a thread nobody watches: a turn silent past
@@ -548,6 +549,8 @@ interface Turn {
   release?: () => void
   /** The prompt of a turn still waiting for its slot: the agent has not heard it yet. */
   waiting?: Queued
+  /** Takes a turn still waiting for its slot out of the line. */
+  withdraw?: AbortController
   /** The stall watch on a prompted turn ({@link AgentHostDeps.stallBounds}). */
   watch?: StallWatch
 }
@@ -572,6 +575,7 @@ function endWatch(turn: Turn | null | undefined): void {
 /** Give back a turn's slot, once, and end its stall watch. */
 function releaseSlot(turn: Turn | null | undefined): void {
   endWatch(turn)
+  turn?.withdraw?.abort()
   const release = turn?.release
   if (!turn || !release) return
   delete turn.release
@@ -1845,7 +1849,8 @@ class Host implements AgentHost {
     t.turn = turn
     // A turn over the limit of agents working at once waits here for a slot, its prompt logged.
     const slotRow = getSessionRow(this.ctx, t.id)
-    const slot = slotRow ? this.turnSlot(slotRow) : undefined
+    turn.withdraw = new AbortController()
+    const slot = slotRow ? this.turnSlot(slotRow, turn.withdraw.signal) : undefined
     if (slot) {
       turn.waiting = item
       turn.release = await slot
@@ -2061,6 +2066,7 @@ class Host implements AgentHost {
    */
   private endWaitingTurn(t: Thread, turn: Turn, item: Queued): void {
     delete turn.waiting
+    turn.withdraw?.abort()
     t.turn = null
     this.logAwaits(t.id, { type: 'turn_ended', reason: 'cancelled' })
     markAwaitingInput(this.ctx, t.id)
