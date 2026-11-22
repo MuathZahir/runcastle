@@ -77,7 +77,7 @@ From the user's side:
 
 ### Web (`apps/web`)
 
-- `components/involvement/Involvement.tsx` (exists; its look waits on the human's yes): the per-feature
+- `components/involvement/Involvement.tsx` (exists; look approved): the per-feature
   picker and "Set all to…".
 - Feature header (`Workspace.tsx`) and phone bar: the picker, `size="md"`.
 - Epic page header (`ProjectWorkspace.tsx`): "Set all to…".
@@ -95,5 +95,4 @@ From the user's side:
 
 ## Open questions
 
-- None blocking. The review package's "Decided without you" list is a new piece
-  of screen and gets its own design yes.
+- None.

@@ -27,3 +27,7 @@
 ## 7. "Set all to…" has no undo
 **Decision:** After "Set all to…", the human sets levels again themselves (another "Set all to…" or per feature); runcastle keeps no memory of the earlier levels.
 **Why:** "Yes to all." Remembering old levels adds hidden state for a rare need. Chosen over an "Undo" that restores each feature's earlier level.
+
+## 8. The "features created" card stays after creation, with no confirm step
+**Decision:** The orchestrator creates each feature at the level it recommends, and the "features created" card that follows carries a picker on each created row; there is no confirm step before creation. The look of the pickers, "Set all to…" and the review package's "Decided without you" list is approved as designed.
+**Why:** "Yes, these are fine." Chosen over adding a confirm step to the orchestrator's cut, which would slow every cut for a choice the picker can change a moment later.

@@ -44,6 +44,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     stoppedAt: row.stoppedAt,
     lastHumanMessageAt: row.lastHumanMessageAt,
     lastDispatchAt: row.lastDispatchAt,
+    involvement: row.involvement,
   })
 }
 
