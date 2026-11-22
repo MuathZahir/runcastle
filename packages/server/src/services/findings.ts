@@ -13,8 +13,7 @@ import { commitsSince, detectMainBranch } from './git'
 
 /**
  * Provenance for the project fields something establishes on the human's behalf
- * — the prepared facts a preparation run measures, plus `sandboxImage`, which
- * an image build writes (see `PROVENANCE_KEYS`).
+ * — the prepared facts a preparation run measures (see `PROVENANCE_KEYS`).
  *
  * The VALUE of every such field lives in its own `projects` column, so the
  * settings resolver, the burner and the launcher all read it through the paths
@@ -45,7 +44,6 @@ const VALUE_COLUMN = {
   driveStopCommand: projects.driveStopCommand,
   dbResetCommand: projects.dbResetCommand,
   driveInstructions: projects.driveInstructions,
-  sandboxImage: projects.sandboxImage,
 } as const satisfies Record<ProvenanceKey, unknown>
 
 /** Drizzle column NAME for a provenanced key, for the `.set()` object literal. */
@@ -58,7 +56,6 @@ const COLUMN_NAME: Record<ProvenanceKey, string> = {
   driveStopCommand: 'driveStopCommand',
   dbResetCommand: 'dbResetCommand',
   driveInstructions: 'driveInstructions',
-  sandboxImage: 'sandboxImage',
 }
 
 const PREPARED_SET = new Set<string>(PREPARED_KEYS)
@@ -70,8 +67,7 @@ export function isPreparedKey(key: string): key is PreparedKey {
 }
 
 /**
- * Whether `key` names a field that carries provenance — every prepared key,
- * plus the ones only runcastle's own machinery establishes (`sandboxImage`).
+ * Whether `key` names a field that carries provenance: every prepared key.
  */
 export function isProvenanceKey(key: string): key is ProvenanceKey {
   return PROVENANCE_SET.has(key)
@@ -189,8 +185,8 @@ export function recordFinding(ctx: AppCtx, projectId: string, input: RecordFindi
  * Stamp a manual settings write as human-established. Called from the settings
  * service for provenanced keys only; a no-op for everything else. Clearing a
  * field (`value === null`) drops the provenance row too, which deliberately
- * makes the field auto-writable again — clearing is how you hand `sandboxImage`
- * back to the image build, or a prepared field back to preparation.
+ * makes the field auto-writable again — clearing is how you hand a prepared
+ * field back to preparation.
  */
 export function recordHuman(
   ctx: AppCtx,
