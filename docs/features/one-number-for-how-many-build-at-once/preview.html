@@ -272,21 +272,18 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['One number for how many workers and reviews run at once', 'Workers waited 16.4 hours in line one at a time; one visible number the user can change was chosen over a self-adjusting scheduler.'],
     ['Leads and the epic never wait in line', 'Only workers and reviews queue; a lead held in line would stop the chat that steers the work.'],
     ['The queue is visible', 'Nothing showed who was waiting or why, so the waiting went unseen.'],
-    ['The default is one per 4 GB of memory, between 2 and 8', 'Memory is the ceiling: an agent holds 0.2–0.4 GB and a typecheck peaks at 0.85 GB on top. This machine gets 2, up from 1.', 'assumed'],
-    ['A worker counts only while it works', 'Today\'s rule: one waiting for you or idle holds no place, so the next in line starts.', 'assumed'],
-    ['The number can go up to 16', 'The cap of 8 was set for containers; a big machine may want more.', 'assumed'],
-    ['The number lives in Settings → General, under "Workers"', 'The Sandboxes page is going away; General holds machine-wide settings.', 'assumed'],
+    ['The default is one per 4 GB of memory, between 2 and 8', 'Memory is the ceiling: an agent holds 0.2–0.4 GB and a typecheck peaks at 0.85 GB on top. This machine gets 2, up from 1.'],
+    ['A worker counts only while it works', 'Today\'s rule: one waiting for you or idle holds no place, so the next in line starts.'],
+    ['The number can go up to 16', 'The cap of 8 was set for containers; a big machine may want more.'],
+    ['The number lives in Settings → General, under "Workers"', 'The Sandboxes page is going away; General holds machine-wide settings.'],
     ['The queue shows in the sidebar, where workers are already listed', 'A foot line opens the whole line-up across projects; a waiting row says its place.', 'assumed'],
-    ['First come, first served, across every project', 'One plain order, easy to read and fair; a usage-limit hold is skipped as today.', 'assumed']
+    ['First come, first served, across every project', 'One plain order, easy to read and fair; a usage-limit hold is skipped as today.']
   ]
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
   var C = [
-    [4, '3 GB per worker (3 on this machine), or the memory free at start', 'A guess from one typecheck and live process sizes; a full test run was not measured', 'guess'],
-    [6, 'Keep the cap at 8', 'Above 8 is only safe on a big machine; the brief named a ceiling near 8', 'guess'],
-    [8, 'A queue section on the Settings page instead', 'Where the queue lives was left open in the brief; this picks the sidebar foot', 'where'],
-    [9, 'Reviews go first, since they stand between a feature and ready', 'Changes who waits when the line is long']
+    [8, 'A queue section on the Settings page instead', 'Where the queue lives was left open in the brief; the sidebar design waits for your yes', 'where']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {
