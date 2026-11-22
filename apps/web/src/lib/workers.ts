@@ -71,6 +71,12 @@ export interface WorkerEntry {
   failure?: string
   /** Why it waits, while `status` is queued behind an account error's hold (burns-become-workers decision 21). */
   heldBy?: string
+  /**
+   * Its place in the machine's one line while it waits for a place, 1 = next
+   * (one-number-for-how-many-build-at-once decisions 8, 9). Absent when held:
+   * a held worker is skipped in the order.
+   */
+  place?: number
   /** What it needs from the human, in its agent's own line (needs-you decision 6). */
   need?: Need
 }
@@ -160,7 +166,7 @@ export function workersNeedYou(workers: readonly WorkerEntry[]): boolean {
 export const WORKER_STATUS_WORDS: Record<WorkerStatus, string> = {
   working: 'Working',
   idle: 'Idle',
-  queued: 'Queued',
+  queued: 'Waiting',
   'needs-you': 'Needs you',
   'handed-back': 'Handed back',
   landed: 'Landed',
@@ -182,22 +188,31 @@ export const WORKER_STATUS_TONE: Record<WorkerStatus, StatusTone> = {
   stalled: 'warning',
 }
 
+/** A place in line as words: 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st. */
+export function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13
+  const suffix = teen ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
+  return `${n}${suffix}`
+}
+
 /**
  * The few words after a worker's status, in its row and its chat's status
- * line: the agent's line while it needs you, what failed, or why a queued
- * worker is held (decision 21) — "Queued · held: <reason>". Undefined when its
- * status says it all.
+ * line: the agent's line while it needs you, what failed, why a waiting
+ * worker is held (decision 21) — "Waiting · held: <reason>" — or its place in
+ * the line — "Waiting · 2nd in line". Undefined when its status says it all.
  */
 export function workerStatusWhy(w: {
   status: WorkerStatus
   need?: Need | null
   failure?: string | null
   heldBy?: string | null
+  place?: number | null
 }): string | undefined {
   if (w.need) return w.need.why
   if (w.status === 'failed' && w.failure) return w.failure
   if (w.status === 'stalled') return WORKER_STALLED_WHY
   if (w.status === 'queued' && w.heldBy) return `held: ${w.heldBy}`
+  if (w.status === 'queued' && w.place) return `${ordinal(w.place)} in line`
   return undefined
 }
 
@@ -234,7 +249,7 @@ export function workerIsOpen(w: Pick<WorkerEntry, 'status' | 'old'>): boolean {
 type WireWorker = Pick<
   CoreWorkerRow,
   'id' | 'label' | 'purpose' | 'kind' | 'goal' | 'doneWhen' | 'model' | 'startedBy' | 'status' | 'failure' | 'createdAt' | 'updatedAt'
-> & { heldBy?: string | null; need?: Need | null; turnRunning?: boolean }
+> & { heldBy?: string | null; queuePlace?: number | null; need?: Need | null; turnRunning?: boolean }
 
 const STARTED_BY: Record<CoreWorkerRow['startedBy'], WorkerEntry['startedBy']> = { lead: 'lead', human: 'you' }
 
@@ -252,6 +267,7 @@ export function workerEntry(w: WireWorker): WorkerEntry {
     updatedAt: w.updatedAt,
     ...(w.status === 'failed' && w.failure ? { failure: w.failure } : {}),
     ...(w.status === 'queued' && w.heldBy ? { heldBy: w.heldBy } : {}),
+    ...(w.status === 'queued' && !w.heldBy && w.queuePlace ? { place: w.queuePlace } : {}),
   }
 }
 

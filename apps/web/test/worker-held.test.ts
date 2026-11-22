@@ -9,7 +9,7 @@ import { workerEntry, workerStatusWhy } from '../src/lib/workers'
 /**
  * A queued worker held by an account error (burns-become-workers decision 21)
  * says why, in its row of the feature's worker list and in its chat's status
- * line: "Queued · held: <reason>". Tier 1: the words are the behaviour.
+ * line: "Waiting · held: <reason>". Tier 1: the words are the behaviour.
  */
 
 const HOLD = 'It failed on the account, so no queued worker on claude-code starts until the human next writes to a lead or a worker.'
@@ -41,13 +41,13 @@ const statusMarkup = (w: ReturnType<typeof wire>) => {
 describe('a queued worker held by an account error', () => {
   it('shows the hold’s reason in its row and in its chat’s status line', () => {
     const held = wire({ heldBy: HOLD })
-    expect(rowMarkup(held)).toContain(`Queued · held: ${HOLD}`)
-    expect(statusMarkup(held)).toContain('Queued')
+    expect(rowMarkup(held)).toContain(`Waiting · held: ${HOLD}`)
+    expect(statusMarkup(held)).toContain('Waiting')
     expect(statusMarkup(held)).toContain(`· held: ${HOLD}`)
   })
 
-  it('reads as plain Queued when nothing holds it, and a hold says nothing once the worker runs', () => {
-    expect(rowMarkup(wire())).toContain('>Queued<')
+  it('reads as plain Waiting when nothing holds it, and a hold says nothing once the worker runs', () => {
+    expect(rowMarkup(wire())).toContain('>Waiting<')
     expect(rowMarkup(wire())).not.toContain('held')
     const running = wire({ status: 'working', heldBy: HOLD })
     expect(rowMarkup(running)).not.toContain('held')

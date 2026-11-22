@@ -32,7 +32,7 @@ import {
   resolveSandboxImage,
 } from '@runcastle/core'
 import { envPath, sessionDir } from '@runcastle/core/paths'
-import { features, sessions, workers } from '../db/schema'
+import { features, projects, sessions, workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, NotFoundError } from '../errors'
 import { chatKickoffHeader, ensureFeatureWorktree } from '../launcher/launcher'
@@ -1360,6 +1360,83 @@ export function queueHoldOf(ctx: AppCtx, w: WorkerRow): string | null {
   return agentSlots(ctx.config.burnConcurrency).holdOf(w.runtime) ?? null
 }
 
+/** One worker in the machine's line-up for a place (one-number-for-how-many-build-at-once decision 3). */
+export interface QueueEntry {
+  workerId: string
+  label: string
+  kind: WorkerRow['kind']
+  featureId: string | null
+  featureTitle: string | null
+  projectId: string
+  projectName: string
+  /** Since when it works (admitted) or waits (asked), epoch ms. */
+  since: number
+  /** Why its runtime's account hold keeps it from starting; it keeps its place meanwhile. */
+  heldBy: string | null
+}
+
+/** Who works and who waits for a place under the machine's one limit, across every project. */
+export interface WorkQueue {
+  limit: number
+  /** In order of admission. */
+  working: QueueEntry[]
+  /** In queue order, first come first served (decision 9). */
+  waiting: QueueEntry[]
+}
+
+/**
+ * The machine's line-up: the shared slots' snapshot joined to each worker's
+ * feature and project. A slot whose holder is not a worker this server knows
+ * (a ticket agent, or a row since deleted) is left out of the lists, though it
+ * still counts against the limit.
+ */
+export function workQueue(ctx: AppCtx): WorkQueue {
+  const snap = agentSlots(ctx.config.burnConcurrency).snapshot()
+  const ids = [...snap.holding, ...snap.waiting].flatMap((e) => (e.holder === undefined ? [] : [e.holder]))
+  const rows =
+    ids.length === 0
+      ? []
+      : ctx.db
+          .select({ w: workers, featureTitle: features.title, projectName: projects.name })
+          .from(workers)
+          .leftJoin(features, eq(features.id, workers.featureId))
+          .innerJoin(projects, eq(projects.id, workers.projectId))
+          .where(inArray(workers.id, ids))
+          .all()
+  const byId = new Map(rows.map((r) => [r.w.id, r]))
+  const entry = (e: { holder?: string; since: number; heldBy?: string }): QueueEntry[] => {
+    const r = e.holder === undefined ? undefined : byId.get(e.holder)
+    if (!r) return []
+    return [
+      {
+        workerId: r.w.id,
+        label: r.w.label,
+        kind: r.w.kind,
+        featureId: r.w.featureId,
+        featureTitle: r.featureTitle,
+        projectId: r.w.projectId,
+        projectName: r.projectName,
+        since: e.since,
+        heldBy: e.heldBy ?? null,
+      },
+    ]
+  }
+  return { limit: snap.limit, working: snap.holding.flatMap(entry), waiting: snap.waiting.flatMap(entry) }
+}
+
+/**
+ * A waiting worker's 1-based place in line among the waiters no account hold
+ * keeps back (decision 8: "waiting · 2nd in line"), or null when it does not
+ * wait or its runtime is held.
+ */
+export function queuePlaceOf(ctx: AppCtx, workerId: string): number | null {
+  const startable = agentSlots(ctx.config.burnConcurrency)
+    .snapshot()
+    .waiting.filter((e) => e.heldBy === undefined)
+  const i = startable.findIndex((e) => e.holder === workerId)
+  return i === -1 ? null : i + 1
+}
+
 /** The human sent a message to a thread: an account hold lifts (decision 21), and a worker they wrote to starts its retries over. */
 export function humanWrote(ctx: AppCtx, row: Pick<SessionRow, 'id' | 'kind'>): void {
   agentSlots(ctx.config.burnConcurrency).lift()
@@ -1387,15 +1464,15 @@ export function workerTurnSlot(ctx: AppCtx): (row: SessionRow) => Promise<() => 
 async function takeWorkerSlot(ctx: AppCtx, id: string): Promise<() => void> {
   const slots = agentSlots(ctx.config.burnConcurrency)
   const w = getWorker(ctx, id)
-  const now = slots.tryTake(w?.runtime)
+  const now = slots.tryTake(w?.runtime, id)
   if (now) return now
   // A worker that needs the human keeps saying so while its turn waits (needs-you decision 18).
   if (w?.status === 'working') setStatus(ctx, w, 'queued')
-  let release = await slots.take(w?.runtime)
+  let release = await slots.take(w?.runtime, id)
   // Admitted by a slot freed by a turn whose failure then held this runtime: wait again.
   while (w && slots.holdOf(w.runtime) !== undefined) {
     release()
-    release = await slots.take(w.runtime)
+    release = await slots.take(w.runtime, id)
   }
   const after = getWorker(ctx, id)
   if (after?.status === 'queued') setStatus(ctx, after, 'working')
