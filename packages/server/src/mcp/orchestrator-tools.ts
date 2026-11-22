@@ -1,15 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
 import {
   EPIC_ICON_IDS,
   type EpicIconId,
   type Feature,
   type FeatureAction,
   isEpicIconId,
-  isStoppableHeadlessRun,
   type SessionRow,
+  startPurposeFor,
 } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { and, eq } from 'drizzle-orm'
@@ -17,29 +14,15 @@ import * as z from 'zod'
 import { features } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
-import {
-  type EndSessionResult,
-  type LaunchSessionOptions,
-  endSession,
-  launchSession,
-} from '../launcher/launcher'
+import type { LaunchSessionOptions } from '../launcher/launcher'
 import { activeSessionsForFeature, landProjectBranchNow } from '../launcher/sessions'
-import { landChatCommits } from '../services/chat-branch'
-import { emit, runAsActor } from '../services/events'
-import { featureDocPath } from '../services/feature-docs'
-import { requireNotDraft, startDraft } from '../services/features'
-import * as git from '../services/git'
-import type { TestDriveResult } from '../services/git'
-import * as autopilot from '../services/autopilot'
-import { type AutopilotAction, type AutopilotResult, requireMayAct } from '../services/autopilot'
+import { type EpicAction, requireMayAct } from '../services/epic-acts'
 import { type EpicSibling, epicSiblingsInProgress } from '../services/epic-siblings'
+import { emit, runAsActor } from '../services/events'
+import { startDraft } from '../services/features'
+import { launchLeadByLevel } from '../services/lead-start'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
-import {
-  getFeatureRow,
-  projectForFeature,
-  requireProjectById,
-  rowToFeature,
-} from '../services/repo'
+import { getFeatureRow, projectForFeature, rowToFeature } from '../services/repo'
 import { writeEpicIcon } from '../threads/epic-look'
 import { EPIC_NAME_MAX, writeEpicName } from '../threads/epic-name'
 import { appendThreadEvent } from '../threads/log'
@@ -50,10 +33,10 @@ import type { HeaderCarrier } from './server'
 /**
  * The orchestrator's tools (`one-orchestrator-no-mode`): every orchestrator
  * is the orchestrator. What it may act on is drawn by its instructions (decision
- * 2), and by one server rule (`epics-on-autopilot`): every acting tool goes
- * through {@link requireActableFeature}, so an epic creates, starts and plans
- * its own features, and talks to, stops, drives and merges only the ones on
- * autopilot in it. Beyond that each tool refuses what its service already
+ * 2), and by one server rule (`autopilot-retires` decision 12): every acting
+ * tool goes through {@link requireActableFeature}, so an epic starts, messages,
+ * sets dependencies of and merges only its own features, and edits a brief only
+ * while it is a draft. Beyond that each tool refuses what its service already
  * refuses, with a sentence saying why, as the human's buttons do.
  */
 
@@ -101,11 +84,10 @@ export function requireProjectFeature(ctx: AppCtx, session: SessionRow, slug: st
 
 /**
  * {@link requireProjectFeature}, for a tool that does `action` to it: the
- * calling epic must be allowed to ({@link mayAct}). Creating, starting,
- * planning and a draft's brief pass on the epic's own features; messaging,
- * stopping, driving and merging only when the feature is on autopilot in it.
+ * calling epic must be allowed to (`mayAct`): only its own features, and a
+ * brief only while the feature is a draft.
  */
-export function requireActableFeature(ctx: AppCtx, session: SessionRow, slug: string, action: AutopilotAction): Feature {
+export function requireActableFeature(ctx: AppCtx, session: SessionRow, slug: string, action: EpicAction): Feature {
   return requireMayAct(ctx, session.id, requireProjectFeature(ctx, session, slug), action)
 }
 
@@ -144,43 +126,6 @@ export function recordFeatureAction(
     ...extra,
   })
 }
-
-/** What `set_autopilot` takes. */
-export interface SetAutopilotInput {
-  action: 'on' | 'add' | 'off'
-  /** `add` only: the features to move into this epic. */
-  features?: string[]
-}
-
-/**
- * Turn this epic's autopilot on (every open feature of it locks), move
- * features into it ("also run X"), or turn it off (`epics-on-autopilot`
- * decisions 1, 8, 13, 14). Only ever on the human's own words.
- */
-export const toolSetAutopilot = orchestratorTool(
-  async (ctx: AppCtx, session: SessionRow, input: SetAutopilotInput): Promise<AutopilotResult> => {
-    requireOrchestratorSession(ctx, session)
-    const slugs = input.features ?? []
-    if (input.action === 'add' && slugs.length === 0) {
-      throw new InvalidInputError('set_autopilot add needs `features`: the slugs to move into this epic.')
-    }
-    // Only these three: there is no taking one feature back (decision 14).
-    if (input.action !== 'on' && input.action !== 'add' && input.action !== 'off') {
-      throw new InvalidInputError(`set_autopilot takes \`on\`, \`add\` or \`off\`, not \`${String(input.action)}\`: to work on one feature, the human ends autopilot.`)
-    }
-    const done =
-      input.action === 'on'
-        ? await autopilot.turnOn(ctx, session.id)
-        : input.action === 'add'
-          ? await autopilot.add(ctx, session.id, slugs)
-          : await autopilot.turnOff(ctx, session.id)
-    for (const slug of done.changed) {
-      const feature = requireProjectFeature(ctx, session, slug)
-      recordFeatureAction(ctx, session, feature.id, input.action === 'on' || input.action === 'add' ? 'autopilotOn' : 'autopilotOff')
-    }
-    return done
-  },
-)
 
 /** What `name_epic` applied: each of the name and the icon, or the human's own that it kept. */
 export interface EpicNameResult {
@@ -227,94 +172,58 @@ export function toolNameEpic(ctx: AppCtx, session: SessionRow, input: { name: st
   return { name: named.named ? named.name : named.humanName, nameApplied: named.named, icon, iconApplied: iconed.applied, note }
 }
 
+/** What `start_feature` did: the feature as it is now, and its lead's chat. */
+export interface StartFeatureResult extends Pick<Feature, 'slug' | 'status' | 'baseBranch'> {
+  /** The lead's chat thread the start launched. */
+  sessionId: string
+  /** How the lead started: `asksFirst` at "Everything", `plansAlone` below it. */
+  lead: 'asksFirst' | 'plansAlone'
+}
+
 /**
- * Start a draft, as Start does: refused where Start is. The orchestrator's own
- * commits (prepared `.runcastle/` scripts, charter edits, the draft's brief)
- * land on the base branch first, so the feature is cut from a base that has
- * them (decision 4); a refused landing refuses the start, with its reason.
+ * Start a feature and launch its lead as its level says (`autopilot-retires`
+ * decision 4): a draft is cut first, as Start does, after the orchestrator's
+ * own commits (prepared `.runcastle/` scripts, charter edits, the draft's
+ * brief) land on the base branch so the feature is cut from a base that has
+ * them; a refused landing refuses the start, with its reason. A started
+ * feature whose lead is not running just launches; one whose lead runs is
+ * refused, pointing at `send_to_feature`.
  */
 export const toolStartFeature = orchestratorTool(
   async (
     ctx: AppCtx,
     session: SessionRow,
     input: { slug: string; baseBranch?: string },
-  ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
+    launch: LaunchSessionOptions = {},
+  ): Promise<StartFeatureResult> => {
     const feature = requireActableFeature(ctx, session, input.slug, 'start')
-    const landing = await landProjectBranchNow(ctx, projectForFeature(ctx, feature), session.id)
-    if (!landing.ok) {
+    if (feature.status === 'shipped') {
+      throw new GateError(`\`${feature.slug}\` has shipped, so there is nothing to start.`)
+    }
+    if (feature.status === 'draft') {
+      const landing = await landProjectBranchNow(ctx, projectForFeature(ctx, feature), session.id)
+      if (!landing.ok) {
+        throw new GateError(
+          `the orchestrator's commits could not land first, so \`${input.slug}\` was not started: ${landing.reason}`,
+        )
+      }
+      await startDraft(ctx, feature.id, { baseBranch: input.baseBranch })
+    } else if (activeSessionsForFeature(ctx, feature.id).some((s) => s.kind === 'chat')) {
       throw new GateError(
-        `the orchestrator's commits could not land first, so \`${input.slug}\` was not started: ${landing.reason}`,
+        `\`${feature.slug}\` has started and its lead is running, so there is nothing to start: ` +
+          'tell it what you need with send_to_feature.',
       )
     }
-    const started = await startDraft(ctx, feature.id, { baseBranch: input.baseBranch })
+    const started = getFeatureRow(ctx, feature.id)
+    const { sessionId } = await launchLeadByLevel(ctx, started, launch)
     recordFeatureAction(ctx, session, feature.id, 'started')
-    return { slug: started.slug, status: started.status, baseBranch: started.baseBranch }
-  },
-)
-
-/** Plan a feature automatically: its unattended automatic planning run, as Plan automatically launches it. */
-export const toolPlanFeature = orchestratorTool(
-  async (
-    ctx: AppCtx,
-    session: SessionRow,
-    input: { slug: string },
-    launch: LaunchSessionOptions = {},
-  ): Promise<{ slug: string; sessionId: string }> => {
-    const feature = requireActableFeature(ctx, session, input.slug, 'plan')
-    const { sessionId } = await launchSession(
-      ctx,
-      { featureId: feature.id, kind: 'chat', purpose: 'self-plan' },
-      launch,
-    )
-    recordFeatureAction(ctx, session, feature.id, 'planning')
-    return { slug: feature.slug, sessionId }
-  },
-)
-
-/** End the feature's running self-planning run, as its Stop button does. */
-export const toolStopFeatureRun = orchestratorTool(
-  (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
-    const feature = requireActableFeature(ctx, session, input.slug, 'stop')
-    // The run plan_feature starts is always one this can stop; the feature's
-    // lead never is — ending it would drop the conversation it is having.
-    const run = activeSessionsForFeature(ctx, feature.id).find(isStoppableHeadlessRun)
-    if (!run) throw new GateError(`\`${feature.slug}\` has no headless run going, so there is nothing to stop.`)
-    const ended = endSession(ctx, run.id)
-    recordFeatureAction(ctx, session, feature.id, 'planningStopped')
-    return ended
-  },
-)
-
-/**
- * Start or stop a test drive: of a feature branch when `slug` names one, of the
- * project's base checkout when it names none. One drive runs on the machine;
- * a second is answered with the drive's own `deniedReason`, as the button is.
- */
-export const toolDrive = orchestratorTool(
-  async (
-    ctx: AppCtx,
-    session: SessionRow,
-    input: { slug?: string; action: 'start' | 'stop'; scenario?: string },
-  ): Promise<TestDriveResult> => {
-    const opts = input.scenario ? { scenario: input.scenario } : {}
-    if (input.slug === undefined) {
-      const project = requireProjectById(ctx, requireOrchestratorSession(ctx, session))
-      return git.projectDrive(ctx, project, input.action, opts)
+    return {
+      slug: started.slug,
+      status: started.status,
+      baseBranch: started.baseBranch,
+      sessionId,
+      lead: startPurposeFor(started.involvement) ? 'plansAlone' : 'asksFirst',
     }
-    const feature = requireActableFeature(ctx, session, input.slug, 'drive')
-    requireNotDraft(feature)
-    const result = await git.testDrive(
-      ctx,
-      projectForFeature(ctx, feature),
-      feature,
-      input.action,
-      'human',
-      opts,
-    )
-    if (!result.deniedReason) {
-      recordFeatureAction(ctx, session, feature.id, input.action === 'start' ? 'driveStarted' : 'driveStopped')
-    }
-    return result
   },
 )
 
@@ -324,9 +233,9 @@ export const toolDrive = orchestratorTool(
  * the orchestrator can resolve it in the worktree and merge again (decision 8).
  *
  * A clean merge answers with the feature's epic's other features in progress
- * (`the-epic-hears-when-its-features-merge` decision 9), the list its merge line
- * carries: an epic that merges its own feature checks fit in this turn, and the
- * line it hears of this merge is held, not woken.
+ * (`the-epic-hears-when-its-features-merge` decision 9), so the epic checks fit
+ * in this turn. The merge still wakes it with the merge line, as every merge of
+ * one of its features does (`autopilot-retires` decision 2).
  */
 export const toolMergeFeature = orchestratorTool(
   async (
@@ -338,7 +247,7 @@ export const toolMergeFeature = orchestratorTool(
     const merged = await mergeFeatureFlow(ctx, feature.id, { by: session.id })
     if (!merged.ok || merged.conflict) return merged
     recordFeatureAction(ctx, session, feature.id, 'merged', { into: merged.base })
-    // Only a feature locked to this epic merges here, so the epic checks fit with its own list.
+    // Only the epic's own feature merges here, so the epic checks fit with its own list.
     return { ...merged, inProgress: epicSiblingsInProgress(ctx, getFeatureRow(ctx, feature.id)) }
   },
 )
@@ -368,48 +277,22 @@ export function withBriefSection(prior: string, text: string): string {
 }
 
 /**
- * Append what the human told the orchestrator later about a feature to its
- * brief, where the human's intent lives (decision 16), and commit it as
- * runcastle commits feature docs — landed through the feature's queue when a
- * burn holds the branch. A draft has no branch and keeps its brief on its row,
- * so the section is appended there and Start scaffolds it into `brief.md`.
+ * Append what the human told the orchestrator later about a draft to its
+ * brief, where the human's intent lives (decision 16). A draft has no branch
+ * and keeps its brief on its row, so the section is appended there and Start
+ * scaffolds it into `brief.md`. A started feature's brief is its lead's and
+ * the human's (`autopilot-retires` decision 12), so it is refused.
  */
 export const toolAddToBrief = orchestratorTool(
-  async (
-    ctx: AppCtx,
-    session: SessionRow,
-    input: { slug: string; text: string },
-  ): Promise<{ slug: string; relPath: string }> => {
+  (ctx: AppCtx, session: SessionRow, input: { slug: string; text: string }): { slug: string; relPath: string } => {
     const feature = requireActableFeature(ctx, session, input.slug, 'brief')
     const text = input.text.trim()
     if (!text) throw new InvalidInputError('there is nothing to add: the text is empty.')
-    if (feature.status === 'draft') {
-      ctx.db
-        .update(features)
-        .set({ brief: withBriefSection(feature.brief ?? '', text) })
-        .where(eq(features.id, feature.id))
-        .run()
-      emit(ctx, feature.id, {
-        type: 'brief.added',
-        message: `the orchestrator added to ${feature.slug}'s brief`,
-      })
-      recordFeatureAction(ctx, session, feature.id, 'brief')
-      return { slug: feature.slug, relPath: 'brief.md' }
-    }
-    const project = projectForFeature(ctx, feature)
-    const worktree = worktreeDir(project.id, feature.slug)
-    if (!existsSync(worktree)) {
-      throw new GateError(`\`${feature.slug}\` has no worktree to write its brief in.`)
-    }
-    const briefPath = featureDocPath(project, feature, 'brief.md')
-    const prior = existsSync(briefPath) ? readFileSync(briefPath, 'utf8') : ''
-    mkdirSync(dirname(briefPath), { recursive: true })
-    writeFileSync(briefPath, withBriefSection(prior, text), 'utf8')
-    await git.commitDocs(
-      worktree,
-      git.docsCommitMessage(`add to ${feature.slug} brief`, project.docsCommitPrefix),
-    )
-    await landChatCommits(ctx, project, feature)
+    ctx.db
+      .update(features)
+      .set({ brief: withBriefSection(feature.brief ?? '', text) })
+      .where(eq(features.id, feature.id))
+      .run()
     emit(ctx, feature.id, {
       type: 'brief.added',
       message: `the orchestrator added to ${feature.slug}'s brief`,
@@ -471,35 +354,14 @@ export function registerOrchestratorTools(
   )
 
   acting(
-    'set_autopilot',
-    {
-      title: 'Turn autopilot on or off',
-      description:
-        'Only on the human’s own words, after they agreed your run plan. ' +
-        '`on` locks every open feature of this epic: their leads report to you, and you run them as far as the run plan goes. ' +
-        '`add` ("also run X") moves features into this epic, refused while one is locked to another epic. ' +
-        '`off` gives every feature back to the human. Nothing running stops.',
-      inputSchema: {
-        action: z.enum(['on', 'add', 'off']).describe('`on`, `add` or `off`.'),
-        features: z
-          .array(z.string().min(1))
-          .optional()
-          .describe('`add` only: the slugs to move into this epic. Omit for `on` and `off`.'),
-      },
-    },
-    toolSetAutopilot,
-  )
-
-  acting(
     'start_feature',
     {
-      title: 'Start a draft',
+      title: 'Start a feature',
       description:
-        'Start a draft, as Start does: first land your commits, then cut its branch and scaffold its brief. ' +
-        'Refused when your commits cannot land, while it waits on an unmerged dependency, or once started. ' +
-        'Launches nothing — call plan_feature ' +
-        'or send_to_feature when it is ready to work. Also allowed on a human\'s "Plan automatically" feature you cut, ' +
-        'before its planning run.',
+        'Start one of your features and launch its lead, as Start does: a draft is cut after your commits land. ' +
+        'At Everything the lead asks the human first; below it, it plans and builds alone. A started feature whose ' +
+        'lead is not running just launches. Refused if your commits cannot land, on an unmerged dependency, once ' +
+        'shipped, or while its lead runs (use send_to_feature).',
       inputSchema: {
         slug: SlugInput,
         baseBranch: z
@@ -513,61 +375,14 @@ export function registerOrchestratorTools(
   )
 
   acting(
-    'plan_feature',
-    {
-      title: 'Plan a feature automatically',
-      description:
-        'Launch a feature’s automatic planning run, as Plan automatically does: its chat, unattended. ' +
-        'Refused on a draft or a shipped feature. You are told in this chat when it ends. On a human\'s ' +
-        '"Plan automatically" feature you cut, allowed once; it stays theirs.',
-      inputSchema: { slug: SlugInput },
-    },
-    toolPlanFeature,
-  )
-
-  acting(
-    'stop_feature_run',
-    {
-      title: 'Stop a feature’s automatic planning run',
-      description:
-        'End a feature’s automatic planning run (the unattended one plan_feature launches). It never ends the ' +
-        'lead’s chat or its workers and does not press Stop; refused when no planning run is going.',
-      inputSchema: { slug: SlugInput },
-    },
-    toolStopFeatureRun,
-  )
-
-  acting(
-    'drive',
-    {
-      title: 'Start or stop a test drive',
-      description:
-        'Start or stop a test drive of a feature’s branch (`slug`) or the base checkout. A refusal ' +
-        'comes back as `deniedReason`.',
-      inputSchema: {
-        scenario: z
-          .string()
-          .min(1)
-          .optional()
-          .describe('A scenario file to land on; ignored on stop.'),
-        slug: SlugInput.optional().describe(
-          'The feature whose branch to drive. Omit to drive the base branch.',
-        ),
-        action: z.enum(['start', 'stop']).describe('Start the drive, or stop it.'),
-      },
-    },
-    toolDrive,
-  )
-
-  acting(
     'merge_feature',
     {
       title: 'Merge a feature',
       description:
         'Merge a feature into its base, as Merge does: it writes the outcome doc, marks it shipped and cleans up, ' +
-        'which a hand merge would not. On a conflict it returns `conflict` and the `files`: resolve them in the ' +
-        'worktree, commit, and call again. A clean merge of a feature you cut returns `inProgress`, your other ' +
-        'features still in progress, to check the merge fits with.',
+        'which a hand merge would not. Only when the human asks. On a conflict it returns `conflict` and the ' +
+        '`files`: resolve them in the worktree, commit, and call again. A clean merge returns `inProgress`, your ' +
+        'other features still in progress, to check the merge fits with.',
       inputSchema: { slug: SlugInput },
     },
     toolMergeFeature,
@@ -578,7 +393,8 @@ export function registerOrchestratorTools(
     {
       title: 'Add to a feature’s brief',
       description:
-        'Add what the human told you later about a feature to its brief, as a dated section, above the lead’s decisions and build notes.',
+        'Add what the human told you later about a draft to its brief, as a dated section. Refused once it has ' +
+        'started: its brief is then its lead’s and the human’s, so tell its lead with send_to_feature.',
       inputSchema: {
         slug: SlugInput,
         text: z.string().min(1).describe('What the human said, in your words, as markdown.'),

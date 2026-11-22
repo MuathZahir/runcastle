@@ -19,7 +19,7 @@ export const SESSION_WAITING = 'session.waiting'
 /** The event a wait being cleared leaves on the timeline. */
 export const SESSION_WAIT_CLEARED = 'session.wait_cleared'
 
-/** What cleared a wait (decision 7). */
+/** What cleared a wait (decision 7). `autopilot` is history only: an epic went on autopilot (retired by autopilot-retires); old events still carry it. */
 export type WaitEnd = 'human' | 'answered' | 'stopped' | 'withdrawn' | 'closed' | 'autopilot' | 'resumed'
 
 const WAIT_END_WORDS: Record<WaitEnd, string> = {

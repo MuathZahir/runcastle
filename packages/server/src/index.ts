@@ -15,6 +15,7 @@ import { recountAllSessions } from './services/usage'
 import type { AppCtx } from './db/types'
 import { reconcileStaleSessions, wakeCutOffChats } from './launcher/reconcile'
 import { holdUpgradeNotes } from './services/upgrade-note'
+import { upgradeAutopilotFeatures } from './services/autopilot-upgrade'
 import { runEpicNamingPassOnce } from './threads/epic-naming-pass'
 import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
@@ -260,8 +261,8 @@ export async function startServer(): Promise<void> {
   // an unforeseen service-level rejection is logged, never allowed to delay boot.
   startModelDiscovery(ctx)
 
-  // Tell the epic running a feature on autopilot when something ends on it
-  // (`whole-cuts-plan-themselves` decision 11).
+  // Tell a feature's epic when the feature merges or a dependent of it could
+  // not start (`autopilot-retires` decisions 2, 9).
   startOrchestratorNotifier(ctx)
 
   // Say when a feature starts needing the human: pings hang off this one event
@@ -304,6 +305,12 @@ export async function startServer(): Promise<void> {
   }
   // …and each lead of a feature with unfinished tickets gets one held note, riding its next message (decision 20).
   void holdUpgradeNotes(ctx).catch((err) => console.error('could not hold the ticket upgrade notes', err))
+  // Once per feature, the open features of epics that were on autopilot move off it (autopilot-retires
+  // decision 13): "Everything" becomes "Result only", a question asked of the epic goes back to the lead's chat.
+  // A copied database's features are the live install's.
+  if (!isDatabaseCopy()) {
+    void upgradeAutopilotFeatures(ctx).catch((err) => console.error('could not move the autopilot features off autopilot', err))
+  }
   // Once per install, the orchestrator chats listed now get epic names (orchestrator-chats-become-epics
   // decision 13). Not awaited: one short model run per chat. A copied database's chats are the live install's.
   if (!isDatabaseCopy()) {

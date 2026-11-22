@@ -286,14 +286,12 @@ export function threadNeed(ctx: AppCtx, row: Pick<SessionRow, 'id'>): Need | nul
 }
 
 /** A project chat's epic look, as its row stores it (epics-that-look-alive decisions 1–3); nothing for other kinds. */
-export function epicLookOf(row: SessionRow): Pick<ThreadEntry, 'color' | 'icon' | 'iconByHuman' | 'autopilot'> {
+export function epicLookOf(row: SessionRow): Pick<ThreadEntry, 'color' | 'icon' | 'iconByHuman'> {
   if (row.kind !== 'project') return {}
   return {
     ...(row.epicColor ? { color: row.epicColor } : {}),
     ...(row.epicIcon ? { icon: row.epicIcon } : {}),
     ...(row.epicIconByHuman ? { iconByHuman: true } : {}),
-    // An epic always says whether it is on autopilot: the sidebar reads only this.
-    autopilot: row.autopilot ?? false,
   }
 }
 

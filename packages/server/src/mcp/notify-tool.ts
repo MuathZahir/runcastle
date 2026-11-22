@@ -2,7 +2,6 @@ import type { SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { emitForSession } from '../services/events'
-import { autopilotOf } from '../services/autopilot'
 import { chatName } from '../threads/chat-name'
 import { type PushMessage, type PushSender, sendPushToAll } from '../services/push'
 import { getFeatureRow } from '../services/repo'
@@ -46,13 +45,6 @@ function sender(ctx: AppCtx, session: SessionRow): Pick<PushMessage, 'title' | '
     )
   }
   const feature = getFeatureRow(ctx, session.featureId)
-  const lock = autopilotOf(ctx, feature)
-  if (lock) {
-    throw new GateError(
-      `this feature is on autopilot in the epic "${lock.epicName}", so only the epic may notify the human. ` +
-        'Tell the epic with hand_back instead.',
-    )
-  }
   return {
     title: feature.title,
     url: `${path('p', feature.projectId, 'f', feature.slug, 'chat')}${thread}`,

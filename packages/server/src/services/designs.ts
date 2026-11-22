@@ -7,7 +7,6 @@ import type { AppCtx } from '../db/types'
 import { designs } from '../db/schema'
 import { GateError, NotFoundError } from '../errors'
 import { SHOWN_TYPES, storedExt } from '../threads/shown'
-import { isLocked } from './autopilot'
 import { emit } from './events'
 import { deliverToLead } from './lead-delivery'
 import { getFeatureRow } from './repo'
@@ -162,9 +161,7 @@ function designAt(ctx: AppCtx, featureId: string, path: string): DesignRow {
 
 /**
  * The lead marks a yes or a rejection the human gave in words (decisions 8,
- * 20): approved by the lead, or dropped. On a locked feature the yes is the
- * epic's on autopilot, so it is recorded as autopilot's (epics-on-autopilot
- * decision 11) and the Design tab says so.
+ * 20): approved by the lead, or dropped.
  */
 export function setDesignState(
   ctx: AppCtx,
@@ -173,7 +170,7 @@ export function setDesignState(
 ): DesignEntry {
   const row = designAt(ctx, featureId, input.path)
   const approvedBy: DesignApprover | null =
-    input.state === 'approved' ? (isLocked(ctx, getFeatureRow(ctx, featureId)) ? 'autopilot' : 'lead') : null
+    input.state === 'approved' ? 'lead' : null
   ctx.db.update(designs).set({ state: input.state, approvedBy }).where(eq(designs.id, row.id)).run()
   const updated = designRow(ctx, row.id)
   emit(ctx, featureId, {

@@ -28,7 +28,6 @@ import { agentHost, appendThreadEvent } from '../../threads/types'
 import { driveWorkerBetweenDrives } from '../../workers/drive'
 import { beforeWorkerTurn, workerPrompted, workerTypedTo } from '../../workers/service'
 import { clearWait } from '../../services/waits'
-import { refuseHumanMessage } from '../../services/autopilot'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -90,8 +89,6 @@ export const threadRouter = router({
       if (row.kind === 'drive-fix' || row.kind === 'scenario') throw new GateError(OLD_DRIVE_CHAT_READ_ONLY)
       const between = driveWorkerBetweenDrives(ctx, row)
       if (between) throw new GateError(between)
-      // A locked feature's lead and workers take no message from the human (epics-on-autopilot decision 16).
-      if (row.featureId) refuseHumanMessage(ctx, getFeatureRow(ctx, row.featureId))
       // A thread opened empty (New thread) is briefed ahead of the human's first
       // words, in the same prompt, so the agent answers once (decision 12).
       if (!row.ccSessionId && !hasThreadLog(id)) {
@@ -182,8 +179,7 @@ export const threadRouter = router({
   edit: publicProcedure
     .input(threadId.extend({ promptId: z.string(), text: z.string().min(1), undoFiles: z.boolean().default(false) }))
     .mutation(async ({ ctx, input }): Promise<{ promptId: string }> => {
-      const row = threadRow(ctx, input.threadId)
-      if (row.featureId) refuseHumanMessage(ctx, getFeatureRow(ctx, row.featureId))
+      threadRow(ctx, input.threadId)
       const host = agentHost(ctx)
       await host.fork(input.threadId, input.promptId, { into: 'same', undoFiles: input.undoFiles })
       return host.prompt(input.threadId, { text: input.text }, { source: 'human' })

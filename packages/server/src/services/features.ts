@@ -36,7 +36,6 @@ import {
   describeBlocker,
   waitingOn,
 } from './dependencies'
-import { autopilotReader, type FeatureAutopilot, isLocked, tellEpicInstead } from './autopilot'
 import { emit, emitProject, latestEventTs, latestTsByFeature, upNextProblems } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import { removeFeatureReviewCaptures } from './review-capture-expiry'
@@ -61,7 +60,8 @@ import {
 } from './repo'
 import { activeSessionsForFeature, featureSessions, newestThread } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { leadState, NO_LEAD } from '../threads/read'
+import { leadState, NO_LEAD, seedFromTranscript } from '../threads/read'
+import { appendThreadEvent } from '../threads/log'
 import { agentHost } from '../threads/types'
 import { listByFeature, ticketStatusCounts } from './tickets'
 import { removeFeatureWorkers, stopFeatureWorkers, workerProgressByFeature, workersHoldingReady, workersWorkingByFeature } from '../workers/service'
@@ -133,8 +133,6 @@ export interface FeatureListItem extends Omit<Feature, 'brief'> {
   upNextProblem: string | null
   /** What it needs from the human, or null (`services/feature-need.ts`). */
   need: Need | null
-  /** Its epic when it is locked (its epic on autopilot, the feature neither shipped nor archived); null exactly when it is not. */
-  autopilot: FeatureAutopilot | null
 }
 
 export interface FeatureFull {
@@ -153,8 +151,6 @@ export interface FeatureFull {
   working: boolean
   /** See {@link FeatureListItem.need}: the header, the sidebar and the pings read one answer. */
   need: Need | null
-  /** See {@link FeatureListItem.autopilot}. */
-  autopilot: FeatureAutopilot | null
 }
 
 export interface CreateFeatureInput {
@@ -186,9 +182,7 @@ export interface CreateFeatureInput {
   draft?: boolean
   /**
    * The orchestrator chat creating it: it becomes the feature's epic, and
-   * `feature.created` names it as `createdBy`. Created while that epic is on
-   * autopilot, the feature is locked to it at once (`epics-on-autopilot`
-   * decisions 13, 14).
+   * `feature.created` names it as `createdBy`.
    * Absent for New feature and for a draft a feature's agent parks.
    */
   chat?: { threadId: string }
@@ -471,7 +465,6 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
       : null,
     working: feature.status === 'active' && featureWorking(ctx, feature.id, lead),
     need: needOf(ctx, feature),
-    autopilot: autopilotReader(ctx, feature.projectId)(feature),
   }
 }
 
@@ -494,7 +487,6 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
     ctx,
     projectFeatures.filter((f) => f.status === 'active').map((f) => f.id),
   )
-  const autopilotOf = autopilotReader(ctx, projectId)
 
   return projectFeatures.map(({ brief: _brief, ...feature }) => {
     const byStatus = ticketStatuses.get(feature.id)
@@ -522,7 +514,6 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       blocks: deps.blocks.get(feature.id) ?? [],
       upNextProblem: feature.upNext && feature.status === 'draft' ? (problems.get(feature.id) ?? null) : null,
       need: needOf(ctx, feature, waits.get(feature.id) ?? []),
-      autopilot: autopilotOf(feature),
     }
   })
 }
@@ -616,14 +607,16 @@ export type ReadyAutoMerge = { merged: true; base: string } | { merged: false; w
  * Test drive button starts. A declaration, never a gate.
  *
  * At "Involve me in: Nothing" (how-involved-am-i) runcastle merges it instead,
- * once the record is written and when no review defect is open. A merge that is
- * refused or fails falls back to the wait above, and the lead is told why;
- * `autoMerge` says which happened.
+ * once the record is written, when the review is clean (`autopilot-retires`
+ * decision 11): the lead says its checks passed (`checksPassed`) and no defect
+ * of any severity is open, whoever reported it; no review worker is required.
+ * A merge that is refused or fails falls back to the wait above, and the lead
+ * is told why; `autoMerge` says which happened.
  */
 export async function declareReady(
   ctx: AppCtx,
   featureId: string,
-  input: { scenario: string },
+  input: { scenario: string; checksPassed?: boolean },
   leadSessionId?: string,
 ): Promise<{ declaration: ReadyDeclaration; autoMerge?: ReadyAutoMerge }> {
   const feature = getFeatureRow(ctx, featureId)
@@ -653,7 +646,7 @@ export async function declareReady(
     waitForTheHuman(ctx, feature, scenario, leadSessionId)
     return { declaration }
   }
-  const autoMerge = await mergeOnReady(ctx, feature)
+  const autoMerge = await mergeOnReady(ctx, feature, input.checksPassed === true)
   if (autoMerge.merged) return { declaration, autoMerge }
   waitForTheHuman(ctx, getFeatureRow(ctx, featureId), scenario, leadSessionId)
   await deliverToLead(ctx, getFeatureRow(ctx, featureId), {
@@ -664,17 +657,8 @@ export async function declareReady(
   return { declaration, autoMerge }
 }
 
-/** Today's "ready": the lead's chat waits on the human, or on autopilot the epic hears it (epics-on-autopilot decision 17). */
+/** Today's "ready": the lead's chat waits on the human. */
 function waitForTheHuman(ctx: AppCtx, feature: Feature, scenario: string, leadSessionId?: string): void {
-  if (isLocked(ctx, feature)) {
-    void tellEpicInstead(
-      ctx,
-      feature,
-      `declared ready to test (scenario ${scenario}). Drive it with drive({ slug: "${feature.slug}", action: "start", scenario: "${scenario}" }) or tell the human, as the run plan says.`,
-      'Ready to test',
-    ).catch((err) => console.error(`telling the epic ${feature.slug} is ready failed`, err))
-    return
-  }
   // Needs you until the human writes in the lead's chat (needs-you decision 8).
   const lead = leadSessionId ?? newestThread(ctx, { featureId: feature.id }, 'chat')?.id
   if (lead) setWait(ctx, lead, readyToTestWhy(scenario), 'agent')
@@ -682,18 +666,28 @@ function waitForTheHuman(ctx: AppCtx, feature: Feature, scenario: string, leadSe
 
 /**
  * Merge a ready feature at "Involve me in: Nothing", as runcastle: refused
- * while a review defect is open. The merge's own news reaches the feature's
- * epic (on autopilot or not) as any merge's does.
+ * unless the lead's checks passed and no defect is open. The merge's own news
+ * reaches the feature's epic as any merge's does; the feature's chat gets a
+ * line naming the merge commit and how to undo it (decision 7).
  */
-async function mergeOnReady(ctx: AppCtx, feature: Feature): Promise<ReadyAutoMerge> {
+async function mergeOnReady(ctx: AppCtx, feature: Feature, checksPassed: boolean): Promise<ReadyAutoMerge> {
+  if (!checksPassed) {
+    return {
+      merged: false,
+      why: 'the call did not say your checks passed (declare_ready with checksPassed: true once your tests and checks pass)',
+    }
+  }
   const open = openDefects(ctx, feature.id)
   if (open.length) {
     const titles = open.map((d) => `"${d.title}"`).join(', ')
-    return { merged: false, why: `${open.length} review defect${open.length === 1 ? ' is' : 's are'} still open (${titles})` }
+    return { merged: false, why: `${open.length} defect${open.length === 1 ? ' is' : 's are'} still open (${titles}): fix or dismiss each with resolve_finding` }
   }
   try {
     const res = await mergeFeatureFlow(ctx, feature.id, { by: MERGED_BY_RUNCASTLE })
-    if (res.ok) return { merged: true, base: res.base }
+    if (res.ok) {
+      noteSelfMerge(ctx, feature, res.base, res.sha ?? null)
+      return { merged: true, base: res.base }
+    }
     const files = res.files.length ? ` in ${res.files.join(', ')}` : ''
     return { merged: false, why: res.conflict ? `merging into ${res.base} stopped on a conflict${files}` : `the merge into ${res.base} did not land` }
   } catch (err) {
@@ -706,6 +700,21 @@ async function mergeOnReady(ctx: AppCtx, feature: Feature): Promise<ReadyAutoMer
     }
     return { merged: false, why: `the merge failed (${err instanceof Error ? err.message : String(err)})` }
   }
+}
+
+/** The line runcastle's own merge leaves in the feature's chat: what it merged, and the command that undoes it. */
+export function selfMergeNotice(base: string, sha: string | null): string {
+  return sha
+    ? `Runcastle merged this into ${base} as ${sha.slice(0, 12)}. To undo it: git revert -m 1 ${sha}`
+    : `Runcastle merged this into ${base}. To undo it, revert the merge commit with git revert -m 1 <sha>.`
+}
+
+/** Post {@link selfMergeNotice} in the lead's chat, when it has one: the human reads it there. */
+function noteSelfMerge(ctx: AppCtx, feature: Feature, base: string, sha: string | null): void {
+  const lead = newestThread(ctx, { featureId: feature.id }, 'chat')
+  if (!lead) return
+  seedFromTranscript(ctx, lead.id)
+  appendThreadEvent(lead.id, { type: 'notice', text: selfMergeNotice(base, sha) })
 }
 
 /**

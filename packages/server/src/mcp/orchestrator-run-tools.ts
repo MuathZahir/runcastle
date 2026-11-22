@@ -24,7 +24,7 @@ import { chatReadPosition, recordChatRead } from './sent-memory'
  * `the-feature-lead-runs-rounds` decision 11): a message to its lead.
  */
 
-/** The line a message from the epic opens with (`epics-on-autopilot` decision 22). */
+/** The line a message from the epic opens with, so the lead never takes it for the human's. */
 export function fromEpicLine(epicName: string): string {
   return `From ${epicName}, the project's orchestrator, not the human:`
 }
@@ -38,7 +38,7 @@ export function relayLine(epicName: string): string {
 export type SendToFeatureResult = { deliveredToLead: true }
 
 /**
- * Send a message to a feature on autopilot in this epic. Every chat on a
+ * Send a message to one of this epic's features. Every chat on a
  * feature is its lead, so the message reaches it as the human's would — drive
  * notes, an answer — and counts as a human message, which clears a Stop. It
  * opens with the epic's name. `humanWords` relays the human's own answer,
@@ -182,10 +182,10 @@ export function registerOrchestratorRunTools(
       {
         title: 'Send a feature a message',
         description:
-          "Send a message to the agent of a feature on autopilot in this epic, marked as from this epic, not the human. " +
+          "Send a message to the lead of one of this epic's features, marked as from this epic, not the human. " +
           'To pass on the human’s own answer, put their words verbatim in `humanWords`: it is marked as theirs. ' +
-          'It clears the feature’s Stop, as a human message does. Refused on a feature that is the human’s: link ' +
-          'them to its chat instead.',
+          'It clears the feature’s Stop, as a human message does. Refused on another epic’s feature or one the human ' +
+          'made with New feature: link them to its chat instead.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z.string().optional().describe('Your own words: what to change and why, or what you found.'),

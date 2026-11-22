@@ -41,7 +41,7 @@ export const INVOLVEMENT_STOPS_FOR: Record<Involvement, string> = {
   everything: 'Ask the human the decisions, show them new screens for a yes; they try it and merge.',
   designsAndResult: `Decide the small things yourself (each marked ${DECIDED_WITHOUT_YOU_MARK}); show the human new screens for a yes; they try it and merge.`,
   resultOnly: `Plan, design and build it all yourself (each decision marked ${DECIDED_WITHOUT_YOU_MARK}); the human tries it and merges.`,
-  nothing: `Plan, design and build it all yourself (each decision marked ${DECIDED_WITHOUT_YOU_MARK}); declare ready and runcastle merges it when no defect is open.`,
+  nothing: `Plan, design and build it all yourself (each decision marked ${DECIDED_WITHOUT_YOU_MARK}); declare ready with checksPassed: true once your checks pass, and runcastle merges it when no defect is open (record a subagent review's defects with report_finding).`,
 }
 
 /** What each level now means, in the human's terms: the second half of the chat's notice row. */
@@ -167,7 +167,7 @@ async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement): Promise
       reason: 'question',
       text:
         `The human changed "${INVOLVEMENT_NAME}" to ${label} while the feature waits as Ready to test. ` +
-        'Call declare_ready again with the same scenario, and runcastle merges it when no defect is open.',
+        'Call declare_ready again with the same scenario and checksPassed: true once your checks pass, and runcastle merges it when no defect is open.',
       background: true,
     })
     return

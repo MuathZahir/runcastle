@@ -1,5 +1,5 @@
-import { AUTOSTART_FAILED, unresolvedMergeConflict } from '@runcastle/core'
-import { scenarioDataDir } from '@runcastle/core/paths'
+import { AUTOSTART_FAILED, type DecidedWithoutYou, decidedWithoutYou, unresolvedMergeConflict } from '@runcastle/core'
+import { featureDocsRel, scenarioDataDir } from '@runcastle/core/paths'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
 import { stopDesignServer } from './design'
@@ -21,6 +21,8 @@ export interface MergeFlowResult {
   conflict?: boolean
   base: string
   files: string[]
+  /** A landed merge's commit, when it could be read. */
+  sha?: string | null
 }
 
 /**
@@ -31,9 +33,11 @@ export interface MergeFlowResult {
  *
  * `opts.by` is the orchestrator thread whose `merge_feature` merged it, or
  * `runcastle` when a ready feature at "Involve me in: Nothing" merged by itself
- * (absent: the human). It rides on `feature.shipped`, with the merge commit, so the
- * feature's epic hears who merged it (`the-epic-hears-when-its-features-merge`);
- * that news goes once the up-next drafts this merge starts have started.
+ * (absent: the human). It rides on `feature.shipped`, with the merge commit, the
+ * review summary and the decisions marked "Decided without you", so the
+ * feature's epic hears who merged it and what was settled
+ * (`autopilot-retires` decision 2); that news goes once the up-next drafts this
+ * merge starts have started.
  */
 export async function mergeFeatureFlow(
   ctx: AppCtx,
@@ -59,6 +63,7 @@ export async function mergeFeatureFlow(
   const delta = await git.mergeDelta(project, feature)
   const standingConflict = unresolvedMergeConflict(listAfter(ctx, feature.id, 0))
   const res = await git.mergeFeature(project, feature)
+  let shaOf: string | null = null
   if (res.ok) {
     if (standingConflict) {
       emit(ctx, featureId, {
@@ -68,10 +73,18 @@ export async function mergeFeatureFlow(
     }
     // The merge commit, read before the outcome doc commits on top of it.
     const sha = (await git.headSha(project.repoPath, res.target)) ?? null
+    shaOf = sha
     // `outcome.md` for an old-shape feature, `brief.md` (its `## Review summary`) for a one-file one.
-    const outcomeRel = await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
-    const outcome = outcomeRel && (await git.headSha(project.repoPath, `${res.target}:${outcomeRel}`)) ? outcomeRel : null
-    const shippedData: ShippedData = { base: res.target, sha, outcome, mergedBy: opts.by ?? null }
+    const promoted = await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
+    const outcome = promoted.rel && (await git.headSha(project.repoPath, `${res.target}:${promoted.rel}`)) ? promoted.rel : null
+    const shippedData: ShippedData = {
+      base: res.target,
+      sha,
+      outcome,
+      mergedBy: opts.by ?? null,
+      reviewSummary: promoted.summary,
+      decidedWithoutYou: await mergedDecisions(project.repoPath, res.target, feature.slug),
+    }
     const shipped = emit(ctx, featureId, {
       type: 'feature.shipped',
       message: `merged to ${res.target}`,
@@ -89,7 +102,7 @@ export async function mergeFeatureFlow(
         message: `couldn't start up-next dependents: ${err instanceof Error ? err.message : String(err)}`,
       })
     }
-    // After the up-next starts, so the epic's wake test counts them (decision 5).
+    // After the up-next starts, so the epic's news lists them as in progress (decision 5).
     announceMerge(ctx, shipped.id)
     // Before the worktree goes: the design server runs inside it.
     await stopDesignServer(ctx, featureId, 'shipped')
@@ -124,5 +137,21 @@ export async function mergeFeatureFlow(
       source: 'runcastle',
     }).catch((err) => console.error(`feature ${featureId}: conflict delivery`, err))
   }
-  return { ok: res.ok, conflict: res.conflict, base: res.target, files: res.files ?? [] }
+  return { ok: res.ok, conflict: res.conflict, base: res.target, files: res.files ?? [], ...(res.ok ? { sha: shaOf } : {}) }
+}
+
+/**
+ * The decisions the lead settled without the human, as merged into `target`:
+ * an older feature's decisions.md, else its brief.md. Empty when neither reads.
+ */
+async function mergedDecisions(repoPath: string, target: string, slug: string): Promise<DecidedWithoutYou[]> {
+  try {
+    const docs = featureDocsRel(slug)
+    const text =
+      (await git.fileAtRef(repoPath, target, `${docs}/decisions.md`)) ??
+      (await git.fileAtRef(repoPath, target, `${docs}/brief.md`))
+    return text === null ? [] : decidedWithoutYou(text)
+  } catch {
+    return []
+  }
 }
