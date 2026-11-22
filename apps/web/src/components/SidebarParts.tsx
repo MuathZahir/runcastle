@@ -1256,13 +1256,12 @@ const NOTIFY_LABEL: Record<NotifyState, string> = {
 
 /**
  * The foot's last line, icons only: settings, theme and notifications on the
- * left; on the right the sandbox and the server's health as one glyph and dot,
+ * left; on the right the server's health as one glyph and dot,
  * the words in their tooltip. Shared with the portfolio home's sidebar.
  */
 export function SidebarStatusLine({
   healthTone,
   healthTip,
-  sandbox,
   notify,
   theme,
   onToggleTheme,
@@ -1272,7 +1271,6 @@ export function SidebarStatusLine({
 }: {
   healthTone: StatusTone
   healthTip: string
-  sandbox: string
   /** `null` when the browser has no Notification API to toggle. */
   notify: { state: NotifyState; title: string; onToggle: () => void } | null
   theme: 'dark' | 'light'
@@ -1306,7 +1304,7 @@ export function SidebarStatusLine({
         <HelpMenu onOpenGlossary={onOpenGlossary} {...(onOpenPhoneSetup ? { onOpenPhoneSetup } : {})} />
       )}
       <span className="flex-1" />
-      <Tooltip label={`${healthTip} · agents run sandboxed via ${sandbox}`}>
+      <Tooltip label={healthTip}>
         <span tabIndex={0} className="mr-2 inline-flex items-center gap-1.5 rounded-sm" data-health-tone={healthTone}>
           <IconCube size={14} className="text-icon" />
           <StatusDot tone={healthTone} />

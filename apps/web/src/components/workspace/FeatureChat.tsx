@@ -16,7 +16,7 @@ import { StartAgent, type StartAgentPress } from './StartAgent'
 
 const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans the work and hands it to workers.'
 /** A thread that is neither the lead's, the drive's Scenarios worker nor a listed worker yet: a worker whose row is still on its way. */
-const WORKER_PENDING_HINT = 'A worker on this feature, in its own sandbox.'
+const WORKER_PENDING_HINT = 'A worker on this feature, on your machine.'
 
 /**
  * The feature page's chat column (chat-as-web-components decisions 3, 7): the

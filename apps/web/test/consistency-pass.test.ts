@@ -55,7 +55,6 @@ describe('the server status before the first answer', () => {
       createElement(SidebarFootChrome, {
         health: 'connecting',
         origin: 'http://x',
-        sandbox: 'docker',
         notify: null,
         theme: 'dark',
         onToggleTheme: () => undefined,

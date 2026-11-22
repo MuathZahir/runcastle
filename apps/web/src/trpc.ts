@@ -10,8 +10,8 @@ import type { AppRouter } from '@runcastle/server'
 export const trpc = createTRPCReact<AppRouter>()
 
 /**
- * Queries whose server side shells out (git, the doctor's probes, the container
- * engine) or goes to the network, so they take hundreds of milliseconds to
+ * Queries whose server side shells out (git, the doctor's probes) or goes to
+ * the network, so they take hundreds of milliseconds to
  * seconds where every other procedure is a few-millisecond SQLite read.
  *
  * A batch answers in one response, so it answers when its SLOWEST member does:
@@ -22,7 +22,6 @@ export const trpc = createTRPCReact<AppRouter>()
 export const UNBATCHED_PATHS: ReadonlySet<string> = new Set([
   'setup.doctor',
   'system.checkUpdate',
-  'system.burnCache.status',
   'project.branches',
   'project.sessionBranch',
   // Staleness of every prep finding: detectMainBranch plus a rev-list per sha.

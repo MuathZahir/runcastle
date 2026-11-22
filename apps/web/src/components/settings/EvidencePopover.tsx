@@ -21,6 +21,7 @@ const HOW_ESTABLISHED: Record<FindingSource, string> = {
   prep: 'measured by an older automatic run',
   session: 'established in a chat on this machine',
   human: 'set by you',
+  // The retired image build's rows, kept because they outlive it.
   build: "built by runcastle from this repo's own Dockerfile",
 }
 

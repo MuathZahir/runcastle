@@ -19,8 +19,6 @@ import {
   rosterRows,
   rosterVisibleRows,
   rowSearchTerms,
-  settingsLocationFromMessage,
-  settingsMention,
   stepModelRows,
   stepRows,
   unsetStepKeys,
@@ -155,7 +153,6 @@ describe('describeField', () => {
 
   it('leaves every unset global field without a note', () => {
     expect(describeField(field({ key: 'burnConcurrency', value: 3 })).note).toBeNull()
-    expect(describeField(field({ key: 'burnCpus', value: null })).note).toBeNull()
     expect(describeField(field({ key: 'model', value: 'claude-opus-5' })).note).toBeNull()
   })
 
@@ -264,7 +261,7 @@ describe('model dropdown — runtime groups', () => {
     const modelRow = globalRows(v).find((r) => r.key === 'model')
     expect(modelRow?.modelGroups.map((g) => g.runtime)).toEqual(['claude-code', 'codex'])
     expect(modelRow?.options).toContain('my-proxy/gpt')
-    expect(describeField(field({ key: 'sandbox', value: 'docker' })).modelGroups).toEqual([])
+    expect(describeField(field({ key: 'serverPort', value: 4512 })).modelGroups).toEqual([])
   })
 
   it('never renders the roster itself as a settings row', () => {
@@ -367,8 +364,22 @@ const view = (fields: Partial<SettingField>[], projectId?: string): SettingsView
 
 describe('globalRows', () => {
   it('maps every field in the global view to a row', () => {
-    const rows = globalRows(view([{ key: 'serverPort' }, { key: 'model' }, { key: 'sandboxImage' }]))
-    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'model', 'sandboxImage'])
+    const rows = globalRows(view([{ key: 'serverPort' }, { key: 'model' }, { key: 'sessionMcp' }]))
+    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'model', 'sessionMcp'])
+  })
+
+  it('drops the retired sandbox keys an older server still sends', () => {
+    const rows = globalRows(
+      view([
+        { key: 'serverPort' },
+        { key: 'sandbox' },
+        { key: 'sandboxImage' },
+        { key: 'burnCpus' },
+        { key: 'burnGuard' },
+        { key: 'burnCache' },
+      ]),
+    )
+    expect(rows.map((r) => r.key)).toEqual(['serverPort'])
   })
 })
 
@@ -385,7 +396,7 @@ describe('projectRows', () => {
         'proj_1',
       ),
     )
-    expect(rows.map((r) => r.key)).toEqual(['model', 'sandboxImage', 'devCommand'])
+    expect(rows.map((r) => r.key)).toEqual(['model', 'devCommand'])
   })
 })
 
@@ -487,27 +498,27 @@ const projectView = (over: Record<string, Partial<SettingField>> = {}): Settings
   )
 
 describe('pageRows — one page per task', () => {
-  it('puts the machine-wide fields on General, grouped Server then Sessions', () => {
+  it('puts the machine-wide fields on General, grouped Server, Sessions, then Workers', () => {
     const rows = pageRows(globalView(), 'general')
-    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'sandboxImage', 'sessionMcp'])
-    expect(rows.map((r) => r.group)).toEqual(['server', 'sessions', 'sessions'])
-    expect(rows.find((r) => r.key === 'sandboxImage')?.placeholder).toBe('sandcastle:runcastle')
+    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'sessionMcp', 'burnConcurrency'])
+    expect(rows.map((r) => r.group)).toEqual(['server', 'sessions', 'width'])
   })
 
   it('gives Models only the default model — the roster and steps are tables', () => {
     expect(pageRows(globalView(), 'models').map((r) => r.key)).toEqual(['model'])
   })
 
-  it('puts the two worker numbers on Sandboxes, each with the unit it counts, and no burn retry count', () => {
-    const rows = pageRows(globalView(), 'sandboxes')
-    expect(rows.map((r) => r.key)).toEqual(['burnConcurrency', 'burnCpus'])
-    expect(rows.map((r) => r.unit)).toEqual(['workers at once', 'cores · e.g. 4 on a 12-thread box at width 3'])
-    expect(rows.find((r) => r.key === 'burnCpus')?.placeholder).toBe('unlimited')
+  it('puts how many workers run at once on General, with the unit it counts', () => {
+    const row = pageRows(globalView(), 'general').find((r) => r.key === 'burnConcurrency')
+    expect(row?.label).toBe('Agents working at once')
+    expect(row?.unit).toBe('workers at once')
+    expect(row?.control).toBe('number')
+    expect(row?.tooltip).not.toMatch(/sandbox|container|docker/i)
   })
 
-  it('renders the retired sandbox on/off switch on no page', () => {
-    const retired = ['sandbox']
-    const shown = (['general', 'models', 'sandboxes'] as const).flatMap((page) => pageRows(globalView(), page).map((r) => r.key))
+  it('renders the retired sandbox keys on no page', () => {
+    const retired = ['sandbox', 'sandboxImage', 'burnCpus', 'burnGuard', 'burnCache']
+    const shown = (['general', 'models'] as const).flatMap((page) => pageRows(globalView(), page).map((r) => r.key))
     const project = pageRows(projectView(), 'project').map((r) => r.key)
     for (const key of retired) {
       expect(shown).not.toContain(key)
@@ -515,11 +526,10 @@ describe('pageRows — one page per task', () => {
     }
   })
 
-  it('groups This project as model & sandbox, commands, then project chat', () => {
+  it('groups This project as model, commands, then project chat', () => {
     const rows = pageRows(projectView(), 'project')
     expect(rows.map((r) => r.key)).toEqual([
       'model',
-      'sandboxImage',
       'setupCommand',
       'verifyCommands',
       'knownFailures',
@@ -533,7 +543,6 @@ describe('pageRows — one page per task', () => {
       'sessionBranch',
     ])
     expect(rows.map((r) => r.group)).toEqual([
-      'model',
       'model',
       'commands',
       'commands',
@@ -589,16 +598,16 @@ describe('pageRows — one page per task', () => {
   })
 
   it('gives every row a tooltip to hold the explanation the row does not print', () => {
-    for (const page of ['general', 'models', 'sandboxes'] as const) {
+    for (const page of ['general', 'models'] as const) {
       for (const row of pageRows(globalView(), page)) expect(row.tooltip).not.toBe('')
     }
     for (const row of pageRows(projectView(), 'project')) expect(row.tooltip).not.toBe('')
   })
 
-  // General and Burns are machine-wide: they read the global view, so the
-  // project-scoped copy of `sandbox` never doubles up there (decision 7).
+  // General is machine-wide: it reads the global view, so a project-scoped
+  // copy of a field never doubles up there (decision 7).
   it('never renders a project-scoped field on a machine-wide page', () => {
-    expect(pageRows(projectView(), 'general').map((r) => r.key)).not.toContain('sandbox')
+    expect(pageRows(projectView(), 'general').map((r) => r.key)).not.toContain('setupCommand')
   })
 })
 
@@ -632,33 +641,9 @@ describe('describeField — where a value came from', () => {
   })
 
   it('leaves a machine-wide row unchipped — there is no second scope to name', () => {
-    const row = describeField(field({ key: 'sandbox', value: 'docker' }))
+    const row = describeField(field({ key: 'serverPort', value: 4512 }))
     expect(row.sourceChip).toBeUndefined()
     expect(row.ghostValue).toBeUndefined()
-  })
-
-  /**
-   * The sandbox image reads exactly like the setup command in project scope: a
-   * global twin behind a ghost, the chip that flips when the project sets its
-   * own, and the provenance of whoever established it. The value here may have
-   * come from an image build rather than a preparation run, which is why the
-   * chip matters — "you set this" is what stops a rebuild overwriting it.
-   */
-  it('gives the sandbox image the twin chip, the ghost and its provenance', () => {
-    const inherited = describeField(
-      field({ key: 'sandboxImage', value: 'sandcastle:runcastle', scope: 'project', source: 'file' }),
-    )
-    expect(inherited.sourceChip).toBe('global')
-    expect(inherited.ghostValue).toBe('sandcastle:runcastle')
-    expect(inherited.group).toBe('model')
-
-    const own = describeField(
-      field({ key: 'sandboxImage', value: 'acme/jdk21:local', scope: 'project', source: 'project' }),
-      { key: 'sandboxImage', source: 'human', establishedAt: Date.now() - 11 * DAY },
-    )
-    expect(own.sourceChip).toBe('project')
-    expect(own.ghostValue).toBeUndefined()
-    expect(own.provenanceChip).toEqual({ text: 'You · 11d ago', tone: 'ok' })
   })
 })
 
@@ -1131,29 +1116,24 @@ describe('filterSettings', () => {
       page: 'general' as const,
       terms: rowSearchTerms(r),
     })),
-    ...pageRows(globalView(), 'sandboxes').map((r) => ({
-      id: r.key,
-      page: 'sandboxes' as const,
-      terms: rowSearchTerms(r),
-    })),
     { id: 'gpt-5.6-sol', page: 'models' as const, terms: ['gpt-5.6-sol', 'Codex'] },
   ]
 
   it('shows everything and counts nothing until someone types', () => {
     const all = filterSettings('   ', items)
     expect(all.matches.size).toBe(items.length)
-    expect(all.counts).toEqual({ general: 0, models: 0, sandboxes: 0, project: 0 })
+    expect(all.counts).toEqual({ general: 0, models: 0, project: 0 })
   })
 
   it('counts the hits per page so the rail can say where they are', () => {
-    const { counts, matches } = filterSettings('sandbox', items)
-    expect(matches).toEqual(new Set(['sandboxImage', 'burnCpus']))
-    expect(counts).toEqual({ general: 1, models: 0, sandboxes: 1, project: 0 })
+    const { counts, matches } = filterSettings('at once', items)
+    expect(matches).toEqual(new Set(['burnConcurrency']))
+    expect(counts).toEqual({ general: 1, models: 0, project: 0 })
   })
 
   it('matches the key and the tooltip, not just the label', () => {
-    expect(filterSettings('burnCpus', items).matches).toEqual(new Set(['burnCpus']))
-    expect(filterSettings('--cpus', items).matches).toEqual(new Set(['burnCpus']))
+    expect(filterSettings('burnConcurrency', items).matches).toEqual(new Set(['burnConcurrency']))
+    expect(filterSettings('under load', items).matches).toEqual(new Set(['burnConcurrency']))
   })
 
   it('searches the extra strings a page hands it, like a model id', () => {
@@ -1167,51 +1147,13 @@ describe('filterSettings', () => {
   })
 })
 
-/**
- * Every pointer at the AFK prerequisites used to be plain text, and the card it
- * pointed at could be a single un-retryable error line. These two messages are
- * the real ones, from the doctor's stale-image probe and the burner's
- * missing-binary precheck.
- */
-describe('settingsLocationFromMessage', () => {
-  it('turns the doctor’s rebuild advice into a link to the image row', () => {
-    expect(settingsLocationFromMessage('Open Settings → AFK burns and click "Rebuild image".')).toEqual(
-      { page: 'sandboxes', field: 'sandcastle-image' },
-    )
-  })
-
-  it('turns the burner’s missing-binary message into the same link', () => {
-    expect(
-      settingsLocationFromMessage(
-        'claude is not installed in image sandcastle:runcastle — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).',
-      ),
-    ).toEqual({ page: 'sandboxes', field: 'sandcastle-image' })
-  })
-
-  it('follows the page to its new name', () => {
-    expect(settingsLocationFromMessage('See Settings → Burns.')).toEqual({
-      page: 'sandboxes',
-      field: 'sandcastle-image',
-    })
-  })
-
-  it('leaves a message that points nowhere alone', () => {
-    expect(settingsLocationFromMessage('The burn failed.')).toBeNull()
-  })
-
-  it('links a message that names the page as Workers', () => {
-    expect(settingsMention('Rebuild from Settings → Workers.')?.phrase).toBe('Settings → Workers')
-  })
-})
-
 describe('the words Settings reads in — rounds and workers, never burns or laps', () => {
   const words = (row: SettingRow) =>
     [row.label, row.tooltip, row.shortHelp, row.unit].filter(Boolean).join(' ')
 
-  it('says neither "burn" nor "lap" on General, Workers or This project', () => {
+  it('says neither "burn" nor "lap" on General or This project', () => {
     const rows = [
       ...pageRows(globalView(), 'general'),
-      ...pageRows(globalView(), 'sandboxes'),
       ...pageRows(projectView(), 'project'),
     ]
     for (const row of rows) expect(words(row)).not.toMatch(/\bburn|\blaps?\b/i)

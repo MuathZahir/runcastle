@@ -34,7 +34,6 @@ vi.mock('../src/trpc', () => ({
       settings: { get: { invalidate: () => undefined } },
       project: { prep: { invalidate: () => undefined } },
       setup: { doctor: { invalidate: () => undefined } },
-      system: { burnCache: { status: { invalidate: () => undefined } } },
       phoneLink: { status: { setData: () => undefined } },
     }),
     // General's "On your phone". It has its own suite (`settings-phone-link.test.tsx`).
@@ -49,19 +48,8 @@ vi.mock('../src/trpc', () => ({
       turnOn: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
       turnOff: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
     },
-    // The Burns page's prerequisites checklist. It has its own suite
-    // (`settings-burns.test.tsx`); here it only has to render.
     setup: {
       doctor: { useQuery: () => ({ data: undefined, isLoading: true, error: null }) },
-      runtimeGuide: { useQuery: () => ({ data: undefined }) },
-      startTerminal: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
-      afkToken: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
-    },
-    system: {
-      burnCache: {
-        status: { useQuery: () => ({ data: undefined }) },
-        clear: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
-      },
     },
     // "This project" reads the preparation findings for its provenance chips.
     // What they say has its own suite (`settings-project.test.tsx`).
@@ -111,11 +99,15 @@ const field = (over: Partial<SettingField>): SettingField =>
 
 const view = (fields: SettingField[]): SettingsView => ({ fields }) as SettingsView
 
-/** General's four fields, plus one Burns field and the two project rows. */
+/**
+ * General's three fields, plus the retired sandbox keys an older server still
+ * sends — which no page may render.
+ */
 const globalFields = (over: Partial<SettingField> = {}): SettingField[] => [
   field({ key: 'serverPort', value: 4512, restartRequired: true, ...over }),
   field({ key: 'sandbox', value: 'docker' }),
   field({ key: 'sandboxImage', value: '' }),
+  field({ key: 'burnCpus', value: null }),
   field({ key: 'sessionMcp', value: 'inherit' }),
   field({ key: 'burnConcurrency', value: 3, source: 'default' }),
 ]
@@ -163,15 +155,16 @@ describe('SettingsDialog', () => {
   })
   afterEach(cleanup)
 
-  it('opens as a labelled xl dialog with the four pages and a filter', () => {
+  it('opens as a labelled xl dialog with the three pages and a filter', () => {
     open()
 
     const panel = screen.getByRole('dialog')
     expect(panel.getAttribute('aria-label')).toBe('Settings')
     expect(panel.className).toContain('max-w-[940px]')
-    for (const name of ['General', 'Models', 'Sandboxes', 'This project']) {
+    for (const name of ['General', 'Models', 'This project']) {
       expect(screen.getByRole('button', { name })).toBeTruthy()
     }
+    expect(screen.queryByRole('button', { name: /Sandboxes/ })).toBeNull()
     expect(screen.getByLabelText('Filter settings')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'General' }).getAttribute('aria-current')).toBe(
       'page',
@@ -181,7 +174,7 @@ describe('SettingsDialog', () => {
   })
 
   /**
-   * The rail is four buttons over one piece of state — no address, no anchor,
+   * The rail is three buttons over one piece of state — no address, no anchor,
    * nothing the browser acts on. Each one has to reach its own page from any
    * other, which is what "Burns is unreachable" was a report of: the header, the
    * `aria-current` and the body all move together, and the dialog stays open.
@@ -189,7 +182,7 @@ describe('SettingsDialog', () => {
   it('reaches every page from every other, in place', () => {
     open()
 
-    const pages = ['General', 'Models', 'Sandboxes', 'This project']
+    const pages = ['General', 'Models', 'This project']
     for (const from of pages) {
       for (const to of pages) {
         fireEvent.click(screen.getByRole('button', { name: from }))
@@ -223,7 +216,7 @@ describe('SettingsDialog', () => {
     const panel = screen.getByRole('dialog')
     const bodies = new Set<Element>()
 
-    for (const page of ['General', 'Models', 'Sandboxes', 'This project']) {
+    for (const page of ['General', 'Models', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: page }))
 
       // One page scroller, not one per page and not a second one nested inside
@@ -250,25 +243,35 @@ describe('SettingsDialog', () => {
     expect(bodies.size).toBe(1)
   })
 
-  it('renders General as its named fields, each with its explanation beneath its label, and no sandbox switch', () => {
+  it('renders General as its named fields, each with its explanation beneath its label, and no sandbox rows', () => {
     open()
 
     expect(screen.getByLabelText('Server port')).toBeTruthy()
-    expect(screen.queryByLabelText('Sandbox')).toBeNull()
-    expect(screen.getByLabelText('Sandbox image')).toBeTruthy()
     expect(screen.getByLabelText('MCP servers in chats')).toBeTruthy()
+    expect(screen.queryByLabelText('Sandbox')).toBeNull()
+    expect(screen.queryByLabelText('Sandbox image')).toBeNull()
+    expect(screen.queryByText(/CPU/)).toBeNull()
 
     // The explanation is the row's description: one quiet line under the
     // label, and the control's accessible description — no hover to find it.
-    const about = screen.getByText(/The Docker image chats and workers are sandboxed in/)
+    const about = screen.getByText(/Workers mid-turn at once across the machine/)
     expect(about.className).toContain('text-text-tertiary')
-    expect(screen.getByLabelText('Sandbox image').getAttribute('aria-describedby')).toContain(
-      about.id,
-    )
-    // …and the placeholder carries the example value instead.
-    expect(screen.getByLabelText('Sandbox image').getAttribute('placeholder')).toBe(
-      'sandcastle:runcastle',
-    )
+    expect(
+      screen.getByLabelText('Agents working at once').getAttribute('aria-describedby'),
+    ).toContain(about.id)
+  })
+
+  // The one worker number moved here from the retired Sandboxes page, under a
+  // Workers heading of its own.
+  it('shows how many workers run at once on General, under Workers', () => {
+    open()
+
+    const width = screen.getByLabelText('Agents working at once') as HTMLInputElement
+    // Unset, so the default shows as a ghost to type over.
+    expect(width.value).toBe('')
+    expect(width.getAttribute('placeholder')).toBe('3')
+    expect(screen.getByText('Workers')).toBeTruthy()
+    expect(screen.getByText(/^workers at once/)).toBeTruthy()
   })
 
   it('locks a field the environment owns and names the variable that set it', () => {
@@ -284,63 +287,28 @@ describe('SettingsDialog', () => {
   it('commits a change and says so beside the label', () => {
     open()
 
-    const image = screen.getByLabelText('Sandbox image')
-    fireEvent.change(image, { target: { value: 'sandcastle:mine' } })
-    fireEvent.blur(image)
+    const width = screen.getByLabelText('Agents working at once')
+    fireEvent.change(width, { target: { value: '4' } })
+    fireEvent.blur(width)
 
-    expect(server.updates).toEqual([{ key: 'sandboxImage', value: 'sandcastle:mine' }])
+    expect(server.updates).toEqual([{ key: 'burnConcurrency', value: 4 }])
     expect(screen.getByText('Saved')).toBeTruthy()
   })
 
-  // The doctor's image row prescribes "Clear the machine-wide sandbox image
-  // setting"; until there was a link to click, that named a remedy this surface
-  // could not perform — blanking the control commits '', which the server
-  // refuses, and the project page's "Use global" only falls back onto the
-  // poisoned machine-wide value again.
-  it('clears a machine-wide sandbox image outright', () => {
-    server.globals = view([
-      field({ key: 'sandboxImage', value: 'sandcastle:runcastle-demo', source: 'file' }),
-    ])
-    open()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
-
-    expect(server.updates).toEqual([{ key: 'sandboxImage', value: null }])
-  })
-
-  it('offers no Clear for a machine-wide image nobody has set', () => {
-    server.globals = view([field({ key: 'sandboxImage', value: '', source: 'default' })])
-    open()
-    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
-  })
-
-  it('offers no Clear for an env-locked image, which no write can touch', () => {
-    server.globals = view([
-      field({
-        key: 'sandboxImage',
-        value: 'sandcastle:runcastle-demo',
-        source: 'env',
-        editable: false,
-      }),
-    ])
-    open()
-    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
-  })
-
   it('shows the server’s refusal beside the field and snaps the draft back', () => {
-    server.reject = 'sandboxImage must be a tag'
+    server.reject = 'burnConcurrency must be 1–8'
     open()
 
-    const image = screen.getByLabelText('Sandbox image') as HTMLInputElement
-    fireEvent.change(image, { target: { value: 'nope!' } })
-    fireEvent.blur(image)
+    const width = screen.getByLabelText('Agents working at once') as HTMLInputElement
+    fireEvent.change(width, { target: { value: '99' } })
+    fireEvent.blur(width)
 
-    expect(screen.getByRole('alert').textContent).toBe('sandboxImage must be a tag')
-    expect(image.value).toBe('')
+    expect(screen.getByRole('alert').textContent).toBe('burnConcurrency must be 1–8')
+    expect(width.value).toBe('')
     expect(screen.queryByText('Saved')).toBeNull()
 
     // It stays until the next edit — which is the answer to it.
-    fireEvent.change(image, { target: { value: 'sandcastle:mine' } })
+    fireEvent.change(width, { target: { value: '4' } })
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -359,11 +327,10 @@ describe('SettingsDialog', () => {
   it('filters every page at once, counting the hits beside each page name', () => {
     open()
 
-    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'image' } })
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'concurrency' } })
 
-    expect(screen.getByLabelText('Sandbox image')).toBeTruthy()
+    expect(screen.getByLabelText('Agents working at once')).toBeTruthy()
     expect(screen.queryByLabelText('Server port')).toBeNull()
-    expect(screen.queryByLabelText('Sandbox')).toBeNull()
     // The group heading goes with its rows rather than standing over nothing.
     expect(screen.queryByText('Server')).toBeNull()
     expect(screen.getByRole('button', { name: /General/ }).textContent).toContain('1')
@@ -376,7 +343,7 @@ describe('SettingsDialog', () => {
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'tailscale' } })
     expect(screen.getByText('On your phone')).toBeTruthy()
 
-    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'image' } })
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'concurrency' } })
     expect(screen.queryByText('On your phone')).toBeNull()
   })
 
@@ -407,28 +374,19 @@ describe('SettingsDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: query } })
     expect(screen.getByRole('switch', { name: 'Usage ping' })).toBeTruthy()
-    expect(screen.queryByLabelText('Sandbox image')).toBeNull()
+    expect(screen.queryByLabelText('Agents working at once')).toBeNull()
   })
 
   it('moves to the first page with hits when the open one has none', () => {
-    open()
+    open({ page: 'models' })
 
     fireEvent.change(screen.getByLabelText('Filter settings'), {
       target: { value: 'concurrency' },
     })
 
-    expect(screen.getByRole('button', { name: /Sandboxes/ }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('button', { name: /General/ }).getAttribute('aria-current')).toBe(
       'page',
     )
-  })
-
-  it.each(['burn', 'AFK'])('still finds the Sandboxes page by its older name %s', (word) => {
-    open()
-
-    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: word } })
-
-    expect(screen.getByRole('button', { name: /Sandboxes/ }).getAttribute('aria-current')).toBe('page')
-    // The checklist itself waits on the doctor, which this harness leaves loading.
   })
 
   it('says so when nothing matches, rather than showing an empty page', () => {
@@ -442,27 +400,27 @@ describe('SettingsDialog', () => {
   it('puts the caret in the filter box on Ctrl+F', () => {
     open()
 
-    fireEvent.keyDown(screen.getByLabelText('Sandbox image'), { key: 'f', ctrlKey: true })
+    fireEvent.keyDown(screen.getByLabelText('Server port'), { key: 'f', ctrlKey: true })
 
     expect(document.activeElement).toBe(screen.getByLabelText('Filter settings'))
   })
 
   it('opens on the page a deep link named', () => {
-    open({ page: 'sandboxes' })
+    open({ page: 'models' })
 
-    expect(screen.getByRole('button', { name: 'Sandboxes' }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe(
       'page',
     )
-    expect(screen.getByRole('heading', { name: 'Sandboxes' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Models' })).toBeTruthy()
   })
 
   it('scrolls to and flashes the field a deep link named', () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
-    open({ page: 'general', field: 'sandboxImage' })
+    open({ page: 'general', field: 'burnConcurrency' })
 
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
-    const row = screen.getByLabelText('Sandbox image').closest('div.border-b')
+    const row = screen.getByLabelText('Agents working at once').closest('div.border-b')
     expect(row?.className).toContain('outline-accent')
     // The rows the link did not name are left alone.
     expect(screen.getByLabelText('Server port').closest('div.border-b')?.className).not.toContain(
@@ -496,7 +454,7 @@ describe('SettingsDialog', () => {
     expect(theme).toMatch(/@layer base\s*{[\s\S]*?\bbutton\s*{[\s\S]*?background:\s*none/)
 
     const retired: string[] = []
-    for (const page of ['General', 'Models', 'Sandboxes', 'This project']) {
+    for (const page of ['General', 'Models', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(page) }))
       for (const button of screen.getAllByRole('button')) {
         if (/(?:^| )(?:btn|chip|settings-)/.test(button.className))

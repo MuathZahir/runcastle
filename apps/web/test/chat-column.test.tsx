@@ -82,8 +82,6 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   startedBy: 'lead',
   status: 'needs-you',
   failure: null,
-  engine: 'docker',
-  container: `rc-${id}`,
   branch: `runcastle/worker/${id}`,
   featureBranch: 'feature/demo',
   previewPort: null,
@@ -606,7 +604,6 @@ describe('the Scenarios worker in the column (drive-chats-become-workers decisio
     goal: null,
     doneWhen: null,
     startedBy: 'human',
-    container: null,
     folder: null,
     branch: null,
   })

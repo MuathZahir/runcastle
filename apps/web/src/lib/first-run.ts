@@ -12,7 +12,7 @@ import { AGENT_RUNTIMES, type AgentRuntime } from '@runcastle/core'
 import { RUNTIME_LABEL } from './settings'
 
 /** The setup steps, in order. The intro screen sits before all of them. */
-export type SetupStep = 'identity' | 'runtimes' | 'afk' | 'project'
+export type SetupStep = 'identity' | 'runtimes' | 'project'
 
 /** Every screen the wizard can show — the intro is not a setup step. */
 export type WizardScreen = 'intro' | SetupStep
@@ -26,7 +26,7 @@ export interface ProbeLike {
   fix?: string
   /** Set on the per-runtime probes: whose readiness this reports. */
   runtime?: AgentRuntime | null
-  /** Set on the per-runtime probes: `binary`, `auth` or `afk-key`. */
+  /** Set on the per-runtime probes: `binary` or `auth`. */
   check?: string | null
 }
 
@@ -47,7 +47,6 @@ export interface WizardStepRow {
 const SETUP_ORDER: { key: SetupStep; label: string }[] = [
   { key: 'identity', label: 'Git identity' },
   { key: 'runtimes', label: 'Coding agents' },
-  { key: 'afk', label: 'Unattended workers' },
   { key: 'project', label: 'First project' },
 ]
 
@@ -99,8 +98,6 @@ export interface RuntimeReadiness {
   installed: boolean
   /** Its CLI reports an interactive login. */
   authed: boolean
-  /** Its unattended credential is in place — see {@link runtimeReadiness}. */
-  afkReady: boolean
   /** Enough to open talk sessions on this runtime. */
   talkReady: boolean
   /** What the CLI probe actually found. */
@@ -127,13 +124,8 @@ export function apiKeyBillingNote(probes: readonly ProbeLike[]): string | null {
  * question the step exists to answer, so a missing one is a card saying how to
  * get it, not an absence.
  *
- * `talkReady` accepts EITHER an interactive login or the unattended credential,
- * because both really do authenticate a session — an operator who pasted a
- * token is not sent back to log in a second time.
- *
- * For Codex the two are one thing: a burn borrows the very file `codex login`
- * writes, so its AFK credential IS the login (decision 4) and there is no key
- * that could make it ready without one. Claude Code keeps the separate token.
+ * `talkReady` is an installed CLI with an interactive login: workers run on the
+ * host under the same sign-in as the chats.
  */
 export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness[] {
   return AGENT_RUNTIMES.map((runtime) => {
@@ -141,7 +133,6 @@ export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness
     const binary = of('binary')
     const installed = binary?.status === 'ok'
     const authed = of('auth')?.status === 'ok'
-    const afkReady = runtime === 'codex' ? authed : of('afk-key')?.status === 'ok'
     // Only Claude Code bills an Anthropic key.
     const apiKeyNote = runtime === 'claude-code' ? apiKeyBillingNote(probes) : null
     return {
@@ -149,8 +140,7 @@ export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness
       label: RUNTIME_LABEL[runtime],
       installed,
       authed,
-      afkReady,
-      talkReady: installed && (authed || afkReady),
+      talkReady: installed && authed,
       detail: binary?.detail ?? 'not checked',
       ...(installed || !binary?.fix ? {} : { installFix: binary.fix }),
       ...(apiKeyNote ? { apiKeyNote } : {}),

@@ -282,11 +282,8 @@ export function eventLevel(event: Pick<EventRow, 'type' | 'data'>): EventLevel {
  * every row to one line — so the part that got cut off was the part that
  * mattered. A row this says yes to is rendered in full.
  *
- * The other is the general `warning` flag, which the burner sets on
- * `burn.image_cli_drift`: a burn that carries on over a sandbox CLI older than
- * the host's. It no longer stops the burn, so this row is the only place the
- * human learns it happened — and where its "Settings → Workers" becomes the link
- * to Rebuild.
+ * The other is the general `warning` flag, which the retired burner set on
+ * `burn.image_cli_drift`. Old rows that carry it still render in full.
  */
 export function eventWarns(event: Pick<EventRow, 'data'>): boolean {
   if (typeof event.data !== 'object' || event.data === null) return false

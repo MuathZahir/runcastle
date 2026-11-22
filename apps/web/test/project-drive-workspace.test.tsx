@@ -993,8 +993,6 @@ describe('the project drive’s Scenarios worker (drive-chats-become-workers dec
         startedBy: 'human',
         status: 'handed-back',
         failure: null,
-        engine: 'docker',
-        container: null,
         folder: null,
         branch: null,
         featureBranch: 'main',

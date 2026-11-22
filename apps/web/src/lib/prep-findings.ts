@@ -17,11 +17,7 @@ import type { SettingsView } from './api'
  * Human labels for provenanced fields, used by the preparation card (which
  * lists findings by key, not by settings row). Kept in sync with the settings
  * `FIELD_META` labels — hand-maintained, since settings imports this module.
- *
- * `sandboxImage` is here for its findings alone: preparation never establishes
- * it (it is not a prepared key), but a value the human typed or an image build
- * wrote carries provenance the same way, and a finding with no label would
- * render as its raw key.
+ * A key with no label here (an old `sandboxImage` finding) renders as its raw key.
  */
 export const PREPARED_LABEL: Record<string, string> = {
   setupCommand: 'Setup',
@@ -32,13 +28,12 @@ export const PREPARED_LABEL: Record<string, string> = {
   driveSetupCommand: 'Before a test drive',
   driveStopCommand: 'After a test drive',
   driveInstructions: 'How to drive this app',
-  sandboxImage: 'Sandbox image',
 }
 
 /**
  * Keys preparation proposes from configuration WITHOUT executing them — they
- * describe the developer's own machine, which a throwaway sandbox cannot stand
- * in for. Surfaced so a proposed value is never mistaken for a measured one.
+ * describe the developer's own machine, which the retired headless run could
+ * not stand in for. Surfaced so a proposed value is never mistaken for a measured one.
  */
 export const HOST_ONLY_PREPARED = new Set([
   'devCommand',
@@ -173,7 +168,7 @@ function provenanceNote(f: {
 
   // A `session` value was established on the developer's own machine with them
   // present, so the host-only caveat does not apply to it — that caveat exists
-  // because a container cannot execute those keys, and this one can.
+  // because the retired headless run could not execute those keys, and this one can.
   const how =
     f.source === 'build'
       ? 'Built by runcastle from the repo Dockerfile'
@@ -222,7 +217,8 @@ export interface FindingLike {
  *
  * The distinction that matters is which of these a later conversation may
  * replace. Only `yours` is locked; `verified` was established with you present
- * but stays improvable, and `built` is the image build's own write.
+ * but stays improvable, and `built` is the retired image build's write, kept
+ * because its rows outlive it.
  * `proposed`/`measured` are the retired headless run's — kept because its rows
  * outlive it, and a host-only key it never executed must not now read as if
  * someone watched it run.
@@ -236,5 +232,5 @@ export function findingSource(f: { key: string; source: string }): { label: stri
     return { label: 'Verified', title: 'Established in a chat on your own machine' }
   return HOST_ONLY_PREPARED.has(f.key)
     ? { label: 'Proposed', title: 'Read from config by an older automatic run, not executed' }
-    : { label: 'Measured', title: 'Measured by an older automatic run, in a sandbox' }
+    : { label: 'Measured', title: 'Measured by an older automatic run' }
 }

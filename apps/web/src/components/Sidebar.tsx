@@ -11,7 +11,6 @@ import { pathFor } from '../lib/routes'
 import { useLivePoll, useLiveStatus } from '../lib/live'
 import { clampSidebarWidth } from '../lib/sidebar-width'
 import { shortcut } from '../lib/platform'
-import { SANDBOX_MODE } from '../lib/env'
 import { notifyButton, type NotifyState } from '../lib/notifications'
 import { useDesktopNotifications } from '../lib/use-notifications'
 import { useTheme } from '../lib/theme'
@@ -673,7 +672,6 @@ export interface SidebarFootState {
   health: FrameHealth
   /** The origin the API calls go to, for the health tooltip. */
   origin: string
-  sandbox: string
   /** `null` when the browser has no Notification API to toggle. */
   notify: { state: NotifyState; title: string; onToggle: () => void } | null
   theme: 'dark' | 'light'
@@ -696,7 +694,6 @@ export interface SidebarFootState {
 export function SidebarFootChrome({
   health,
   origin,
-  sandbox,
   notify,
   theme,
   onToggleTheme,
@@ -719,7 +716,6 @@ export function SidebarFootChrome({
       <SidebarStatusLine
         healthTone={HEALTH_TONE[health]}
         healthTip={healthTip}
-        sandbox={sandbox}
         notify={notify}
         theme={theme}
         onToggleTheme={onToggleTheme}
@@ -800,7 +796,6 @@ function SidebarFoot({
         list.isError ? 'down' : !healthy ? 'connecting' : live === 'live' ? 'ok' : live === 'connecting' ? 'connecting' : 'reconnecting'
       }
       origin={apiOrigin()}
-      sandbox={SANDBOX_MODE}
       notify={notify.supported ? { ...notifyState, onToggle: notify.toggle } : null}
       theme={theme.resolved}
       onToggleTheme={theme.toggle}
