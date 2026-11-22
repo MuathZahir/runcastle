@@ -41,7 +41,6 @@ describe('loadConfig — numeric env overrides', () => {
   /** Every numeric burn knob, with a value the schema accepts and its default. */
   const KNOBS = [
     { envVar: 'RUNCASTLE_BURN_CONCURRENCY', field: 'burnConcurrency', set: '4', fallback: 3 },
-    { envVar: 'RUNCASTLE_BURN_CPUS', field: 'burnCpus', set: '2.5', fallback: undefined },
   ] as const
 
   for (const { envVar, field, set, fallback } of KNOBS) {
@@ -67,15 +66,31 @@ describe('loadConfig — numeric env overrides', () => {
     expect(() => loadConfig({ RUNCASTLE_BURN_CONCURRENCY: '0' })).toThrow()
   })
 
-  it('treats an exported-but-empty burn guard as unset', () => {
-    expect(loadConfig({ RUNCASTLE_BURN_GUARD: '' }).burnGuard).toBe(true)
-    expect(loadConfig({ RUNCASTLE_BURN_GUARD: '0' }).burnGuard).toBe(false)
+  it('ignores the retired sandbox, image, CPU, guard and cache env vars', () => {
+    const cfg = loadConfig({
+      RUNCASTLE_SANDBOX: 'podman',
+      RUNCASTLE_SANDBOX_IMAGE: 'x:y',
+      RUNCASTLE_BURN_CPUS: 'nope',
+      RUNCASTLE_BURN_GUARD: '0',
+      RUNCASTLE_BURN_CACHE: 'nope',
+    }) as unknown as Record<string, unknown>
+    for (const key of ['sandbox', 'sandboxImage', 'burnCpus', 'burnGuard', 'burnCache']) {
+      expect(key in cfg).toBe(false)
+    }
   })
 
-  it('reads the burn cache kill switch from the environment', () => {
-    expect(loadConfig({}).burnCache).toBe('volume')
-    expect(loadConfig({ RUNCASTLE_BURN_CACHE: 'off' }).burnCache).toBe('off')
-    expect(() => loadConfig({ RUNCASTLE_BURN_CACHE: 'nope' })).toThrow()
+  it('loads a config file that still carries the retired keys', () => {
+    writeFileSync(
+      join(dataDir, 'config.json'),
+      JSON.stringify({ sandbox: 'docker', sandboxImage: 'a:b', burnCpus: 2, burnGuard: false, burnCache: 'off', burnConcurrency: 2 }),
+    )
+    try {
+      const cfg = loadConfig({}) as unknown as Record<string, unknown>
+      expect(cfg.burnConcurrency).toBe(2)
+      expect('sandbox' in cfg).toBe(false)
+    } finally {
+      rmSync(join(dataDir, 'config.json'), { force: true })
+    }
   })
 })
 
