@@ -1,5 +1,4 @@
 import { TRPCError } from '@trpc/server'
-import { BurnCacheBusyError } from './workers/burn-cache'
 
 /**
  * Domain error types + the single tRPC mapping helper. Services throw these
@@ -41,11 +40,6 @@ export function toTRPCError(e: unknown): TRPCError {
   if (e instanceof NotFoundError)
     return new TRPCError({ code: 'NOT_FOUND', message: e.message, cause: e })
   if (e instanceof GateError)
-    return new TRPCError({ code: 'PRECONDITION_FAILED', message: e.message, cause: e })
-  // Clearing the worker cache while a round is working out of it is a precondition
-  // failure, not a server fault — the message already names the containers, and
-  // the AFK card renders it verbatim.
-  if (e instanceof BurnCacheBusyError)
     return new TRPCError({ code: 'PRECONDITION_FAILED', message: e.message, cause: e })
   if (e instanceof InvalidInputError)
     return new TRPCError({ code: 'BAD_REQUEST', message: e.message, cause: e })

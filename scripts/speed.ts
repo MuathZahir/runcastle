@@ -152,7 +152,7 @@ async function main(): Promise<void> {
   process.env.RUNCASTLE_DATA_DIR = scratch
   process.env.RUNCASTLE_WEB_DIST = join(repo, 'apps', 'web', 'dist')
   if (!existsSync(join(process.env.RUNCASTLE_WEB_DIST, 'index.html'))) throw new Error('build the web app first: bun run --filter @runcastle/web build')
-  for (const name of ['RUNCASTLE_MIGRATIONS_DIR', 'RUNCASTLE_SKILLS_DIR', 'RUNCASTLE_HOOK_CLIENT', 'RUNCASTLE_PTY_HOST', 'RUNCASTLE_SANDCASTLE_TEMPLATE']) {
+  for (const name of ['RUNCASTLE_MIGRATIONS_DIR', 'RUNCASTLE_SKILLS_DIR', 'RUNCASTLE_HOOK_CLIENT', 'RUNCASTLE_PTY_HOST']) {
     delete process.env[name]
   }
 

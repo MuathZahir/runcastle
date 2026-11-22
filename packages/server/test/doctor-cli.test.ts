@@ -1,7 +1,5 @@
-import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { parseMode, resolveDoctorEnv, runCli } from '../src/doctor/cli'
-import { burnerDockerfilePath } from '../src/launcher/asset-paths'
+import { parseMode, runCli } from '../src/doctor/cli'
 
 describe('parseMode', () => {
   it('defaults to diagnostic', () => {
@@ -15,14 +13,6 @@ describe('parseMode', () => {
   })
 })
 
-describe('resolveDoctorEnv', () => {
-  it('names the worker Dockerfile the current install actually ships', () => {
-    const { burnerDockerfile } = resolveDoctorEnv()
-    expect(burnerDockerfile).toBe(burnerDockerfilePath())
-    expect(existsSync(burnerDockerfile ?? '')).toBe(true)
-  })
-})
-
 describe('runCli (real wiring)', () => {
   /**
    * The only test here that leaves the process: it runs the real probe set,
@@ -33,8 +23,6 @@ describe('runCli (real wiring)', () => {
    */
   it('runs every probe against the host and returns a numeric exit code', async () => {
     const lines: string[] = []
-    // The gate: a diagnostic run would spend usage on a live token call and
-    // start a container per cache volume, on every test run.
     const code = await runCli(['--gate'], (l) => lines.push(l))
     const out = lines.join('\n')
     expect(out).toContain('runcastle doctor')
@@ -42,22 +30,4 @@ describe('runCli (real wiring)', () => {
     expect(out).toMatch(/Git .*OK/i)
     expect(typeof code).toBe('number')
   }, 15000)
-})
-
-describe('the costly checks run only by hand', () => {
-  it('tests the token and the volumes when run by hand, never in the boot gate', () => {
-    const before = process.env.RUNCASTLE_SANDBOX
-    process.env.RUNCASTLE_SANDBOX = 'docker'
-    try {
-      const byHand = resolveDoctorEnv('diagnostic')
-      expect(byHand.checkToken).toBeDefined()
-      expect(byHand.burnCache).toBeDefined()
-      const gate = resolveDoctorEnv('gate')
-      expect(gate.checkToken).toBeUndefined()
-      expect(gate.burnCache).toBeUndefined()
-    } finally {
-      if (before === undefined) delete process.env.RUNCASTLE_SANDBOX
-      else process.env.RUNCASTLE_SANDBOX = before
-    }
-  })
 })

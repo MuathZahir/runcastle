@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DEFAULT_SANDBOX_IMAGE, EMPTY_DISCOVERY_SNAPSHOT, RuncastleConfig, resolveSandboxImage, type DiscoverySnapshot } from '@runcastle/core'
+import { EMPTY_DISCOVERY_SNAPSHOT, RuncastleConfig, type DiscoverySnapshot } from '@runcastle/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
@@ -9,7 +9,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { listByProject } from '../src/services/events'
 import { getProjectById } from '../src/services/repo'
-import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
+import { getSettings, updateSettings } from '../src/services/settings'
 import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
@@ -84,7 +84,7 @@ describe('model discovery settings socket', () => {
 
 /**
  * Settings backend (issue #46): the scope-resolved settings surface. Globals live
- * in the machine config file; per-project overrides (model, sandbox, devCommand)
+ * in the machine config file; per-project overrides (model, devCommand)
  * live on project rows; resolution is `project ?? global`. `env` always wins and
  * locks the field. Tests inject a fresh temp config file + a fake env so nothing
  * touches the real `~/.runcastle/config.json`.
@@ -164,11 +164,8 @@ describe('settings service (#46)', () => {
     expect(model.source).toBe('project')
     expect(model.scope).toBe('project')
 
-    // sandbox has no override — inherits the global default
-    const sandbox = field(view, 'sandbox')
-    expect(sandbox.value).toBe('docker')
-    expect(sandbox.source).toBe('default')
-    expect(sandbox.scope).toBe('project')
+    // burnConcurrency is global-only: no override even in a project view
+    expect(field(view, 'burnConcurrency').scope).toBe('global')
 
     // serverPort is global-only even in a project view
     expect(field(view, 'serverPort').scope).toBe('global')
@@ -240,12 +237,6 @@ describe('settings service (#46)', () => {
     }
   })
 
-  it('serves the test-suite guard as a boolean switch that writes through', () => {
-    expect(getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'burnGuard')?.value).toBe(true)
-    updateSettings(ctx, { key: 'burnGuard', value: false }, io())
-    expect(ctx.config.burnGuard).toBe(false)
-    expect(() => updateSettings(ctx, { key: 'burnGuard', value: 'off' }, io())).toThrow(InvalidInputError)
-  })
 
   it('global write persists to the config file AND refreshes the in-memory config in place', () => {
     updateSettings(ctx, { key: 'model', value: 'claude-sonnet-5' }, io())
@@ -328,17 +319,6 @@ describe('settings service (#46)', () => {
     expect(f.editable).toBe(false)
   })
 
-  it('burnCpus is unset by default, writes through, and rejects a non-positive ceiling', () => {
-    const before = field(getSettings(ctx, undefined, io()), 'burnCpus')
-    expect(before.value).toBeNull() // an optional field with no default reads as null
-    expect(before.source).toBe('default')
-
-    updateSettings(ctx, { key: 'burnCpus', value: 1.5 }, io())
-    expect(ctx.config.burnCpus).toBe(1.5)
-    expect(field(getSettings(ctx, undefined, io()), 'burnCpus').source).toBe('file')
-
-    expect(() => updateSettings(ctx, { key: 'burnCpus', value: 0 }, io())).toThrow(InvalidInputError)
-  })
 
   it('verifyCommands and knownFailures round-trip multi-line values', () => {
     // Both are rendered verbatim into the burner prompt, so the newlines that
@@ -434,97 +414,13 @@ describe('settings service (#46)', () => {
     expect(model.value).toBe('claude-opus-5')
   })
 
-  // A global `sandboxImage` written by an older runcastle poisons every project
-  // that has no column of its own, and clearing the PROJECT override only falls
-  // through to it again — so the global value has to be clearable too.
-  it('a null value clears the global sandboxImage out of the config file', () => {
-    writeFileSync(configFile, JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo' }))
-    ctx.config.sandboxImage = 'sandcastle:runcastle-demo'
 
-    const cleared = updateSettings(ctx, { key: 'sandboxImage', value: null }, io())
 
-    expect(cleared.value).toBeNull()
-    expect(cleared.source).toBe('default')
-    expect(JSON.parse(readFileSync(configFile, 'utf8'))).not.toHaveProperty('sandboxImage')
-    // The shared config object the launcher reads at each launch, not just disk.
-    expect(ctx.config.sandboxImage).toBeUndefined()
-    expect(resolveSandboxImage(ctx.config)).toBe(DEFAULT_SANDBOX_IMAGE)
-    expect(listByProject(ctx, 'global', 0).map((e) => e.type)).toContain('settings.updated')
-  })
 
-  it('clearing the global sandboxImage leaves the other config-file keys alone', () => {
-    writeFileSync(
-      configFile,
-      JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo', model: 'claude-sonnet-5' }),
-    )
-    updateSettings(ctx, { key: 'sandboxImage', value: null }, io())
-    expect(field(getSettings(ctx, undefined, io()), 'model').value).toBe('claude-sonnet-5')
-  })
 
-  it('a global key that is not sandboxImage still refuses to be cleared', () => {
-    expect(() => updateSettings(ctx, { key: 'model', value: null }, io())).toThrow(InvalidInputError)
-  })
 
-  it('a null value on a project still clears the column, not the global', () => {
-    const project = seedProject(ctx)
-    writeFileSync(configFile, JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo' }))
-    updateSettings(
-      ctx,
-      { projectId: project.id, key: 'sandboxImage', value: 'sandcastle:runcastle-p1' },
-      io(),
-    )
-    updateSettings(ctx, { projectId: project.id, key: 'sandboxImage', value: null }, io())
 
-    const image = field(getSettings(ctx, project.id, io()), 'sandboxImage')
-    expect(image.source).toBe('file')
-    expect(image.value).toBe('sandcastle:runcastle-demo')
-    expect(JSON.parse(readFileSync(configFile, 'utf8')).sandboxImage).toBe(
-      'sandcastle:runcastle-demo',
-    )
-  })
 
-  it('sandbox override accepts the three-way choice and rejects anything else', () => {
-    const project = seedProject(ctx)
-    for (const choice of ['docker', 'podman']) {
-      updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: choice }, io())
-      expect(field(getSettings(ctx, project.id, io()), 'sandbox').value).toBe(choice)
-    }
-    expect(() =>
-      updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: 'vm' }, io()),
-    ).toThrow(InvalidInputError)
-  })
-
-  it('the sandbox env override accepts podman and locks the field', () => {
-    const project = seedProject(ctx)
-    const withEnv = io({ RUNCASTLE_SANDBOX: 'podman' })
-    const sandbox = field(getSettings(ctx, project.id, withEnv), 'sandbox')
-    expect(sandbox.value).toBe('podman')
-    expect(sandbox.source).toBe('env')
-    expect(sandbox.editable).toBe(false)
-  })
-
-  // Boot is where the poisoning gets named; the value itself is never deleted,
-  // because the same string could have been typed on purpose.
-  it('boot names a legacy machine-wide image on the global timeline, without removing it', () => {
-    seedProject(ctx)
-    ctx.config.sandboxImage = 'sandcastle:runcastle-demo'
-
-    expect(warnLegacyGlobalImage(ctx)).toBe('sandcastle:runcastle-demo')
-
-    const warning = listByProject(ctx, 'global', 0).find((e) => e.type === 'settings.legacyImage')
-    expect(warning?.message).toContain('sandcastle:runcastle-demo')
-    expect(warning?.message).toContain('Clear the machine-wide sandbox image setting')
-    expect(ctx.config.sandboxImage).toBe('sandcastle:runcastle-demo')
-  })
-
-  it('boot stays silent for the stock image, an unset one, and a live project’s own tag', () => {
-    const project = seedProject(ctx)
-    for (const image of [undefined, DEFAULT_SANDBOX_IMAGE, `${DEFAULT_SANDBOX_IMAGE}-${project.id}`]) {
-      ctx.config.sandboxImage = image
-      expect(warnLegacyGlobalImage(ctx)).toBeNull()
-    }
-    expect(listByProject(ctx, 'global', 0).map((e) => e.type)).not.toContain('settings.legacyImage')
-  })
 
   it('a global settings mutation emits an event', () => {
     updateSettings(ctx, { key: 'model', value: 'claude-sonnet-5' }, io())

@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { DoctorReport, ProbeResult, ProbeStatus } from '../src/doctor/doctor'
 import {
   buildInstallPlan,
-  DOCKER_GROUP_WARNING,
-  DOCKER_SCRIPT_DISTROS,
   type MachineFacts,
 } from '../src/setup/plan'
 
@@ -25,28 +23,22 @@ const freshMachine = () =>
     probe('git', 'missing', 'git not found on PATH'),
     probe('claude', 'missing', 'claude not found on PATH'),
     probe('claude-auth', 'missing'),
-    probe('afk-token', 'unset'),
     probe('codex', 'missing', 'codex not found on PATH'),
     probe('codex-auth', 'missing'),
-    probe('container-runtime', 'missing'),
   )
 
 const ubuntuVps: MachineFacts = {
   platform: 'linux',
-  distroId: 'ubuntu',
   packageManagers: ['apt-get'],
   hasDesktop: false,
   serviceFileExists: false,
-  user: 'ada',
 }
 
 const mac: MachineFacts = {
   platform: 'darwin',
-  distroId: null,
   packageManagers: ['brew'],
   hasDesktop: true,
   serviceFileExists: false,
-  user: 'ada',
 }
 
 const windows: MachineFacts = { ...mac, platform: 'win32', packageManagers: ['winget'] }
@@ -61,7 +53,6 @@ describe('buildInstallPlan', () => {
     expect(plan.install.map((i) => [i.label, i.needsSudo])).toEqual([
       ['Git', true],
       ['Claude Code', false],
-      ['Docker Engine', true],
     ])
     expect(plan.install[0].commands).toEqual([
       { file: 'sudo', args: ['apt-get', 'update'] },
@@ -71,15 +62,14 @@ describe('buildInstallPlan', () => {
       { file: 'sh', args: ['-c', 'curl -fsSL https://claude.ai/install.sh | bash'] },
     ])
     expect(plan.afterwards).toEqual([
-      'Log out and back in, so the docker group applies',
+      'Open a new terminal',
       'Sign in: claude auth login',
-      'For unattended rounds: runcastle token',
       'To keep it running: runcastle service install',
     ])
     expect(plan.needsAgentChoice).toBe(false)
   })
 
-  it('sends a Mac to Docker Desktop and installs nothing it already has', () => {
+  it('installs nothing a Mac already has', () => {
     const plan = buildInstallPlan(
       report(
         probe('bun', 'ok', '1.4.2'),
@@ -88,7 +78,6 @@ describe('buildInstallPlan', () => {
         probe('codex', 'ok', 'codex-cli 0.170.0'),
         probe('codex-auth', 'ok'),
         probe('codex-adapter-version', 'ok', 'Codex 0.170.0 (the chat adapter needs 0.164.0 or newer)'),
-        probe('container-runtime', 'missing'),
       ),
       mac,
       null,
@@ -96,7 +85,7 @@ describe('buildInstallPlan', () => {
 
     expect(plan.present).toEqual(['Bun 1.4.2', 'runcastle', 'Git 2.47.1', 'Codex 0.170.0'])
     expect(plan.install).toEqual([])
-    expect(plan.afterwards).toEqual(['Install Docker Desktop: https://docs.docker.com/desktop/'])
+    expect(plan.afterwards).toEqual([])
     expect(plan.needsAgentChoice).toBe(false)
   })
 
@@ -121,7 +110,6 @@ describe('buildInstallPlan', () => {
     ])
     expect(plan.afterwards).toEqual([
       'Open a new terminal',
-      'Install Docker Desktop: https://docs.docker.com/desktop/',
       'Sign in: codex login',
     ])
   })
@@ -133,10 +121,10 @@ describe('buildInstallPlan', () => {
     expect(plan.afterwards).toContain('Install Git: https://git-scm.com/download/win')
   })
 
-  it('Arch Linux installs Git with pacman and leaves Docker as a link', () => {
+  it('Arch Linux installs Git with pacman', () => {
     const plan = buildInstallPlan(
       freshMachine(),
-      { ...ubuntuVps, distroId: 'arch', packageManagers: ['pacman'], hasDesktop: true },
+      { ...ubuntuVps, packageManagers: ['pacman'], hasDesktop: true },
       'claude',
     )
 
@@ -144,25 +132,19 @@ describe('buildInstallPlan', () => {
     expect(plan.install[0].commands).toEqual([{ file: 'sudo', args: ['pacman', '-S', '--noconfirm', 'git'] }])
     expect(plan.afterwards).toEqual([
       'Open a new terminal',
-      'Install Docker: https://docs.docker.com/get-docker/',
       'Sign in: claude auth login',
-      'For unattended rounds: runcastle token',
     ])
   })
 
-  it('says to open a new terminal when the script added Bun to PATH, unless logging out covers it', () => {
+  it('says to open a new terminal when the script added Bun to PATH', () => {
     const present = report(
       probe('bun', 'ok', '1.4.2'),
       probe('git', 'ok', 'git version 2.47.0'),
       probe('codex', 'ok', '0.61.0'),
       probe('codex-auth', 'ok'),
-      probe('container-runtime', 'ok', 'Docker version 28.5.2'),
     )
     expect(buildInstallPlan(present, { ...mac, pathChanged: true }, null).afterwards).toContain('Open a new terminal')
     expect(buildInstallPlan(present, mac, null).afterwards).not.toContain('Open a new terminal')
-    const vps = buildInstallPlan(freshMachine(), { ...ubuntuVps, pathChanged: true }, 'claude').afterwards
-    expect(vps).toContain('Log out and back in, so the docker group applies')
-    expect(vps).not.toContain('Open a new terminal')
   })
 
   it('a second run lists only what is still missing', () => {
@@ -172,17 +154,15 @@ describe('buildInstallPlan', () => {
         probe('git', 'ok', 'git version 2.43.0'),
         probe('claude', 'ok', '2.4.1 (Claude Code)'),
         probe('claude-auth', 'ok'),
-        probe('afk-token', 'ok'),
         probe('codex', 'missing'),
-        probe('container-runtime', 'missing'),
       ),
       { ...ubuntuVps, serviceFileExists: true },
       null,
     )
 
     expect(plan.present).toEqual(['Bun 1.4.2', 'runcastle', 'Git 2.43.0', 'Claude Code 2.4.1'])
-    expect(labels(plan)).toEqual(['Docker Engine'])
-    expect(plan.afterwards).toEqual(['Log out and back in, so the docker group applies'])
+    expect(plan.install).toEqual([])
+    expect(plan.afterwards).toEqual([])
   })
 
   it('a machine with everything has nothing to install', () => {
@@ -192,8 +172,6 @@ describe('buildInstallPlan', () => {
         probe('git', 'ok', 'git version 2.43.0'),
         probe('claude', 'ok', '2.4.1 (Claude Code)'),
         probe('claude-auth', 'ok'),
-        probe('afk-token', 'ok'),
-        probe('container-runtime', 'ok', 'Docker version 27.3.1, build ce12230'),
       ),
       { ...ubuntuVps, hasDesktop: true },
       null,
@@ -201,53 +179,32 @@ describe('buildInstallPlan', () => {
 
     expect(plan.install).toEqual([])
     expect(plan.afterwards).toEqual([])
-    expect(plan.present).toContain('Docker 27.3.1')
   })
 })
 
 describe('Docker', () => {
-  const dockerItem = (facts: MachineFacts) =>
-    buildInstallPlan(freshMachine(), facts, 'claude').install.find((i) => i.label === 'Docker Engine')
-
-  it.each(DOCKER_SCRIPT_DISTROS)('installs automatically on %s, with sudo and the root warning', (distroId) => {
-    const item = dockerItem({ ...ubuntuVps, distroId })
-
-    expect(item?.needsSudo).toBe(true)
-    expect(item?.warning).toBe(DOCKER_GROUP_WARNING)
-    expect(item?.commands).toEqual([
-      { file: 'sh', args: ['-c', 'curl -fsSL https://get.docker.com | sudo sh'] },
-      { file: 'sudo', args: ['usermod', '-aG', 'docker', 'ada'] },
-    ])
-  })
-
-  it('names exactly the eight systems Docker’s script covers', () => {
-    expect([...DOCKER_SCRIPT_DISTROS].sort()).toEqual(
-      ['centos', 'debian', 'fedora', 'raspbian', 'rhel', 'rocky', 'sles', 'ubuntu'],
+  it('is never installed, and a machine without it is complete', () => {
+    const plan = buildInstallPlan(
+      report(
+        probe('bun', 'ok', '1.4.2'),
+        probe('git', 'ok', 'git version 2.43.0'),
+        probe('claude', 'ok', '2.4.1 (Claude Code)'),
+        probe('claude-auth', 'ok'),
+      ),
+      { ...ubuntuVps, hasDesktop: true },
+      null,
     )
+
+    expect(plan.install).toEqual([])
+    expect(plan.afterwards).toEqual([])
   })
 
-  it.each(['arch', 'alpine', 'opensuse-tumbleweed', 'linuxmint', null])('is only a link on %s', (distroId) => {
-    expect(dockerItem({ ...ubuntuVps, distroId })).toBeUndefined()
-  })
+  it('names no Docker step even on a fresh machine', () => {
+    const plan = buildInstallPlan(freshMachine(), ubuntuVps, 'claude')
 
-  it.each(['Docker version 27.3.1', 'podman version 5.2.0'])('a working runtime (%s) adds no item', (detail) => {
-    const base = freshMachine()
-    const results = base.results.map((r) => (r.id === 'container-runtime' ? probe(r.id, 'ok', detail) : r))
-    const plan = buildInstallPlan(report(...results), ubuntuVps, 'claude')
-
-    expect(labels(plan)).not.toContain('Docker Engine')
-    expect(plan.afterwards.some((a) => /docker/i.test(a))).toBe(false)
-  })
-
-  it('a dead daemon is a step to take, with the doctor’s own fix', () => {
-    const fix = 'Start Docker Desktop (or `sudo systemctl start docker` on Linux), then re-run doctor.'
-    const results = freshMachine().results.map((r) =>
-      r.id === 'container-runtime' ? probe(r.id, 'daemon-dead', '', fix) : r,
-    )
-    const plan = buildInstallPlan(report(...results), ubuntuVps, 'claude')
-
-    expect(labels(plan)).not.toContain('Docker Engine')
-    expect(plan.afterwards).toContain(fix)
+    expect(labels(plan).some((l) => /docker|podman/i.test(l))).toBe(false)
+    expect(plan.install.every((i) => i.commands.every((c) => !/docker/.test(c.args.join(' '))))).toBe(true)
+    expect(plan.afterwards.some((a) => /docker|log out/i.test(a))).toBe(false)
   })
 })
 
@@ -256,11 +213,11 @@ describe('agents', () => {
     const plan = buildInstallPlan(freshMachine(), ubuntuVps, null)
 
     expect(plan.needsAgentChoice).toBe(true)
-    expect(labels(plan)).toEqual(['Git', 'Docker Engine'])
+    expect(labels(plan)).toEqual(['Git'])
   })
 
   it('installs both when asked for both', () => {
-    expect(labels(buildInstallPlan(freshMachine(), ubuntuVps, 'both'))).toEqual(['Git', 'Claude Code', 'Codex', 'Docker Engine'])
+    expect(labels(buildInstallPlan(freshMachine(), ubuntuVps, 'both'))).toEqual(['Git', 'Claude Code', 'Codex'])
   })
 
   it('adds no agent when one is already installed, whatever the choice', () => {
@@ -268,7 +225,7 @@ describe('agents', () => {
     const plan = buildInstallPlan(report(...results), ubuntuVps, 'claude')
 
     expect(plan.needsAgentChoice).toBe(false)
-    expect(labels(plan)).toEqual(['Git', 'Docker Engine'])
+    expect(labels(plan)).toEqual(['Git'])
     expect(plan.present).toContain('Codex 0.170.0')
   })
 
@@ -289,12 +246,10 @@ describe('too old counts as missing (decision 8)', () => {
         probe('git', 'ok', 'git version 2.43.0'),
         probe('claude', 'ok', '2.0.1 (Claude Code)'),
         probe('claude-auth', 'ok'),
-        probe('afk-token', 'ok'),
         probe('claude-adapter-version', 'stale', 'Claude Code 2.0.1 is older than 2.1.4, which the chat adapter needs'),
         probe('codex', 'ok', 'codex-cli 0.150.0'),
         probe('codex-auth', 'ok'),
         probe('codex-adapter-version', 'stale', 'Codex 0.150.0 is older than 0.164.0, which the chat adapter needs'),
-        probe('container-runtime', 'ok', 'Docker version 27.3.1'),
       ),
       { ...ubuntuVps, serviceFileExists: true },
       null,
@@ -322,15 +277,13 @@ describe('too old counts as missing (decision 8)', () => {
         probe('git', 'ok', 'git version 2.30.0'),
         probe('claude', 'ok', '2.1.4 (Claude Code)'),
         probe('claude-auth', 'ok'),
-        probe('afk-token', 'ok'),
         probe('claude-adapter-version', 'ok', 'Claude Code 2.1.4 (the chat adapter needs 2.1.4 or newer)'),
-        probe('container-runtime', 'ok', 'Docker version 20.10.0'),
       ),
       { ...ubuntuVps, hasDesktop: true },
       null,
     )
 
     expect(plan.install).toEqual([])
-    expect(plan.present).toEqual(['Bun 1.3.14', 'runcastle', 'Git 2.30.0', 'Claude Code 2.1.4', 'Docker 20.10.0'])
+    expect(plan.present).toEqual(['Bun 1.3.14', 'runcastle', 'Git 2.30.0', 'Claude Code 2.1.4'])
   })
 })
