@@ -192,10 +192,6 @@ body{margin:0;background:#0a0c11}
 .cube.q.up:not(.glow) .f-t{background:var(--c-solid)}
 .cube.q-ctr{left:224px;top:224px}.cube.q-a{left:40px;top:312px}.cube.q-b{left:312px;top:40px}.cube.q-c{left:360px;top:360px}
 
-/* sandboxes */
-.cube.glass.box{width:96px;height:96px}
-.cube.glass.box.up{--h:64px}
-
 /* design: an outline tries shapes on your app, then turns solid */
 .cube.slab{width:264px;height:264px;left:132px;top:132px}
 .cube.slab.up{--h:8px}

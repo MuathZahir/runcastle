@@ -293,6 +293,35 @@ describe('once per install', () => {
     expect((await start().done).ran).toBe(false)
   })
 
+  it('when docker is installed but not running, closes the unfinished workers, removes nothing and looks again on the next start', async () => {
+    const { unfinished, finished } = seedMachine()
+    cli.bin = null
+    cli.silent = 'docker'
+    const out = await start().done
+    expect(out).toMatchObject({ ran: true, bin: null, closed: [unfinished], things: [] })
+    expect(out.failures.join(' ')).toContain('docker did not answer')
+    expect(getWorker(ctx, unfinished)!.status).toBe('failed')
+    expect(leftoverEvents()).toHaveLength(1)
+    cli.bin = 'docker'
+    cli.silent = undefined
+    const next = await start().done
+    expect(next.ran).toBe(true)
+    expect(next.closed).toEqual([])
+    expect(cli.removed).toContain(`container runcastle-worker-${finished}`)
+    expect(cli.removed).not.toContain(`container runcastle-worker-${unfinished}`)
+    expect((await start().done).ran).toBe(false)
+  })
+
+  it('removes nothing when the containers cannot be read, and looks again on the next start', async () => {
+    seedMachine()
+    cli.inspectFails = true
+    const out = await start().done
+    expect(out.things).toEqual([])
+    expect(cli.removed).toEqual([])
+    cli.inspectFails = false
+    expect((await start().done).things.length).toBeGreaterThan(0)
+  })
+
   it('uses podman when it is the one that answers', async () => {
     const { unfinished } = seedMachine()
     cli.bin = 'podman'

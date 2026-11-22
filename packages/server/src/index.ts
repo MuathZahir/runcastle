@@ -283,9 +283,13 @@ export async function startServer(): Promise<void> {
     .catch((err) => console.error('could not wake the chats a restart cut off', err))
     .then(() => resumeCaughtWorkers(ctx, new Set(cutOffChats.map((row) => row.id))))
     .catch((err) => console.error('could not resume the workers a restart caught before their turn', err))
-  // …and every chat the usage limit holds gets its wake again, kept on its row (a-usage-limit-never-strands-work decision 5).
-  // A copied database's chats are the live install's, never this server's to wake.
-  if (!isDatabaseCopy()) agentHost(ctx).rearmLimitWakes()
+  // …and every chat the usage limit holds gets its wake again, kept on its row (a-usage-limit-never-strands-work decision 5),
+  // once the upgrade step has closed any worker still in a container. A copied database's chats are the live install's, never this server's to wake.
+  if (!isDatabaseCopy()) {
+    void leftoversClosed
+      .then(() => agentHost(ctx).rearmLimitWakes())
+      .catch((err) => console.error('could not arm the usage-limit wakes again', err))
+  }
   // …a drive's workers are handed back when it stops; a restart already stopped every drive, so any left at work are handed back now.
   onDriveEnded((ended) => handBackDriveWorkers(ctx, ended))
   if (!isDatabaseCopy()) {

@@ -579,17 +579,6 @@ describe('the preview through the design pass-through', () => {
     expect(host.sent).toHaveLength(before)
   })
 
-  it('has nothing to wake or stop for a host worker', async () => {
-    const host = fakeHost()
-    setAgentHostForTests(host.host)
-    const id = await startWorker()
-    const before = host.sent.length
-    await workerPreviews(ctx, 10).wake(id)
-    await new Promise((r) => setTimeout(r, 40))
-    expect(host.sent).toHaveLength(before)
-    expect(host.stopped).toEqual([])
-  })
-
   it('serves nothing for a dropped worker', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker()

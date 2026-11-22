@@ -16,9 +16,8 @@ describe('renderServiceFile', () => {
     expect(text).toContain('Environment=PATH=/usr/bin:/home/ada/.bun/bin:/home/ada/.local/bin:/usr/local/bin:/bin\n')
   })
 
-  it('orders after docker without requiring it', () => {
-    expect(text).toMatch(/^After=.*docker\.service/m)
-    expect(text).not.toContain('Requires=docker.service')
+  it('neither waits for nor requires docker', () => {
+    expect(text).not.toContain('docker.service')
     expect(text).not.toContain('SupplementaryGroups')
   })
 })

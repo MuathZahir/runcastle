@@ -185,6 +185,8 @@ async function runLeftovers(ctx: AppCtx, deps: LeftoversDeps, onClosed: () => vo
 
   // Which binary answers, and what containers it holds.
   let bin: string | null = null
+  /** A binary that is installed but did not answer, such as Docker with its daemon stopped. */
+  let silent: string | null = null
   let ids: string[] = []
   for (const candidate of ['docker', 'podman']) {
     const ps = await run(candidate, ['ps', '-aq', '--no-trunc'], QUICK)
@@ -193,13 +195,18 @@ async function runLeftovers(ctx: AppCtx, deps: LeftoversDeps, onClosed: () => vo
       ids = lines(ps.stdout)
       break
     }
+    if (ps.code !== null) silent ??= candidate
   }
   out.bin = bin
   let containers: Container[] = []
+  let listed = true
   if (bin && ids.length) {
     const inspected = await run(bin, ['container', 'inspect', '--size', ...ids], SLOW)
     if (inspected.code === 0) containers = parseContainers(inspected.stdout)
-    else out.failures.push(`listing ${bin}'s containers: ${inspected.stderr.trim().split('\n')[0] || `exit ${inspected.code}`}`)
+    else {
+      listed = false
+      out.failures.push(`listing ${bin}'s containers: ${inspected.stderr.trim().split('\n')[0] || `exit ${inspected.code}`}`)
+    }
   }
   const projectRows = ctx.db.select().from(projects).orderBy(sql`rowid`).all()
   const projectIds = new Set(projectRows.map((p) => p.id))
@@ -227,10 +234,13 @@ async function runLeftovers(ctx: AppCtx, deps: LeftoversDeps, onClosed: () => vo
   }
   onClosed()
 
-  // (b) No container CLI answers: nothing else to look at.
-  if (!bin) {
-    report(ctx, out, projectRows, closedIds, { removed: [], kept: [], unknown: 0 })
-    writeMarker(markerPath, { stage: 'done', closed: [...closedIds], at: Date.now() })
+  // (b) Nothing answers, or its containers could not be read: remove nothing, since what is in use is unknown.
+  // With no docker or podman installed the step is done; one that is installed but silent is tried again on the next start.
+  if (!bin || !listed) {
+    const retry = !listed || silent !== null
+    if (retry) out.failures.push(`${listed ? `${silent} did not answer` : 'nothing was removed'}; the next start looks again`)
+    if (!marker) report(ctx, out, projectRows, closedIds, { removed: [], kept: [], unknown: 0 })
+    if (!retry) writeMarker(markerPath, { stage: 'done', closed: [...closedIds], at: Date.now() })
     return out
   }
 

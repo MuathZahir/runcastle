@@ -1686,7 +1686,6 @@ export function workerPreviews(ctx: AppCtx): WorkerPreviews {
       if (w.status === 'dropped' || w.status === 'failed' || w.status === 'landed' || w.previewPort === null) return undefined
       return `http://127.0.0.1:${w.previewPort}/`
     },
-    async wake() {},
   }
 }
 

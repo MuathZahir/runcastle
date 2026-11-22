@@ -63,6 +63,10 @@ export interface FakeCli {
   run: CliRun
   /** The binary that answers; null for a machine with none. */
   bin: 'docker' | 'podman' | null
+  /** An installed binary that does not answer, such as Docker with its daemon stopped. */
+  silent?: 'docker' | 'podman'
+  /** Reading the containers fails, though listing their ids worked. */
+  inspectFails?: boolean
   containers: FakeContainer[]
   images: FakeImage[]
   volumes: FakeVolume[]
@@ -89,11 +93,13 @@ export function fakeCli(bin: FakeCli['bin'] = 'docker'): FakeCli {
     calls: [],
     removed: [],
     run: async (b, args) => {
+      if (b === cli.silent) return no('Cannot connect to the Docker daemon. Is the docker daemon running?')
       if (b !== cli.bin) return { code: null, stdout: '', stderr: `${b}: not found` }
       cli.calls.push(args.join(' '))
       const [a0, a1] = args
       const rest = (n: number) => args.slice(n)
       if (a0 === 'ps') return ok(cli.containers.map((c) => c.id).join('\n'))
+      if (a0 === 'container' && a1 === 'inspect' && cli.inspectFails) return no('inspect timed out')
       if (a0 === 'container' && a1 === 'inspect') {
         const ids = rest(3)
         return ok(
