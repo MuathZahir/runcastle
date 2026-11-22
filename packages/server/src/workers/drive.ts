@@ -38,7 +38,6 @@ import { getFeatureRow, projectForFeature, requireProjectById, tryGetFeature } f
 import { listScenarioPaths } from '../services/scenarios'
 import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { agentHost } from '../threads/types'
-import { sandboxEngine } from './engine'
 import { isHostReview } from './review'
 import { emitWorker, getWorker, humanWrote, listProjectWorkers, listWorkers, setStatus, updateWorker } from './service'
 
@@ -55,7 +54,7 @@ import { emitWorker, getWorker, humanWrote, listProjectWorkers, listWorkers, set
 export const DRIVE_WORKER_REFUSAL = 'a drive worker commits straight onto the driven branch and only the human talks to it'
 
 /**
- * A worker that runs on the host, with no sandbox: a drive review
+ * A worker that runs on the host: a drive review
  * (burns-become-workers decision 3), a drive worker (decision 1), or any worker
  * started since workers build in a folder of the feature (its row names the
  * folder: workers-build-in-the-feature-s-folder decision 1).
@@ -254,7 +253,6 @@ function createDriveWorker(ctx: AppCtx, kind: DriveWorkerKind, project: Project,
       runtime: model.runtime,
       startedBy: 'human',
       status: 'working',
-      engine: sandboxEngine(ctx.config.sandbox).name,
       featureBranch: branch,
       handbackCommits: [],
       handbackFiles: [],

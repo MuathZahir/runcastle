@@ -18,14 +18,13 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { setAgentHostForTests } from '../src/threads/host'
 import { readThreadEvents } from '../src/threads/log'
-import { setSandboxEngineForTests } from '../src/workers/engine'
 import { writeHostHandback } from '../src/workers/review'
 import { forgetDriveTurnBasesForTests } from '../src/workers/drive'
 import { getWorker, messageWorker, startWorker, workerFolder, workerPrompted, workerTurnEnded } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
-import { fakeEngine, fakeHost, git, initRepo } from './support/fake-workers'
+import { fakeHost, git, initRepo } from './support/fake-workers'
 
 /**
  * Interactive workers (docs/features/interactive-workers): the worker record
@@ -34,8 +33,7 @@ import { fakeEngine, fakeHost, git, initRepo } from './support/fake-workers'
  * (docs/features/workers-build-in-the-feature-s-folder): the first in the
  * feature's own folder, one started beside it in its own folder and branch.
  * The git underneath is real: a handback's commits and a land are read from a
- * real repo. The fake sandbox engine stays installed only to prove no new
- * worker calls it.
+ * real repo.
  */
 
 let ctx: AppCtx
@@ -45,7 +43,6 @@ let repo: string
 let feature: Feature
 let lead: string
 let host: ReturnType<typeof fakeHost>
-let engine: ReturnType<typeof fakeEngine>
 
 beforeEach(async () => {
   home = tmpRepo()
@@ -59,13 +56,10 @@ beforeEach(async () => {
   markSessionEnded(ctx, lead)
   host = fakeHost()
   setAgentHostForTests(host.host)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
 })
 
 afterEach(() => {
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   restoreDataDir()
   rmTemp(home)
   rmTemp(repo)
@@ -113,8 +107,7 @@ describe('a worker, start to land', () => {
   it('starts working, stays working after a turn and a message, hands back once and lands', async () => {
     const id = await startHeader()
     const started = getWorker(ctx, id)!
-    expect(started).toMatchObject({ status: 'working', kind: 'with-you', startedBy: 'lead', label: 'Header', folder: expect.any(String), branch: null, container: null })
-    expect(engine.order).toEqual([])
+    expect(started).toMatchObject({ status: 'working', kind: 'with-you', startedBy: 'lead', label: 'Header', folder: expect.any(String), branch: null })
     expect(getSessionRow(ctx, id)?.kind).toBe('worker')
     expect(host.sent.filter((s) => s.threadId === id).map((s) => s.text)).toEqual(['Start your assignment: Build the header\n\nDone when: The human likes it'])
     expect(workerEvents()).toEqual([{ type: 'worker.started', status: 'working' }])
@@ -210,7 +203,6 @@ describe("where a worker builds (workers-build-in-the-feature-s-folder)", () => 
     expect(git(w2.folder!, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(w2.branch)
     expect(git(repo, 'rev-parse', w2.branch!).trim()).toBe(featureTip())
     expect(getSessionRow(ctx, second)?.worktreePath).toBe(w2.folder)
-    expect(engine.order).toEqual([])
   })
 
   it("gives the feature's folder to a new worker once the one holding it has landed", async () => {
@@ -333,7 +325,6 @@ describe('sending back and dropping', () => {
     await toolDropWorker(ctx, leadSession(), { workerId: id })
     expect(getWorker(ctx, id)).toMatchObject({ status: 'dropped', outcome: 'dropped' })
     expect(host.stopped).toEqual([id])
-    expect(engine.removed).toEqual([])
     expect(featureTip()).toBe(tip)
     expect(git(repo, 'log', '--format=%s', 'feature/work')).toContain('feat: header')
     expect(existsSync(getWorker(ctx, id)!.folder!)).toBe(true)
@@ -382,13 +373,6 @@ describe("the lead's workers card", () => {
 })
 
 describe('starting a worker', () => {
-  it('starts a worker with no container engine running: none is needed', async () => {
-    engine.up = false
-    const id = await startHeader()
-    expect(getWorker(ctx, id)?.status).toBe('working')
-    expect(engine.order).toEqual([])
-  })
-
   it('runs an ordinary worker with no model on the chat step, never the review step', async () => {
     ctx.config.stepModels = { ...ctx.config.stepModels, chat: 'claude-sonnet-5', review: 'claude-haiku-4-5' }
     const id = await startHeader()

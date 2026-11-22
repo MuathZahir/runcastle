@@ -51,8 +51,8 @@ describe('worker owner migration (0066)', () => {
       updatedAt: 2,
     })
     db.run(sql.raw(
-      'INSERT INTO workers (id, feature_id, project_id, label, purpose, kind, model, runtime, started_by, status, engine, feature_branch, created_at, updated_at)' +
-        " VALUES ('wkr_2', NULL, 'proj_1', 'Scenarios', 'p', 'scenario', 'm', 'claude-code', 'human', 'working', 'docker', 'main', 3, 3)",
+      'INSERT INTO workers (id, feature_id, project_id, label, purpose, kind, model, runtime, started_by, status, feature_branch, created_at, updated_at)' +
+        " VALUES ('wkr_2', NULL, 'proj_1', 'Scenarios', 'p', 'scenario', 'm', 'claude-code', 'human', 'working', 'main', 3, 3)",
     ))
     expect(db.select().from(workers).where(eq(workers.id, 'wkr_2')).get()?.featureId).toBeNull()
     expect(() => runMigrations(db, DRIZZLE_DIR)).not.toThrow()

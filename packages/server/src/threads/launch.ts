@@ -173,9 +173,8 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
             : hostWorkerBriefing({ label: w.label, kind: w.kind as 'with-you' | 'on-its-own' | 'unassigned', goal: w.goal, doneWhen: w.doneWhen }, place!)
         return { ...base, worktreePath: folder, feature, hostWorker: { briefing, env: {} }, ...hostSidePosture(runtime) }
       }
-      // Its process runs in its sandbox (`withWorkers`), which says where its
-      // session opens and briefs it; only the model is read from this launch.
-      return { ...base, feature, permissionMode: 'bypassPermissions' }
+      // A worker from before workers built on the host ran in a container, which runcastle no longer has: its conversation stays readable, nothing runs it.
+      throw new GateError('this worker ran in a container, which runcastle no longer has: start a new worker instead')
     }
     case 'project': {
       const { worktreePath, base: branchBase } = await git.ensureProjectWorktree(project)

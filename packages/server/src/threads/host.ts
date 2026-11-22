@@ -90,7 +90,7 @@ import { elicitationAsk, formContent, formLines, unsupportedLine } from './elici
 import { permissionAnswer } from './permission-policy'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
-import { withWorkers, workerStallBounds, workerTurnSlot } from '../workers/service'
+import { workerStallBounds, workerTurnSlot } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { assignEpicColor } from './epic-look'
@@ -2319,7 +2319,7 @@ export function processAgentHost(ctx: AppCtx): AgentHost {
   if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({
       ctx,
       lifecycle: threadLifecycle(ctx),
-      transport: withWorkers(ctx, spawnAdapter),
+      transport: spawnAdapter,
       turnSlot: workerTurnSlot(ctx),
       stallBounds: workerStallBounds(),
     })

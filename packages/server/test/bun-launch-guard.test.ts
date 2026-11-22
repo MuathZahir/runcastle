@@ -38,7 +38,6 @@ const ALLOWED: Allowed[] = [
   { file: 'setup/plan.ts', match: "'bun'", reason: 'the setup step that runs `bun upgrade` for the human; it runs no script' },
   { file: 'services/update-check.ts', match: '`bun add -g', reason: 'the update command shown to the human; it runs no script' },
   { file: 'services/repo-toolchain.ts', match: "'bun'", reason: "names the project's package manager for the project's own commands, which read its .env (decision 4)" },
-  { file: 'workers/spike-harness.ts', match: "'bun run --cwd apps/web dev", reason: "a dev-only harness's default dev command for this repo's web app" },
   { file: 'launcher/install-guard.ts', match: "verbAfter('bun'", reason: 'matches `bun install` in agent commands; launches nothing' },
 ]
 
