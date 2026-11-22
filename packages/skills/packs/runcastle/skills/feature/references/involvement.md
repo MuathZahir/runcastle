@@ -32,5 +32,5 @@ package lists them; they overturn one by telling you.
   `wait_for_you({ withdraw: true })`, and carry on. A wait on something the
   level still asks (a design's yes, money, accounts) stays.
 - It became `nothing` while you wait as Ready to test: call `declare_ready`
-  again with the same scenario, and it merges.
+  again with the same scenario and `checksPassed`, and it merges.
 - It went up: ask from then on.
