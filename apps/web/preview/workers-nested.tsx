@@ -20,8 +20,8 @@ import { installSilentEventSource } from '../../../.runcastle/preview/event-sour
 import { fakeTrpcFetch } from '../../../.runcastle/preview/fake-api'
 import { useDesignReport } from '../../../.runcastle/preview/design-report'
 import { PROJECT_ID, project, withShell } from '../../../.runcastle/preview/shell-fakes'
-import { DesignPanel, makeDeadEnd } from './autopilot-design-panel'
-import { RAIL_TILES } from './autopilot-sidebar-data'
+import { DesignPanel, makeDeadEnd } from './design-panel-kit'
+import { RAIL_TILES } from './epics-alive-data'
 import { STATES, type Sample, type StateKey } from './workers-nested-data'
 
 /**

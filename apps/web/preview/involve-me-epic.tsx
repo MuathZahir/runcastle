@@ -22,7 +22,7 @@ import type { FeatureListItem } from '../src/lib/api'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
 import { useDesignReport } from '../../../.runcastle/preview/design-report'
 import { listItem } from '../test/fixtures'
-import { DESIGN_PANEL_CLEARANCE, DesignPanel, makeDeadEnd } from './autopilot-design-panel'
+import { DESIGN_PANEL_CLEARANCE, DesignPanel, makeDeadEnd } from './design-panel-kit'
 
 /**
  * "Involve me in" on an epic (docs/features/how-involved-am-i decisions 3, 4,
