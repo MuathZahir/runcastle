@@ -1,5 +1,3 @@
-import * as SelectPrimitive from '@radix-ui/react-select'
-import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import {
   INVOLVEMENT_HINT,
   INVOLVEMENT_LABEL,
@@ -7,15 +5,24 @@ import {
   INVOLVEMENT_NAME,
   type Involvement,
 } from '@runcastle/core'
-import { IconCheck, IconChevronDown, IconEye, IconGitMerge, IconImage, IconMessage } from '../../icons'
+import { IconChevronDown, IconEye, IconGitMerge, IconImage, IconMessage } from '../../icons'
 import { cx } from '../../ui'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger } from '../../ui/dropdown-menu'
 import {
-  FLOATING_CAP,
-  FLOATING_ITEM,
-  FLOATING_SCROLLBAR,
-  FLOATING_SURFACE,
-} from '../../ui/floating'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '../../ui/dropdown-menu'
+import {
+  SELECT_MARKED,
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+} from '../../ui/select'
 
 /**
  * "Involve me in" (docs/features/how-involved-am-i): how involved the human is
@@ -33,12 +40,12 @@ import {
  * a tile whose blue fades as the human steps back. "Everything" asks (a
  * question), "Designs and result" shows screens, "Result only" is tried, and
  * "Nothing" merges by itself, in the neutral grey of a feature that no longer
- * waits on anyone.
+ * waits on anyone. The tints are theme tokens (`--color-involve-*`).
  */
 const MARK: Record<Involvement, { Icon: typeof IconMessage; tile: string; dot: string }> = {
-  everything: { Icon: IconMessage, tile: 'bg-accent/22 text-accent-text', dot: 'bg-accent' },
-  designsAndResult: { Icon: IconImage, tile: 'bg-accent/13 text-accent-text/85', dot: 'bg-accent/70' },
-  resultOnly: { Icon: IconEye, tile: 'bg-accent/7 text-accent-text/65', dot: 'bg-accent/40' },
+  everything: { Icon: IconMessage, tile: 'bg-involve-everything text-accent-text', dot: 'bg-accent' },
+  designsAndResult: { Icon: IconImage, tile: 'bg-involve-designs text-involve-designs-mark', dot: 'bg-involve-designs-dot' },
+  resultOnly: { Icon: IconEye, tile: 'bg-involve-result text-involve-result-mark', dot: 'bg-involve-result-dot' },
   nothing: { Icon: IconGitMerge, tile: 'bg-surface-hover text-icon', dot: 'bg-text-tertiary' },
 }
 
@@ -64,19 +71,6 @@ function MixedMark({ levels }: { levels: readonly Involvement[] }) {
   )
 }
 
-/** The closed control: a quiet ghost button, as the app's inline pickers wear. */
-const TRIGGER =
-  'inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md text-text-tertiary whitespace-nowrap ' +
-  'transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover enabled:hover:text-text-secondary ' +
-  'data-[state=open]:bg-surface-selected data-[state=open]:text-text-secondary disabled:cursor-not-allowed disabled:opacity-60'
-
-const TRIGGER_SIZE = {
-  /** In a card's row: 24px, 12px words. */
-  sm: 'h-(--control-sm) pr-1.5 pl-[3px] text-xs',
-  /** In a page header: 32px, 13px words. */
-  md: 'h-(--control-h) pr-2 pl-1.5 text-sm',
-} as const
-
 /** "Involve me in: <level>", the level in the stronger grey. */
 function TriggerWords({ level }: { level: Involvement | null }) {
   return (
@@ -86,23 +80,6 @@ function TriggerWords({ level }: { level: Involvement | null }) {
   )
 }
 
-/** A level's row in an open list: its mark, its name, then what it means. */
-function LevelLines({ level }: { level: Involvement }) {
-  return (
-    <>
-      <span className="pt-1.5">
-        <LevelMark level={level} size="lg" />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-1.5">
-        <span className="text-md font-medium text-text">{INVOLVEMENT_LABEL[level]}</span>
-        <span className="text-xs leading-4 text-pretty text-text-tertiary">{INVOLVEMENT_HINT[level]}</span>
-      </span>
-    </>
-  )
-}
-
-// Not FLOATING_ITEM_DEFAULT: its rule greys every icon in the row, and each mark keeps its own colour.
-const ITEM = cx(FLOATING_ITEM, 'items-start gap-2.5 text-text hover:bg-surface-hover data-highlighted:bg-surface-hover')
 const LIST_W = 'w-80'
 
 /**
@@ -118,50 +95,33 @@ export function InvolvementSelect({
 }: {
   value: Involvement
   onChange: (level: Involvement) => void
-  size?: keyof typeof TRIGGER_SIZE
+  /** `sm` in a card's row (24px), `md` in a page header (32px). */
+  size?: keyof typeof SELECT_MARKED
   disabled?: boolean
   align?: 'start' | 'end'
 }) {
   return (
-    <SelectPrimitive.Root value={value} onValueChange={(v) => onChange(v as Involvement)} disabled={disabled}>
-      <SelectPrimitive.Trigger
-        aria-label={`${INVOLVEMENT_NAME}: ${INVOLVEMENT_LABEL[value]}`}
-        className={cx(TRIGGER, TRIGGER_SIZE[size])}
-      >
+    <Select value={value} onValueChange={(v) => onChange(v as Involvement)} disabled={disabled}>
+      <SelectTrigger marked={size} aria-label={`${INVOLVEMENT_NAME}: ${INVOLVEMENT_LABEL[value]}`}>
         <LevelMark level={value} />
         <TriggerWords level={value} />
-        <SelectPrimitive.Icon className="inline-flex shrink-0 text-icon">
-          <IconChevronDown size={size === 'sm' ? 12 : 14} />
-        </SelectPrimitive.Icon>
-      </SelectPrimitive.Trigger>
-      <SelectPrimitive.Portal>
-        <SelectPrimitive.Content
-          position="popper"
-          align={align}
-          sideOffset={4}
-          collisionPadding={8}
-          onEscapeKeyDown={(e) => e.stopPropagation()}
-          className={cx(FLOATING_SURFACE, FLOATING_CAP.select, LIST_W)}
-        >
-          <SelectPrimitive.Viewport className={cx('p-1', FLOATING_SCROLLBAR)}>
-            <div className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-text-tertiary">{INVOLVEMENT_NAME}</div>
-            {INVOLVEMENT_LEVELS.map((level) => (
-              <SelectPrimitive.Item key={level} value={level} className={ITEM}>
-                <SelectPrimitive.ItemText asChild>
-                  <span className="sr-only">{INVOLVEMENT_LABEL[level]}</span>
-                </SelectPrimitive.ItemText>
-                <LevelLines level={level} />
-                <span className="grid size-4 shrink-0 place-items-center pt-3.5">
-                  <SelectPrimitive.ItemIndicator>
-                    <IconCheck size={14} className="text-text" />
-                  </SelectPrimitive.ItemIndicator>
-                </span>
-              </SelectPrimitive.Item>
-            ))}
-          </SelectPrimitive.Viewport>
-        </SelectPrimitive.Content>
-      </SelectPrimitive.Portal>
-    </SelectPrimitive.Root>
+      </SelectTrigger>
+      <SelectContent align={align} className={LIST_W}>
+        <SelectGroup>
+          <SelectLabel>{INVOLVEMENT_NAME}</SelectLabel>
+          {INVOLVEMENT_LEVELS.map((level) => (
+            <SelectItem
+              key={level}
+              value={level}
+              mark={<LevelMark level={level} size="lg" />}
+              description={INVOLVEMENT_HINT[level]}
+            >
+              {INVOLVEMENT_LABEL[level]}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -194,7 +154,7 @@ export function SetAllInvolvement({
       <DropdownMenuTrigger
         disabled={disabled || n === 0}
         aria-label={`${INVOLVEMENT_NAME} for all features: ${shared ? INVOLVEMENT_LABEL[shared] : 'Mixed'}`}
-        className={cx(TRIGGER, TRIGGER_SIZE.md)}
+        className={SELECT_MARKED.md}
       >
         {shared ? <LevelMark level={shared} /> : <MixedMark levels={levels} />}
         <TriggerWords level={shared} />
@@ -205,12 +165,15 @@ export function SetAllInvolvement({
           Set all {n} {n === 1 ? 'feature' : 'features'} to…
         </DropdownMenuLabel>
         {INVOLVEMENT_LEVELS.map((level) => (
-          <DropdownMenuPrimitive.Item key={level} className={ITEM} onSelect={() => onSetAll(level)}>
-            <LevelLines level={level} />
-            <span className="grid size-4 shrink-0 place-items-center pt-3.5">
-              {shared === level && <IconCheck size={14} className="text-text" />}
-            </span>
-          </DropdownMenuPrimitive.Item>
+          <DropdownMenuItem
+            key={level}
+            mark={<LevelMark level={level} size="lg" />}
+            description={INVOLVEMENT_HINT[level]}
+            current={shared === level}
+            onSelect={() => onSetAll(level)}
+          >
+            {INVOLVEMENT_LABEL[level]}
+          </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>

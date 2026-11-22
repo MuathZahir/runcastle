@@ -206,11 +206,11 @@ export function FeatureRow({
     <div className={cx(row, gone && 'opacity-70')}>{body}</div>
   )
   if (!control) return el
-  // The control's words start under the title's: the row's padding, the glyph and its gap, less the control's own padding.
+  // The control lines up under the title (40px in): 32px here, the control's own 4px padding, then the tile's 3px inset, so its icon sits on the title's edge.
   return (
     <div className="flex min-w-0 flex-col">
       {el}
-      <div className="-mt-1.5 flex min-w-0 pb-1.5 pl-[34px]">{control}</div>
+      <div className="-mt-1.5 flex min-w-0 pb-1.5 pl-8">{control}</div>
     </div>
   )
 }

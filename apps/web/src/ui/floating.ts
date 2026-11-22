@@ -74,6 +74,31 @@ export const FLOATING_ITEM_DEFAULT =
   'text-text [&_svg]:text-icon ' +
   'hover:bg-surface-hover data-highlighted:bg-surface-hover data-[selected=true]:bg-surface-hover'
 
+/**
+ * The default row's colours for a row that leads with a coloured mark (the
+ * "Involve me in" level tiles): the same text and highlight, but no `icon`
+ * grey forced onto every icon, so each mark keeps its own colour. An icon in
+ * such a row names its colour itself.
+ */
+export const FLOATING_ITEM_MARKED =
+  'text-text hover:bg-surface-hover data-highlighted:bg-surface-hover data-[selected=true]:bg-surface-hover'
+
+/**
+ * What lays out a described row inside {@link FLOATING_ITEM}: a leading mark,
+ * the label over one line of what it means, then a slot for the check, all
+ * hung from the top. For a short list whose every choice needs saying (the
+ * "Involve me in" levels). `body` is one box filling the row, so the row's own
+ * centring has nothing to move.
+ */
+export const FLOATING_DESCRIBED = {
+  body: 'flex w-full min-w-0 items-start gap-2.5',
+  mark: 'pt-1.5',
+  words: 'flex min-w-0 flex-1 flex-col gap-0.5 py-1.5',
+  label: 'text-md font-medium text-text',
+  description: 'text-xs leading-4 text-pretty text-text-tertiary',
+  check: 'grid size-4 shrink-0 place-items-center pt-3.5',
+} as const
+
 /** The destructive row (Delete, Remove): the label in `danger-text`, the icon in `danger`. */
 export const FLOATING_ITEM_DANGER =
   'text-danger-text [&_svg]:text-danger hover:bg-danger-subtle data-highlighted:bg-danger-subtle'
