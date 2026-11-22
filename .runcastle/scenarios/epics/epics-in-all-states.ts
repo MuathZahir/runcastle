@@ -1,29 +1,15 @@
 /**
- * Scenario: one project whose epic list shows epics on and off autopilot
- * (docs/features/epics-on-autopilot decisions 7, 14, 17; the design pages
- * "Sidebar on autopilot" and "Feature chat on autopilot"), beside the
+ * Scenario: one project whose epic list shows epics in each state, beside the
  * coloured cards, tinted slim idle rows and dotted New epic slot of
  * docs/features/epics-that-look-alive.
  *
- * The project, epics-demo, holds five orchestrator chats (epics), each with its
+ * The project, epics-demo, holds four orchestrator chats (epics), each with its
  * own colour and icon:
  *
- * - **Checkout Flow** (violet, credit-card) is on autopilot: the human agreed
- *   its run plan and said "go on autopilot", so the whole epic is locked
- *   (decision 14). Its card wears the moving edge and the Autopilot mark.
- *   - **Checkout page** and **Saved cards** are the run's work: locked, with
- *     the lock on their rows, each lead's chat holding the epic's messages
- *     (signed "Checkout Flow") and the lock note in place of its message box.
- *     Saved cards' lead asked the epic about a design: on autopilot that never
- *     makes the feature need the human, so its row reads Idle, not Needs you.
- *   - **Refunds** was left for the human's grill by the run plan: it sits
- *     locked and untouched, Idle, until the human ends autopilot.
- *   - The epic itself needs the human: the orchestrator could not settle
- *     "card fees or a flat price?" and asked with `wait_for_you`, so its card
- *     carries the amber dot and its edge's light stands still (decision 17).
- * - **Notes Sync** (teal, database) is an ordinary epic off autopilot: one
- *   feature in progress and one whose plan waits for the human's yes — that
- *   feature's own row reads Needs you.
+ * - **Notes Sync** (teal, database) has one feature in progress and one whose
+ *   plan waits for the human's yes (that feature's own row reads Needs you).
+ *   The epic itself needs the human too: the orchestrator asked a question
+ *   with `wait_for_you`, so its card carries the amber dot.
  * - **Dark Mode**, **Search** and **Release Tooling** are idle: slim rows,
  *   having shipped a few features each (Release Tooling none, and no icon yet).
  *
@@ -33,8 +19,8 @@
  * Run by the project's scenario runner (`bun {file}`) inside a test drive of
  * runcastle, with the drive identity, the `.runcastle/drive.env` overlay and a
  * fresh `RUNCASTLE_SCENARIO_RUN` in its env. It seeds the DRIVEN instance — the
- * overlay's `RUNCASTLE_DATA_DIR` — and prints the page of Checkout page (a
- * locked feature, with the sidebar beside it) as `ENTRY_URL=…`, which the drive
+ * overlay's `RUNCASTLE_DATA_DIR` — and prints the page of Conflict handling (a
+ * feature waiting for the human, with the sidebar beside it) as `ENTRY_URL=…`, which the drive
  * resolves against its own URL.
  *
  * The project is a copy of the tiny-notes fixture (one commit) under
@@ -66,8 +52,8 @@ const MODEL = { id: 'claude-opus-5-5', runtime: 'claude-code' as const }
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 
-/** The locked feature the drive opens on. */
-const ENTRY = 'Checkout page'
+/** The feature the drive opens on. */
+const ENTRY = 'Conflict handling'
 
 /** Only ever the drive's own tree — see feature-with-workers.ts. */
 function driveDataDir(): string {
@@ -105,10 +91,8 @@ type FeatureSeed =
   | {
       title: string
       as: 'active'
-      /** Off autopilot: its lead waits on the human, so its own row needs them. */
+      /** Its lead waits on the human, so its own row needs them. */
       waiting?: string
-      /** On autopilot: the epic's messages to its lead, and the lead's answers, in its chat. */
-      chat?: { fromEpic: string; answered: string }[]
     }
   | { title: string; as: 'up-next' }
 
@@ -121,61 +105,12 @@ interface EpicSeed {
   wroteAgo: number
   /** The conversation, the human's words and the orchestrator's answers in turn. */
   turns: { said: string; answered: string }[]
-  /** On autopilot: the whole epic is locked (decision 14). */
-  autopilot?: boolean
   /** The chat's own `wait_for_you` line: only its agent's call makes the epic need the human. */
   asks?: string
   features: FeatureSeed[]
 }
 
 const EPICS: EpicSeed[] = [
-  {
-    name: 'Checkout Flow',
-    color: 'violet',
-    icon: 'credit-card',
-    startedAgo: 7 * HOUR,
-    wroteAgo: 6 * HOUR,
-    autopilot: true,
-    turns: [
-      {
-        said: 'People should check out in one page, save a card for next time, and get refunds without emailing us.',
-        answered:
-          'Cut into three. Run plan: Checkout page and Saved cards I plan myself and take to ready to merge, one at a time. ' +
-          'Refunds changes how money moves back, so I leave it for your grill. Say yes and I go on autopilot.',
-      },
-      {
-        said: 'Yes, go on autopilot. You can answer their decisions for me.',
-        answered:
-          'On autopilot. Card fees or a flat price for saved cards is a pricing call I will not make for you: card fees or a flat price? ' +
-          'The rest carries on meanwhile.',
-      },
-    ],
-    asks: 'Card fees or a flat price? Pick one',
-    features: [
-      {
-        title: 'Checkout page',
-        as: 'active',
-        chat: [
-          {
-            fromEpic: 'Your plan is approved: the human handed their decisions to autopilot for this run. Build it, and tell me when it is ready to test.',
-            answered: 'Building it: the order summary and the pay button first, then the address step.',
-          },
-        ],
-      },
-      {
-        title: 'Saved cards',
-        as: 'active',
-        chat: [
-          {
-            fromEpic: 'Plan it yourself and bring me the card list design before you build.',
-            answered: 'The card list design is up. I sent it to the epic for a yes.',
-          },
-        ],
-      },
-      // Left for the human's grill: locked with the rest, nobody working it.
-      { title: 'Refunds', as: 'active' },
-    ],
-  },
   {
     name: 'Notes Sync',
     color: 'teal',
@@ -188,6 +123,7 @@ const EPICS: EpicSeed[] = [
         answered: 'Cut into three: the sync engine, conflict handling and offline edits. Start them in their own chats when you like.',
       },
     ],
+    asks: 'Which feature first? Pick one',
     features: [
       { title: 'Sync engine', as: 'active' },
       { title: 'Conflict handling', as: 'active', waiting: 'Plan ready for your yes' },
@@ -240,7 +176,7 @@ function log(at: number, bodies: [number, ThreadEventBody][]): ThreadEvent[] {
   return bodies.map(([seconds, body], i) => ({ ...body, i, at: at + seconds * 1000 }) as ThreadEvent)
 }
 
-/** The epic's log: each of the human's messages and the orchestrator's answer, the features it cut, and autopilot going on. */
+/** The epic's log: each of the human's messages and the orchestrator's answer, and the features it cut. */
 function epicLog(epic: EpicSeed, at: number, featureIds: Map<string, string>): ThreadEvent[] {
   const bodies: [number, ThreadEventBody][] = []
   epic.turns.forEach((turn, k) => {
@@ -250,34 +186,7 @@ function epicLog(epic: EpicSeed, at: number, featureIds: Map<string, string>): T
       bodies.push([t + 2, { type: 'title', title: epic.name, by: 'orchestrator' }])
       for (const [title, featureId] of featureIds) bodies.push([t + 20, { type: 'feature_acted', featureId, title, action: 'created' }])
     }
-    if (k === 1 && epic.autopilot) {
-      for (const [title, featureId] of featureIds) bodies.push([t + 20, { type: 'feature_acted', featureId, title, action: 'autopilotOn' }])
-    }
     bodies.push([t + 30, { type: 'agent_text', messageId: `m_${k + 1}`, text: turn.answered }], [t + 31, { type: 'turn_ended', reason: 'end_turn' }])
-  })
-  return log(at, bodies)
-}
-
-/** A locked feature's lead chat: the epic's messages (as `send_to_feature` delivers them) and the lead's answers. */
-function leadLog(epicName: string, chat: { fromEpic: string; answered: string }[], at: number): ThreadEvent[] {
-  const bodies: [number, ThreadEventBody][] = []
-  chat.forEach((line, k) => {
-    const t = k * 300
-    bodies.push(
-      [
-        t,
-        {
-          type: 'prompt',
-          id: `p_${k + 1}`,
-          text: `[runcastle] From ${epicName}, the project's orchestrator, not the human:\n\n${line.fromEpic}`,
-          source: 'runcastle',
-          display: { orchestrator: [{ text: line.fromEpic }] },
-        },
-      ],
-      [t + 1, { type: 'turn_started' }],
-      [t + 60, { type: 'agent_text', messageId: `m_${k + 1}`, text: line.answered }],
-      [t + 61, { type: 'turn_ended', reason: 'end_turn' }],
-    )
   })
   return log(at, bodies)
 }
@@ -291,11 +200,6 @@ function exec(ctx: AppCtx, sql: string, ...params: (string | number | null)[]): 
 function one<T>(ctx: AppCtx, sql: string, ...params: (string | number | null)[]): T | null {
   const client = (ctx.db as unknown as { $client: { query(sql: string): { get(...params: (string | number | null)[]): T | null } } }).$client
   return client.query(sql).get(...params)
-}
-
-/** Turn the epic's autopilot on: the switch on its session locks every open feature it cut (decision 14). */
-function autopilotOn(ctx: AppCtx, epicId: string): void {
-  exec(ctx, 'UPDATE sessions SET autopilot = 1 WHERE id = ?', epicId)
 }
 
 async function seedEpic(ctx: AppCtx, project: Project, epic: EpicSeed, now: number): Promise<void> {
@@ -328,14 +232,12 @@ async function seedEpic(ctx: AppCtx, project: Project, epic: EpicSeed, now: numb
       now - epic.startedAgo + MINUTE,
       feature.id,
     )
-    if (seed.as !== 'active' || (!seed.waiting && !seed.chat)) continue
+    if (seed.as !== 'active' || !seed.waiting) continue
     const lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktreeDir(project.id, feature.slug), model: MODEL })
     markSessionEnded(ctx, lead.id)
-    if (seed.chat) seedThreadLog(lead.id, leadLog(epic.name, seed.chat, now - epic.wroteAgo + 5 * MINUTE))
     if (seed.waiting) setWait(ctx, lead.id, seed.waiting)
   }
   seedThreadLog(row.id, epicLog(epic, now - epic.wroteAgo, ids))
-  if (epic.autopilot) autopilotOn(ctx, row.id)
   if (epic.asks) setWait(ctx, row.id, epic.asks)
 }
 

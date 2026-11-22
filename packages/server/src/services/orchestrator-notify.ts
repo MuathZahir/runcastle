@@ -1,41 +1,41 @@
-import { AUTOSTART_FAILED, AUTOSTART_SKIPPED, type EventRow, type Feature, type PromptDisplay } from '@runcastle/core'
+import {
+  AUTOSTART_FAILED,
+  AUTOSTART_SKIPPED,
+  type DecidedWithoutYou,
+  type EventRow,
+  type Feature,
+  type PromptDisplay,
+  type ReviewFinding,
+} from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { getSessionRow } from '../launcher/sessions'
 import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
 import { mayStartInBackground } from './database-copy'
 import type { EpicSibling } from './epic-siblings'
-import { epicSiblingsInProgress, MERGED_BY_RUNCASTLE, mergeWakesEpic, ownerWords } from './epic-siblings'
+import { epicSiblingsInProgress, MERGED_BY_RUNCASTLE, ownerWords } from './epic-siblings'
 import { emit, getEventRow } from './events'
 import { chatNameOf } from '../threads/chat-name'
-import { epicOnAutopilot, isLocked } from './autopilot'
 import { getFeatureRow } from './repo'
+import { listByFeature as listFindings } from './review-findings'
 
 /**
- * What a project thread hears from runcastle about the features it holds
- * (`agents-are-woken-only-when-it-matters` decisions 19, 23): only machine events
- * about its own work, each waking it. Everything else it hears from a feature
- * comes from that feature's lead, by `hand_back` (decisions 20–22). One
- * `[runcastle]` line is said into the HOLDER as a runcastle prompt
- * ({@link notifyOrchestrator}), into no other thread. A feature nobody holds
- * produces nothing, and a shipped one has nothing more to say.
- *
- * The human's own acts tell the orchestrator nothing, with one exception: a
- * MERGE (`the-epic-hears-when-its-features-merge`). Whoever merged it, the merge
- * is said into the feature's EPIC (`features.chat_id`, the chat it came from),
- * not its holder, once the merge has started its up-next drafts
- * ({@link announceMerge}). It wakes the epic only while another of the epic's
- * features is in progress and the epic did not merge it itself; otherwise the
- * line is held (logged, its news row shown, carried ahead of the next prompt).
+ * What an epic (an orchestrator chat) hears from runcastle about its own
+ * features (`autopilot-retires` decisions 2, 9): every merge, and trouble that
+ * crosses features. One `[runcastle]` line is said into the feature's EPIC
+ * (`features.chat_id`, the chat it came from) as a runcastle prompt
+ * ({@link notifyOrchestrator}), into no other thread, and it wakes the epic.
  * A feature with no epic, or whose epic chat is gone, says nothing.
+ *
+ * A merge, by anyone, is said once the merge has started its up-next drafts
+ * ({@link announceMerge}), with the review summary, the decisions marked
+ * "Decided without you" and the defects dismissed. The lead's own trouble
+ * comes by `hand_back` (`lead-handback.ts`), not through here.
  *
  * | Event type               | When                                                         |
  * |--------------------------|--------------------------------------------------------------|
- * | `testdrive.dev_failed`   | a drive the orchestrator started failed to start (stamped `actor: 'orchestrator'`) |
- * | `feature.started`        | a draft it holds started by itself (`data.autoStartedBy`)    |
- * | `feature.autostart.*`    | a draft it holds could not start by itself                   |
- * | `lead.wake_failed`       | a message it sent a lead could not reach it (stamped `actor: 'orchestrator'`) |
- * | `feature.shipped`        | a feature of its epic merged, by anyone (to the EPIC, see above) |
+ * | `feature.autostart.*`    | a dependent could not start by itself, or its lead could not launch |
+ * | `feature.shipped`        | a feature of the epic merged, by anyone                      |
  *
  * Project-level events produce nothing.
  */
@@ -46,7 +46,7 @@ export interface NotifyState {
   feature?: {
     slug: string
     title: string
-    /** The thread holding it; null when none does, or once it has shipped. */
+    /** The epic its trouble goes to; null when the event is not trouble or it has no epic. */
     holderId: string | null
     /** For a merge, what the epic hears of it; absent for any other event. */
     merge?: MergeNews
@@ -69,8 +69,12 @@ export interface MergeNews {
   outcome: string | null
   /** The epic's other features in progress. */
   siblings: EpicSibling[]
-  /** Whether the line wakes the epic; held otherwise. */
-  wakes: boolean
+  /** The `## Review summary` text written at the merge; null when none could be composed. */
+  reviewSummary: string | null
+  /** The decisions the lead settled without the human, as merged. */
+  decided: DecidedWithoutYou[]
+  /** The defects dismissed rather than fixed. */
+  dismissed: Pick<ReviewFinding, 'title' | 'severity' | 'location' | 'resolutionNote'>[]
 }
 
 /** What the epic is told when nothing of it is left in progress (decision 6). */
@@ -101,50 +105,48 @@ function clip(text: string, max = SUMMARY_MAX): string {
   return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`
 }
 
-/** Whether the orchestrator's own tool call caused the event (its drive, its message). */
-function byOrchestrator(event: EventRow): boolean {
-  return record(event.data).actor === 'orchestrator'
+/** Whether an event is trouble that crosses features: a dependent that could not start (decision 9). */
+function isTrouble(type: string): boolean {
+  return type === AUTOSTART_SKIPPED || type === AUTOSTART_FAILED
 }
 
 /** What happened and what to read next, without the prefix or the slug; null for no line. */
 function describe(event: EventRow, slug: string): string | null {
-  const data = record(event.data)
-  const context = `Read it with get_feature_context({ slug: "${slug}" }).`
-  switch (event.type) {
-    case 'testdrive.dev_failed':
-      return byOrchestrator(event) ? `the drive you started failed: ${clip(event.message)}. ${context}` : null
-    case 'feature.started':
-      if (typeof data.autoStartedBy !== 'string') return null
-      return `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its "Involve me in" is Everything: then hand the human its chat.`
-    case AUTOSTART_SKIPPED:
-    case AUTOSTART_FAILED:
-      return `${clip(event.message, MESSAGE_MAX)}. ${context}`
-    case 'lead.wake_failed':
-      // The message waits for the agent's next wake; without this line the
-      // orchestrator would believe its message was being worked on.
-      return byOrchestrator(event)
-        ? `could not wake its agent, so your message has not reached it yet (${clip(event.message)}). ${context}`
-        : null
-    default:
-      return null
-  }
+  if (!isTrouble(event.type)) return null
+  return `${clip(event.message, MESSAGE_MAX)}. Read it with get_feature_context({ slug: "${slug}" }).`
 }
 
-/** The merge line's text after the prefix and the slug (decisions 6, 7, 9). */
+/** The merge line's text after the prefix and the slug (decisions 2, 6, 7, 9). */
 function describeMerge(merge: MergeNews, slug: string): string {
   const head = `merged into ${merge.base} by ${merge.by}.`
-  if (merge.siblings.length === 0) return `${head} ${NOTHING_TO_CHECK}`
-  const siblings = merge.siblings.map((s) => `- ${s.slug}: ${s.title} (run by ${s.owner})`)
+  // The brief's section, without its own heading: the message names it.
+  const summary = merge.reviewSummary?.replace(/^#+ *Review summary *\n/, '').trim()
+  const settled = [
+    ...(summary ? ['Review summary:', summary] : []),
+    ...(merge.decided.length
+      ? ['Decided without the human:', ...merge.decided.map((d) => `- ${d.n}. ${d.title}`)]
+      : []),
+    ...(merge.dismissed.length
+      ? [
+          'Defects dismissed, not fixed:',
+          ...merge.dismissed.map(
+            (d) => `- ${d.title} (${d.severity}, ${d.location})${d.resolutionNote ? `: ${clip(d.resolutionNote, MESSAGE_MAX)}` : ''}`,
+          ),
+        ]
+      : []),
+  ]
+  if (merge.siblings.length === 0) return [head, ...settled, NOTHING_TO_CHECK].join('\n')
+  const siblings = merge.siblings.map((s) => `- ${s.slug}: ${s.title}`)
   const where = [
     ...(merge.sha ? [`the merge commit ${merge.sha.slice(0, 12)}`] : []),
-    // A one-file feature's record is the `## Review summary` at the end of its brief.md.
-    ...(merge.outcome ? [merge.outcome.endsWith('/brief.md') ? `the "## Review summary" section of ${merge.outcome}` : merge.outcome] : []),
+    // A one-file feature's record is the `## Review summary` at the end of its brief.md, quoted above.
+    ...(merge.outcome && !merge.outcome.endsWith('/brief.md') ? [merge.outcome] : []),
   ]
   const read =
     where.length > 0
       ? `Read the change: ${where.join(' and ')}.`
       : `Read the change with get_feature_context({ slug: "${slug}" }).`
-  return [head, 'In progress in this epic:', ...siblings, read].join('\n')
+  return [head, ...settled, 'In progress in this epic:', ...siblings, read].join('\n')
 }
 
 /** What the human reads of one event: its tone, and plain words with no slug or tool name. */
@@ -155,21 +157,14 @@ export interface NewsEvent {
 
 /** The human's words for an event {@link describe} has a line for (plain words, no plumbing). */
 function humanWords(event: EventRow, state: NotifyState): NewsEvent | null {
-  const data = record(event.data)
   switch (event.type) {
     case 'feature.shipped': {
       const merge = state.feature?.merge
       return merge ? { tone: 'done', words: `Merged by ${merge.byName}` } : null
     }
-    case 'testdrive.dev_failed':
-      return { tone: 'failed', words: 'Test drive failed to start' }
-    case 'feature.started':
-      return { tone: 'info', words: `Started by itself after ${String(data.autoStartedBy)} shipped` }
     case AUTOSTART_SKIPPED:
     case AUTOSTART_FAILED:
       return { tone: 'failed', words: clip(event.message, MESSAGE_MAX) }
-    case 'lead.wake_failed':
-      return { tone: 'failed', words: 'Could not wake its agent' }
     default:
       return null
   }
@@ -200,18 +195,10 @@ export function orchestratorNewsFor(
   return news ? { featureId: event.featureId, title: state.feature.title, ...news } : null
 }
 
-/**
- * The thread the line for `event` goes to: the epic for a merge, the holder for
- * everything else; null for none.
- */
+/** The thread the line for `event` goes to: the feature's epic; null for none. */
 export function orchestratorTargetFor(event: EventRow, state: NotifyState): string | null {
   if (event.type === 'feature.shipped') return state.feature?.merge?.epicId ?? null
   return state.feature?.holderId ?? null
-}
-
-/** Whether the line for `event` is held (logged, no turn): only a merge that does not wake its epic. */
-export function orchestratorHoldsFor(event: EventRow, state: NotifyState): boolean {
-  return event.type === 'feature.shipped' && state.feature?.merge?.wakes === false
 }
 
 /** What a merge's `feature.shipped` carries (set by the merge flow). */
@@ -221,12 +208,22 @@ export type ShippedData = {
   outcome?: string | null
   /** The orchestrator thread whose `merge_feature` merged it, `runcastle` (`MERGED_BY_RUNCASTLE`) when it merged by itself; null when the human did. */
   mergedBy?: string | null
+  /** The `## Review summary` text the merge wrote (autopilot-retires decision 2). */
+  reviewSummary?: string | null
+  /** The decisions marked "Decided without you", as merged. */
+  decidedWithoutYou?: DecidedWithoutYou[]
+}
+
+/** The feature's epic chat, when it has one that still exists. */
+function epicOf(ctx: AppCtx, feature: Feature): string | null {
+  const epic = feature.chatId ? getSessionRow(ctx, feature.chatId) : null
+  return epic && epic.kind === 'project' ? epic.id : null
 }
 
 /** What the epic hears of a merge, read now; undefined when the feature has no epic or its epic chat is gone. */
 function mergeNewsFor(ctx: AppCtx, event: EventRow, feature: Feature): MergeNews | undefined {
-  const epicId = feature.chatId
-  if (!epicId || !getSessionRow(ctx, epicId)) return undefined
+  const epicId = epicOf(ctx, feature)
+  if (!epicId) return undefined
   const data = record(event.data) as ShippedData
   const mergedBy = typeof data.mergedBy === 'string' ? data.mergedBy : null
   const siblings = epicSiblingsInProgress(ctx, feature)
@@ -239,30 +236,30 @@ function mergeNewsFor(ctx: AppCtx, event: EventRow, feature: Feature): MergeNews
     sha: typeof data.sha === 'string' ? data.sha : null,
     outcome: typeof data.outcome === 'string' ? data.outcome : null,
     siblings,
-    wakes: mergeWakesEpic({ siblings: siblings.length, epicId, mergedBy }),
+    reviewSummary: typeof data.reviewSummary === 'string' ? data.reviewSummary : null,
+    decided: Array.isArray(data.decidedWithoutYou) ? data.decidedWithoutYou : [],
+    dismissed: listFindings(ctx, feature.id)
+      .filter((f) => f.kind === 'defect' && f.status === 'dismissed')
+      .map(({ title, severity, location, resolutionNote }) => ({ title, severity, location, resolutionNote })),
   }
 }
 
 /**
  * Read the feature an event names. A merge's news is read only `afterMerge`
  * (from {@link announceMerge}): the live `feature.shipped` comes before the
- * merge has started its up-next drafts, which the wake test must count.
+ * merge has started its up-next drafts, which its sibling list counts.
  */
 function stateFor(ctx: AppCtx, event: EventRow, afterMerge = false): NotifyState {
   if (!event.featureId) return {}
   const feature = getFeatureRow(ctx, event.featureId)
-  // A shipped feature has nothing more to say, except that the drafts waiting
-  // on it could not start, which the merge reports on the shipped feature.
-  const over = feature.status === 'shipped' && event.type !== AUTOSTART_FAILED
   const merge = afterMerge && event.type === 'feature.shipped' ? mergeNewsFor(ctx, event, feature) : undefined
   return {
     feature: {
       slug: feature.slug,
       title: feature.title,
-      // Only an epic running the feature on autopilot hears its news (merges aside).
-      // A shipped feature is no longer locked, yet its epic still hears that its
-      // drafts could not start.
-      holderId: over || !(feature.status === 'shipped' ? epicOnAutopilot(ctx, feature.chatId) : isLocked(ctx, feature)) ? null : feature.chatId,
+      // Only trouble reaches the epic outside a merge; a shipped feature still
+      // reports that the drafts waiting on it could not start.
+      holderId: isTrouble(event.type) ? epicOf(ctx, feature) : null,
       ...(merge ? { merge } : {}),
     },
   }
@@ -276,7 +273,7 @@ function stateFor(ctx: AppCtx, event: EventRow, afterMerge = false): NotifyState
 export const ORCHESTRATOR_GATHER_MS = 300
 
 /** One gathered line: its text and the human's words for it. */
-type Gathered = { line: string; news: ReturnType<typeof orchestratorNewsFor>; hold: boolean }
+type Gathered = { line: string; news: ReturnType<typeof orchestratorNewsFor> }
 
 /** Lines gathering per orchestrator thread, until their prompt goes. */
 const gathering = new Map<string, Gathered[]>()
@@ -315,13 +312,13 @@ export function notifyOrchestrator(ctx: AppCtx, eventId: number, afterMerge = fa
       if (event.featureId) {
         emit(ctx, event.featureId, {
           type: ORCHESTRATOR_NEWS_NOT_SENT,
-          message: `news not sent: this drive has not started the thread ${event.type === 'feature.shipped' ? 'this feature came from' : 'that holds this feature'}`,
+          message: 'news not sent: this drive has not started the epic this feature came from',
           data: { threadId, eventId: event.id, line },
         })
       }
       return
     }
-    const entry: Gathered = { line, news: orchestratorNewsFor(event, state), hold: orchestratorHoldsFor(event, state) }
+    const entry: Gathered = { line, news: orchestratorNewsFor(event, state) }
     const gathered = gathering.get(threadId)
     if (gathered) {
       gathered.push(entry)
@@ -338,18 +335,13 @@ export function notifyOrchestrator(ctx: AppCtx, eventId: number, afterMerge = fa
   }
 }
 
-/**
- * Say a gathered batch as one prompt, the human's words for it beside. It is
- * held (logged, no turn, carried ahead of the next prompt) only when every line
- * in it is; any waking line wakes it.
- */
+/** Say a gathered batch as one prompt, the human's words for it beside; it wakes the epic. */
 async function deliver(ctx: AppCtx, threadId: string, batch: Gathered[]): Promise<void> {
   const news = newsByFeature(batch)
-  const hold = batch.length > 0 && batch.every((b) => b.hold)
   await agentHost(ctx).prompt(
     threadId,
     { text: batch.map((b) => b.line).join('\n') },
-    { source: 'runcastle', ...(news.length > 0 ? { display: { news } } : {}), ...(hold ? { hold: true } : {}) },
+    { source: 'runcastle', ...(news.length > 0 ? { display: { news } } : {}) },
   )
 }
 

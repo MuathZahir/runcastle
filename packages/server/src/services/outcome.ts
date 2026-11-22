@@ -5,7 +5,7 @@ import { featureDocsRel } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
 import { emit } from './events'
 import * as git from './git'
-import { listByFeature as listFindings } from './review-findings'
+import { leadReported, listByFeature as listFindings } from './review-findings'
 import { listByFeature as listNotes } from './test-notes'
 import { listByFeature as listTickets } from './tickets'
 import { keepFeatureConversations, listWorkers } from '../workers/service'
@@ -77,6 +77,15 @@ function reviewWorkerRecord(
   ]
 }
 
+/**
+ * The findings the lead recorded from its own review (`autopilot-retires`
+ * decision 11), under their own heading; none when it recorded none.
+ */
+function leadReviewRecord(findings: ReviewFinding[], line: (finding: ReviewFinding) => string = findingRecordLine): string[] {
+  const own = findings.filter(leadReported)
+  return own.length ? ["### The lead's own review", own.map((finding) => line(finding)).join('\n')] : []
+}
+
 /** Pure synthesis of the permanent shipped record. */
 export function composeOutcomeDoc(input: OutcomeInput): string {
   const { feature, tickets, workers = [], findings, notes, artifacts, shippedAt, delta } = input
@@ -113,7 +122,9 @@ export function composeOutcomeDoc(input: OutcomeInput): string {
   // each Review worker with every finding it reported, keyed to it.
   const reviews = workers.filter((w) => w.kind === 'review')
   for (const review of reviews) blocks.push(...reviewWorkerRecord(review, findings))
-  if (!completed.length && !reviews.length) blocks.push('- No completed review pass')
+  const leadRecord = leadReviewRecord(findings)
+  blocks.push(...leadRecord)
+  if (!completed.length && !reviews.length && !leadRecord.length) blocks.push('- No completed review pass')
 
   blocks.push('## Notes record', notes.length
     ? notes.map((note) => `- ${note.text} — ${noteResolution(note)}`).join('\n')
@@ -156,7 +167,9 @@ export function composeReviewSummary(input: ReviewSummaryInput): string {
   ]
   const reviews = workers.filter((w) => w.kind === 'review')
   for (const review of reviews) blocks.push(...reviewWorkerRecord(review, findings, summaryFindingLine))
-  if (!reviews.length) blocks.push('- No review ran')
+  const leadRecord = leadReviewRecord(findings, summaryFindingLine)
+  blocks.push(...leadRecord)
+  if (!reviews.length && !leadRecord.length) blocks.push('- No review ran')
   return `${blocks.join('\n\n')}\n`
 }
 
@@ -172,17 +185,31 @@ export function withReviewSummary(brief: string, summary: string): string {
   return appendSection(at >= 0 ? brief.slice(0, at) : brief, summary)
 }
 
+/** What the merge's record left: the doc's path in the repo, and the review summary text. */
+export interface PromotedOutcome {
+  /** The doc's path in the repo; null when it could not be written. */
+  rel: string | null
+  /**
+   * The `## Review summary` text: what a one-file feature's brief.md ends in,
+   * and what the feature's epic hears of the merge (`autopilot-retires`
+   * decision 2). Composed for an old-shape feature too; null only when the
+   * record could not be read at all.
+   */
+  summary: string | null
+}
+
 /**
  * Write and commit the record in the main checkout after the merge commit.
  * An old-shape feature (it has `decisions.md` or `spec.md`) gets `outcome.md`;
  * a one-file feature gets the short `## Review summary` appended to its
  * `brief.md` (one-file-per-feature decisions 7, 8). Answers the doc's path in
- * the repo, or null when it could not be written.
+ * the repo (null when it could not be written) and the summary text.
  */
 export async function promoteOutcomeDoc(
   ctx: AppCtx, project: Project, feature: Feature, target: string,
   delta: { commits?: number; files?: number },
-): Promise<string | null> {
+): Promise<PromotedOutcome> {
+  let summary: string | null = null
   try {
     const tickets = listTickets(ctx, feature.id)
     const artifacts: OutcomeArtifact[] = tickets.filter((ticket) => ticket.kind === 'review').map((ticket) => ({
@@ -198,7 +225,9 @@ export async function promoteOutcomeDoc(
       feature, tickets, workers: listWorkers(ctx, feature.id), findings: listFindings(ctx, feature.id), notes: listNotes(ctx, feature.id), artifacts,
       shippedAt: Date.now(), delta: { commits: delta.commits ?? 0, files: delta.files ?? 0 },
     }
-    return await git.onBranch(project.repoPath, target, async () => {
+    const composed = composeReviewSummary(outcomeInput)
+    summary = composed
+    const rel = await git.onBranch(project.repoPath, target, async () => {
       const docsRel = featureDocsRel(feature.slug)
       const docsDir = join(project.repoPath, ...docsRel.split('/'))
       mkdirSync(docsDir, { recursive: true })
@@ -212,11 +241,10 @@ export async function promoteOutcomeDoc(
         // The commit holds the brief as committed plus the summary, never the
         // human's uncommitted edits to it; those stay uncommitted, on top of
         // the summary, once the commit is made.
-        const summary = composeReviewSummary(outcomeInput)
         const committed = (await git.readCommitted(project.repoPath, `${docsRel}/${name}`)) ?? ''
         const working = existsSync(file) ? readFileSync(file, 'utf8') : null
-        writeFileSync(file, withReviewSummary(committed, summary), 'utf8')
-        if (working !== null && working !== committed) keepUncommitted = withReviewSummary(working, summary)
+        writeFileSync(file, withReviewSummary(committed, composed), 'utf8')
+        if (working !== null && working !== committed) keepUncommitted = withReviewSummary(working, composed)
       }
       // Only the outcome itself: a merge goes ahead past the human's unrelated
       // uncommitted files (docs included), and they must stay uncommitted.
@@ -228,11 +256,12 @@ export async function promoteOutcomeDoc(
       if (keepUncommitted !== null) writeFileSync(file, keepUncommitted, 'utf8')
       return `${docsRel}/${name}`
     })
+    return { rel, summary }
   } catch (error) {
     emit(ctx, feature.id, {
       type: 'docs.outcome_failed',
       message: `outcome not promoted on ${target}: ${error instanceof Error ? error.message : String(error)}`,
     })
-    return null
+    return { rel: null, summary }
   }
 }

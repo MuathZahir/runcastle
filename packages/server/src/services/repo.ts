@@ -108,7 +108,6 @@ export function rowToSession(row: SessionSelect): SessionRow {
     epicColor: isEpicColor(row.epicColor) ? row.epicColor : undefined,
     epicIcon: isEpicIconId(row.epicIcon) ? row.epicIcon : undefined,
     epicIconByHuman: row.epicIconByHuman || undefined,
-    autopilot: row.autopilot || undefined,
   })
 }
 

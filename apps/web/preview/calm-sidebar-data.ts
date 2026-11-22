@@ -89,14 +89,14 @@ export interface Sample {
 }
 
 /** The project in the human's screenshot: Notes Triage with five features, another epic asking, one at rest. */
-function project(opts: { calm?: boolean; workerAsks?: boolean; autopilot?: boolean } = {}) {
+function project(opts: { calm?: boolean; workerAsks?: boolean } = {}) {
   const triage = epic('chat_triage', 'Notes Triage', 'blue', 'bug', { state: 'working' })
   const checkout = epic(
     'chat_checkout',
     'Checkout flow',
     'violet',
     'credit-card',
-    opts.autopilot ? { autopilot: true, state: 'working' } : opts.calm ? {} : { need: need('Card fees or a flat price?', 'chat_checkout', 6 * MIN) },
+    opts.calm ? {} : { need: need('Card fees or a flat price?', 'chat_checkout', 6 * MIN) },
   )
   const resting = epic('chat_billing', 'Billing export', 'amber', 'chart', { updatedAt: now - 2 * DAY })
 
@@ -111,12 +111,10 @@ function project(opts: { calm?: boolean; workerAsks?: boolean; autopilot?: boole
   const busy = feature('feat_busy', 'Epic messages reach a busy agent at once', 59 * SEC, { chatId: triage.id, working: true })
   const faster = feature('feat_faster', 'A faster web app', 5 * SEC, { chatId: triage.id, working: true, workersWorking: 1 })
   const scenarios = feature('feat_scenarios', 'Features set up scenarios themselves', 1 * MIN + 10 * SEC, { chatId: triage.id })
-  const locked = opts.autopilot ? { autopilot: { epicId: checkout.id, epicName: checkout.title } } : {}
-  const coupons = feature('feat_coupons', 'Checkout coupons', 12 * MIN, { chatId: checkout.id, working: true, ...locked })
+  const coupons = feature('feat_coupons', 'Checkout coupons', 12 * MIN, { chatId: checkout.id, working: true })
   const receipts = feature('feat_receipts', 'Receipt emails', 2 * HOUR, {
     chatId: checkout.id,
-    ...locked,
-    ...(opts.calm || opts.autopilot ? {} : { need: need('Plain text or HTML receipts?', 'lead_receipts', 8 * MIN) }),
+    ...(opts.calm ? {} : { need: need('Plain text or HTML receipts?', 'lead_receipts', 8 * MIN) }),
   })
   const darkMode = feature('feat_dark', 'Dark mode', 3 * HOUR)
 
@@ -156,7 +154,7 @@ function lead(f: FeatureListItem): ThreadEntry {
   return { id: `lead_${f.id}`, title: f.title, role: 'main', state: 'working', createdAt: now - DAY, updatedAt: now - MIN, runtime: 'claude-code', need: null } as ThreadEntry
 }
 
-export type StateKey = 'folded' | 'unfolded' | 'workers' | 'in-front' | 'calm' | 'autopilot' | 'hover'
+export type StateKey = 'folded' | 'unfolded' | 'workers' | 'in-front' | 'calm' | 'hover'
 
 const RAW_STATES: { key: StateKey; label: string; hint: string; make: () => Sample }[] = [
   {
@@ -191,12 +189,6 @@ const RAW_STATES: { key: StateKey; label: string; hint: string; make: () => Samp
     label: 'Nothing needs you',
     hint: 'No needs anywhere: each epic is its head and one quiet fold line.',
     make: () => strip(base({ calm: true })),
-  },
-  {
-    key: 'autopilot',
-    label: 'Autopilot',
-    hint: 'Checkout flow on autopilot: its features carry the lock and never the needs-you tint; they fold like any other.',
-    make: () => strip({ ...base({ autopilot: true }), epicsOpen: ['chat_checkout'] }),
   },
   {
     key: 'hover',

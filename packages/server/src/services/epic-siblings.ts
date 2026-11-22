@@ -3,16 +3,15 @@ import { and, asc, eq } from 'drizzle-orm'
 import { features } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { chatNameOf } from '../threads/chat-name'
-import { epicOnAutopilot } from './autopilot'
 
 /**
  * The epic's other features in progress when one of its features merges
  * (`the-epic-hears-when-its-features-merge` decisions 2, 5): what the merge news
- * and `merge_feature`'s answer list, and what decides whether the merge wakes
- * the epic.
+ * and `merge_feature`'s answer list. Every merge wakes the epic now
+ * (`autopilot-retires` decision 2), so this no longer decides that.
  */
 
-/** A feature row as the wake test reads it. */
+/** A feature row as the sibling list reads it. */
 export type SiblingRow = {
   id: string
   slug: string
@@ -22,9 +21,9 @@ export type SiblingRow = {
 }
 
 /**
- * The wake test's set: the epic's other features (same `chatId`, not the merged
- * one) that are started. Drafts, shipped and archived features do not count.
- * Pure; read it after the merge has started its up-next drafts, so those count.
+ * The epic's other features (same `chatId`, not the merged one) that are
+ * started. Drafts, shipped and archived features do not count. Pure; read it
+ * after the merge has started its up-next drafts, so those count.
  */
 export function inProgressSiblings<T extends SiblingRow>(
   rows: readonly T[],
@@ -34,21 +33,10 @@ export function inProgressSiblings<T extends SiblingRow>(
   return rows.filter((r) => r.id !== merged.id && r.chatId === merged.chatId && r.status === 'active')
 }
 
-/**
- * Whether the merge news wakes the epic (decisions 2, 6, 9): only while a sibling
- * is in progress, and never when the epic merged the feature itself (it checks
- * fit in the turn that called `merge_feature`).
- */
-export function mergeWakesEpic(input: { siblings: number; epicId: string; mergedBy: string | null }): boolean {
-  return input.siblings > 0 && input.mergedBy !== input.epicId
-}
-
-/** One in-progress sibling as the epic reads it: who runs it, in the epic's words. */
+/** One in-progress sibling as the epic reads it. */
 export interface EpicSibling {
   slug: string
   title: string
-  /** `this epic, on autopilot` when it is locked to the epic; else `the human`. */
-  owner: string
 }
 
 /**
@@ -81,10 +69,5 @@ export function epicSiblingsInProgress(ctx: AppCtx, merged: Pick<Feature, 'id' |
     .where(and(eq(features.projectId, merged.projectId), eq(features.chatId, epicId)))
     .orderBy(asc(features.createdAt))
     .all()
-  const on = epicOnAutopilot(ctx, epicId)
-  return inProgressSiblings(rows, merged).map((r) => ({
-    slug: r.slug,
-    title: r.title,
-    owner: on ? 'this epic, on autopilot' : 'the human',
-  }))
+  return inProgressSiblings(rows, merged).map((r) => ({ slug: r.slug, title: r.title }))
 }

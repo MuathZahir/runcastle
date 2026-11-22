@@ -81,8 +81,8 @@ describe('the lead’s MCP tools', () => {
     return Object.keys(tool?.inputSchema.properties ?? {})
   }
 
-  it('declare_ready takes only a scenario, needs no Go, and puts the feature under Needs you', async () => {
-    expect(await inputProperties('declare_ready')).toEqual(['scenario'])
+  it('declare_ready takes a scenario and whether the checks passed, needs no Go, and puts the feature under Needs you', async () => {
+    expect(await inputProperties('declare_ready')).toEqual(['scenario', 'checksPassed'])
     const out = await call('declare_ready', { scenario: 'Checkout' })
     expect(out.isError).toBe(false)
     expect(JSON.parse(out.text)).toMatchObject({ ok: true, need: { why: 'Ready to test · Checkout', threadId: sessionId, by: 'agent' } })

@@ -34,7 +34,6 @@ import { mergeInProgressAt, stagedPathsAt } from '../services/git'
 import { featureStateLine } from '../services/feature-state'
 import { isLeadSession } from '../services/lead-delivery'
 import { isMachinePrompt, isRuncastlePrompt, typedAfterOpening } from '../services/lead-prompt'
-import { autopilotOf, lockedLine } from '../services/autopilot'
 import { markHumanMessage } from '../services/lead-status'
 import { clearWait } from '../services/waits'
 import { hasEverHadFeature, isEmptyRepo, keysToPrepare } from '../services/prep'
@@ -128,8 +127,6 @@ hooks.post('/:event', async (c) => {
       case 'session-start':
         return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
       case 'user-prompt': {
-        const refused = refuseTypedOnAutopilot(ctx, session, feature, body.payload)
-        if (refused) return c.json(refused)
         if (isLeadSession(session)) handleLeadPrompt(ctx, session, feature, body.payload)
         return c.json(handleUserPrompt(ctx, feature, session))
       }
@@ -423,23 +420,6 @@ function humanTyped(payload: Record<string, unknown> | undefined): boolean {
   if (prompt === undefined || COMPACT_TEXT.test(prompt.trimStart()) || isMachinePrompt(prompt)) return false
   // A chat nobody started opens on the human's first message, behind runcastle's held opening: still typed.
   return !(isRuncastlePrompt(prompt) && typedAfterOpening(prompt) === null)
-}
-
-/**
- * The human typed into a locked lead's chat (`epics-on-autopilot` decision
- * 16): the prompt is blocked, saying where to talk instead. Nothing changes
- * owner on typing. Null when the prompt may go on. The web app shows no message
- * box there, and `thread.send` refuses the same for the lead and its workers.
- */
-function refuseTypedOnAutopilot(
-  ctx: AppCtx,
-  session: SessionRow,
-  feature: Feature,
-  payload: Record<string, unknown> | undefined,
-): { decision: 'block'; reason: string } | null {
-  if (!isLeadSession(session) || !humanTyped(payload)) return null
-  const lock = autopilotOf(ctx, feature)
-  return lock ? { decision: 'block', reason: lockedLine(lock.epicName) } : null
 }
 
 async function handleSessionEnd(

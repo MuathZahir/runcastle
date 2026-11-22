@@ -104,14 +104,13 @@ export interface Sample {
 // The project: two epics in motion, one at rest, a feature from no epic, the shelves.
 // ---------------------------------------------------------------------------
 
-function project(opts: { autopilot?: boolean } = {}) {
-  const checkout = epic('Checkout flow', 'violet', 'credit-card', opts.autopilot ? { autopilot: true, state: 'working' } : {})
+function project() {
+  const checkout = epic('Checkout flow', 'violet', 'credit-card', {})
   const search = epic('Search that works', 'teal', 'compass', { state: 'working' })
   const resting = epic('Billing export', 'amber', 'chart', { updatedAt: now - 2 * DAY })
-  const locked = opts.autopilot ? { autopilot: { epicId: checkout.id, epicName: checkout.title } } : {}
 
-  const coupons = feature('Checkout coupons', { chatId: checkout.id, ticketCounts: tickets(6, 2), working: true, ...locked })
-  const receipts = feature('Receipt emails', { chatId: checkout.id, ticketCounts: tickets(4, 4), ...locked })
+  const coupons = feature('Checkout coupons', { chatId: checkout.id, ticketCounts: tickets(6, 2), working: true })
+  const receipts = feature('Receipt emails', { chatId: checkout.id, ticketCounts: tickets(4, 4) })
   const filters = feature('Search filters', { chatId: search.id, ticketCounts: tickets(5, 1), working: true })
   const ranking = feature('Result ranking', { chatId: search.id, ticketCounts: tickets(3, 0) })
   const darkMode = feature('Dark mode', { ticketCounts: tickets(4, 3) })
@@ -212,13 +211,6 @@ function epicState(): Sample {
   }
 }
 
-/** Checkout flow on autopilot: its features and their workers carry the lock, never the amber dot (decision 7). */
-function autopilotState(): Sample {
-  const p = project({ autopilot: true })
-  const c = couponWorkers(p)
-  return { features: features(p), chats: chats(p), workers: [...c.live, ...c.done, ...otherWorkers(p)], open: null, folded: [] }
-}
-
 /** The open feature has no workers: the row is today's row, no chevron, no "N done". */
 function noneState(): Sample {
   const p = project()
@@ -237,7 +229,7 @@ function hoverState(): Sample {
   return { ...s, hover: 'Search filters' }
 }
 
-export type StateKey = 'open' | 'lanes' | 'folded' | 'epic' | 'autopilot' | 'none' | 'hover'
+export type StateKey = 'open' | 'lanes' | 'folded' | 'epic' | 'none' | 'hover'
 
 const RAW_STATES: { key: StateKey; label: string; hint: string; make: () => Sample }[] = [
   {
@@ -263,12 +255,6 @@ const RAW_STATES: { key: StateKey; label: string; hint: string; make: () => Samp
     label: 'Worker in front',
     hint: 'Under the Checkout flow card, Coupon API’s chat is in front: the open feature’s card holds it, its row the card.',
     make: epicState,
-  },
-  {
-    key: 'autopilot',
-    label: 'Autopilot',
-    hint: 'Checkout flow on autopilot: its features and their workers wear the lock; Badge design’s question goes to the epic, so no amber.',
-    make: autopilotState,
   },
   { key: 'none', label: 'No workers', hint: 'Result ranking is open and has no workers: the row as today, no chevron.', make: noneState },
   { key: 'hover', label: 'Hover "+"', hint: 'The pointer on Search filters: "+" New worker and "…" replace the chevron’s neighbours.', make: hoverState },

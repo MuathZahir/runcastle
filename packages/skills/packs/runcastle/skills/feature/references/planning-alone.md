@@ -96,6 +96,4 @@ notes and your closing message instead. Never design a screen whose what, where 
    itself: `resultOnly` and `nothing`).
 4. With the question written last in that message, call `wait_for_you` with a
    label such as `why: "change any decision, or go?"`, naming any design
-   waiting, and end the turn. **On autopilot** the answer is the epic's: call
-   `hand_back({ summary })` instead, with the decisions, the check-first ones
-   and any design waiting, and say they went to the epic.
+   waiting, and end the turn.

@@ -162,8 +162,7 @@ export const features = sqliteTable('features', {
   upNext: integer('up_next', { mode: 'boolean' }).notNull().default(false),
   /**
    * The feature's epic (`epics-on-autopilot` decision 13): the orchestrator
-   * chat that created it, re-pointed when the human tells another epic to also
-   * run it. Null for a feature made with New feature.
+   * chat that created it. Null for a feature made with New feature.
    */
   chatId: text('chat_id'),
   /**
@@ -200,6 +199,7 @@ export const designs = sqliteTable(
     width: integer('width'),
     picture: text('picture'),
     state: text('state', { enum: ['waiting', 'approved', 'dropped'] }).notNull(),
+    // 'autopilot' is history only: designs approved while epics ran on autopilot (retired by autopilot-retires).
     approvedBy: text('approved_by', { enum: ['human', 'lead', 'autopilot'] }),
     shownAt: integer('shown_at').notNull(),
     /** When the human last opened it; null until they have. */
@@ -386,12 +386,6 @@ export const sessions = sqliteTable('sessions', {
   epicIcon: text('epic_icon').$type<EpicIconId>(),
   /** The human picked the icon (decision 3): `name_epic` never changes it again. */
   epicIconByHuman: integer('epic_icon_by_human', { mode: 'boolean' }).notNull().default(false),
-  /**
-   * An epic on autopilot (`epics-on-autopilot` decisions 1, 14): every feature
-   * of it (`features.chat_id`) not shipped or archived is locked to it. Only a
-   * project chat sets it; off at upgrade (decision 21).
-   */
-  autopilot: integer('autopilot', { mode: 'boolean' }).notNull().default(false),
   /**
    * What this chat's agent waits on the human for (needs-you-is-the-agent-s-call):
    * its one line, when it was set (ms), and who set it — the agent

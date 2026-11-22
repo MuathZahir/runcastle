@@ -429,59 +429,6 @@
   }
 }
 
-/* An epic on autopilot (epics-on-autopilot decision 7; the design page
-   "Sidebar on autopilot", its Moving edge): a light travels the card's edge
-   in the epic's colour over a tinted hairline, with a soft halo of the same
-   colour; the head's wash goes a step brighter and the rows under it take a
-   faint tint, so the card reads as one machine. When the epic waits on you
-   (`data-autopilot-state="asking"`) the light stops and the edge is evenly
-   lit. Worn with `data-autopilot` on a card that sets `--epic` and
-   `--epic-text`; the `[data-autopilot]` in each selector outranks the `card`
-   material's own shadow. */
-@utility autopilot-edge {
-  &[data-autopilot] {
-    box-shadow:
-      inset 0 0 0 1px color-mix(in oklab, var(--epic) 34%, transparent),
-      0 0 0 1px color-mix(in oklab, var(--epic) 14%, transparent),
-      0 0 26px -8px color-mix(in oklab, var(--epic) 60%, transparent);
-  }
-  &[data-autopilot] > [data-epic] {
-    background: linear-gradient(
-      100deg,
-      color-mix(in oklab, var(--epic) 26%, var(--color-canvas)),
-      color-mix(in oklab, var(--epic) 8%, var(--color-canvas)) 80%
-    );
-  }
-  &[data-autopilot] > [data-epic] + div {
-    background: linear-gradient(to bottom, color-mix(in oklab, var(--epic) 6%, transparent), transparent 70%);
-  }
-  &[data-autopilot]::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    border-radius: inherit;
-    padding: 1.5px;
-    pointer-events: none;
-    background: conic-gradient(
-      from var(--orbit-angle),
-      transparent 0 52%,
-      color-mix(in oklab, var(--epic) 55%, transparent) 72%,
-      var(--epic-text) 80%,
-      color-mix(in oklab, var(--epic) 55%, transparent) 85%,
-      transparent 96%
-    );
-    mask:
-      linear-gradient(#000 0 0) content-box exclude,
-      linear-gradient(#000 0 0);
-    animation: orbit 5s linear infinite;
-  }
-  &[data-autopilot][data-autopilot-state='asking']::after {
-    animation: none;
-    background: color-mix(in oklab, var(--epic) 55%, transparent);
-  }
-}
-
 /* The card (DESIGN.md §Space, size, shape): the selected row or tab, a bay
    of rows, a live drive. A faint fill and a hairline edge drawn inside, so it
    never shifts what it wraps. The radius is the caller's: `rounded-lg` on its
@@ -635,10 +582,6 @@
   }
   .orbit-light::before {
     background: color-mix(in oklab, var(--color-accent) 35%, transparent);
-  }
-  /* The autopilot card's light: its edge evenly lit, as when it waits on you. */
-  .autopilot-edge[data-autopilot]::after {
-    background: color-mix(in oklab, var(--epic) 55%, transparent);
   }
   /* Its own rule: a selector list with a pseudo-element a browser does not
      know is dropped whole, and would take the rule above with it. */

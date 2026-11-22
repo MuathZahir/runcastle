@@ -130,8 +130,8 @@ describe('the header’s share of the row', () => {
   })
 
   it('puts every other action the resolver offered in "⋯"', () => {
-    const out = header({}, ns({ primary: { label: 'Plan automatically', kind: 'selfPlan' } }))
-    expect(out.overflow).toEqual([{ label: 'Plan automatically', kind: 'selfPlan' }])
+    const out = header({}, ns({ primary: { label: 'Move to backlog', kind: 'moveToBacklog' } }))
+    expect(out.overflow).toEqual([{ label: 'Move to backlog', kind: 'moveToBacklog' }])
   })
 
   it('has no button and nothing in "⋯" once merged', () => {

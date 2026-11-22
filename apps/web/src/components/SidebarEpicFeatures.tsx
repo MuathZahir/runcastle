@@ -30,8 +30,6 @@ const REVEAL = 'opacity-0 group-hover/nav:opacity-100 group-has-[:focus-visible]
 /** One feature in an epic's card, with what it takes to draw it. */
 export interface EpicFeatureItem {
   feature: FeatureListItem
-  /** Locked to its epic's autopilot: a lock, never amber; its needs are the epic's. */
-  locked?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -107,9 +105,9 @@ export function NeedMark({ kind, soft = false, lit = false }: { kind: NeedKind; 
   )
 }
 
-/** How many rows in a list need you (not locked to autopilot): the head's count. */
+/** How many rows in a list need you: the head's count. */
 export function needCount(items: readonly EpicFeatureItem[]): number {
-  return items.filter((x) => !x.locked && triageOf(x.feature) === 'needsYou').length
+  return items.filter((x) => triageOf(x.feature) === 'needsYou').length
 }
 
 /** A working row's mark: a small spinner, the one thing in the block that moves. */
@@ -126,9 +124,8 @@ function hasFailedWorker(workers: FeatureWorkers | undefined): boolean {
   return !!workers?.entries.some((w) => !w.old && w.status === 'failed')
 }
 
-/** A feature's leading mark: its autopilot lock, ready to test, a question, a failed worker, a stuck up-next, the spinner while it works, or none. */
-function featureMark(f: FeatureListItem, lock: ReactNode | undefined, failed: boolean): ReactNode {
-  if (lock !== undefined) return <span className="inline-flex size-4 shrink-0 items-center justify-center">{lock}</span>
+/** A feature's leading mark: ready to test, a question, a failed worker, a stuck up-next, the spinner while it works, or none. */
+function featureMark(f: FeatureListItem, failed: boolean): ReactNode {
   const need = needsMe(f)
   if (need) return <NeedMark lit kind={isReadyToTestWhy(need.why) ? 'ready' : 'question'} />
   if (failed) return <NeedMark kind="failed" />
@@ -138,9 +135,8 @@ function featureMark(f: FeatureListItem, lock: ReactNode | undefined, failed: bo
 }
 
 /** The row's hover line: the full title, what it waits on (the reason the row no longer says) and since when. */
-function featureTooltip(f: FeatureListItem, locked: boolean, failed: boolean): string {
+function featureTooltip(f: FeatureListItem, failed: boolean): string {
   const ago = relTimeAgo(f.lastActivityAt)
-  if (locked) return `${f.title} — on autopilot · ${ago}`
   const need = needsMe(f)
   if (need) return `${f.title} — ${need.why} · ${ago}`
   if (failed) return `${f.title} — a worker failed · ${ago}`
@@ -196,7 +192,6 @@ function EpicFeatureRow({
   onSelect,
   actions,
   onNewWorker,
-  lock,
   workers,
   workersOpen = false,
   onToggleWorkers,
@@ -207,7 +202,6 @@ function EpicFeatureRow({
   onSelect: (id: string) => void
   actions: FeatureAction[]
   onNewWorker?: (() => void) | undefined
-  lock?: ReactNode
   /** Its live workers, when it has some. */
   workers?: readonly WorkerEntry[]
   workersOpen?: boolean
@@ -216,7 +210,7 @@ function EpicFeatureRow({
   failed?: boolean
 }) {
   const lane = triageOf(f)
-  const asking = lock === undefined && lane === 'needsYou'
+  const asking = lane === 'needsYou'
   const quiet = lane === 'upNext'
   const live = workers ?? []
   const arrow = live.length > 0 && !!onToggleWorkers
@@ -234,13 +228,13 @@ function EpicFeatureRow({
     >
       <button
         type="button"
-        title={featureTooltip(f, lock !== undefined, failed)}
+        title={featureTooltip(f, failed)}
         aria-label={f.title}
         aria-current={active ? 'page' : undefined}
         onClick={() => onSelect(f.id)}
         className="absolute inset-0 cursor-pointer rounded-[inherit]"
       />
-      <span className="pointer-events-none inline-flex size-4 shrink-0 items-center justify-center">{featureMark(f, lock, failed)}</span>
+      <span className="pointer-events-none inline-flex size-4 shrink-0 items-center justify-center">{featureMark(f, failed)}</span>
       <span
         className={cx(
           'pointer-events-none min-w-0 flex-1 truncate text-md',
@@ -290,24 +284,19 @@ function EpicWorkerRow({
   active,
   onSelect,
   actions,
-  lock,
 }: {
   worker: WorkerEntry
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
-  lock?: ReactNode
 }) {
-  const locked = lock !== undefined
-  const asks = !locked && w.status === 'needs-you'
+  const asks = w.status === 'needs-you'
   const failed = w.status === 'failed'
   const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} label="Worker actions" /> : undefined
   // A stalled worker is its lead's to act on, not the human's (a-worker-never-shows-working-with-nothing-running decision 6): amber, not lit.
   const stalled = w.status === 'stalled'
   const waits = waitingWords(w)
-  const mark = locked ? (
-    lock
-  ) : asks ? (
+  const mark = asks ? (
     <NeedMark kind="question" />
   ) : failed ? (
     <NeedMark kind="failed" />
@@ -360,7 +349,6 @@ function EpicFeature({
   onSelect,
   actions,
   onNewWorker,
-  lock,
   workers,
 }: {
   item: EpicFeatureItem
@@ -368,7 +356,6 @@ function EpicFeature({
   onSelect: (id: string) => void
   actions: FeatureAction[]
   onNewWorker?: (() => void) | undefined
-  lock?: ReactNode
   workers?: FeatureWorkers | undefined
 }) {
   const f = item.feature
@@ -383,11 +370,10 @@ function EpicFeature({
       onSelect={onSelect}
       actions={actions}
       onNewWorker={onNewWorker}
-      lock={lock}
       workers={live}
       workersOpen={open}
       onToggleWorkers={toggle}
-      failed={lock === undefined && hasFailedWorker(workers)}
+      failed={hasFailedWorker(workers)}
     />
   )
   if (!open || !workers) return row
@@ -404,7 +390,6 @@ function EpicFeature({
               active={w.id === workers.current}
               onSelect={workers.onOpen}
               actions={workers.actionsFor(w)}
-              {...(lock !== undefined ? { lock } : {})}
             />
           ))}
         </div>
@@ -422,10 +407,10 @@ function foldWords(items: readonly EpicFeatureItem[]): { working: number; idle: 
   let working = 0
   let idle = 0
   let upNext = 0
-  for (const { feature: f, locked } of items) {
+  for (const { feature: f } of items) {
     const lane = triageOf(f)
     if (lane === 'upNext') upNext++
-    else if (locked ? f.working : lane === 'working') working++
+    else if (lane === 'working') working++
     else idle++
   }
   return { working, idle, upNext }
@@ -447,8 +432,8 @@ function FoldLine({
 }) {
   const { working, idle, upNext } = foldWords(items)
   // Something broke behind the fold (a failed worker, a stuck up-next): the red "!" in front while it is closed.
-  const failed = items.some((x) => !x.locked && hasFailedWorker(workersFor?.(x.feature)))
-  const stuck = items.some((x) => !x.locked && upNextProblem(x.feature))
+  const failed = items.some((x) => hasFailedWorker(workersFor?.(x.feature)))
+  const stuck = items.some((x) => upNextProblem(x.feature))
   const words = [working > 0 && `${working} working`, idle > 0 && `${idle} idle`, upNext > 0 && `${upNext} up next`].filter(Boolean).join(' · ')
   return (
     <button
@@ -483,8 +468,6 @@ interface EpicFeatureListProps {
   featureActions?: ((f: FeatureListItem) => FeatureAction[]) | undefined
   workersFor?: ((f: FeatureListItem) => FeatureWorkers | undefined) | undefined
   newWorkerFor?: ((f: FeatureListItem) => (() => void) | undefined) | undefined
-  /** A locked feature's mark. */
-  lockMark?: ReactNode
 }
 
 /** Every feature that doesn't need you folds, even a lone one: the human reads a bare row as one that wants a look. */
@@ -504,10 +487,9 @@ export function EpicFeatureList({
   featureActions,
   workersFor,
   newWorkerFor,
-  lockMark,
 }: EpicFeatureListProps) {
   const [open, toggle] = useStoredOpen(EPIC_FOLD_KEY(foldId))
-  const upfront = items.filter((x) => !x.locked && triageOf(x.feature) === 'needsYou')
+  const upfront = items.filter((x) => triageOf(x.feature) === 'needsYou')
   const rest = items.filter((x) => !upfront.includes(x))
   const folds = rest.length >= FOLD_FROM
   const pinned = folds && !open ? rest.filter((x) => x.feature.id === currentFeature) : []
@@ -521,7 +503,6 @@ export function EpicFeatureList({
       onSelect={onSelect}
       actions={featureActions?.(x.feature) ?? []}
       onNewWorker={newWorkerFor?.(x.feature)}
-      {...(x.locked && lockMark !== undefined ? { lock: lockMark } : {})}
       workers={workersFor?.(x.feature)}
     />
   )

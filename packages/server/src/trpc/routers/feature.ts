@@ -6,7 +6,6 @@ import { setDependencies, setUpNext } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
-import { turnOff } from '../../services/autopilot'
 import { setEpicInvolvement, setInvolvement } from '../../services/involvement'
 import { mergeFeatureFlow } from '../../services/merge'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../../services/repo'
@@ -51,13 +50,6 @@ export const featureRouter = router({
   setUpNext: publicProcedure
     .input(z.object({ featureId: z.string(), upNext: z.boolean() }))
     .mutation(({ ctx, input }) => setUpNext(ctx, input.featureId, input.upNext)),
-
-  // The lock note's "End autopilot" link (epics-on-autopilot decision 8): ends
-  // the epic's autopilot with no orchestrator turn, every feature the human's
-  // again; the orchestrator is told. Nothing running stops.
-  endAutopilot: publicProcedure
-    .input(z.object({ epicId: z.string() }))
-    .mutation(({ ctx, input }) => turnOff(ctx, input.epicId, { by: 'human' })),
 
   // "Involve me in" (how-involved-am-i decision 3): the feature's level, from
   // its header or the features-created card. Refused once it has shipped; the

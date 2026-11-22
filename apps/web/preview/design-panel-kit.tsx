@@ -4,8 +4,7 @@ import { useTheme } from '../src/lib/theme'
 import { useIsPhone } from '../src/lib/use-phone'
 
 /**
- * The epics-on-autopilot design pages' own controls (autopilot-sidebar,
- * autopilot-feature): a card in the bottom-right corner labelled
+ * The design pages' own controls: a card in the bottom-right corner labelled
  * "Design · states", one button per state with the current one marked, and
  * the theme. Not part of the design. The pages show exactly what the app
  * does, so there are no tweaks.

@@ -52,7 +52,7 @@ describe('feature dependencies over MCP', () => {
     seedFeature(ctx, projectId, { slug, status: 'draft', baseBranch: null })
   /** A draft the orchestrator chat under test owns: it acts only on what it owns. */
   const ownDraft = (slug: string): Feature =>
-    seedFeature(ctx, projectId, { slug, status: 'draft', baseBranch: null, lockedTo: session.id })
+    seedFeature(ctx, projectId, { slug, status: 'draft', baseBranch: null, chatId: session.id })
   const shipped = (slug: string): Feature =>
     seedFeature(ctx, projectId, { slug, status: 'shipped' })
   const rowCount = (): number => ctx.db.select().from(features).all().length
@@ -221,7 +221,7 @@ describe('feature dependencies over MCP', () => {
     expect(row?.upNext).toBe(true)
     expect(row?.involvement).toBe('resultOnly')
     const index = (await toolGetProjectContext(ctx, session)).featureIndex
-    expect(index).toContain('billing — Billing [draft, up next] · waits on: auth-rework · this epic’s, the human’s to work')
+    expect(index).toContain('billing — Billing [draft, up next] · waits on: auth-rework · this epic’s')
 
     const authSession = createSessionRow(ctx, {
       featureId: auth.id,

@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
-import { toolCreateFeature, toolDeclareReady, toolGetFeatureContext } from '../src/mcp/server'
+import { toolCreateFeature, toolDeclareReady, toolGetFeatureContext, toolReportFinding } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
+import { selfMergeNotice } from '../src/services/features'
 import { __resetTestDriveState, createFeatureBranch } from '../src/services/git'
 import { INVOLVEMENT_CHANGED, setEpicInvolvement, setInvolvement } from '../src/services/involvement'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow } from '../src/services/repo'
-import { reportFinding } from '../src/services/review-findings'
+import { dismissAsAgent, reportFinding } from '../src/services/review-findings'
 import { setWait, waitOf } from '../src/services/waits'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -303,9 +304,9 @@ describe('with a real repo', () => {
       return seedFeature(ctx, project.id, { slug, ...overrides })
     }
 
-    const defect = (title: string): ReviewFindingInput => ({
+    const defect = (title: string, severity: ReviewFindingInput['severity'] = 'high'): ReviewFindingInput => ({
       kind: 'defect',
-      severity: 'high',
+      severity,
       title,
       location: 'Settings',
       citation: 'spec.md',
@@ -313,33 +314,64 @@ describe('with a real repo', () => {
       reproStep: 'Open it.',
     })
 
-    it('merges the feature as runcastle, with no wait left on the lead', async () => {
+    it('merges the feature as runcastle when its checks passed, with no review run, and posts how to undo it', async () => {
       const f = await mergeable('export-csv', { involvement: 'nothing' })
       const lead = leadOf(f)
 
-      const out = await toolDeclareReady(ctx, lead, { scenario: 'export' })
+      const out = await toolDeclareReady(ctx, lead, { scenario: 'export', checksPassed: true })
 
       expect(out).toMatchObject({ ok: true, need: null, autoMerge: { merged: true, base: 'main' } })
       expect(getFeatureRow(ctx, f.id).status).toBe('shipped')
       const shipped = listAfter(ctx, f.id, 0).find((e) => e.type === 'feature.shipped')
       expect(shipped?.data).toMatchObject({ base: 'main', mergedBy: 'runcastle' })
       expect((await g.raw(['ls-tree', '--name-only', 'main'])).split('\n')).toContain('export-csv.txt')
+      const sha = (shipped?.data as { sha: string }).sha
+      expect(sha).toMatch(/^[0-9a-f]{40}$/)
+      expect(notices(lead.id)).toContain(selfMergeNotice('main', sha))
+      expect(selfMergeNotice('main', sha)).toContain(`git revert -m 1 ${sha}`)
     })
 
-    it('falls back to "Ready to test" with an open defect, and tells the lead why', async () => {
+    it('does not merge without checksPassed, and tells the lead why', async () => {
       const f = await mergeable('export-csv', { involvement: 'nothing' })
       const lead = leadOf(f)
-      const review = seedHostReview(ctx, f, repoPath, 'handed-back')
-      reportFinding(ctx, { featureId: f.id, reviewWorker: getWorker(ctx, review.id)!, input: defect('The export is empty') })
 
       const out = await toolDeclareReady(ctx, lead, { scenario: 'export' })
 
-      expect(out.autoMerge).toEqual({ merged: false, why: expect.stringContaining('"The export is empty"') })
+      expect(out.autoMerge).toEqual({ merged: false, why: expect.stringContaining('checksPassed: true') })
       expect(out.need?.why).toBe(readyToTestWhy('export'))
       expect(getFeatureRow(ctx, f.id).status).toBe('active')
-      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'feature.shipped')).toBe(false)
-      const told = promptsOf(lead.id).map((p) => p.text)
-      expect(told).toEqual([expect.stringContaining('runcastle did not merge it: 1 review defect is still open')])
+      expect(promptsOf(lead.id).map((p) => p.text)).toEqual([expect.stringContaining('runcastle did not merge it: the call did not say your checks passed')])
+    })
+
+    for (const severity of ['high', 'medium', 'low'] as const) {
+      it(`falls back to "Ready to test" with an open ${severity} defect, and tells the lead why`, async () => {
+        const f = await mergeable('export-csv', { involvement: 'nothing' })
+        const lead = leadOf(f)
+        const review = seedHostReview(ctx, f, repoPath, 'handed-back')
+        reportFinding(ctx, { featureId: f.id, reviewWorker: getWorker(ctx, review.id)!, input: defect('The export is empty', severity) })
+
+        const out = await toolDeclareReady(ctx, lead, { scenario: 'export', checksPassed: true })
+
+        expect(out.autoMerge).toEqual({ merged: false, why: expect.stringContaining('"The export is empty"') })
+        expect(out.need?.why).toBe(readyToTestWhy('export'))
+        expect(getFeatureRow(ctx, f.id).status).toBe('active')
+        expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'feature.shipped')).toBe(false)
+        const told = promptsOf(lead.id).map((p) => p.text)
+        expect(told).toEqual([expect.stringContaining('runcastle did not merge it: 1 defect is still open')])
+      })
+    }
+
+    it('does not merge with a defect the lead reported itself, and merges once it is dismissed', async () => {
+      const f = await mergeable('export-csv', { involvement: 'nothing' })
+      const lead = leadOf(f)
+      const { findingId } = toolReportFinding(ctx, { session: lead }, defect('The header is wrong', 'low'))
+
+      const refused = await toolDeclareReady(ctx, lead, { scenario: 'export', checksPassed: true })
+      expect(refused.autoMerge).toEqual({ merged: false, why: expect.stringContaining('"The header is wrong"') })
+
+      dismissAsAgent(ctx, f.id, findingId, 'cosmetic, out of scope')
+      const merged = await toolDeclareReady(ctx, lead, { scenario: 'export', checksPassed: true })
+      expect(merged.autoMerge).toEqual({ merged: true, base: 'main' })
     })
 
     it('waits for the human as today below Nothing, without merging', async () => {

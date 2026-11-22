@@ -15,7 +15,7 @@
     }
   },
   "include": [
-    "./autopilot-design-panel.tsx",
+    "./design-panel-kit.tsx",
     "./involve-me-epic.tsx",
     "./involve-me-feature.tsx",
     "./involve-me-review.tsx"

@@ -11,7 +11,6 @@ import { launchSession } from '../launcher/launcher'
 import { newestThread } from '../launcher/sessions'
 import { hasThreadLog } from '../threads/log'
 import { agentHost } from '../threads/types'
-import { tellEpicInstead } from './autopilot'
 import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
 import { tagRuncastlePrompt } from './lead-prompt'
@@ -111,7 +110,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     held.delete(feature.id)
     failures.delete(feature.id)
     emit(ctx, feature.id, {
-      type: 'lead.message_queued',
+      type: LEAD_MESSAGE_QUEUED,
       message: `message sent to the agent's chat (${msg.source})`,
       data: { source: msg.source, sessionId: threadId, route: hold ? 'held' : 'prompt', text: msg.text },
     })
@@ -127,14 +126,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     delete data.steer
     emit(ctx, feature.id, { type: LEAD_WAKE_FAILED, message: `could not reach the agent's chat: ${reason}`, data })
     // The lead cannot run, so only the human can start it again: runcastle says so on its chat (needs-you decision 9).
-    // On autopilot its epic hears it as a message instead, and the feature needs nobody (epics-on-autopilot decision 17).
-    const told = await tellEpicInstead(
-      ctx,
-      feature,
-      `could not wake its agent (${reason}). Its run is dead until it is started again: decide whether the human must look at it.`,
-      'Could not wake its agent',
-    ).catch(() => null)
-    const lead = told === null ? newestThread(ctx, { featureId: feature.id }, 'chat') : null
+    const lead = newestThread(ctx, { featureId: feature.id }, 'chat')
     if (lead) setWait(ctx, lead.id, wakeFailedWhy(data.exitCode), 'runcastle')
   }
 }
@@ -145,6 +137,9 @@ async function leadThread(ctx: AppCtx, feature: Feature): Promise<string> {
   if (chat && (chat.ccSessionId || hasThreadLog(chat.id))) return chat.id
   return (await launchSession(ctx, { featureId: feature.id, kind: 'chat' })).sessionId
 }
+
+/** A message reached the lead's chat (sent now or held for its next turn). */
+export const LEAD_MESSAGE_QUEUED = 'lead.message_queued'
 
 /** A background message a copied database (a test drive) kept from a lead it has not started. */
 export const LEAD_MESSAGE_NOT_SENT = 'lead.message_not_sent'

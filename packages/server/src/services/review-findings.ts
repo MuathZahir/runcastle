@@ -39,20 +39,34 @@ function defectKey(finding: Pick<ReviewFinding, 'title' | 'location'>): string {
   return [finding.title, finding.location].map((part) => part.trim().toLowerCase()).join(' @ ')
 }
 
-/** Who reports a finding: a Review worker (burns-become-workers decision 4), or an older review ticket. */
-export type FindingReporter = { reviewTicket: Ticket } | { reviewWorker: WorkerRow }
+/**
+ * Who reports a finding: a Review worker (burns-become-workers decision 4), an
+ * older review ticket, or the feature's lead itself, recording what its own
+ * subagent review found (`autopilot-retires` decision 11). A lead's finding
+ * names no review: both of its review columns stay empty.
+ */
+export type FindingReporter = { reviewTicket: Ticket } | { reviewWorker: WorkerRow } | { lead: true }
 
-/** The reporter as its finding records it: the column that keys it, its id, and whether it verifies fixes. */
-interface ReportingPass {
-  column: 'reviewTicketId' | 'reviewWorkerId'
-  id: string
-  verification: boolean
-}
+/** The reporter as its finding records it: the column that keys it (none for the lead), its id, and whether it verifies fixes. */
+type ReportingPass =
+  | { column: 'reviewTicketId' | 'reviewWorkerId'; id: string; verification: boolean }
+  | { column: null; id: null; verification: false }
 
 function passOf(reporter: FindingReporter): ReportingPass {
+  if ('lead' in reporter) return { column: null, id: null, verification: false }
   return 'reviewWorker' in reporter
     ? { column: 'reviewWorkerId', id: reporter.reviewWorker.id, verification: reporter.reviewWorker.reviewVerify !== null }
     : { column: 'reviewTicketId', id: reporter.reviewTicket.id, verification: reporter.reviewTicket.passKind === 'verification' }
+}
+
+/** Whether `finding` came from `pass`: a lead's own findings are the ones no review keyed. */
+function fromPass(finding: ReviewFinding, pass: ReportingPass): boolean {
+  return pass.column === null ? leadReported(finding) : finding[pass.column] === pass.id
+}
+
+/** Whether a finding is one the feature's lead recorded itself, from no review worker or ticket. */
+export function leadReported(finding: Pick<ReviewFinding, 'reviewTicketId' | 'reviewWorkerId'>): boolean {
+  return finding.reviewTicketId === null && finding.reviewWorkerId === null
 }
 
 /**
@@ -75,7 +89,7 @@ function refreshEarlierReport(
   const key = defectKey(input)
   const prior = listByFeature(ctx, featureId).find(
     (finding) =>
-      finding[pass.column] === pass.id &&
+      fromPass(finding, pass) &&
       finding.kind === 'defect' &&
       finding.status !== 'dismissed' &&
       defectKey(finding) === key,
@@ -130,7 +144,7 @@ export function reportFinding(
     .values({
       id,
       featureId,
-      [pass.column]: pass.id,
+      ...(pass.column ? { [pass.column]: pass.id } : {}),
       ...input,
       reproStep: input.reproStep ?? '',
       status: 'open',

@@ -7,11 +7,10 @@
  * switch has no case for.
  */
 export const ACTION_KINDS = [
-  'startDraft', // feature.start — cut the branch on a parked draft, then start the chat
+  'startDraft', // feature.start — cut the branch on a parked draft, then launch its lead with the level's purpose (startPurposeFor)
   'markUpNext', // feature.setUpNext { upNext: true } — Start when ready: the draft starts by itself when its dependencies ship
   'moveToBacklog', // feature.setUpNext { upNext: false } — an up-next draft goes back to "not now"
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
-  'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
   'stopSelfPlan', // feature.endSession on the live self-planning run
   'stopAgent', // feature.stop — the status line's Stop: the lead's and every working worker's turn end, nothing starts until the human replies
   'testDriveStart', // feature.testDrive { action: 'start' }

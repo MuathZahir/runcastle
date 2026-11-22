@@ -674,8 +674,6 @@ export const SessionRow = z.object({
   epicIcon: z.enum(EPIC_ICON_IDS).optional(),
   /** The human picked the icon (decision 3); unset reads as false. */
   epicIconByHuman: z.boolean().optional(),
-  /** A project chat on autopilot (`epics-on-autopilot` decision 1); unset reads as off. */
-  autopilot: z.boolean().optional(),
 })
 export type SessionRow = z.infer<typeof SessionRow>
 

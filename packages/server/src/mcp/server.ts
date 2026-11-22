@@ -112,8 +112,8 @@ import {
 } from '../services/designs'
 import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
-import { autopilotOf, epicOnAutopilot, isLocked, requireMayAct } from '../services/autopilot'
-import { handBackToOrchestrator, workerAsksEpic } from '../services/lead-handback'
+import { requireMayAct } from '../services/epic-acts'
+import { handBackToOrchestrator } from '../services/lead-handback'
 import { involvementLine, involvementView } from '../services/involvement'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
@@ -121,6 +121,7 @@ import {
   dismissAsAgent,
   listByFeature as listReviewFindings,
   openDefects as openDefectsOf,
+  reportFinding,
 } from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
@@ -364,12 +365,6 @@ export interface FeatureContext {
   blocks: { slug: string; upNext: boolean }[]
   /** This feature's own up-next mark: it starts by itself when its dependencies ship. */
   upNext: boolean
-  /**
-   * The epic running it on autopilot (`epics-on-autopilot`): report to it with
-   * `hand_back`. Null when it is not on autopilot: it is the human's, and
-   * questions go to them with `wait_for_you`.
-   */
-  autopilot: { epic: string; chatId: string } | null
   /** "Involve me in" (how-involved-am-i): the feature's level and what it stops for. Obey it. */
   involvement: ReturnType<typeof involvementView>
   /**
@@ -568,7 +563,6 @@ export function featureContext(
   // Fill order (decisions.md #5), not the reading order `agentDigestDocOrder` gives.
   canonical.sort((a, b) => agentDigestFillRank(a.doc.relPath) - agentDigestFillRank(b.doc.relPath))
 
-  const lock = autopilotOf(ctx, feature)
   const header = {
     feature,
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
@@ -579,7 +573,6 @@ export function featureContext(
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
     upNext: feature.upNext,
-    autopilot: lock ? { epic: lock.epicName, chatId: lock.epicId } : null,
     involvement: involvementView(feature.involvement),
     annotatedModels: annotatedModels(ctx),
     ...(scenarios ? { scenarios } : {}),
@@ -657,8 +650,6 @@ export interface FeatureStatusView {
   status: FeatureStatusT
   /** What it needs from the human (its lead's or a worker's line); null when nothing. */
   need: Need | null
-  /** The epic running it on autopilot; null when it is the human's. */
-  autopilot: { epic: string; chatId: string } | null
   /** "Involve me in": the feature's level. */
   involvement: Involvement
   humanTypedAt: number | null
@@ -681,13 +672,11 @@ export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureSt
     const shown = shownStatusOf(ctx, w)
     workerCounts[shown] = (workerCounts[shown] ?? 0) + 1
   }
-  const lock = autopilotOf(ctx, feature)
   return {
     slug: feature.slug,
     title: feature.title,
     status: feature.status,
     need: needOf(ctx, feature),
-    autopilot: lock ? { epic: lock.epicName, chatId: lock.epicId } : null,
     involvement: feature.involvement,
     humanTypedAt: humanTypedAt(ctx, feature.id),
     workerCounts,
@@ -882,12 +871,14 @@ export async function toolDropWorker(ctx: AppCtx, session: SessionRow, input: { 
 
 /**
  * At "Involve me in: Nothing" the answer also carries `autoMerge`: whether
- * runcastle merged the feature, or why it waits for the human instead.
+ * runcastle merged the feature, or why it waits for the human instead. It
+ * merges only with `checksPassed: true` and no open defect (autopilot-retires
+ * decision 11).
  */
 export async function toolDeclareReady(
   ctx: AppCtx,
   session: SessionRow,
-  input: { scenario: string },
+  input: { scenario: string; checksPassed?: boolean },
 ): Promise<{ ok: true; need: Need | null; autoMerge?: ReadyAutoMerge }> {
   const featureId = requireLeadFeatureId(session)
   const { autoMerge } = await declareReady(ctx, featureId, input, session.id)
@@ -895,9 +886,8 @@ export async function toolDeclareReady(
 }
 
 /**
- * A lead on autopilot reports to its epic (agents-are-woken-only-when-it-matters
- * decisions 20–22; epics-on-autopilot decision 17). Off autopilot it is
- * refused, pointing at `wait_for_you`: the feature is the human's.
+ * A lead tells its epic about trouble that crosses features (autopilot-retires
+ * decision 9); refused for a feature with no epic.
  */
 export async function toolHandBack(
   ctx: AppCtx,
@@ -915,15 +905,13 @@ export type WaitForYouInput = { why: string; withdraw?: undefined } | { withdraw
  * decisions 2, 6, 7): its chat — the lead's, an orchestrator chat's, a
  * worker's — needs them with `why` until the human writes in it, or the agent
  * withdraws it (`withdraw: true`) or replaces it. A worker reads "needs you"
- * meanwhile. A lead or a worker of a locked feature (epics-on-autopilot
- * decision 17) asks its epic instead, delivered as a handback is, and neither
- * the feature nor the worker needs anybody: `toEpic` names the epic it went to.
+ * meanwhile. It always reaches the human (autopilot-retires decision 9).
  */
 export async function toolWaitForYou(
   ctx: AppCtx,
   session: SessionRow,
   input: WaitForYouInput,
-): Promise<{ ok: true; need: Need | null; toEpic?: string }> {
+): Promise<{ ok: true; need: Need | null }> {
   if (input.withdraw) {
     clearWait(ctx, session.id, 'withdrawn')
     if (session.kind === 'worker') workerPrompted(ctx, session.id)
@@ -931,14 +919,6 @@ export async function toolWaitForYou(
   }
   const why = input.why.trim()
   if (!why) throw new InvalidInputError('wait_for_you needs a few-word label (why), or withdraw: true; the question itself goes in your reply')
-  const asker = (session.kind === 'chat' || session.kind === 'worker') && session.featureId ? getFeatureRow(ctx, session.featureId) : null
-  if (asker && isLocked(ctx, asker)) {
-    const { deliveredTo } =
-      session.kind === 'worker'
-        ? await workerAsksEpic(ctx, asker, getWorker(ctx, session.id)?.label ?? 'a worker', why)
-        : await handBackToOrchestrator(ctx, asker, why, session.id, { asks: true })
-    return { ok: true, need: null, toEpic: deliveredTo }
-  }
   const need = setWait(ctx, session.id, why, 'agent')
   if (session.kind === 'worker') workerWaits(ctx, session.id)
   return { ok: true, need }
@@ -1639,13 +1619,20 @@ export async function toolFeatureScenario(
 
 /**
  * `report_finding` from a Review worker: recorded against the Review worker
- * itself (burns-become-workers decision 4).
+ * itself (burns-become-workers decision 4). From a feature's lead (its own
+ * chat), recorded against the feature with the lead as its reporter: what a
+ * review it ran with subagents found (`autopilot-retires` decision 11), which
+ * holds a merge at "Nothing" until it is fixed or dismissed.
  */
 export function toolReportFinding(
   ctx: AppCtx,
   caller: ReviewCaller,
   input: ReviewFindingInputT,
 ): { findingId: string } {
+  const lead = caller.session
+  if (lead?.kind === 'chat' && lead.featureId) {
+    return { findingId: reportFinding(ctx, { featureId: lead.featureId, input, lead: true }).finding.id }
+  }
   const review = requireReviewer(ctx, caller, 'report_finding', false)
   return { findingId: reportReviewFinding(ctx, review.id, input).finding.id }
 }
@@ -2047,8 +2034,6 @@ export interface ProjectContext {
   featureIndex: string[]
   /** Says where shipped features' docs live and how to reach an unlisted one. */
   featureIndexNote: string
-  /** Whether this chat (an epic) is on autopilot; unset for any other caller. */
-  autopilot?: boolean
 }
 
 /**
@@ -2126,7 +2111,6 @@ export async function toolGetProjectContext(
     adrsNote: ADRS_NOTE,
     featureIndex: featureIndex(ctx, project.id, session.id),
     featureIndexNote: FEATURE_INDEX_NOTE,
-    ...(session.kind === 'project' ? { autopilot: epicOnAutopilot(ctx, session.id) } : {}),
   }
 }
 
@@ -2295,16 +2279,12 @@ function workerStateOf(ctx: AppCtx, feature: FeatureListItem): string {
 }
 
 /**
- * ` · …` for an index line: whether the feature is this epic's, and whether it
- * is on autopilot, so a chat knows what it may do before it acts, not after a
- * refusal.
+ * ` · …` for an index line: whether the feature is this epic's, so a chat knows
+ * what it may act on before it acts, not after a refusal.
  */
 function epicMark(feature: FeatureListItem, callerId: string): string {
   if (feature.status === 'shipped') return ''
-  if (feature.autopilot) {
-    return feature.autopilot.epicId === callerId ? ' · this epic, on autopilot' : ` · on autopilot in "${feature.autopilot.epicName}"`
-  }
-  return feature.chatId === callerId ? ' · this epic’s, the human’s to work' : ''
+  return feature.chatId === callerId ? ' · this epic’s' : ''
 }
 
 /** One feature's brief on request: the fetch-one behind a slim index line. */
@@ -2719,7 +2699,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   review_drive: ['review'],
   // The lead's own drive of its feature, to prove scenarios on (`requireDriveLead`).
   feature_drive: ['chat'],
-  report_finding: ['review'],
+  // A review worker's findings, and the lead's own (its subagents' review; autopilot-retires decision 11).
+  report_finding: ['review', 'chat'],
   // The one tool both halves share — it emits at whatever scope the caller has.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'fix-drive-worker', 'scenario-worker'],
   // The orchestrator's tools (`one-orchestrator-no-mode`): offered to the
@@ -2727,14 +2708,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // (`requireOrchestratorSession`). Registered in `orchestrator-tools.ts` and
   // `orchestrator-run-tools.ts`.
   start_feature: ['project'],
-  plan_feature: ['project'],
   send_to_feature: ['project'],
   read_feature_chat: ['project'],
-  stop_feature_run: ['project'],
-  drive: ['project'],
   merge_feature: ['project'],
   add_to_brief: ['project'],
-  set_autopilot: ['project'],
   // The chat's own epic name (orchestrator-chats-become-epics decision 12): `toolNameEpic`.
   name_epic: ['project'],
 }
@@ -2919,7 +2896,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Report a structured review finding',
         description:
           'Report one typed finding for the feature under review. Defects stay open for the ' +
-          'feature’s lead, which decides what each becomes; observations are retained for the digest.',
+          'feature’s lead, which decides what each becomes; observations are retained for the digest. ' +
+          'A lead records here the defects its own subagent review found; each open defect, of any ' +
+          'severity, holds a merge at "Involve me in: Nothing" until resolve_finding fixes or dismisses it.',
         inputSchema: ReviewFindingInput.shape,
       },
       async (args, extra) => {
@@ -3035,7 +3014,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Create a feature',
         description:
           'Create a feature from a title, one-liner and brief, started or parked (`draft: true`). ' +
-          'Opens no terminal; feature sessions may only park drafts. It is your epic’s feature; made while you are on autopilot, it joins the run.',
+          'Opens no terminal; feature sessions may only park drafts. It is your epic’s feature.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
           oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
@@ -3249,7 +3228,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'Get feature context',
       description:
-        'This feature’s state: status, waiting reason, Stop and drive marks, autopilot, dependencies, newest ' +
+        'This feature’s state: status, waiting reason, Stop and drive marks, dependencies, newest ' +
         'ready, workers, `annotatedModels`, `scenarios`, designs, open defects and findings, and its docs. Call it ' +
         'first. A repeat call returns only what changed; `full: true` resends everything.',
     }
@@ -3261,7 +3240,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           ...config,
           description:
             'Any feature of this project, named by `slug`, as a short status view: state, waiting reason, ' +
-            'autopilot, worker counts, newest ready, open findings, designs, base, dependencies and a docs index. ' +
+            'worker counts, newest ready, open findings, designs, base, dependencies and a docs index. ' +
             '`full: true` returns the lead’s whole bundle, with worker ids.',
           inputSchema: { slug: ReadSlug, full },
         },
@@ -3364,11 +3343,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Declare the feature ready for the human',
         description:
           'Put a test drive in front of the human and mark the feature ready to test: it waits on the human ' +
-          'until they write, or on autopilot tells your epic. At "Involve me in: Nothing" runcastle merges it ' +
-          'instead when no defect is open (`autoMerge` says what happened). Refused while a worker is working ' +
-          'or holds work that has not landed.',
+          'until they write. At "Involve me in: Nothing" runcastle merges it instead when the review is clean: ' +
+          '`checksPassed: true` and no open defect of any severity (`autoMerge` says what happened). Refused ' +
+          'while a worker is working or holds work that has not landed.',
         inputSchema: {
           scenario: z.string().min(1).describe('The title of the drive Test drive starts, e.g. "Checkout with a coupon".'),
+          checksPassed: z
+            .boolean()
+            .optional()
+            .describe('True only when your tests and checks passed on this commit. At "Nothing" there is no merge without it.'),
         },
       },
       async (args, extra) => {
@@ -3540,8 +3523,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Flag that you need the human: marks this chat in the sidebar and pings their phone. Write the full ' +
           'question, with your pick, in your reply first; the human reads that, never this label. Stays until they ' +
-          'write in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells them. A feature ' +
-          'lead on autopilot: your epic gets only this label, so ask it with hand_back({ summary }).',
+          'write in your chat or you withdraw it ({ withdraw: true }); ending your turn never tells them.',
         inputSchema: {
           why: z.string().optional().describe('A few-word label for the sidebar and phone, never the question itself.'),
           withdraw: z.literal(true).optional().describe('Take back your wait: you no longer need the human.'),
@@ -3616,9 +3598,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Hand back to your epic',
         description:
-          'On autopilot only: report to the epic running this feature (questions, designs for a yes, ready to test, ' +
-          'failures, merge conflicts). It answers or asks the human. Wakes it once with your summary and a line of the ' +
-          'feature’s state. Off autopilot the feature is the human’s: refused, ask them in your reply and call wait_for_you.',
+          'Only for trouble that crosses features: a merge conflict you cannot settle, stuck after three tries, or a ' +
+          'stop for money, accounts or anything outside git that cannot be undone (for those, also call wait_for_you). ' +
+          'Wakes your epic once with your summary and a line of the feature’s state. Everything else goes to the ' +
+          'human in your reply. Refused for a feature with no epic.',
         inputSchema: {
           summary: z
             .string()

@@ -208,7 +208,6 @@ function FeaturePage({ featureId = 'feat_1', driveSessionId, scenario, sessions 
           hidden={false}
           holdStart={false}
           start={async () => 'th_started'}
-          onPlanItYourself={async () => undefined}
           onView={() => {}}
         />
       </div>
@@ -520,10 +519,15 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
   })
 
   // No test renders the whole feature page, so its `start` is read from source:
-  // the launch holds its opening as the chat asks, on the pick Start carries (feature-chat-start.test.tsx).
-  it('starts the feature chat with its opening held as the chat asks', () => {
+  // the launch holds its opening as the chat asks, on the pick Start carries (feature-chat-start.test.tsx),
+  // and a Start launches the lead with its level's purpose while a first message never does.
+  it('starts the feature chat with its opening held as the chat asks, and Start by the level', () => {
     const source = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
-    expect(source).toMatch(/startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening, \.\.\.pick \}\)/)
+    expect(source).toMatch(
+      /startChat\.mutateAsync\(\{ featureId, kind: 'chat', holdOpening, \.\.\.\(holdOpening \? \{\} : asLevel\), \.\.\.pick \}\)/,
+    )
+    expect(source).toMatch(/const startPurpose = level \? startPurposeFor\(level\) : undefined/)
+    expect(source).toMatch(/launchStarted\.mutate\(\{ featureId: vars\.featureId, kind: 'chat', \.\.\.asLevel \}\)/)
   })
 })
 

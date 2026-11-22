@@ -127,8 +127,7 @@ describe('wait_for_you → feature.get().need', () => {
     const feature = getFeatureRow(ctx, featureId)
     // A worker's handback reaches the lead as a runcastle message.
     await deliverToLead(ctx, feature, { text: 'Worker "api" handed back', source: 'runcastle', display: undefined })
-    // (The orchestrator's send_to_feature reaches only a feature on autopilot,
-    // and joining autopilot closes the lead's wait: epics-on-autopilot decision 24.)
+    // (The orchestrator's send_to_feature leaves the wait too: orchestrator-run-tools tests it.)
     markHumanMessage(ctx, featureId)
     expect(prompted.length).toBeGreaterThanOrEqual(1)
     expect(await need()).toMatchObject({ why: 'Which coupon codes stack?', threadId: leadId })

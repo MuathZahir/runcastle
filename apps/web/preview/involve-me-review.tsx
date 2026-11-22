@@ -13,7 +13,7 @@ import { applyStoredTheme } from '../src/lib/theme'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
 import { useDesignReport } from '../../../.runcastle/preview/design-report'
 import { STATES as PACKS } from './review-package-data'
-import { DESIGN_PANEL_CLEARANCE, DesignPanel, makeDeadEnd } from './autopilot-design-panel'
+import { DESIGN_PANEL_CLEARANCE, DesignPanel, makeDeadEnd } from './design-panel-kit'
 
 /**
  * "Decided without you" in a review package (docs/features/how-involved-am-i

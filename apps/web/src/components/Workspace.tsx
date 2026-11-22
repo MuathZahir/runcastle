@@ -18,8 +18,8 @@ import { Button,
   type MetaItem,
 } from '../ui'
 import { IconPlay, IconX, ProgressIcon } from '../icons'
-import { autopilotCrumb, epicCrumb } from './SidebarEpics'
-import { AutopilotLock } from './autopilot/AutopilotLock'
+import { startPurposeFor, type Involvement } from '@runcastle/core'
+import { epicCrumb } from './SidebarEpics'
 import { FeatureInvolvement, featureInvolvement, involvementOpen, useSetInvolvement } from './involvement/InvolvementControls'
 import { epicNameOf } from '../lib/feature-ui/epics'
 import {
@@ -30,7 +30,6 @@ import {
   type FeatureCommands,
 } from '../lib/feature-commands'
 import type { DriveState } from '../lib/workspace'
-import type { FeatureFull } from '../lib/api'
 import {
   activeSession,
   defaultBaseBranch,
@@ -508,7 +507,12 @@ export function Workspace({
   // feature reads the new session, so the waiting screen never shows between.
   // A refused launch leaves a started feature that never ran: its chat opens
   // on Start with the refusal under it (decision 11).
+  // One Start, and the lead launches as the feature's level says (`startPurposeFor`):
+  // at "Everything" it opens and asks first; below it, it plans and builds alone.
   const [launchRefusal, setLaunchRefusal] = useState<string | undefined>(undefined)
+  const level: Involvement | undefined = q.data?.feature.involvement
+  const startPurpose = level ? startPurposeFor(level) : undefined
+  const asLevel = startPurpose ? { purpose: startPurpose } : {}
   const launchStarted = trpc.feature.launchSession.useMutation({
     onSuccess: async () => {
       landOnChat()
@@ -523,26 +527,7 @@ export function Workspace({
     onSuccess: (_res, vars) => {
       invalidate()
       setLaunchRefusal(undefined)
-      launchStarted.mutate({ featureId: vars.featureId, kind: 'chat' })
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // Plan it yourself (features-plan-themselves decisions 5, 9): the same start
-  // and launch as above, but the session is unattended, so neither lands on
-  // the chat — the plan is watched from the body.
-  // It stays pending until the feature is refetched with the new run on it, so
-  // the row reads Planning by itself from the click on, never idle in between.
-  // A refusal is said by whoever pressed: a toast from the bar, a line under
-  // the waiting chat's buttons.
-  const launchSelfPlan = trpc.feature.launchSession.useMutation({
-    onSuccess: refresh,
-    onError: () => undefined,
-  })
-  const sayRefusal = { onError: (e: { message: string }) => toast.push(e.message) }
-  const startSelfPlan = trpc.feature.start.useMutation({
-    onSuccess: (_res, vars) => {
-      invalidate()
-      launchSelfPlan.mutate({ featureId: vars.featureId, kind: 'chat', purpose: 'self-plan' }, sayRefusal)
+      launchStarted.mutate({ featureId: vars.featureId, kind: 'chat', ...asLevel })
     },
     onError: (e) => toast.push(e.message),
   })
@@ -627,26 +612,8 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
-  // Locked to its epic's autopilot (epics-on-autopilot decisions 3, 16): watched, not acted on.
-  // The server says so; when autopilot ends its event refetches this and the page is ordinary again.
-  const autopilot = full.autopilot
-  const locked = !!autopilot
-  const autopilotEpic = autopilot ? (projectThreads.data ?? []).find((t) => t.id === autopilot.epicId && t.role === 'project') : undefined
-  const lockNote = autopilot && (
-    <AutopilotLock
-      projectId={feature.projectId}
-      autopilot={autopilot}
-      color={autopilotEpic?.color}
-      working={autopilotEpic?.state === 'working'}
-      onOpenEpic={onOpenThread}
-    />
-  )
-  // Its epic first: "<epic> · Autopilot" while locked, else the plain epic crumb.
-  const epicHeaderCrumb = autopilot
-    ? autopilotCrumb(autopilot, projectThreads.data ?? [], onOpenThread)
-    : onOpenThread
-      ? epicCrumb(feature, projectThreads.data ?? [], onOpenThread)
-      : null
+  // Its epic first, when it has one to open.
+  const epicHeaderCrumb = onOpenThread ? epicCrumb(feature, projectThreads.data ?? [], onOpenThread) : null
   const threadCrumb = isDraft ? undefined : inFrontTitle
   const ns = nextStep(full, { ...(draftBaseMissing ? { draftBaseMissing } : {}) })
   // The terminal the resolve compound has to close on its way in — one read, so
@@ -657,8 +624,6 @@ export function Workspace({
     start.isPending ||
     launchStarted.isPending ||
     launch.isPending ||
-    startSelfPlan.isPending ||
-    launchSelfPlan.isPending ||
     testDrive.isPending ||
     merge.isPending ||
     fixDrive.isPending ||
@@ -753,12 +718,6 @@ export function Workspace({
         break
       case 'chat':
         openChat()
-        break
-      // Plan it yourself: a draft is started off the same base Start would send,
-      // then launched as a self-planning run; a started feature just launches.
-      case 'selfPlan':
-        if (isDraft) startSelfPlan.mutate({ featureId, baseBranch: effectiveDraftBase })
-        else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' }, sayRefusal)
         break
       // Stop is ending the run: nobody is attending it (decision 9). Only the
       // self-planning run it was offered for — never a lead woken in its place.
@@ -891,10 +850,12 @@ export function Workspace({
         workersWorking,
         agentWorking: mainChatWorking(column.mainState, liveSession),
         driving: isDriving,
-        // A draft's start turns it into a planning feature before the run is
-        // even launched, so the start counts as planning by itself too.
+        // A start below "Everything" plans by itself from the click on, before
+        // the run is even launched, so the start counts as planning too.
         selfPlanning:
-          (!!liveSession && isSelfPlanRun(liveSession)) || startSelfPlan.isPending || launchSelfPlan.isPending,
+          (!!liveSession && isSelfPlanRun(liveSession)) ||
+          (!!startPurpose &&
+            (start.isPending || launchStarted.isPending || (startChat.isPending && startChat.variables?.purpose === startPurpose))),
         declared,
       })
   const actionsBusy = busy || stopAgent.isPending
@@ -913,17 +874,15 @@ export function Workspace({
   const driveRefusal = agentDriveRefusal(driveQ.data, featureId)
   const refuseDrive = (a: NextAction | undefined): NextAction | undefined =>
     a && driveRefusal && a.kind === 'testDriveStart' ? { ...a, disabled: driveRefusal } : a
-  // Locked: no Stop, Test drive or Merge, nor anything else the row offers — the epic acts (decision 16).
-  const unrefused: HeaderActions = status && !locked ? headerActions(ns, status) : { overflow: [] }
+  const unrefused: HeaderActions = status ? headerActions(ns, status) : { overflow: [] }
   const headerRow: HeaderActions = {
     ...unrefused,
     ...(unrefused.action ? { action: refuseDrive(unrefused.action) } : {}),
     overflow: unrefused.overflow.map((a) => refuseDrive(a)!),
   }
 
-  // A parked draft keeps its next-step bar in its header, where its body is the page;
-  // a locked one (left for the human's grill) shows the lock note there instead.
-  const draftRow = isDraft && (lockNote || (
+  // A parked draft keeps its next-step bar in its header, where its body is the page.
+  const draftRow = isDraft && (
     <NextStepBar
       ns={ns}
       guidance={guidance}
@@ -938,7 +897,7 @@ export function Workspace({
         onPick: (base) => setDraftPick({ featureId, base }),
       }}
     />
-  ))
+  )
   const resumeAlert = resumeFailed.message && (
     <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">
       <span className="min-w-0 flex-1">
@@ -1036,7 +995,6 @@ export function Workspace({
             {...(panel.state.path ? { path: panel.state.path } : {})}
             onOpen={(path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })}
             onList={() => panel.dispatch({ type: 'designList' })}
-            locked={locked}
           />
         )
       // The drive is the page, not a panel (test-drive-looks-the-part decision 13).
@@ -1096,7 +1054,7 @@ export function Workspace({
     headerRow.merge,
     driveCommand,
   ].filter((a, i, all): a is NextAction => !!a && all.findIndex((b) => b?.kind === a.kind) === i)
-  const paletteCommands: FeatureCommands | null = threadable && !locked
+  const paletteCommands: FeatureCommands | null = threadable
     ? {
         title: feature.title,
         commands: paletteActions.map((a) => ({
@@ -1134,7 +1092,6 @@ export function Workspace({
           sub={feature.title}
           onOpen={(path) => panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })}
           onBack={() => panel.dispatch({ type: 'close' })}
-          locked={locked}
         />
       ) : phoneView && (
         <PhoneViewScreen title={labelOf(phoneView)} sub={feature.title} onBack={() => backInApp(() => panel.dispatch({ type: 'close' }))}>
@@ -1184,8 +1141,7 @@ export function Workspace({
         actions={
           workerHeader ? (
             <>
-              {/* A locked feature's workers take no Stop either (decision 16). */}
-              {!locked && workerHeader.actions}
+              {workerHeader.actions}
               <PanelToggle
                 open={!!shown}
                 views={tabs}
@@ -1262,20 +1218,21 @@ export function Workspace({
                   alerts={chatAlerts}
                   standing={standing}
                   hidden={chatHidden}
-                  holdStart={start.isPending || launchStarted.isPending || startSelfPlan.isPending || launchSelfPlan.isPending}
+                  holdStart={start.isPending || launchStarted.isPending}
                   start={async ({ holdOpening, pick }) => {
                     // Started by a message, the opening waits for it: one prompt, one answer.
-                    // Started by Start, it carries the composer's model pick (decision 10).
-                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening, ...pick })
+                    // Started by Start, the lead opens as the level says, on the
+                    // composer's model pick (decision 10).
+                    const res = await startChat.mutateAsync({ featureId, kind: 'chat', holdOpening, ...(holdOpening ? {} : asLevel), ...pick })
+                    // A run that plans by itself holds the press until the page reads it, so the row never reads idle between.
+                    if (!holdOpening && startPurpose) await refresh()
                     return res.sessionId
                   }}
-                  onPlanItYourself={(pick) => launchSelfPlan.mutateAsync({ featureId, kind: 'chat', purpose: 'self-plan', ...pick })}
                   refusal={launchRefusal}
                   onView={(target) => {
                     if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
                   }}
-                  lock={lockNote || undefined}
-                  epicName={autopilot?.epicName ?? epicNameOf(feature, projectThreads.data ?? [])}
+                  epicName={epicNameOf(feature, projectThreads.data ?? [])}
                 />
               }
               panel={

@@ -22,7 +22,7 @@ import type { FeatureStatus } from '../src/lib/feature-ui/status-line'
 import type { ThreadEntry, ThreadItem, ToolCall } from '../src/lib/chat-thread'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
 import { useDesignReport } from '../../../.runcastle/preview/design-report'
-import { DESIGN_PANEL_CLEARANCE, DesignPanel, makeDeadEnd } from './autopilot-design-panel'
+import { DESIGN_PANEL_CLEARANCE, DesignPanel, makeDeadEnd } from './design-panel-kit'
 
 /**
  * "Involve me in" on a feature (docs/features/how-involved-am-i decisions 3,

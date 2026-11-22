@@ -2,10 +2,10 @@ import { type Feature, type Need, readyToTestWhy, type ShownWorkerStatus } from 
 import type { AppCtx } from '../db/types'
 import { GateError } from '../errors'
 import { agentHost } from '../threads/types'
-import { autopilotOf } from './autopilot'
 import { mayStartInBackground } from './database-copy'
 import { emit } from './events'
-import { getSessionRow, newestThread } from '../launcher/sessions'
+import { getSessionRow } from '../launcher/sessions'
+import { chatName } from '../threads/chat-name'
 import { waitOf } from './waits'
 import { listWorkers, shownStatusOf } from '../workers/service'
 
@@ -30,32 +30,29 @@ export function handbackStateLine(wait: Pick<Need, 'why'> | null, shown: readonl
   return parts.join(' · ')
 }
 
-/** The refusal of a handback off autopilot: the lead talks to the human, in its own chat. */
-export const NOT_ON_AUTOPILOT =
-  'this feature is not on autopilot, so it is the human\'s and there is no epic to hand back to: ' +
-  'ask the human in your reply and call wait_for_you instead'
+/** The refusal of a handback from a feature with no epic: the human made it, so there is nobody else to tell. */
+export const NO_EPIC =
+  'this feature has no epic (the human made it with New feature), so there is no orchestrator to hand back to: ' +
+  'tell the human in your reply and call wait_for_you instead'
 
 /**
- * A lead reports to its epic (`epics-on-autopilot` decisions 3, 17): one
+ * A lead tells its epic about trouble that crosses features
+ * (`autopilot-retires` decision 9): a merge conflict it cannot settle, stuck
+ * after three tries, or a stop for money, accounts or anything outside git that
+ * cannot be undone (those also wait on the human in the feature's chat). One
  * runcastle prompt into the epic's chat, shown as a feature handback card,
- * waking it once. Only on autopilot: off it the feature is the human's, and the
- * handback is refused with a pointer to `wait_for_you`. `asks` is a
- * `wait_for_you` the lead, or one of its workers (`worker`, the worker's
- * label), called anyway, delivered the same way, with no need set on the
- * feature or the worker. In a test drive's copied database it never starts a chat
- * the drive has not started (drives-never-touch-real-conversations decision 9),
- * and says so to the lead.
+ * waking it once. Refused for a feature with no epic. In a test drive's copied
+ * database it never starts a chat the drive has not started
+ * (drives-never-touch-real-conversations decision 9), and says so to the lead.
  */
 export async function handBackToOrchestrator(
   ctx: AppCtx,
   feature: Feature,
   summary: string,
   leadSessionId?: string,
-  opts: { asks?: boolean; worker?: string } = {},
 ): Promise<{ deliveredTo: string; state: string }> {
-  const lock = autopilotOf(ctx, feature)
-  const epic = lock ? getSessionRow(ctx, lock.epicId) : null
-  if (!lock || !epic || epic.kind !== 'project') throw new GateError(NOT_ON_AUTOPILOT)
+  const epic = feature.chatId ? getSessionRow(ctx, feature.chatId) : null
+  if (!epic || epic.kind !== 'project') throw new GateError(NO_EPIC)
   if (!mayStartInBackground(epic)) {
     throw new GateError('this test drive has not started the epic of this feature, so the handback was not sent')
   }
@@ -64,33 +61,20 @@ export async function handBackToOrchestrator(
     leadSessionId ? waitOf(ctx, leadSessionId) : null,
     listWorkers(ctx, feature.id).map((w) => shownStatusOf(ctx, w)),
   )
-  const who = opts.worker ? `its worker "${opts.worker}"` : 'its lead'
-  const head = opts.asks
-    ? `[runcastle] ${feature.slug} asks for the human (${who} called wait_for_you; it is on autopilot, so it comes to you):\n${said}\n`
-    : `[runcastle] ${feature.slug} handed back:\n${said}\n`
-  const answer = opts.worker
-    ? `Answer through its lead with send_to_feature({ slug: "${feature.slug}" }), naming the worker, when you can`
-    : `Answer its lead with send_to_feature({ slug: "${feature.slug}" }) when you can`
-  const text = head + `State: ${state}. ` + `${answer}; ask the human here only what you cannot decide for them.`
+  const text =
+    `[runcastle] ${feature.slug} hit trouble that crosses features:\n${said}\n` +
+    `State: ${state}. Answer its lead with send_to_feature({ slug: "${feature.slug}" }) when you can; ` +
+    'what the human must decide, its lead asks them in the feature\'s own chat.'
   await agentHost(ctx).prompt(
     epic.id,
     { text },
     { source: 'runcastle', display: { featureHandback: { featureId: feature.id, title: feature.title, summary: said, state } } },
   )
+  const epicName = chatName(epic)
   emit(ctx, feature.id, {
     type: LEAD_HANDED_BACK,
-    message: `${opts.asks ? `${opts.worker ? `the worker "${opts.worker}" ` : ''}asked` : 'handed back to'} the epic "${lock.epicName}"`,
-    data: { holderId: epic.id, summary: said, state, ...(opts.asks ? { asks: true } : {}), ...(opts.worker ? { worker: opts.worker } : {}) },
+    message: `handed back to the epic "${epicName}"`,
+    data: { holderId: epic.id, summary: said, state },
   })
-  return { deliveredTo: lock.epicName, state }
-}
-
-/**
- * A worker of a locked feature called `wait_for_you` (`epics-on-autopilot`
- * decision 17): its question goes to the epic as its lead's does, and the
- * worker reads no "needs you". The state line reads the lead's own wait.
- */
-export function workerAsksEpic(ctx: AppCtx, feature: Feature, workerLabel: string, why: string): Promise<{ deliveredTo: string; state: string }> {
-  const lead = newestThread(ctx, { featureId: feature.id }, 'chat')
-  return handBackToOrchestrator(ctx, feature, why, lead?.id, { asks: true, worker: workerLabel })
+  return { deliveredTo: epicName, state }
 }

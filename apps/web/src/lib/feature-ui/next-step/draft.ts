@@ -2,7 +2,7 @@ import { backlogDependencies, stuckReason, unstartedState, type DependencyRef } 
 import type { NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 import { blockers, waitingReason } from '../dependencies'
-import { SELF_PLAN_ACTION } from './chat'
+import { startWhat } from '../start'
 
 const DRAFT_BASE_BLOCKED = {
   loading: 'Loading the branch list…',
@@ -37,10 +37,8 @@ export function resolveDraft({ full, ctx }: ResolverInput): NextStep {
   const blocked =
     waitingReason(full.dependsOn) ?? (ctx.draftBaseMissing ? DRAFT_BASE_BLOCKED[ctx.draftBaseMissing] : null)
   const disabled = blocked ? { disabled: blocked } : {}
+  // One Start: the level says whether the lead asks first or plans alone.
   const start: NextAction = { label: 'Start', kind: 'startDraft', ...disabled }
-  // Beside Start, never instead of it (features-plan-themselves decision 12):
-  // it starts the draft the same way, so it waits on the same thing.
-  const selfPlan: NextAction = { ...SELF_PLAN_ACTION, ...disabled }
   const open = blockers(full.dependsOn)
 
   switch (unstartedState(full.feature, full.dependsOn)) {
@@ -53,7 +51,7 @@ export function resolveDraft({ full, ctx }: ResolverInput): NextStep {
         title: 'Start this feature',
         desc: 'In the backlog. You can make it start by itself instead, as soon as what it waits on ships.',
         primary: start,
-        secondary: [selfPlan, { label: 'Start when ready', kind: 'markUpNext', hint: caption }],
+        secondary: [{ label: 'Start when ready', kind: 'markUpNext', hint: caption }],
         busy: false,
         note: caption,
       }
@@ -87,16 +85,16 @@ export function resolveDraft({ full, ctx }: ResolverInput): NextStep {
         title: "Didn't start by itself",
         desc: asSentence(full.upNextProblem ?? stuckReason(full.dependsOn), full.dependsOn),
         primary: start,
-        secondary: [selfPlan, MOVE_TO_BACKLOG],
+        secondary: [MOVE_TO_BACKLOG],
         busy: false,
       }
     default:
       return {
         kick: 'NEXT STEP',
         title: 'Start this feature',
-        desc: 'In the backlog — Start cuts its branch, writes the brief, and opens its chat with you. Plan automatically makes the plan without you.',
+        desc: `In the backlog — Start cuts its branch and writes the brief. ${startWhat(full.feature.involvement)}`,
         primary: start,
-        secondary: [selfPlan],
+        secondary: [],
         busy: false,
       }
   }

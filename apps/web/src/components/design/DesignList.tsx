@@ -148,10 +148,7 @@ export function DesignBar({
   onBack,
   onStep,
   onApprove,
-  locked = false,
 }: {
-  /** The feature is on its epic's autopilot (epics-on-autopilot decision 16): its state in place of Approve. */
-  locked?: boolean
   design: DesignEntry
   /** Its place in the list's order, from 0. */
   index: number
@@ -182,7 +179,7 @@ export function DesignBar({
         </span>
         <IconButton size="sm" label="Next design" icon={<IconChevronRight />} disabled={index >= count - 1} onClick={() => onStep(index + 1)} />
       </span>
-      {design.state === 'waiting' && !locked ? (
+      {design.state === 'waiting' ? (
         showing && (
           <Button
             size="sm"

@@ -56,9 +56,9 @@ export interface WorkerLinks {
 export const WorkerLinksContext = createContext<WorkerLinks | null>(null)
 
 /**
- * The epic a feature's chat belongs to, by name (epics-on-autopilot decision
- * 22): the orchestrator's messages there are signed with it rather than the
- * generic "Epic". The feature's chat column provides it; null signs "Epic".
+ * The epic a feature's chat belongs to, by name: the orchestrator's messages
+ * there are signed with it rather than the generic "Epic". The feature's chat
+ * column provides it; null signs "Epic".
  */
 export const OrchestratorNameContext = createContext<string | null>(null)
 

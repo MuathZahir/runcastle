@@ -15,7 +15,7 @@ import {
 import { toolCreateFeature, toolGetProjectContext, toolsForAudience } from '../src/mcp/server'
 import {
   orchestratorTool,
-  toolSetAutopilot,
+  toolAddToBrief,
   NOT_THE_RUNNING_CHAT,
   requireOrchestratorSession,
   requireProjectFeature,
@@ -100,23 +100,20 @@ describe('the orchestrator’s gate', () => {
     }
   })
 
-  it('logs a feature_acted in the calling chat for each feature it creates or puts on autopilot, and none for a refused call', async () => {
+  it('logs a feature_acted in the calling chat for each feature it creates or acts on, and none for a refused call', async () => {
     const session = projectSession()
     const made = await toolCreateFeature(ctx, session, { title: 'Login form', oneLiner: 'log in' })
     const parked = await toolCreateFeature(ctx, session, { title: 'Later thing', oneLiner: 'parked', draft: true })
-    const other = seedFeature(ctx, projectId, { slug: 'humans' })
-    await toolSetAutopilot(ctx, session, { action: 'on' })
-    await toolSetAutopilot(ctx, session, { action: 'add', features: ['humans'] })
+    seedFeature(ctx, projectId, { slug: 'humans' })
+    toolAddToBrief(ctx, session, { slug: parked.slug, text: 'Dark too.' })
     await expect(toolCreateFeature(ctx, session, { title: 'No line', oneLiner: ' ' })).rejects.toThrow()
-    await expect(toolSetAutopilot(ctx, session, { action: 'add', features: ['nope'] })).rejects.toThrow(GateError)
+    expect(() => toolAddToBrief(ctx, session, { slug: 'humans', text: 'x' })).toThrow(GateError)
 
     const acted = readThreadEvents(session.id).filter((e) => e.type === 'feature_acted')
     expect(acted.map((e) => e.type === 'feature_acted' && [e.featureId, e.title, e.action])).toEqual([
       [made.id, 'Login form', 'created'],
       [parked.id, 'Later thing', 'parked'],
-      [made.id, 'Login form', 'autopilotOn'],
-      [parked.id, 'Later thing', 'autopilotOn'],
-      [other.id, other.title, 'autopilotOn'],
+      [parked.id, 'Later thing', 'brief'],
     ])
   })
 
@@ -198,14 +195,10 @@ describe('the orchestrator’s gate', () => {
   it('offers every orchestrator tool to the orchestrator and to no other kind', () => {
     const tools = [
       'start_feature',
-      'plan_feature',
       'send_to_feature',
       'read_feature_chat',
-      'stop_feature_run',
-      'drive',
       'merge_feature',
       'add_to_brief',
-      'set_autopilot',
     ]
     expect(toolsForAudience('project')).toEqual(expect.arrayContaining(tools))
     for (const kind of ['chat', 'fix-drive-worker', 'review'] as const) {
@@ -213,9 +206,10 @@ describe('the orchestrator’s gate', () => {
     }
   })
 
-  it('offers no take_over_feature or record_test_note to the orchestrator', () => {
+  it('offers no take_over_feature, record_test_note, or the retired drive, plan and autopilot tools to the orchestrator', () => {
     const offered = toolsForAudience('project')
-    expect(offered).not.toContain('take_over_feature')
-    expect(offered).not.toContain('record_test_note')
+    for (const gone of ['take_over_feature', 'record_test_note', 'plan_feature', 'stop_feature_run', 'drive', 'set_autopilot']) {
+      expect(offered).not.toContain(gone)
+    }
   })
 })

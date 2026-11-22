@@ -83,7 +83,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
   }
 
   /** A started feature. */
-  async function feature(slug: string, overrides: Partial<Feature> & { lockedTo?: string } = {}): Promise<Feature> {
+  async function feature(slug: string, overrides: Partial<Feature> = {}): Promise<Feature> {
     const f = seedFeature(ctx, projectId, { slug, ...overrides })
     await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
@@ -98,7 +98,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
   it('send_to_feature reaches the feature’s lead as a human message whatever its state, starting its chat', async () => {
     for (const phase of ['planning', 'building', 'review'] as const) {
       const me = orchestrator()
-      const f = await feature(`led-${phase}`, { phase, lockedTo: me.id })
+      const f = await feature(`led-${phase}`, { phase, chatId: me.id })
       const result = await toolSendToFeature(ctx, me, {
         slug: f.slug,
         message: 'The empty state still says nothing.',
@@ -122,7 +122,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
 
   it('send_to_feature steers every message into the lead’s running turn (epic-messages-reach-a-busy-agent-at-once decision 2)', async () => {
     const me = orchestrator()
-    const f = await feature('steered', { lockedTo: me.id })
+    const f = await feature('steered', { chatId: me.id })
     const prompt = vi.spyOn(host, 'prompt')
     await toolSendToFeature(ctx, me, { slug: f.slug, message: 'Drop the CSV export.' })
     await toolSendToFeature(ctx, me, { slug: f.slug, humanWords: 'PDF only.' })
@@ -136,7 +136,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
 
   it('send_to_feature relays the human’s own words only through humanWords, marked as theirs (epics-on-autopilot decision 25)', async () => {
     const me = orchestrator()
-    const f = await feature('relayed', { lockedTo: me.id })
+    const f = await feature('relayed', { chatId: me.id })
     await toolSendToFeature(ctx, me, { slug: f.slug, message: 'Yes, go ahead.', relaysHuman: true } as { slug: string; message: string })
     const queued = () => listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.message_queued').map((e) => (e.data as { text: string }).text)
     expect(queued()[0]).toBe("From Checkout, the project's orchestrator, not the human:\n\nYes, go ahead.")
@@ -149,16 +149,16 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
     expect(acted.map((e) => (e.type === 'feature_acted' ? e.action : null))).toEqual(['messaged', 'messaged'])
   })
 
-  it('send_to_feature is refused off autopilot, pointing at the feature’s chat', async () => {
+  it('send_to_feature is refused for a feature not of its epic, pointing at the feature’s chat', async () => {
     const me = orchestrator()
-    const f = await feature('humans', { chatId: me.id })
-    await expect(toolSendToFeature(ctx, me, { slug: f.slug, message: 'x' })).rejects.toThrow(/is the human's.*Link them to its chat/)
+    const f = await feature('humans', { chatId: null })
+    await expect(toolSendToFeature(ctx, me, { slug: f.slug, message: 'x' })).rejects.toThrow(/not one of this epic's features.*Link the human to its chat/)
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'lead.message_queued')).toBe(false)
   })
 
   it('send_to_feature is not a typed human message, a typed prompt is', async () => {
     const me = orchestrator()
-    const f = await feature('typed', { lockedTo: me.id })
+    const f = await feature('typed', { chatId: me.id })
     await toolSendToFeature(ctx, me, { slug: f.slug, message: 'x' })
     expect(humanTypedAt(ctx, f.id)).toBeNull()
     markHumanMessage(ctx, f.id, { typed: true })
@@ -168,7 +168,7 @@ describe('the orchestrator’s tools on a feature’s lead', () => {
   /** needs-you decision 7: neither a read nor the orchestrator's message clears what the lead waits on. */
   it('send_to_feature and reading the feature leave the lead’s wait standing', async () => {
     const me = orchestrator()
-    const f = await feature('handed', { lockedTo: me.id })
+    const f = await feature('handed', { chatId: me.id })
     const lead = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: '/wt' }).id
     setWait(ctx, lead, 'Which currency?')
 

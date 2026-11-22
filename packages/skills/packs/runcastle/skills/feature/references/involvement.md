@@ -11,8 +11,10 @@ time. Obey it:
 - `resultOnly`: also settle new screens' designs yourself, with no approval
   wait; commit them. They try it and merge.
 - `nothing`: as `resultOnly`, and `declare_ready` merges the feature itself
-  when no defect is open. Run the review and fix its findings before you
-  declare ready.
+  when you pass `checksPassed: true` and no defect of any severity is open
+  (fixed, or dismissed with a reason). A review worker is not required. If you
+  review with your own subagents, record each defect they find with
+  `report_finding` and close it with `resolve_finding`, so runcastle sees it.
 
 At every level, still stop and ask before money, accounts or anything outside
 git that cannot be undone, and for anything the brief names as theirs.
@@ -30,10 +32,5 @@ package lists them; they overturn one by telling you.
   `wait_for_you({ withdraw: true })`, and carry on. A wait on something the
   level still asks (a design's yes, money, accounts) stays.
 - It became `nothing` while you wait as Ready to test: call `declare_ready`
-  again with the same scenario, and it merges.
+  again with the same scenario and `checksPassed`, and it merges.
 - It went up: ask from then on.
-
-## On autopilot
-
-At `everything`, questions still go to the epic with `hand_back`. At a lower
-level, decide them yourself and do not send them to the epic.

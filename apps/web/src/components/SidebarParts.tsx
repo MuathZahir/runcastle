@@ -98,14 +98,12 @@ export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; si
  * "Merged", or its shelf. An up-next draft says what it starts after, or the
  * problem that keeps it from starting (decision 16).
  */
-export function featureStateWords(f: FeatureListItem, locked = false): string {
-  // Locked to its epic's autopilot (epics-on-autopilot decision 17): never Needs you; the epic carries it.
-  const need = locked ? null : needsMe(f)
+export function featureStateWords(f: FeatureListItem): string {
+  const need = needsMe(f)
   if (need) return `Needs you · ${need.why}`
   if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Merged'
   if (f.status === 'archived') return 'Archived'
-  if (locked) return f.working ? 'Working' : 'Idle'
   return triageOf(f) === 'working' ? 'Working' : 'Idle'
 }
 
@@ -162,7 +160,6 @@ function TwoLineRow({
   wordsClassName,
   aside,
   dot,
-  mark,
   quiet = false,
   active = false,
   flat = false,
@@ -178,8 +175,6 @@ function TwoLineRow({
   wordsClassName?: string
   aside?: ReactNode
   dot?: StatusTone
-  /** A small mark at the title's end, where the dot sits (a locked feature's autopilot mark). */
-  mark?: ReactNode
   quiet?: boolean
   active?: boolean
   /** Active inside a card that already marks it (the open feature with its threads): no fill of its own. */
@@ -214,9 +209,6 @@ function TwoLineRow({
           >
             {title}
           </span>
-          {mark !== undefined && (
-            <span className={cx('inline-flex shrink-0 transition-opacity duration-(--dur-1)', actions !== undefined && CONCEAL_NAV)}>{mark}</span>
-          )}
           {dot && (
             <span className={cx('transition-opacity duration-(--dur-1)', CONCEAL_NAV)}>
               <StatusDot tone={dot} />
@@ -316,7 +308,6 @@ export function SidebarFeatureRow({
   workers,
   workersFolded,
   words: wordsProp,
-  lock,
 }: {
   f: FeatureListItem
   active: boolean
@@ -346,13 +337,6 @@ export function SidebarFeatureRow({
    * (workers-nest-under-their-feature decision 12).
    */
   words?: string | ((f: FeatureListItem) => string)
-  /**
-   * The feature is locked to its epic's autopilot run (epics-on-autopilot
-   * decisions 7, 17): this mark at the title's end, and never the amber dot —
-   * its needs go to the epic, whose card carries them. Its worker rows carry
-   * the same mark (workers-nest-under-their-feature decision 7).
-   */
-  lock?: ReactNode
 }) {
   const [storedFold, toggleFold] = useWorkersFolded(f.id)
   const groups = workers ? workerGroups(workers.entries) : null
@@ -363,7 +347,7 @@ export function SidebarFeatureRow({
   const folded = hasWorkers ? workersAreFolded : threadsFolded
   const nestedRows =
     hasWorkers && workers ? (
-      <NestedWorkers live={live} done={done} workers={workers} lock={lock} feature={f.title} />
+      <NestedWorkers live={live} done={done} workers={workers} feature={f.title} />
     ) : (
       threads
     )
@@ -375,22 +359,20 @@ export function SidebarFeatureRow({
   const needShownBelow = hasWorkers && !workersAreFolded && live.some((w) => w.id === f.need?.threadId)
   const own: FeatureListItem = needShownBelow ? { ...f, need: null } : f
   const lane = triageOf(own)
-  const nm = lock === undefined ? needsMe(own) : null
+  const nm = needsMe(own)
   const words = typeof wordsProp === 'function' ? wordsProp(own) : (wordsProp ?? featureStateWords(own))
   const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined
-  // Folded, a worker that asks still lights the row (decision 9); a locked feature's never does (decision 7).
+  // Folded, a worker that asks still lights the row (decision 9).
   const workerNeed = hasWorkers && workersAreFolded && workersNeedYou(live)
   const row = (
     <TwoLineRow
       title={f.title}
       tooltip={
-        lock !== undefined
-          ? `${f.title} — on autopilot`
-          : nm
-            ? `${f.title} — Needs you · ${nm.why}`
-            : f.status === 'draft'
-              ? `${f.title} — ${rowChip(f).title}`
-              : f.title
+        nm
+          ? `${f.title} — Needs you · ${nm.why}`
+          : f.status === 'draft'
+            ? `${f.title} — ${rowChip(f).title}`
+            : f.title
       }
       glyph={<FeatureProgressIcon f={f} size={12} />}
       words={words}
@@ -400,8 +382,7 @@ export function SidebarFeatureRow({
         upNextProblem(f) && 'text-danger-text',
       )}
       aside={relTime(f.lastActivityAt)}
-      dot={lock !== undefined ? undefined : (rowDot(own) ?? (workerNeed ? 'warning' : undefined))}
-      {...(lock !== undefined ? { mark: lock } : {})}
+      dot={rowDot(own) ?? (workerNeed ? 'warning' : undefined)}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}
       active={active}
       flat={carded}
@@ -458,13 +439,11 @@ function NestedWorkers({
   live,
   done,
   workers,
-  lock,
   feature,
 }: {
   live: readonly WorkerEntry[]
   done: readonly WorkerEntry[]
   workers: FeatureWorkers
-  lock: ReactNode | undefined
   feature: string
 }) {
   // A finished worker whose chat is in front opens its fold.
@@ -477,7 +456,6 @@ function NestedWorkers({
       onSelect={workers.onOpen}
       actions={workers.actionsFor(w)}
       nested
-      {...(lock !== undefined ? { lock } : {})}
     />
   )
   return (
@@ -929,11 +907,6 @@ export function WorkerMark({ worker }: { worker: Pick<WorkerEntry, 'status' | 'o
   }
 }
 
-/** A worker whose question its epic's autopilot answers: between turns, asking nothing of the human. */
-function unasked({ need: _need, ...w }: WorkerEntry): WorkerEntry {
-  return { ...w, status: 'idle' }
-}
-
 /**
  * One worker under its feature's row, drawn exactly as a feature row is one
  * level up: its label as the title (the amber dot at its end when it
@@ -943,33 +916,23 @@ function unasked({ need: _need, ...w }: WorkerEntry): WorkerEntry {
  * are quiet. Its purpose is the hover, and the assignment card's.
  */
 export function SidebarWorkerItem({
-  worker,
+  worker: w,
   active,
   onSelect,
   actions,
   nested = false,
-  lock,
 }: {
   worker: WorkerEntry
   active: boolean
   onSelect: (id: string) => void
   actions: FeatureAction[]
   nested?: boolean
-  /**
-   * Its feature is locked to its epic's autopilot run (workers-nest-under-
-   * their-feature decision 7): this mark where the dot sits, never the dot,
-   * and a question it asks reads as Idle — the epic answers it.
-   */
-  lock?: ReactNode
 }) {
-  const locked = lock !== undefined
-  const w: WorkerEntry = locked && worker.status === 'needs-you' ? unasked(worker) : worker
   const why = workerStatusWhy(w)
   const words = w.old ? OLD_CHAT_WORDS[w.old] : why ? `${WORKER_STATUS_WORDS[w.status]} · ${why}` : WORKER_STATUS_WORDS[w.status]
-  const acts = !w.old && (w.status === 'needs-you' || w.status === 'failed')
-  const asks = !locked && acts
+  const asks = !w.old && (w.status === 'needs-you' || w.status === 'failed')
   // A stalled worker is the lead's to act on (a-worker-never-shows-working-with-nothing-running decision 5): amber words, no dot.
-  const quiet = !!w.old || !(acts || w.status === 'working' || w.status === 'idle' || w.status === 'stalled')
+  const quiet = !!w.old || !(asks || w.status === 'working' || w.status === 'idle' || w.status === 'stalled')
   return (
     <TwoLineRow
       title={w.label}
@@ -984,7 +947,6 @@ export function SidebarWorkerItem({
       )}
       aside={w.updatedAt > 0 ? relTime(w.updatedAt) : undefined}
       {...(asks ? { dot: w.status === 'failed' ? ('danger' as const) : ('warning' as const) } : {})}
-      {...(locked ? { mark: lock } : {})}
       quiet={quiet}
       active={active}
       nested={nested}

@@ -6,7 +6,6 @@ import type { ButtonVariant, StatusTone } from '../../ui'
 import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feature-ui'
 import {
   IconArchive,
-  IconArrowRight,
   IconClock,
   IconGitMerge,
   IconInbox,
@@ -14,7 +13,6 @@ import {
   IconMore,
   IconPlay,
   IconPlus,
-  IconSparkle,
   IconStop,
   IconTerminal,
 } from '../../icons'
@@ -25,7 +23,6 @@ export const ACTION_ICON: Record<ActionKind, ReactNode> = {
   markUpNext: <IconClock />,
   moveToBacklog: <IconInbox />,
   chat: <IconMessage />,
-  selfPlan: <IconSparkle />,
   stopSelfPlan: <IconStop />,
   stopAgent: <IconStop />,
   testDriveStart: <IconPlay />,
