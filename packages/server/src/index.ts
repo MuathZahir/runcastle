@@ -37,14 +37,14 @@ import { startNeedPush } from './services/need-push'
 import { startNeedWatch } from './services/need-watch'
 import { startQuietWatch } from './services/quiet-watch'
 import { startOrchestratorNotifier } from './services/orchestrator-notify'
-import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { serverUrlFor } from './launcher/artifacts'
 import { sweepLeftoverAgents } from './services/leftover-agents'
 import { agentHost } from './threads/types'
 import { resumeCaughtWorkers, resumeDriveReviewWaits, workerPreviews } from './workers/service'
-import { startHourlySweep, stopOwnWorkerContainers, sweepLeftovers } from './workers/sweep'
+import { startHourlySweep, sweepLeftovers } from './workers/sweep'
+import { startContainerLeftovers } from './workers/container-leftovers'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
 import { freezeStaleRuns } from './services/runs'
@@ -147,12 +147,6 @@ export async function startServer(): Promise<void> {
   // showing up in the settings UI (which re-reads the file) and nowhere else.
   followConfigFile(ctx)
 
-  // An older runcastle wrote a project's built image into the MACHINE-WIDE
-  // config, where every project without an image of its own inherits it. Boot is
-  // where that gets named — the alternative is learning it from a round that dies
-  // inside a container built for somebody else's repo. Named, never deleted.
-  warnLegacyGlobalImage(ctx)
-
   // Boot reconciliation: sessions left `launching`/`live` by a previous server
   // process are dead by definition (the PTY registry is in-memory) — end them
   // so the live-session guard recovers. Sessions with a PTY still alive in the registry (`bun --hot` reload) are skipped.
@@ -202,17 +196,14 @@ export async function startServer(): Promise<void> {
     }
   })
 
-  // The leftover sweep (runcastle-cleans-up-after-itself decision 6): worker
-  // sandboxes the last server left running are stopped (their idle stops died
-  // with it), and whatever this install owns and no longer needs is removed;
-  // then once an hour. A copied database's workers and projects are the live
-  // install's, never this server's to sweep.
+  // The leftover sweep (runcastle-cleans-up-after-itself decision 6): whatever
+  // this install owns on the host and no longer needs is removed; then once an
+  // hour. A copied database's workers and projects are the live install's,
+  // never this server's to sweep.
   let stopHourlySweep = (): void => {}
   if (!isDatabaseCopy()) {
     void sweepLeftovers(ctx).then((s) => {
-      if (s.stopped + s.removed + s.failed > 0) {
-        console.log(`leftover sweep: stopped ${s.stopped} sandbox(es) left running, removed ${s.removed} leftover(s), ${s.failed} failed`)
-      }
+      if (s.removed + s.failed > 0) console.log(`leftover sweep: removed ${s.removed} leftover(s), ${s.failed} failed`)
     })
     stopHourlySweep = startHourlySweep(ctx)
   }
@@ -284,7 +275,11 @@ export async function startServer(): Promise<void> {
 
   // Chats and workers a restart cut off mid-turn carry on, now that the server listens for the woken agent (agents-are-woken-only-when-it-matters decision 24).
   // Then a worker it caught before its turn began gets its message again (a-worker-never-shows-working-with-nothing-running decision 9).
-  void wakeCutOffChats(ctx, cutOffChats)
+  // The upgrade step (sandboxes-are-removed decisions 3, 4) runs once per install: a worker still in a container is closed
+  // before anything could wake it, then what the containers left is removed or named. Never on a copied database.
+  const leftoversClosed = isDatabaseCopy() ? Promise.resolve() : startContainerLeftovers(ctx).closed
+  void leftoversClosed
+    .then(() => wakeCutOffChats(ctx, cutOffChats))
     .catch((err) => console.error('could not wake the chats a restart cut off', err))
     .then(() => resumeCaughtWorkers(ctx, new Set(cutOffChats.map((row) => row.id))))
     .catch((err) => console.error('could not resume the workers a restart caught before their turn', err))
@@ -335,12 +330,8 @@ export async function startServer(): Promise<void> {
       killAllTrees: async () => {
         // Threads stopping for shutdown are not a stop of the work: the quiet watch looks away first.
         quietWatch?.stop()
-        await Promise.all([ptyRegistry().killAllTrees(), agentHost(ctx).stopAll('shutdown')])
-      },
-      // Every running worker container this install owns, within the same budget (cleans-up decision 4).
-      stopWorkerContainers: async () => {
         stopHourlySweep()
-        await stopOwnWorkerContainers(ctx)
+        await Promise.all([ptyRegistry().killAllTrees(), agentHost(ctx).stopAll('shutdown')])
       },
       stop: () => {
         void designPass?.stop()

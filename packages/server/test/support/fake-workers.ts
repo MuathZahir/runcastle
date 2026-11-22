@@ -1,20 +1,15 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { PromptDisplay } from '@runcastle/core'
-import type { AgentTransport } from '../../src/threads/host'
+import { LABEL_DOCKERFILE_HASH, type PromptDisplay } from '@runcastle/core'
 import type { AgentHost } from '../../src/threads/types'
-import type { SandboxEngine } from '../../src/workers/engine'
-import type { ContainerFacts, VolumeFacts } from '../../src/workers/ownership'
-import type { PrepareInput } from '../../src/workers/prepare'
-import type { WorkerSetup } from '../../src/workers/setup-copy'
-import { type HandbackNote, type NewSandboxInput, type WorkerLaunch, type WorkerProcessOptions, type WorkerSandbox, permissionHooks, workerLabels, workerLaunch } from '../../src/workers/worker'
+import type { CliResult, CliRun } from '../../src/workers/container-leftovers'
 import { tmpRepo } from '../helpers/fixtures'
 
 /**
- * The fakes interactive workers are tested with (docs/features/interactive-workers):
- * an agent host that only records, and a sandbox engine with no container.
- * The git underneath stays real.
+ * The fakes workers are tested with: an agent host that only records, and a
+ * container CLI with no containers behind it, for the upgrade step that
+ * cleans up what the container era left. The git underneath stays real.
  */
 
 export interface Sent {
@@ -40,206 +35,127 @@ export function fakeHost(): { host: AgentHost; sent: Sent[]; stopped: string[] }
   return { host: host as unknown as AgentHost, sent, stopped }
 }
 
-export type FakeEngine = SandboxEngine & {
-  up: boolean
-  handbacks: Map<string, HandbackNote>
-  /** Worker ids whose agent has started a dev server, as the in-sandbox tool records it. */
-  devServers: Set<string>
-  removed: string[]
-  stopped: string[]
-  /** The containers the engine holds, by name: true while one runs. */
-  held: Map<string, boolean>
-  woken: string[]
-  fetched: string[]
-  /** Containers whose bare copy was given the feature branch's current tip. */
-  refreshed: string[]
-  /** Conversation ids the sandbox holds a record of, for the reload guard. */
-  conversations: Set<string>
-  /** Each copy of the human's setup the engine was asked to make, oldest first. */
-  setups: { container: string; setup: WorkerSetup; guard: boolean }[]
-  /** What each start asked the engine to prepare (the image build, the cache volume), oldest first. */
-  prepares: PrepareInput[]
-  /** When set, the next `prepare` throws it: an image that would not build. */
-  prepareFailure?: string
-  /** What each sandbox was created with, oldest first. */
-  created: NewSandboxInput[]
-  /** The engine's calls in order, by name (`prepare`, `create`, `copyOut`, `remove`). */
-  order: string[]
-  /** Where the agent's record of a conversation id sits inside the fake sandbox; none by default. */
-  conversationPaths: Map<string, string>
-  /** The fingerprint each sandbox holds of its last setup copy, by container. */
-  fingerprints: Map<string, string>
-  /** The files inside the fake sandbox, by container path, for `copyOut`. */
-  sandboxFiles: Map<string, string | Buffer>
-  /** What each agent process was started with. */
-  processes: WorkerProcessOptions[]
-  /** How the real engine would have started each one: its exec argv and session (`workerLaunch`). */
-  launches: WorkerLaunch[]
-  /** Where the agent's process comes from; none by default. */
-  transport?: AgentTransport
-  /** Each held container's labels, as `run` set them (a test may put another install's). */
-  labels: Map<string, Record<string, string>>
-  /** Each held container's mounts, for the unlabelled-worker ownership rule; none by default. */
-  mounts: Map<string, ContainerFacts['mounts']>
-  /** Each held container's writable layer size, for the sweep's freed-space figure. */
-  sizes: Map<string, number>
-  /** The volumes the engine holds. */
-  volumes: VolumeFacts[]
-  /** Volumes removed, oldest first. */
-  removedVolumes: string[]
-  /** When set, `create` throws it after the container runs: a clone, install or setup command that failed. */
-  setupFailure?: string
-  /** When set, `create` waits on it after the container runs, so a test can act while setup is under way. */
-  setupGate?: Promise<void>
+export interface FakeContainer {
+  id: string
+  name: string
+  labels?: Record<string, string>
+  mounts?: { Type: string; Source?: string; Name?: string; Destination: string }[]
+  image?: string
+  size?: number
+  /** Files inside the container, by path, for `cp`. */
+  files?: Record<string, string>
 }
 
-/** A sandbox engine with no container: handbacks are put in by the test, a removal deletes the host branch as the real one does. */
-export function fakeEngine(): FakeEngine {
-  const engine: FakeEngine = {
-    name: 'docker',
-    up: true,
-    handbacks: new Map(),
-    devServers: new Set(),
-    removed: [],
-    stopped: [],
-    held: new Map(),
-    woken: [],
-    fetched: [],
-    refreshed: [],
-    conversations: new Set(),
-    setups: [],
-    prepares: [],
-    created: [],
-    order: [],
-    conversationPaths: new Map(),
-    fingerprints: new Map(),
-    sandboxFiles: new Map(),
-    processes: [],
-    launches: [],
-    labels: new Map(),
-    mounts: new Map(),
-    sizes: new Map(),
+export interface FakeImage {
+  id: string
+  size: number
+  tags: string[]
+  labels: Record<string, string>
+}
+
+export interface FakeVolume {
+  name: string
+  labels?: Record<string, string>
+  size?: number
+}
+
+export interface FakeCli {
+  run: CliRun
+  /** The binary that answers; null for a machine with none. */
+  bin: 'docker' | 'podman' | null
+  containers: FakeContainer[]
+  images: FakeImage[]
+  volumes: FakeVolume[]
+  builders: string[]
+  /** Docker's shared build cache, as `system df` says it. */
+  buildCache?: string
+  /** Every call that reached the answering binary, as one line each. */
+  calls: string[]
+  /** What was removed, as `<kind> <name>`. */
+  removed: string[]
+}
+
+const ok = (stdout = ''): CliResult => ({ code: 0, stdout, stderr: '' })
+const no = (stderr: string): CliResult => ({ code: 1, stdout: '', stderr })
+
+/** A container CLI that answers from the test's lists and removes from them; anything else it is asked fails. */
+export function fakeCli(bin: FakeCli['bin'] = 'docker'): FakeCli {
+  const cli: FakeCli = {
+    bin,
+    containers: [],
+    images: [],
     volumes: [],
-    removedVolumes: [],
-    async available() {
-      return engine.up
-    },
-    prepare: async (input) => {
-      engine.order.push('prepare')
-      engine.prepares.push(input)
-      if (engine.prepareFailure) throw new Error(engine.prepareFailure)
-    },
-    // The worker branch stands in the host repo as a fetch would leave it.
-    create: async (input) => {
-      engine.order.push('create')
-      engine.created.push(input)
-      // The container runs first, labelled as the real `run` labels it; the clone and setup follow.
-      engine.held.set(input.container, true)
-      engine.labels.set(input.container, workerLabels(input.id, input.projectId))
-      input.onContainer?.(input.container, 41001)
-      if (engine.setupGate) await engine.setupGate
-      if (engine.setupFailure) throw new Error(engine.setupFailure)
-      git(input.repoPath, 'branch', input.branch, input.featureBranch)
-      return {
-        id: input.id,
-        engine: input.engine,
-        runtime: input.runtime,
-        container: input.container,
-        repoPath: input.repoPath,
-        featureBranch: input.featureBranch,
-        branch: input.branch,
-        port: 41001,
-        previewUrl: 'http://localhost:41001/',
+    builders: [],
+    calls: [],
+    removed: [],
+    run: async (b, args) => {
+      if (b !== cli.bin) return { code: null, stdout: '', stderr: `${b}: not found` }
+      cli.calls.push(args.join(' '))
+      const [a0, a1] = args
+      const rest = (n: number) => args.slice(n)
+      if (a0 === 'ps') return ok(cli.containers.map((c) => c.id).join('\n'))
+      if (a0 === 'container' && a1 === 'inspect') {
+        const ids = rest(3)
+        return ok(
+          JSON.stringify(
+            cli.containers
+              .filter((c) => ids.includes(c.id))
+              .map((c) => ({ Id: c.id, Name: `/${c.name}`, Image: c.image ?? 'sha256:none', Config: { Labels: c.labels ?? null }, Mounts: c.mounts ?? [], ...(c.size !== undefined ? { SizeRw: c.size } : {}) })),
+          ),
+        )
       }
-    },
-    stop: async (sb) => {
-      engine.stopped.push(sb.container)
-      if (engine.held.has(sb.container)) engine.held.set(sb.container, false)
-    },
-    wake: async (sb) => {
-      engine.woken.push(sb.container)
-      if (engine.held.has(sb.container)) engine.held.set(sb.container, true)
-      return true
-    },
-    inspect: async (name) => (engine.held.has(name) ? facts(name) : undefined),
-    listContainers: async () => [...engine.held.keys()].map(facts),
-    listVolumes: async () => [...engine.volumes],
-    removeContainer: async (name) => {
-      engine.removed.push(name)
-      engine.held.delete(name)
-    },
-    stopContainers: async (names) => {
-      for (const name of names) {
-        engine.stopped.push(name)
-        if (engine.held.has(name)) engine.held.set(name, false)
+      if (a0 === 'images') return ok(cli.images.filter((i) => LABEL_DOCKERFILE_HASH in i.labels).map((i) => i.id).join('\n'))
+      if (a0 === 'image' && a1 === 'inspect') {
+        const ids = rest(4)
+        return ok(cli.images.filter((i) => ids.includes(i.id)).map((i) => `${i.id}\t${i.size}\t${JSON.stringify(i.tags)}\t${JSON.stringify(i.labels)}`).join('\n'))
       }
-    },
-    removeStaleImages: async () => ({ removed: [], freedBytes: 0, failed: [] }),
-    removeVolume: async (name) => {
-      engine.removedVolumes.push(name)
-      engine.volumes = engine.volumes.filter((v) => v.name !== name)
-    },
-    // Like the real one, removing what is already gone is no error.
-    remove: async (sb: WorkerSandbox) => {
-      engine.order.push('remove')
-      engine.removed.push(sb.container)
-      engine.held.delete(sb.container)
-      if (git(sb.repoPath, 'branch', '--list', sb.branch)) git(sb.repoPath, 'branch', '-D', sb.branch)
-    },
-    takeHandback: async (sb) => {
-      const note = engine.handbacks.get(sb.id)
-      engine.handbacks.delete(sb.id)
-      return note
-    },
-    devServerStarted: async (sb) => engine.devServers.has(sb.id),
-    fetchBranch: async (sb) => {
-      engine.fetched.push(sb.branch)
-    },
-    refreshFeatureBranch: async (sb) => {
-      engine.refreshed.push(sb.container)
-    },
-    conversationPath: async (_sb, conversationId) => engine.conversationPaths.get(conversationId),
-    conversationOnDisk: async (_sb, conversationId) => engine.conversations.has(conversationId),
-    copySetup: async (sb, setup, fingerprint, opts) => {
-      engine.setups.push({ container: sb.container, setup, guard: opts?.guard === true })
-      engine.fingerprints.set(sb.container, fingerprint)
-    },
-    setupFingerprint: async (sb) => engine.fingerprints.get(sb.container),
-    // The sandbox's files are the test's: `sandboxFiles` maps a container path to its body.
-    copyOut: async (_sb, containerPath, hostPath) => {
-      engine.order.push('copyOut')
-      const body = engine.sandboxFiles.get(containerPath)
-      if (body === undefined) throw new Error(`no file ${containerPath} in the fake sandbox`)
-      mkdirSync(dirname(hostPath), { recursive: true })
-      writeFileSync(hostPath, body)
-    },
-    process: async (sb, brief, opts) => {
-      engine.processes.push(opts)
-      const launch = workerLaunch(sb, brief, opts)
-      engine.launches.push(launch)
-      if (!engine.transport) throw new Error('no agent in these tests')
-      // Starting the agent wakes its sandbox first, as the real engine does.
-      engine.woken.push(sb.container)
-      if (engine.held.has(sb.container)) engine.held.set(sb.container, true)
-      // The session opens as the real engine's does: in the sandbox, in its runtime's automatic mode.
-      return {
-        ...(await engine.transport({} as never, {} as never)),
-        session: launch.session,
-        ...permissionHooks(opts.onMode, sb.runtime),
+      if (a0 === 'volume' && a1 === 'ls') return ok(cli.volumes.map((v) => v.name).join('\n'))
+      if (a0 === 'volume' && a1 === 'inspect') return ok(JSON.stringify(cli.volumes.filter((v) => rest(2).includes(v.name)).map((v) => ({ Name: v.name, Labels: v.labels ?? null }))))
+      if (a0 === 'system' && a1 === 'df' && args[2] === '-v') {
+        return ok(JSON.stringify({ Volumes: cli.volumes.filter((v) => v.size !== undefined).map((v) => ({ Name: v.name, Size: `${v.size}B` })) }))
       }
+      if (a0 === 'system' && a1 === 'df') return ok(cli.buildCache ? JSON.stringify({ Type: 'Build Cache', Size: cli.buildCache }) : '')
+      if (a0 === 'buildx' && a1 === 'ls') return ok(cli.builders.join('\n'))
+      if (a0 === 'cp') {
+        const [from = '', to = ''] = rest(1)
+        const [name, inside = ''] = from.split(':')
+        const c = cli.containers.find((x) => x.name === name)
+        if (!c) return no(`No such container: ${name}`)
+        for (const [path, body] of Object.entries(c.files ?? {})) {
+          if (!path.startsWith(`${inside}/`)) continue
+          const target = join(to, inside.split('/').at(-1) ?? '', path.slice(inside.length + 1))
+          mkdirSync(dirname(target), { recursive: true })
+          writeFileSync(target, body)
+        }
+        return ok()
+      }
+      if (a0 === 'rm') {
+        const name = args[2] ?? ''
+        if (!cli.containers.some((c) => c.name === name)) return no(`Error: No such container: ${name}`)
+        cli.containers = cli.containers.filter((c) => c.name !== name)
+        cli.removed.push(`container ${name}`)
+        return ok()
+      }
+      if (a0 === 'rmi') {
+        const tags = rest(1)
+        cli.images = cli.images.filter((i) => !(i.tags.some((t) => tags.includes(t)) || tags.includes(i.id)))
+        cli.removed.push(`image ${tags.join(' ')}`)
+        return ok()
+      }
+      if (a0 === 'volume' && a1 === 'rm') {
+        cli.volumes = cli.volumes.filter((v) => v.name !== args[2])
+        cli.removed.push(`volume ${args[2]}`)
+        return ok()
+      }
+      if (a0 === 'buildx' && a1 === 'rm') {
+        cli.builders = cli.builders.filter((n) => n !== args[2])
+        cli.removed.push(`builder ${args[2]}`)
+        return ok()
+      }
+      return no(`unknown command: ${args.join(' ')}`)
     },
   }
-  function facts(name: string): ContainerFacts {
-    const size = engine.sizes.get(name)
-    return {
-      name,
-      running: engine.held.get(name) === true,
-      labels: engine.labels.get(name) ?? {},
-      mounts: engine.mounts.get(name) ?? [],
-      ...(size !== undefined ? { sizeBytes: size } : {}),
-    }
-  }
-  return engine
+  return cli
 }
 
 export function git(repo: string, ...args: string[]): string {
@@ -259,7 +175,7 @@ export function initRepo(slug: string): string {
   return repo
 }
 
-/** Commit `file` on `branch` (as the worker would, its commits then fetched to the host). */
+/** Commit `file` on `branch`, leaving `main` checked out. */
 export function commitOn(repo: string, branch: string, file: string, body: string, subject: string): void {
   git(repo, 'checkout', '-q', '-B', branch, branch)
   writeFileSync(join(repo, file), body)
