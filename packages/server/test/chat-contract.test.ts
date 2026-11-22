@@ -32,6 +32,7 @@ describe('chat contract', () => {
       'notify_human',
       'read_feature_doc',
       'record_event',
+      'report_finding',
       'resolve_finding',
       'send_back_worker',
       'set_design_state',

@@ -69,7 +69,7 @@ describe('the epic naming pass', () => {
     const recent = chat('people should pay with stripe', NOW - HOUR)
     const old = chat('an old question', NOW - 48 * HOUR)
     const holding = chat('the login rework', NOW - 48 * HOUR)
-    seedFeature(ctx, projectId, { slug: 'login', lockedTo: holding, status: 'active' })
+    seedFeature(ctx, projectId, { slug: 'login', chatId: holding, status: 'active' })
     const epic = chat('already an epic', NOW - HOUR, [{ type: 'title', title: 'Search', by: 'orchestrator' }])
     const renamed = chat('the human named it', NOW - HOUR, [{ type: 'title', title: 'Mine', renamed: true }])
     const legacy = chat('renamed long ago', NOW - HOUR)

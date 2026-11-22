@@ -134,7 +134,6 @@ describe('repeat feature reads', () => {
       'title',
       'status',
       'need',
-      'autopilot',
       'involvement',
       'humanTypedAt',
       'workerCounts',

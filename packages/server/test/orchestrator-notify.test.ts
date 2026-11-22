@@ -11,7 +11,6 @@ import {
   announceMerge,
   type MergeNews,
   ORCHESTRATOR_GATHER_MS,
-  orchestratorHoldsFor,
   orchestratorLineFor,
   orchestratorNewsFor,
   orchestratorTargetFor,
@@ -28,9 +27,10 @@ import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
- * What a thread hears from runcastle (`agents-are-woken-only-when-it-matters`
- * decisions 19, 23): only machine events about its own work, each waking it.
- * Everything else comes from a lead's `hand_back`.
+ * What an epic hears from runcastle (`autopilot-retires` decisions 2, 9): every
+ * merge of its features, and a dependent that could not start or whose lead
+ * could not launch, each waking it. The lead's own trouble comes by
+ * `hand_back`; nothing else reaches it.
  */
 
 function event(type: string, data?: Record<string, unknown>, extra: Partial<EventRow> = {}): EventRow {
@@ -50,27 +50,22 @@ const held: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', 
 const unheld: NotifyState = { feature: { slug: 'export-csv', title: 'Export CSV', holderId: null } }
 const byOrchestrator = { actor: 'orchestrator' }
 
-describe('orchestratorLineFor — the orchestrator’s own work', () => {
+describe('orchestratorLineFor — trouble that crosses features', () => {
   const cases: [string, EventRow, string][] = [
     [
-      'a drive it started failing to start',
-      event('testdrive.dev_failed', byOrchestrator, { message: 'dev server failed to start: boom' }),
-      '[runcastle] export-csv the drive you started failed: dev server failed to start: boom. Read it with get_feature_context({ slug: "export-csv" }).',
-    ],
-    [
-      'a draft it holds starting by itself',
-      event('feature.started', { autoStartedBy: 'core' }),
-      '[runcastle] export-csv started by itself because core shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its "Involve me in" is Everything: then hand the human its chat.',
-    ],
-    [
-      'a draft it holds not starting',
+      'a dependent not starting',
       event('feature.autostart.failed', undefined, { message: "couldn't start by itself: boom" }),
       `[runcastle] export-csv couldn't start by itself: boom. Read it with get_feature_context({ slug: "export-csv" }).`,
     ],
     [
-      'its message not reaching a lead',
-      event('lead.wake_failed', byOrchestrator, { message: 'could not reach the agent’s chat: no runtime' }),
-      '[runcastle] export-csv could not wake its agent, so your message has not reached it yet (could not reach the agent’s chat: no runtime). Read it with get_feature_context({ slug: "export-csv" }).',
+      'a dependent skipped for its bases',
+      event('feature.autostart.skipped', undefined, { message: "didn't start by itself: its dependencies merged into different branches" }),
+      `[runcastle] export-csv didn't start by itself: its dependencies merged into different branches. Read it with get_feature_context({ slug: "export-csv" }).`,
+    ],
+    [
+      'a dependent whose lead could not launch',
+      event('feature.autostart.failed', { launch: true }, { message: 'started by itself, but its lead could not launch: no runtime' }),
+      '[runcastle] export-csv started by itself, but its lead could not launch: no runtime. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
   ]
 
@@ -78,21 +73,12 @@ describe('orchestratorLineFor — the orchestrator’s own work', () => {
     expect(orchestratorLineFor(e, held)).toBe(line)
   })
 
-  it.each(cases)('%s says nothing on a feature it does not hold', (_name, e) => {
+  it.each(cases)('%s says nothing for a feature with no epic', (_name, e) => {
     expect(orchestratorLineFor(e, unheld)).toBeNull()
-  })
-
-  it('says nothing of a drive or a failed wake the orchestrator did not cause', () => {
-    expect(orchestratorLineFor(event('testdrive.dev_failed', undefined, { message: 'boom' }), held)).toBeNull()
-    expect(orchestratorLineFor(event('lead.wake_failed', undefined, { message: 'boom' }), held)).toBeNull()
-  })
-
-  it('says nothing of a draft that was started by hand', () => {
-    expect(orchestratorLineFor(event('feature.started', {}), held)).toBeNull()
   })
 })
 
-describe('orchestratorLineFor — what no longer reaches it (decisions 19, 20, 23)', () => {
+describe('orchestratorLineFor — what never reaches it (decision 9)', () => {
   const gone: [string, EventRow][] = [
     ['a lead waiting for the human', event('feature.waiting', { why: 'start round 1?' })],
     ['a lead declaring ready', event('feature.ready_declared', { scenario: 'x' })],
@@ -110,6 +96,9 @@ describe('orchestratorLineFor — what no longer reaches it (decisions 19, 20, 2
     ['the human’s chat going quiet', event('session.process_stopped', { sessionId: 's', startedBy: 'human' })],
     ['the human starting a drive', event('testdrive.started')],
     ['the human having it plan itself', event('session.launching', { sessionId: 's', purpose: 'self-plan' })],
+    ['a dependent starting by itself', event('feature.started', { autoStartedBy: 'core' })],
+    ['a drive the orchestrator started failing', event('testdrive.dev_failed', byOrchestrator)],
+    ['its message not reaching a lead', event('lead.wake_failed', byOrchestrator)],
   ]
 
   it.each(gone)('%s says nothing', (_name, e) => {
@@ -121,7 +110,7 @@ describe('orchestratorLineFor — what no longer reaches it (decisions 19, 20, 2
   })
 })
 
-describe('a merge, said to the feature’s epic (the-epic-hears-when-its-features-merge)', () => {
+describe('a merge, said to the feature’s epic (decision 2)', () => {
   const merge = (overrides: Partial<MergeNews> = {}): NotifyState => ({
     feature: {
       slug: 'export-csv',
@@ -135,36 +124,64 @@ describe('a merge, said to the feature’s epic (the-epic-hears-when-its-feature
         sha: '0123456789abcdef0123456789abcdef01234567',
         outcome: 'docs/features/export-csv/outcome.md',
         siblings: [
-          { slug: 'import-csv', title: 'Import CSV', owner: 'the human' },
-          { slug: 'phone-cut', title: 'Phone cut', owner: 'this epic, on autopilot' },
+          { slug: 'import-csv', title: 'Import CSV' },
+          { slug: 'phone-cut', title: 'Phone cut' },
         ],
-        wakes: true,
+        reviewSummary: null,
+        decided: [],
+        dismissed: [],
         ...overrides,
       },
     },
   })
   const shipped = event('feature.shipped', { base: 'main' })
 
-  it('lists the siblings in progress and where to read the change when it wakes', () => {
+  it('lists the siblings in progress and where to read the change', () => {
     expect(orchestratorLineFor(shipped, merge())).toBe(
       [
         '[runcastle] export-csv merged into main by the human.',
         'In progress in this epic:',
-        '- import-csv: Import CSV (run by the human)',
-        '- phone-cut: Phone cut (run by this epic, on autopilot)',
+        '- import-csv: Import CSV',
+        '- phone-cut: Phone cut',
         'Read the change: the merge commit 0123456789ab and docs/features/export-csv/outcome.md.',
       ].join('\n'),
     )
   })
 
-  it('says who merged it: the human, this chat, or another chat', () => {
+  it('carries the review summary, the decisions made without the human and the defects dismissed', () => {
+    const line = orchestratorLineFor(
+      shipped,
+      merge({
+        siblings: [],
+        outcome: 'docs/features/export-csv/brief.md',
+        reviewSummary: '## Review summary\n\n- Shipped: 2026-11-22\n- No review ran\n',
+        decided: [{ n: 4, title: 'Dates in ISO' }],
+        dismissed: [{ title: 'Header repeats', severity: 'low', location: 'export.ts:12', resolutionNote: 'out of scope' }],
+      }),
+    )
+    expect(line).toBe(
+      [
+        '[runcastle] export-csv merged into main by the human.',
+        'Review summary:',
+        '- Shipped: 2026-11-22',
+        '- No review ran',
+        'Decided without the human:',
+        '- 4. Dates in ISO',
+        'Defects dismissed, not fixed:',
+        '- Header repeats (low, export.ts:12): out of scope',
+        'Nothing of this epic is in progress, so there is nothing to check.',
+      ].join('\n'),
+    )
+  })
+
+  it('says who merged it: the human, this chat, another chat, or runcastle', () => {
     expect(orchestratorLineFor(shipped, merge({ by: 'this chat' }))).toMatch(/^\[runcastle\] export-csv merged into main by this chat\.\n/)
     expect(orchestratorLineFor(shipped, merge({ by: 'the chat "Phone cut"' }))).toMatch(/ by the chat "Phone cut"\.\n/)
   })
 
   it('says there is nothing to check when nothing of the epic is in progress', () => {
-    expect(orchestratorLineFor(shipped, merge({ siblings: [], wakes: false }))).toBe(
-      '[runcastle] export-csv merged into main by the human. Nothing of this epic is in progress, so there is nothing to check.',
+    expect(orchestratorLineFor(shipped, merge({ siblings: [] }))).toBe(
+      '[runcastle] export-csv merged into main by the human.\nNothing of this epic is in progress, so there is nothing to check.',
     )
   })
 
@@ -174,24 +191,14 @@ describe('a merge, said to the feature’s epic (the-epic-hears-when-its-feature
     )
   })
 
-  it('shows the human a done row saying who merged it, woken or held', () => {
-    for (const wakes of [true, false]) {
-      expect(orchestratorNewsFor(shipped, merge({ wakes }))).toEqual({ featureId: 'feat', title: 'Export CSV', tone: 'done', words: 'Merged by you' })
-    }
+  it('shows the human a done row saying who merged it', () => {
+    expect(orchestratorNewsFor(shipped, merge())).toEqual({ featureId: 'feat', title: 'Export CSV', tone: 'done', words: 'Merged by you' })
     expect(orchestratorNewsFor(shipped, merge({ by: 'this chat', byName: 'Phone cut' }))).toMatchObject({ words: 'Merged by Phone cut' })
   })
 
-  it('goes to the epic, not the holder', () => {
-    const state = merge()
-    state.feature!.holderId = 'holder'
-    expect(orchestratorTargetFor(shipped, state)).toBe('epic')
-    expect(orchestratorTargetFor(event('feature.started', { autoStartedBy: 'core' }), state)).toBe('holder')
-  })
-
-  it('is held exactly when the merge does not wake the epic', () => {
-    expect(orchestratorHoldsFor(shipped, merge({ wakes: true }))).toBe(false)
-    expect(orchestratorHoldsFor(shipped, merge({ wakes: false }))).toBe(true)
-    expect(orchestratorHoldsFor(event('feature.started', { autoStartedBy: 'core' }), held)).toBe(false)
+  it('goes to the epic', () => {
+    expect(orchestratorTargetFor(shipped, merge())).toBe('epic')
+    expect(orchestratorTargetFor(event('feature.autostart.failed'), held)).toBe('thread')
   })
 
   it('says nothing of a merge with no epic to tell', () => {
@@ -251,9 +258,9 @@ describe('the notifier', () => {
     return row.id
   }
 
-  /** A feature on autopilot in the epic `holder`. */
-  function heldFeature(holder: string, slug = 'demo', overrides: Partial<Feature> & { lockedTo?: string } = {}): Feature {
-    return seedFeature(ctx, projectId, { slug, lockedTo: holder, ...overrides })
+  /** A feature of the epic `epic`. */
+  function epicFeature(epic: string, slug = 'demo', overrides: Partial<Feature> = {}): Feature {
+    return seedFeature(ctx, projectId, { slug, chatId: epic, ...overrides })
   }
 
   /** The lines each runcastle prompt said into the thread, one prompt per entry. */
@@ -267,53 +274,49 @@ describe('the notifier', () => {
 
   const settle = () => new Promise((r) => setTimeout(r, ORCHESTRATOR_GATHER_MS + 50))
 
-  it('says its own work’s event into the holder, starting it', async () => {
+  it('says a dependent that could not start into its epic, starting it', async () => {
     const id = projectSession()
     markSessionEnded(ctx, id)
-    const feature = heldFeature(id, 'export-csv')
+    const feature = epicFeature(id, 'export-csv')
 
-    emit(ctx, feature.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'core' } })
+    emit(ctx, feature.id, { type: 'feature.autostart.failed', message: 'started by itself, but its lead could not launch: no runtime' })
 
     const [lines] = await promptLines(id, 1)
-    expect(lines[0]).toMatch(/^\[runcastle\] export-csv started by itself because core shipped/)
-    expect(promptsOf(id)[0]).toMatchObject({ display: { news: [{ featureId: feature.id, events: [{ words: 'Started by itself after core shipped' }] }] } })
+    expect(lines[0]).toMatch(/^\[runcastle\] export-csv started by itself, but its lead could not launch: no runtime/)
+    expect(promptsOf(id)[0]).toMatchObject({ display: { news: [{ featureId: feature.id, events: [{ tone: 'failed' }] }] } })
     await vi.waitFor(() => expect(host.isRunning(id)).toBe(true))
   })
 
-  it('says two of its events ending together as one prompt with two lines', async () => {
+  it('says two events ending together as one prompt with two lines', async () => {
     const id = projectSession()
-    const feature = heldFeature(id, 'snake-core')
+    const a = epicFeature(id, 'snake-core')
+    const b = epicFeature(id, 'snake-ui')
 
-    runAsActor('orchestrator', () => {
-      emit(ctx, feature.id, { type: 'lead.wake_failed', message: 'no runtime' })
-      emit(ctx, feature.id, { type: 'testdrive.dev_failed', message: 'boom' })
-    })
+    emit(ctx, a.id, { type: 'feature.autostart.failed', message: 'no runtime' })
+    emit(ctx, b.id, { type: 'feature.autostart.skipped', message: 'different bases' })
 
     expect((await promptLines(id, 1))[0]).toHaveLength(2)
   })
 
-  it('stays quiet about everything else, and about a feature nobody holds', async () => {
+  it('stays quiet about everything else, and about a feature with no epic', async () => {
     const id = projectSession()
-    const mine = heldFeature(id, 'mine')
+    const mine = epicFeature(id, 'mine')
     const nobodys = seedFeature(ctx, projectId, { slug: 'nobodys' })
 
     emit(ctx, mine.id, { type: 'feature.ready_declared', message: 'ready' })
-    emit(ctx, mine.id, { type: 'run.finished', message: 'x', data: { status: 'failed' } })
+    emit(ctx, mine.id, { type: 'feature.started', message: 'x', data: { autoStartedBy: 'core' } })
     emit(ctx, mine.id, { type: 'feature.waiting', message: 'x', data: { why: 'start round 1?' } })
-    emit(ctx, nobodys.id, { type: 'feature.started', message: 'x', data: { autoStartedBy: 'core' } })
+    runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'testdrive.dev_failed', message: 'boom' }))
+    emit(ctx, nobodys.id, { type: 'feature.autostart.failed', message: 'boom' })
     emitProject(ctx, projectId, { type: 'project.renamed', message: 'x' })
 
     await settle()
     expect(promptsOf(id)).toEqual([])
   })
 
-  it('says nothing more once a feature has shipped, except that its drafts could not start', async () => {
+  it('says that a shipped feature’s drafts could not start', async () => {
     const id = projectSession()
-    const done = heldFeature(id, 'done', { status: 'shipped' })
-
-    runAsActor('orchestrator', () => emit(ctx, done.id, { type: 'testdrive.dev_failed', message: 'boom' }))
-    await settle()
-    expect(promptsOf(id)).toEqual([])
+    const done = epicFeature(id, 'done', { status: 'shipped' })
 
     emit(ctx, done.id, { type: 'feature.autostart.failed', message: "couldn't start up-next dependents: boom" })
     expect(await promptLines(id, 1)).toEqual([
@@ -321,35 +324,25 @@ describe('the notifier', () => {
     ])
   })
 
-  it('holds a batch whose every line is held, and wakes one with any waking line', async () => {
+  it('wakes the epic for a merge even when nothing of it is in progress', async () => {
     const epic = projectSession()
     markSessionEnded(ctx, epic)
-    const merged = heldFeature(epic, 'merged', { lockedTo: undefined, chatId: epic, status: 'shipped' })
+    const merged = epicFeature(epic, 'merged', { status: 'shipped' })
     const shipped = emit(ctx, merged.id, { type: 'feature.shipped', message: 'merged to main', data: { base: 'main' } })
 
     announceMerge(ctx, shipped.id)
-    await promptLines(epic, 1)
+    const [lines] = await promptLines(epic, 1)
+    expect(lines?.at(-1)).toMatch(/nothing to check\.$/)
     expect(promptsOf(epic)[0]).toMatchObject({
-      held: true,
       display: { news: [{ featureId: merged.id, events: [{ tone: 'done', words: 'Merged by you' }] }] },
     })
-    await settle()
-    expect(host.isRunning(epic)).toBe(false)
-
-    // A draft is no sibling, so the merge line stays held; its own line wakes.
-    const other = heldFeature(epic, 'other', { status: 'draft' })
-    announceMerge(ctx, shipped.id)
-    emit(ctx, other.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'merged' } })
-    const lines = await promptLines(epic, 2)
-    expect(lines[1]).toHaveLength(2)
-    expect(lines[1]?.[0]).toMatch(/nothing to check\.$/)
-    expect(promptsOf(epic)[1]?.held).toBeUndefined()
+    expect(promptsOf(epic)[0]?.held).toBeUndefined()
     await vi.waitFor(() => expect(host.isRunning(epic)).toBe(true))
   })
 
   it('says nothing of a merge as its live event arrives: only the merge flow announces it', async () => {
     const epic = projectSession()
-    const merged = heldFeature(epic, 'merged', { lockedTo: undefined, chatId: epic, status: 'shipped' })
+    const merged = epicFeature(epic, 'merged', { status: 'shipped' })
     emit(ctx, merged.id, { type: 'feature.shipped', message: 'merged to main', data: { base: 'main' } })
     await settle()
     expect(promptsOf(epic)).toEqual([])
@@ -358,9 +351,9 @@ describe('the notifier', () => {
   it('never lets a failure reach the service that emitted', () => {
     const id = projectSession()
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const feature = heldFeature(id)
+    const feature = epicFeature(id)
     ctx.db.delete(sessions).run()
 
-    expect(() => emit(ctx, feature.id, { type: 'feature.started', message: 'x', data: { autoStartedBy: 'core' } })).not.toThrow()
+    expect(() => emit(ctx, feature.id, { type: 'feature.autostart.failed', message: 'x' })).not.toThrow()
   })
 })

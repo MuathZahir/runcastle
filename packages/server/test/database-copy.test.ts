@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { newId } from '@runcastle/core'
+import { AUTOSTART_FAILED, newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { pushSubscriptions, runs, sessions } from '../src/db/schema'
@@ -198,8 +198,8 @@ describe('background messages on a copy', () => {
   it('tells no holder the drive has not started', async () => {
     const holder = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
     markSessionEnded(ctx, holder.id)
-    const f = seedFeature(ctx, projectId, { slug: 'held-copy', lockedTo: holder.id })
-    const event = emit(ctx, f.id, { type: 'feature.started', message: 'started', data: { autoStartedBy: 'core' } })
+    const f = seedFeature(ctx, projectId, { slug: 'held-copy', chatId: holder.id })
+    const event = emit(ctx, f.id, { type: AUTOSTART_FAILED, message: 'its lead could not launch', data: { error: 'no agent' } })
 
     notifyOrchestrator(ctx, event.id)
     await new Promise((r) => setTimeout(r, ORCHESTRATOR_GATHER_MS + 50))

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Feature, SessionRow } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
@@ -11,7 +11,6 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import {
-  activeSessionsForFeature,
   createSessionRow,
   getSessionRow,
   markSessionEnded,
@@ -20,11 +19,8 @@ import {
 import {
   toolAddToBrief,
   withBriefSection,
-  toolDrive,
   toolMergeFeature,
-  toolPlanFeature,
   toolStartFeature,
-  toolStopFeatureRun,
 } from '../src/mcp/orchestrator-tools'
 import {
   buildMcpServer,
@@ -34,12 +30,8 @@ import {
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { featureDocPath } from '../src/services/feature-docs'
-import { deliverToLead } from '../src/services/lead-delivery'
-import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
-import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import {
   __resetTestDriveState,
-  activeTestDriveFeatureId,
   createFeatureBranch,
   ensureTalkWorktree,
 } from '../src/services/git'
@@ -50,10 +42,10 @@ import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
- * The orchestrator's acting tools (`whole-cuts-plan-themselves` decisions 4, 6,
- * 8, 16; `one-orchestrator-no-mode` decision 2): each reaches the service under
- * the human's button on any feature of the project, passes that service's own
- * refusals through, and refuses through the one shared gate.
+ * The orchestrator's acting tools (`whole-cuts-plan-themselves` decisions 4, 8,
+ * 16; `autopilot-retires` decisions 4 and 12): each reaches the service under
+ * the human's button, passes that service's own refusals through, and acts
+ * only on its own epic's features, a brief edit only on a draft.
  */
 
 
@@ -102,12 +94,9 @@ describe('the orchestrator’s acting tools', () => {
     return getSessionRow(ctx, row.id) as SessionRow
   }
 
-  /**
-   * A started feature with its branch cut — one the orchestrator did not
-   * create, but runs on autopilot: acting tools refuse a feature off autopilot.
-   */
-  async function started(slug: string, overrides: Partial<Feature> & { lockedTo?: string } = {}): Promise<Feature> {
-    const f = seedFeature(ctx, projectId, { slug, lockedTo: owner, ...overrides })
+  /** A started feature with its branch cut, of the newest orchestrator's epic. */
+  async function started(slug: string, overrides: Partial<Feature> = {}): Promise<Feature> {
+    const f = seedFeature(ctx, projectId, { slug, chatId: owner, ...overrides })
     await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return f
@@ -125,10 +114,7 @@ describe('the orchestrator’s acting tools', () => {
 
   describe('the shared gate', () => {
     const calls: Record<string, (ctx: AppCtx, s: SessionRow, slug: string) => unknown> = {
-      start_feature: (c, s, slug) => toolStartFeature(c, s, { slug }),
-      plan_feature: (c, s, slug) => toolPlanFeature(c, s, { slug }, { spawn: false }),
-      stop_feature_run: (c, s, slug) => toolStopFeatureRun(c, s, { slug }),
-      drive: (c, s, slug) => toolDrive(c, s, { slug, action: 'start' }),
+      start_feature: (c, s, slug) => toolStartFeature(c, s, { slug }, { spawn: false }),
       merge_feature: (c, s, slug) => toolMergeFeature(c, s, { slug }),
       add_to_brief: (c, s, slug) => toolAddToBrief(c, s, { slug, text: 'x' }),
     }
@@ -145,14 +131,6 @@ describe('the orchestrator’s acting tools', () => {
         expect(await refusal(() => call(ctx, ended, 'humans'))).toMatch(/not the orchestrator chat runcastle is running/)
       })
     }
-
-    it('drive without a slug refuses through the session gate', async () => {
-      const f = seedFeature(ctx, projectId, { slug: 'humans' })
-      const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
-      expect(await refusal(() => toolDrive(ctx, chat, { action: 'start' }))).toMatch(
-        /only the orchestrator/,
-      )
-    })
   })
 
   it('start_feature starts a draft it did not create, and passes Start’s refusal through', async () => {
@@ -160,14 +138,18 @@ describe('the orchestrator’s acting tools', () => {
     const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', chatId: session.id })
     cleanup.push(worktreeDir(projectId, 'parked'))
 
-    const out = await toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' })
-    expect(out).toEqual({ slug: 'parked', status: 'active', baseBranch: 'main' })
+    const out = await toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }, { spawn: false })
+    cleanup.push(sessionDir(out.sessionId))
+    expect(out).toEqual({ slug: 'parked', status: 'active', baseBranch: 'main', sessionId: out.sessionId, lead: 'asksFirst' })
+    expect(getSessionRow(ctx, out.sessionId)).toMatchObject({ featureId: draft.id, kind: 'chat' })
+    expect(getSessionRow(ctx, out.sessionId)?.purpose).toBeFalsy()
     expect(getFeatureRow(ctx, draft.id).status).toBe('active')
     const started = listAfter(ctx, draft.id).find((e) => e.type === 'feature.started')
     expect(started?.data).toMatchObject({ actor: 'orchestrator' })
 
-    expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked' }))).toMatch(
-      /not in the backlog/,
+    markSessionLive(ctx, out.sessionId, { ccSessionId: 'cc-lead' })
+    expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked' }, { spawn: false }))).toMatch(
+      /its lead is running.*send_to_feature/,
     )
   })
 
@@ -191,7 +173,7 @@ describe('the orchestrator’s acting tools', () => {
       cleanup.push(worktreeDir(projectId, 'parked'))
       await orchestratorCommits('drive-setup.ts', '// prepared\n')
 
-      await toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' })
+      await toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }, { spawn: false })
 
       expect(await g.raw(['show', 'feature/parked:drive-setup.ts'])).toBe('// prepared\n')
       expect(await g.raw(['show', 'main:drive-setup.ts'])).toBe('// prepared\n')
@@ -203,7 +185,7 @@ describe('the orchestrator’s acting tools', () => {
       await orchestratorCommits('drive-setup.ts', '// prepared\n')
       await g.checkoutLocalBranch('elsewhere')
 
-      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }))).toMatch(
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }, { spawn: false }))).toMatch(
         /could not land first.*is on elsewhere/,
       )
       expect(getFeatureRow(ctx, draft.id).status).toBe('draft')
@@ -217,120 +199,58 @@ describe('the orchestrator’s acting tools', () => {
       writeFileSync(join(repoPath, 'README.md'), 'the human\n')
       await g.add(['README.md']).commit('human edit')
 
-      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }))).toMatch(
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' }, { spawn: false }))).toMatch(
         /conflict with main/,
       )
       expect(getFeatureRow(ctx, draft.id).status).toBe('draft')
     })
   })
 
-  it('plan_feature launches a headless self-planning run, and stop_feature_run ends it', async () => {
-    const session = orchestrator()
-    const f = await started('planner')
-
-    const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'planner' }, { spawn: false })
-    cleanup.push(sessionDir(sessionId))
-    const run = getSessionRow(ctx, sessionId)
-    expect(run).toMatchObject({ featureId: f.id, kind: 'chat', purpose: 'self-plan' })
-
-    expect(toolStopFeatureRun(ctx, session, { slug: 'planner' })).toMatchObject({ sessionId, ok: true })
-    expect(activeSessionsForFeature(ctx, f.id)).toEqual([])
-    expect(await refusal(() => toolStopFeatureRun(ctx, session, { slug: 'planner' }))).toMatch(
-      /no headless run going/,
-    )
-  })
-
-  it('plan_feature passes the self-plan launch’s own refusal through', async () => {
-    const session = orchestrator()
-    await started('built', { status: 'shipped' })
-    expect(
-      await refusal(() => toolPlanFeature(ctx, session, { slug: 'built' }, { spawn: false })),
-    ).toMatch(/is shipped/)
-  })
-
   /**
-   * epics-on-autopilot decision 15: off autopilot the epic creates, starts and
-   * plans the features it cut, and nothing more; another epic's are refused.
+   * `autopilot-retires` decision 12: one rule. The epic acts only on its own
+   * features, and edits a brief only while the feature is a draft.
    */
-  describe('the epic’s own feature, off autopilot', () => {
-    it('may be started and planned; every other acting tool is refused, pointing at its chat', async () => {
+  describe('one rule: its own epic’s features', () => {
+    it('starts a started feature whose lead is not running, by its level', async () => {
       const session = orchestrator()
-      const f = seedFeature(ctx, projectId, { slug: 'auto', status: 'draft', baseBranch: null, chatId: session.id })
-      cleanup.push(worktreeDir(projectId, 'auto'))
+      const f = await started('resumed', { involvement: 'resultOnly' })
 
-      expect(await toolStartFeature(ctx, session, { slug: 'auto', baseBranch: 'main' })).toMatchObject({ status: 'active' })
-      const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'auto' }, { spawn: false })
-      cleanup.push(sessionDir(sessionId))
-      expect(getSessionRow(ctx, sessionId)).toMatchObject({ featureId: f.id, purpose: 'self-plan' })
-
-      for (const call of [
-        () => toolStopFeatureRun(ctx, session, { slug: 'auto' }),
-        () => toolAddToBrief(ctx, session, { slug: 'auto', text: 'x' }),
-        () => toolMergeFeature(ctx, session, { slug: 'auto' }),
-      ]) {
-        expect(await refusal(call)).toMatch(/`auto` (has started and )?is the human's.*Link them to its chat/)
-      }
+      const out = await toolStartFeature(ctx, session, { slug: 'resumed' }, { spawn: false })
+      cleanup.push(sessionDir(out.sessionId))
+      expect(out).toMatchObject({ slug: 'resumed', status: 'active', lead: 'plansAlone' })
+      expect(getSessionRow(ctx, out.sessionId)).toMatchObject({ featureId: f.id, kind: 'chat', purpose: 'self-plan' })
     })
 
-    it('is refused for another epic’s feature', async () => {
+    it('refuses to start a shipped feature', async () => {
+      const session = orchestrator()
+      await started('built', { status: 'shipped' })
+      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'built' }, { spawn: false }))).toMatch(/has shipped/)
+    })
+
+    it('refuses a brief edit once the feature has started, pointing at its lead', async () => {
+      const session = orchestrator()
+      const f = await started('going')
+      expect(await refusal(() => toolAddToBrief(ctx, session, { slug: 'going', text: 'x' }))).toMatch(
+        /`going` has started.*send_to_feature/,
+      )
+      expect(listAfter(ctx, f.id).some((e) => e.type === 'brief.added')).toBe(false)
+    })
+
+    it('refuses every acting tool on another epic’s feature, and on the human’s own', async () => {
       const other = orchestrator()
       const session = orchestrator()
       seedFeature(ctx, projectId, { slug: 'theirs', status: 'draft', baseBranch: null, chatId: other.id })
-      expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'theirs', baseBranch: 'main' }))).toMatch(/not one of this epic's features/)
-      expect(await refusal(() => toolPlanFeature(ctx, session, { slug: 'theirs' }, { spawn: false }))).toMatch(/not one of this epic's features/)
+      seedFeature(ctx, projectId, { slug: 'humans', status: 'draft', baseBranch: null, chatId: null })
+      for (const slug of ['theirs', 'humans']) {
+        for (const call of [
+          () => toolStartFeature(ctx, session, { slug, baseBranch: 'main' }, { spawn: false }),
+          () => toolAddToBrief(ctx, session, { slug, text: 'x' }),
+          () => toolMergeFeature(ctx, session, { slug }),
+        ]) {
+          expect(await refusal(call)).toMatch(/not one of this epic's features.*Link the human to its chat/)
+        }
+      }
     })
-  })
-
-  it('a lead message while it plans itself goes into the plan’s thread, and stop_feature_run ends only the plan', async () => {
-    const session = orchestrator()
-    const f = await started('mid-plan')
-    const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'mid-plan' }, { spawn: false })
-    cleanup.push(sessionDir(sessionId))
-    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-plan' })
-    const host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH })
-    setAgentHostForTests(host)
-    try {
-      await deliverToLead(ctx, getFeatureRow(ctx, f.id), { text: 'Go given', source: 'runcastle' })
-      const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
-      expect(queued?.data).toMatchObject({ sessionId })
-
-      toolStopFeatureRun(ctx, session, { slug: 'mid-plan' })
-      expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
-      // The thread stays: the next message starts it again.
-      await deliverToLead(ctx, getFeatureRow(ctx, f.id), { text: 'Round 1 returned', source: 'runcastle' })
-      expect(listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.message_queued').at(-1)?.data).toMatchObject({ sessionId })
-    } finally {
-      await host.stopAll('shutdown')
-      setAgentHostForTests(undefined)
-    }
-  })
-
-  it('stop_feature_run leaves a human’s interactive session alone', async () => {
-    const session = orchestrator()
-    const f = await started('chatting')
-    const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
-    markSessionLive(ctx, chat.id, { ccSessionId: 'cc-chat' })
-    expect(await refusal(() => toolStopFeatureRun(ctx, session, { slug: 'chatting' }))).toMatch(
-      /no headless run going/,
-    )
-    expect(getSessionRow(ctx, chat.id)?.status).toBe('live')
-  })
-
-  it('drive starts and stops a feature drive, and the project drive is refused while it holds the slot', async () => {
-    const session = orchestrator()
-    const f = await started('drivable')
-
-    expect((await toolDrive(ctx, session, { slug: 'drivable', action: 'start' })).ok).toBe(true)
-    expect(activeTestDriveFeatureId(projectId)).toBe(f.id)
-    expect(await toolDrive(ctx, session, { action: 'start' })).toMatchObject({
-      ok: false,
-      deniedReason: 'A test drive of feature/drivable is running — stop it first',
-    })
-    expect((await toolDrive(ctx, session, { slug: 'drivable', action: 'stop' })).ok).toBe(true)
-    expect(activeTestDriveFeatureId(projectId)).toBeUndefined()
-
-    expect((await toolDrive(ctx, session, { action: 'start' })).ok).toBe(true)
-    expect((await toolDrive(ctx, session, { action: 'stop' })).ok).toBe(true)
   })
 
   it('merge_feature ships a clean feature with its outcome doc', async () => {
@@ -372,9 +292,8 @@ describe('the orchestrator’s acting tools', () => {
     expect(inProgress).toHaveLength(2)
     expect(inProgress).toEqual(
       expect.arrayContaining([
-        // On autopilot the whole epic is locked, so every sibling is the epic's.
-        { slug: 'mine', title: 'Mine', owner: 'this epic, on autopilot' },
-        { slug: 'theirs', title: 'Theirs', owner: 'this epic, on autopilot' },
+        { slug: 'mine', title: 'Mine' },
+        { slug: 'theirs', title: 'Theirs' },
       ]),
     )
     const shipped = listAfter(ctx, f.id).find((e) => e.type === 'feature.shipped')
@@ -386,11 +305,11 @@ describe('the orchestrator’s acting tools', () => {
     })
   })
 
-  it('merge_feature refuses a feature on autopilot in another epic, merging nothing', async () => {
+  it('merge_feature refuses a feature of another epic, merging nothing', async () => {
     const session = orchestrator()
     const epic = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
-    const f = await started('theirs', { lockedTo: epic.id })
-    expect(await refusal(() => toolMergeFeature(ctx, session, { slug: 'theirs' }))).toMatch(/on autopilot in the epic/)
+    const f = await started('theirs', { chatId: epic.id })
+    expect(await refusal(() => toolMergeFeature(ctx, session, { slug: 'theirs' }))).toMatch(/not one of this epic's features/)
     expect(getFeatureRow(ctx, f.id).status).toBe('active')
   })
 
@@ -411,55 +330,6 @@ describe('the orchestrator’s acting tools', () => {
     const ev = listAfter(ctx, f.id).find((e) => e.type === 'merge.conflict')
     expect(ev?.data).toMatchObject({ base: 'main', files: ['README.md'], actor: 'orchestrator' })
     expect(getFeatureRow(ctx, f.id).status).toBe('active')
-  })
-
-  it('add_to_brief appends a dated section to brief.md and commits it as a runcastle docs commit', async () => {
-    const session = orchestrator()
-    const f = await started('briefed')
-    const project = projectForFeature(ctx, f)
-    const worktree = await ensureTalkWorktree(project, f)
-    const briefPath = featureDocPath(project, f, 'brief.md')
-    expect(briefPath.startsWith(worktree)).toBe(true)
-
-    await toolAddToBrief(ctx, session, { slug: 'briefed', text: 'The human wants it dark too.' })
-
-    const date = new Date().toISOString().slice(0, 10)
-    expect(readFileSync(briefPath, 'utf8')).toBe(
-      `## Added by the orchestrator, ${date}\n\nThe human wants it dark too.\n`,
-    )
-    const wt = simpleGit(worktree)
-    expect((await wt.raw(['log', '-1', '--pretty=%s', 'feature/briefed'])).trim()).toBe(
-      'runcastle: add to briefed brief',
-    )
-    expect(await wt.raw(['status', '--porcelain'])).toBe('')
-    expect(listAfter(ctx, f.id).find((e) => e.type === 'brief.added')?.data).toMatchObject({
-      actor: 'orchestrator',
-    })
-
-    await toolAddToBrief(ctx, session, { slug: 'briefed', text: 'And keyboard first.' })
-    expect(readFileSync(briefPath, 'utf8')).toContain(
-      `dark too.\n\n## Added by the orchestrator, ${date}\n\nAnd keyboard first.\n`,
-    )
-    expect(existsSync(join(repoPath, 'docs'))).toBe(false)
-  })
-
-  it('add_to_brief inserts above the brief’s ## Decisions, keeping the parts below whole', async () => {
-    const session = orchestrator()
-    const f = await started('grown')
-    const project = projectForFeature(ctx, f)
-    const worktree = await ensureTalkWorktree(project, f)
-    const briefPath = featureDocPath(project, f, 'brief.md')
-    const below = '## Decisions\n\n### 1. Dark only\n\n## Build notes\n\nA toggle.\n'
-    mkdirSync(dirname(briefPath), { recursive: true })
-    writeFileSync(briefPath, `# Grown\n\nThe human’s words.\n\n${below}`)
-    await simpleGit(worktree).add(['.']).commit('docs: grown brief')
-
-    await toolAddToBrief(ctx, session, { slug: 'grown', text: 'The human wants it dark too.' })
-
-    const date = new Date().toISOString().slice(0, 10)
-    expect(readFileSync(briefPath, 'utf8')).toBe(
-      `# Grown\n\nThe human’s words.\n\n## Added by the orchestrator, ${date}\n\nThe human wants it dark too.\n\n${below}`,
-    )
   })
 
   it('add_to_brief inserts above whichever later part comes first', () => {
@@ -495,7 +365,7 @@ describe('the orchestrator’s acting tools', () => {
       actor: 'orchestrator',
     })
 
-    await toolStartFeature(ctx, session, { slug: 'waiting', baseBranch: 'main' })
+    await toolStartFeature(ctx, session, { slug: 'waiting', baseBranch: 'main' }, { spawn: false })
     expect(await g.raw(['show', 'feature/waiting:docs/features/waiting/brief.md'])).toContain(
       expected,
     )

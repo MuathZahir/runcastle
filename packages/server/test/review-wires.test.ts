@@ -294,15 +294,18 @@ describe('the drive review wires', () => {
 
   // --- who may call them ----------------------------------------------------
 
-  it('refuses an ordinary talk session', async () => {
+  it('refuses the review drive to the lead’s chat, and records its finding as the lead’s', async () => {
     const session = talkSession()
 
     await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toThrow(GateError)
     await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toThrow(/chat session/)
-    expect(() => toolReportFinding(ctx, { session }, defect)).toThrow(GateError)
-
     expect(activeDriveInfo(project.id)).toBeNull()
-    expect(listFindings(ctx, feature.id)).toEqual([])
+
+    // autopilot-retires decision 11: the lead reports its own review's defects.
+    const { findingId } = toolReportFinding(ctx, { session }, defect)
+    expect(listFindings(ctx, feature.id)).toEqual([
+      expect.objectContaining({ id: findingId, reviewTicketId: null, reviewWorkerId: null }),
+    ])
   })
 
   it('refuses a caller with no session, and a gates review, which reports over its sandbox relay', async () => {

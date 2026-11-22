@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { inProgressSiblings, mergeWakesEpic, type SiblingRow } from '../src/services/epic-siblings'
+import { inProgressSiblings, type SiblingRow } from '../src/services/epic-siblings'
 
 /**
- * The wake test (`the-epic-hears-when-its-features-merge` decisions 2, 5, 6, 9):
- * the merged feature's epic wakes only while another of its features is started,
- * and not when the epic merged it itself.
+ * The siblings a merge's news lists (`the-epic-hears-when-its-features-merge`
+ * decision 6): the epic's other started features. Every merge wakes the epic
+ * now (`autopilot-retires` decision 2); the list only says what is in progress.
  */
 
 function row(id: string, overrides: Partial<SiblingRow> = {}): SiblingRow {
@@ -14,7 +14,7 @@ function row(id: string, overrides: Partial<SiblingRow> = {}): SiblingRow {
 describe('inProgressSiblings', () => {
   const merged = { id: 'merged', chatId: 'epic' }
 
-  it('counts the epic’s other started features, on autopilot or not', () => {
+  it('counts the epic’s other started features', () => {
     const rows = [row('merged'), row('a'), row('b'), row('c')]
     expect(inProgressSiblings(rows, merged).map((r) => r.id)).toEqual(['a', 'b', 'c'])
   })
@@ -36,20 +36,5 @@ describe('inProgressSiblings', () => {
 
   it('finds nothing for a merged feature with no epic', () => {
     expect(inProgressSiblings([row('a', { chatId: null })], { id: 'merged', chatId: null })).toEqual([])
-  })
-})
-
-describe('mergeWakesEpic', () => {
-  it('wakes the epic for the human’s merge or another chat’s while a sibling is in progress', () => {
-    expect(mergeWakesEpic({ siblings: 1, epicId: 'epic', mergedBy: null })).toBe(true)
-    expect(mergeWakesEpic({ siblings: 2, epicId: 'epic', mergedBy: 'other' })).toBe(true)
-  })
-
-  it('holds with no sibling in progress', () => {
-    expect(mergeWakesEpic({ siblings: 0, epicId: 'epic', mergedBy: null })).toBe(false)
-  })
-
-  it('holds when the epic merged it itself', () => {
-    expect(mergeWakesEpic({ siblings: 3, epicId: 'epic', mergedBy: 'epic' })).toBe(false)
   })
 })

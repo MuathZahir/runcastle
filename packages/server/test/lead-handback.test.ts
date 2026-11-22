@@ -13,9 +13,9 @@ import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import { promptsOf } from './support/thread-launch'
 
 /**
- * A lead on autopilot hands back to its epic (agents-are-woken-only-when-it-matters
- * decisions 20–22; epics-on-autopilot decision 17). Off autopilot there is no
- * epic to hand back to: the feature is the human's.
+ * A lead hands its epic trouble that crosses features (autopilot-retires
+ * decision 9; agents-are-woken-only-when-it-matters decisions 20–22). A feature
+ * with no epic has nobody to hand back to: the lead asks the human.
  */
 
 let ctx: AppCtx
@@ -49,7 +49,7 @@ function leadOf(featureId: string) {
 describe('hand_back from a lead', () => {
   it('wakes the epic once with a handback card: the summary and the feature’s state', async () => {
     const epic = orchestrator()
-    const f = seedFeature(ctx, projectId, { slug: 'phone-fixes', title: 'Phone fixes', lockedTo: epic })
+    const f = seedFeature(ctx, projectId, { slug: 'phone-fixes', title: 'Phone fixes', chatId: epic })
 
     const result = await toolHandBack(ctx, leadOf(f.id), { summary: 'Review fixes are in; ready to merge.' })
 
@@ -60,52 +60,28 @@ describe('hand_back from a lead', () => {
       display: { featureHandback: { featureId: f.id, title: 'Phone fixes', summary: 'Review fixes are in; ready to merge.', state: result.state } },
     })
     expect(prompt.held).toBeUndefined()
-    expect(prompt.text).toContain('[runcastle] phone-fixes handed back:\nReview fixes are in; ready to merge.')
+    expect(prompt.text).toContain('[runcastle] phone-fixes hit trouble that crosses features:\nReview fixes are in; ready to merge.')
     expect(prompt.text).toContain('send_to_feature({ slug: "phone-fixes" })')
     expect(host.isRunning(epic)).toBe(true)
     expect(listAfter(ctx, f.id, 0).find((e) => e.type === LEAD_HANDED_BACK)?.data).toMatchObject({ holderId: epic })
   })
 
-  it('is refused off autopilot, even with an epic, pointing to wait_for_you', async () => {
-    const epic = orchestrator()
-    const mine = seedFeature(ctx, projectId, { slug: 'mine', chatId: epic })
+  it('is refused for a feature with no epic, pointing to wait_for_you', async () => {
     const alone = seedFeature(ctx, projectId, { slug: 'alone' })
-    for (const f of [mine, alone]) {
-      await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(GateError)
-      await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(/not on autopilot.*wait_for_you/)
-      expect(listAfter(ctx, f.id, 0).some((e) => e.type === LEAD_HANDED_BACK)).toBe(false)
-    }
-    expect(promptsOf(epic)).toHaveLength(0)
-  })
-
-  it('is refused once the feature has shipped', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'done', lockedTo: orchestrator(), status: 'shipped' })
-    await expect(toolHandBack(ctx, leadOf(f.id), { summary: 'done' })).rejects.toThrow(/not on autopilot/)
+    await expect(toolHandBack(ctx, leadOf(alone.id), { summary: 'done' })).rejects.toThrow(GateError)
+    await expect(toolHandBack(ctx, leadOf(alone.id), { summary: 'done' })).rejects.toThrow(/no epic.*wait_for_you/)
+    expect(listAfter(ctx, alone.id, 0).some((e) => e.type === LEAD_HANDED_BACK)).toBe(false)
   })
 
   it('is no tool for a side chat or a worker', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'x', lockedTo: orchestrator() })
+    const f = seedFeature(ctx, projectId, { slug: 'x', chatId: orchestrator() })
     const side = createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' })
     await expect(toolHandBack(ctx, side, { summary: 'done' })).rejects.toThrow(GateError)
   })
 })
 
-describe('wait_for_you from a lead on autopilot', () => {
-  it('goes to the epic as a handback card, marked as asking, and sets no need', async () => {
-    const epic = orchestrator()
-    const f = seedFeature(ctx, projectId, { slug: 'fx-rates', title: 'FX rates', lockedTo: epic })
-    const lead = leadOf(f.id)
-
-    const result = await toolWaitForYou(ctx, lead, { why: 'which currency for mixed teams?' })
-
-    expect(result).toEqual({ ok: true, need: null, toEpic: 'Payments' })
-    const [prompt] = promptsOf(epic)
-    expect(prompt.text).toContain('fx-rates asks for the human')
-    expect(prompt.text).toContain('which currency for mixed teams?')
-    expect(listAfter(ctx, f.id, 0).find((e) => e.type === LEAD_HANDED_BACK)?.data).toMatchObject({ asks: true })
-  })
-
-  it('off autopilot only records the wait: no wake', async () => {
+describe('wait_for_you from a lead with an epic', () => {
+  it('only records the wait: the question is the human’s, and the epic is not woken', async () => {
     const epic = orchestrator()
     const f = seedFeature(ctx, projectId, { slug: 'mine', chatId: epic })
     const result = await toolWaitForYou(ctx, leadOf(f.id), { why: 'pick a theme' })

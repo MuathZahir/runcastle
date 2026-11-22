@@ -355,11 +355,14 @@ describe('mcp tool registration by audience', () => {
       expect(toolsForAudience(audience), audience).not.toContain('feature_drive')
     }
 
-    // The review wires are a drive review's alone (a gates review reports over its relay).
+    // The review wires are a drive review's alone (a gates review reports over its relay);
+    // report_finding is the lead's too, so its own review's defects block a merge at Nothing
+    // (autopilot-retires decision 11).
     for (const audience of SessionKind.options.filter((k) => k !== 'drive-fix' && k !== 'scenario')) {
       expect(toolsForAudience(audience), audience).not.toContain('review_drive')
-      expect(toolsForAudience(audience), audience).not.toContain('report_finding')
+      if (audience !== 'chat') expect(toolsForAudience(audience), audience).not.toContain('report_finding')
     }
+    expect(toolsForAudience('chat')).toContain('report_finding')
     expect(toolsForAudience(undefined)).not.toContain('add_test_note')
 
     // A drive review on the host (burns-become-workers decision 3): its drive,
