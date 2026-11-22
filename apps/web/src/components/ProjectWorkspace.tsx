@@ -27,6 +27,7 @@ import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive, type SlotDrive } from '../lib/use-project-drive'
 import { useIsPhone } from '../lib/use-phone'
 import { PhoneChatBar } from './phone/PhoneChatBar'
+import { EpicInvolvement } from './involvement/InvolvementControls'
 
 /** What the header calls a new epic nobody has written in yet. */
 const NEW_EPIC_TITLE = 'New epic'
@@ -323,6 +324,8 @@ export function ProjectWorkspace({
   const inFrontGlyph = <EpicGlyph small color={inFrontEntry?.color} icon={inFrontEntry?.icon} />
   // The chat column: an epic in front, or the new one the slot opened.
   const chatInFront = !allChats && !chatHidden && (drafting || (!!inFront && !workerFront))
+  // The epic whose features the header's "Set all to…" sets: a saved epic in front, never a draft or a worker.
+  const epicInFront = !allChats && !drafting && inFrontEntry?.role === 'project' ? inFrontEntry.id : null
 
   const panelView = (view: PanelView) => {
     switch (view) {
@@ -390,6 +393,8 @@ export function ProjectWorkspace({
         actions={
           <>
             {workerHeader?.actions}
+            {/* "Set all to…" for the epic in front (how-involved-am-i decision 4): its features that have not shipped. */}
+            {epicInFront && <EpicInvolvement projectId={projectId} chatId={epicInFront} />}
             {!unstarted && <ProjectDriveButton
               card={driveCard}
               starting={projectDrive.starting}

@@ -60,7 +60,7 @@ describe('orchestratorLineFor — the orchestrator’s own work', () => {
     [
       'a draft it holds starting by itself',
       event('feature.started', { autoStartedBy: 'core' }),
-      '[runcastle] export-csv started by itself because core shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless the planning mode in its brief is with you: then hand the human its chat.',
+      '[runcastle] export-csv started by itself because core shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its "Involve me in" is Everything: then hand the human its chat.',
     ],
     [
       'a draft it holds not starting',

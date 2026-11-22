@@ -4,6 +4,7 @@ import type {
   Feature,
   Need,
   FeatureStatus,
+  Involvement,
   Project,
   ReadyDeclaration,
   Run,
@@ -11,7 +12,7 @@ import type {
   SessionStatus,
   Ticket,
 } from '@runcastle/core'
-import { newId, readyToTestWhy } from '@runcastle/core'
+import { DEFAULT_INVOLVEMENT, humanMerges, newId, readyToTestWhy } from '@runcastle/core'
 import { scenarioDataDir, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -42,6 +43,9 @@ import { removeFeatureReviewCaptures } from './review-capture-expiry'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
+import { MERGED_BY_RUNCASTLE } from './epic-siblings'
+import { mergeFeatureFlow } from './merge'
+import { openDefects } from './review-findings'
 import { clearFeatureWaits, setWait, waitsByFeature } from './waits'
 import { refreshFeatureTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
@@ -188,6 +192,8 @@ export interface CreateFeatureInput {
    * Absent for New feature and for a draft a feature's agent parks.
    */
   chat?: { threadId: string }
+  /** "Involve me in": the orchestrator's recommended level (how-involved-am-i); `everything` when absent. */
+  involvement?: Involvement
 }
 
 export async function createFeature(
@@ -216,6 +222,7 @@ export async function createFeature(
     status,
     createdAt: Date.now(),
     chatId: input.chat?.threadId ?? null,
+    involvement: input.involvement ?? DEFAULT_INVOLVEMENT,
   }
   const inserted = ctx.db.insert(features).values(row).returning().get()
   const feature = rowToFeature(inserted)
@@ -597,6 +604,9 @@ export function listReadyDeclarations(ctx: AppCtx, featureId: string): ReadyDecl
     .all()
 }
 
+/** What runcastle did with a ready declaration at "Involve me in: Nothing": merged it, or why not. */
+export type ReadyAutoMerge = { merged: true; base: string } | { merged: false; why: string }
+
 /**
  * The lead declares the feature ready for the human: the record goes on the
  * trail and the lead's chat (`leadSessionId`, its newest chat when absent)
@@ -604,13 +614,18 @@ export function listReadyDeclarations(ctx: AppCtx, featureId: string): ReadyDecl
  * wait — on their next message in that chat. What to test and how the work was
  * checked the lead says in chat; the declaration carries only the scenario the
  * Test drive button starts. A declaration, never a gate.
+ *
+ * At "Involve me in: Nothing" (how-involved-am-i) runcastle merges it instead,
+ * once the record is written and when no review defect is open. A merge that is
+ * refused or fails falls back to the wait above, and the lead is told why;
+ * `autoMerge` says which happened.
  */
-export function declareReady(
+export async function declareReady(
   ctx: AppCtx,
   featureId: string,
   input: { scenario: string },
   leadSessionId?: string,
-): { declaration: ReadyDeclaration } {
+): Promise<{ declaration: ReadyDeclaration; autoMerge?: ReadyAutoMerge }> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
   if (feature.status === 'shipped') throw new GateError(`\`${feature.slug}\` has already shipped`)
@@ -634,7 +649,23 @@ export function declareReady(
     message: `ready for you · test drive ▸ ${scenario}`,
     data: { declarationId: declaration.id, runId: null, scenario },
   })
-  // On autopilot the epic hears it instead, and the feature needs nobody (epics-on-autopilot decision 17).
+  if (humanMerges(feature.involvement)) {
+    waitForTheHuman(ctx, feature, scenario, leadSessionId)
+    return { declaration }
+  }
+  const autoMerge = await mergeOnReady(ctx, feature)
+  if (autoMerge.merged) return { declaration, autoMerge }
+  waitForTheHuman(ctx, getFeatureRow(ctx, featureId), scenario, leadSessionId)
+  await deliverToLead(ctx, getFeatureRow(ctx, featureId), {
+    source: 'runcastle',
+    reason: 'news',
+    text: `"Involve me in" is Nothing, but runcastle did not merge it: ${autoMerge.why}. It waits for the human as Ready to test instead.`,
+  }).catch((err) => console.error(`telling ${feature.slug}'s lead why it did not merge failed`, err))
+  return { declaration, autoMerge }
+}
+
+/** Today's "ready": the lead's chat waits on the human, or on autopilot the epic hears it (epics-on-autopilot decision 17). */
+function waitForTheHuman(ctx: AppCtx, feature: Feature, scenario: string, leadSessionId?: string): void {
   if (isLocked(ctx, feature)) {
     void tellEpicInstead(
       ctx,
@@ -642,12 +673,39 @@ export function declareReady(
       `declared ready to test (scenario ${scenario}). Drive it with drive({ slug: "${feature.slug}", action: "start", scenario: "${scenario}" }) or tell the human, as the run plan says.`,
       'Ready to test',
     ).catch((err) => console.error(`telling the epic ${feature.slug} is ready failed`, err))
-    return { declaration }
+    return
   }
   // Needs you until the human writes in the lead's chat (needs-you decision 8).
-  const lead = leadSessionId ?? newestThread(ctx, { featureId }, 'chat')?.id
+  const lead = leadSessionId ?? newestThread(ctx, { featureId: feature.id }, 'chat')?.id
   if (lead) setWait(ctx, lead, readyToTestWhy(scenario), 'agent')
-  return { declaration }
+}
+
+/**
+ * Merge a ready feature at "Involve me in: Nothing", as runcastle: refused
+ * while a review defect is open. The merge's own news reaches the feature's
+ * epic (on autopilot or not) as any merge's does.
+ */
+async function mergeOnReady(ctx: AppCtx, feature: Feature): Promise<ReadyAutoMerge> {
+  const open = openDefects(ctx, feature.id)
+  if (open.length) {
+    const titles = open.map((d) => `"${d.title}"`).join(', ')
+    return { merged: false, why: `${open.length} review defect${open.length === 1 ? ' is' : 's are'} still open (${titles})` }
+  }
+  try {
+    const res = await mergeFeatureFlow(ctx, feature.id, { by: MERGED_BY_RUNCASTLE })
+    if (res.ok) return { merged: true, base: res.base }
+    const files = res.files.length ? ` in ${res.files.join(', ')}` : ''
+    return { merged: false, why: res.conflict ? `merging into ${res.base} stopped on a conflict${files}` : `the merge into ${res.base} did not land` }
+  } catch (err) {
+    // The merge flow marks the feature shipped before its cleanup (design
+    // server, workers, worktree): a throw after that point still merged.
+    const now = getFeatureRow(ctx, feature.id)
+    if (now.status === 'shipped') {
+      console.error(`${feature.slug} merged, but the cleanup after it failed`, err)
+      return { merged: true, base: now.baseBranch ?? 'its base branch' }
+    }
+    return { merged: false, why: `the merge failed (${err instanceof Error ? err.message : String(err)})` }
+  }
 }
 
 /**

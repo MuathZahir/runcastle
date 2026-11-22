@@ -39,6 +39,7 @@ import { SettingsDialog } from './settings/SettingsDialog'
 import { PHONE_LINK_FIELD } from './settings/PhoneLinkSection'
 import { useOpenGlossary } from './GlossaryDialog'
 import { FeatureLinksContext, type FeatureLinks } from './chat/thread/FeatureCardItems'
+import { useSetInvolvement } from './involvement/InvolvementControls'
 import { ChatLinksContext, type ChatLinks, type WorkerPlace } from './chat/ChatLink'
 
 /** A worker's feature, for a `worker:` link: read once per id, since a worker never changes feature. */
@@ -172,9 +173,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     [openFeature],
   )
   // A chat's feature rows read the sidebar's list and open a feature as its row does.
+  // …and a created row's "Involve me in" picker saves through it (how-involved-am-i decision 3).
+  const involvement = useSetInvolvement()
   const featureLinks = useMemo<FeatureLinks>(
-    () => ({ features: features ?? [], openFeature: openChosen }),
-    [features, openChosen],
+    () => ({ features: features ?? [], openFeature: openChosen, involvement }),
+    [features, openChosen, involvement],
   )
   // …and so do the links an agent writes in its own words (chats-link-to-what-they-name).
   const chatLinks = useMemo<ChatLinks>(

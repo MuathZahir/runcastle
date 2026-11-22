@@ -109,6 +109,7 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'blocks',
         'upNext',
         'autopilot',
+        'involvement',
         'annotatedModels',
         'reviewEvidence',
         'reviewShots',

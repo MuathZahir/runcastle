@@ -207,7 +207,7 @@ describe('the tools a side session had', () => {
   it('is refused a lead tool at call time, pointed at the main chat', async () => {
     const f = seedFeature(ctx, project.id, { slug: 'no-rounds' })
     const side = createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' })
-    expect(() => toolDeclareReady(ctx, side, { scenario: 'x' })).toThrow(/main chat/)
+    await expect(toolDeclareReady(ctx, side, { scenario: 'x' })).rejects.toThrow(/main chat/)
   })
 })
 

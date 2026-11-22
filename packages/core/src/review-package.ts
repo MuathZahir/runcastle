@@ -78,6 +78,18 @@ export interface ReviewPackage {
   findings: PackageFinding[]
   /** Why the pass has no pictures, when it has none. */
   empty: string | null
+  /**
+   * The decisions the lead made without the human (docs/features/how-involved-am-i
+   * decision 2): each `decisions.md` entry marked "Decided without you", by its
+   * number and title. Absent on a package from before the setting.
+   */
+  decidedWithoutYou?: DecidedWithoutYou[]
+}
+
+/** One decision the lead made without the human, as `decisions.md` numbers and names it. */
+export interface DecidedWithoutYou {
+  n: number
+  title: string
 }
 
 function failureWords(failure: ScenarioFailure): string {

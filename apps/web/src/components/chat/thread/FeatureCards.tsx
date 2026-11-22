@@ -21,6 +21,8 @@ import type { FeatureListItem } from '../../../lib/api'
 import type { FeatureAction } from '../../../lib/chat-thread'
 import { triageOf } from '../../../lib/feature-ui/sidebar'
 import { FeatureProgressIcon, featureStateWords } from '../../SidebarParts'
+import type { Involvement } from '@runcastle/core'
+import { InvolvementSelect } from '../../involvement/Involvement'
 import { INSET, WELL } from './surfaces'
 
 /**
@@ -154,6 +156,7 @@ export function FeatureRow({
   state,
   onOpen,
   gone = false,
+  control,
 }: {
   title: string
   glyph: ReactNode
@@ -164,6 +167,12 @@ export function FeatureRow({
   onOpen?: () => void
   /** The feature list no longer holds it: the row is dimmed. */
   gone?: boolean
+  /**
+   * A control of the row's own (its "Involve me in" picker), on a line under
+   * the detail, lined up with the title. It sits outside the row's button, so
+   * using it never opens the feature.
+   */
+  control?: ReactNode
 }) {
   const body = (
     <>
@@ -184,7 +193,7 @@ export function FeatureRow({
     </>
   )
   const row = 'group/row flex w-full min-w-0 items-start gap-2.5 rounded-md px-2.5 py-2 text-left'
-  return onOpen ? (
+  const el = onOpen ? (
     <button
       type="button"
       aria-label={`Open ${title}`}
@@ -195,6 +204,14 @@ export function FeatureRow({
     </button>
   ) : (
     <div className={cx(row, gone && 'opacity-70')}>{body}</div>
+  )
+  if (!control) return el
+  // The control lines up under the title (40px in): 32px here, the control's own 4px padding, then the tile's 3px inset, so its icon sits on the title's edge.
+  return (
+    <div className="flex min-w-0 flex-col">
+      {el}
+      <div className="-mt-1.5 flex min-w-0 pb-1.5 pl-8">{control}</div>
+    </div>
   )
 }
 
@@ -231,12 +248,22 @@ export function FeaturesCard({
   onOpen,
   showState = () => true,
   linked = true,
+  involvement,
 }: {
   rows: readonly FeatureActionRow[]
   onOpen: (featureId: string) => void
   showState?: (row: FeatureActionRow) => boolean
   /** The chat reads a feature list, so a row with no feature is one that is gone; false where there is no list. */
   linked?: boolean
+  /**
+   * A created row's "Involve me in" picker (how-involved-am-i decision 3):
+   * `levelOf` is the feature's level now, null where the row takes no picker
+   * (gone, shipped, archived); `onChange` saves a pick.
+   */
+  involvement?: {
+    levelOf: (row: FeatureActionRow) => Involvement | null
+    onChange: (featureId: string, level: Involvement) => void
+  }
 }) {
   const heading = featuresCardHeading(rows)
   return (
@@ -257,12 +284,22 @@ export function FeaturesCard({
             {...(row.feature && showState(row) && !row.actions.includes('merged') ? { state: <LiveState feature={row.feature} /> } : {})}
             {...(row.feature ? { onOpen: () => onOpen(row.featureId) } : {})}
             gone={linked && !row.feature}
+            control={involvementControl(row)}
           />
         ))}
       </div>
     </div>
   )
+
+  function involvementControl(row: FeatureActionRow): ReactNode {
+    if (!involvement || !CREATED.includes(row.actions[0]!)) return null
+    const level = involvement.levelOf(row)
+    return level && <InvolvementSelect value={level} onChange={(next) => involvement.onChange(row.featureId, next)} align="start" />
+  }
 }
+
+/** The rows a creation card is made of: only these carry the "Involve me in" picker. */
+const CREATED: readonly FeatureAction[] = ['created', 'parked']
 
 // ---- runcastle's news ----
 

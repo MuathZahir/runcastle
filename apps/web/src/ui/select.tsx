@@ -1,7 +1,17 @@
 import * as SelectPrimitive from '@radix-ui/react-select'
-import type { ComponentPropsWithoutRef } from 'react'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 import { IconCheck, IconChevronDown } from '../icons'
-import { FLOATING_CAP, FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SCROLLBAR, FLOATING_SURFACE, cx } from './floating'
+import {
+  FLOATING_CAP,
+  FLOATING_DESCRIBED,
+  FLOATING_ITEM,
+  FLOATING_ITEM_DEFAULT,
+  FLOATING_ITEM_MARKED,
+  FLOATING_LABEL,
+  FLOATING_SCROLLBAR,
+  FLOATING_SURFACE,
+  cx,
+} from './floating'
 
 /**
  * The app's value picker: one choice out of a fixed, grouped list — the model
@@ -60,6 +70,14 @@ export function Select({
 const TRIGGER = 'inline-flex min-w-0 cursor-pointer items-center justify-between gap-1.5 text-left'
 
 /**
+ * What every ghost look below shares: no border or fill at rest,
+ * `surface-hover` under the pointer, `surface-selected` while open.
+ */
+const GHOST_GROUND =
+  'rounded-md transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover ' +
+  'data-[state=open]:bg-surface-selected disabled:cursor-not-allowed'
+
+/**
  * The standard field look for a trigger — a form control on `surface-inset`
  * with a hairline, like `TextField`. Pass it as the trigger's `className`
  * (plus a width) wherever the select is a form field rather than inline chrome.
@@ -76,31 +94,56 @@ export const SELECT_FIELD =
  * rather than a form: the ticket's model, the run history. Add `font-mono` for
  * a code-shaped value.
  */
-export const SELECT_GHOST =
-  'h-(--control-sm) rounded-md px-1.5 text-xs text-text-tertiary ' +
-  'transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover enabled:hover:text-text ' +
-  'data-[state=open]:bg-surface-selected data-[state=open]:text-text disabled:cursor-not-allowed disabled:text-text-disabled'
+export const SELECT_GHOST = cx(
+  GHOST_GROUND,
+  'h-(--control-sm) px-1.5 text-xs text-text-tertiary enabled:hover:text-text data-[state=open]:text-text disabled:text-text-disabled',
+)
 
 /**
  * The ghost look at full control height, for the one value a toolbar is about
  * (the drive's scenario). Unlike a `Button` it may shrink: its words are what
  * gives way in a narrow bar.
  */
-export const SELECT_BAR =
-  'h-(--control-h) max-w-80 min-w-0 rounded-md px-2.5 text-sm font-medium ' +
-  'transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover ' +
-  'data-[state=open]:bg-surface-selected disabled:cursor-not-allowed disabled:text-text-disabled'
+export const SELECT_BAR = cx(GHOST_GROUND, 'h-(--control-h) max-w-80 min-w-0 px-2.5 text-sm font-medium disabled:text-text-disabled')
+
+/**
+ * The ghost look for a trigger that leads with a coloured mark (the "Involve
+ * me in" level tile), at two sizes: `sm` 24px with 12px words, in a row; `md`
+ * 32px with 13px words, in a page header. The mark side is padded tighter, so
+ * the tile sits square in the control. The words go `text-secondary` under the
+ * pointer and while open — the value inside names its own, stronger colour —
+ * and a disabled one fades whole, mark included, since a mark in full colour
+ * would still read as live.
+ *
+ * Whole: layout included, so a menu's trigger (`DropdownMenuTrigger`, "Set
+ * all to…") can wear it as well as `SelectTrigger marked`.
+ */
+const MARKED =
+  'inline-flex min-w-0 cursor-pointer items-center gap-1.5 whitespace-nowrap text-text-tertiary ' +
+  'enabled:hover:text-text-secondary data-[state=open]:text-text-secondary disabled:opacity-60'
+export const SELECT_MARKED = {
+  sm: cx(GHOST_GROUND, MARKED, 'h-(--control-sm) pr-1.5 pl-1 text-xs'),
+  md: cx(GHOST_GROUND, MARKED, 'h-(--control-h) pr-2 pl-1.5 text-sm'),
+} as const
 
 export function SelectTrigger({
   className,
+  marked,
   children,
   ...props
-}: ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>) {
+}: ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> & {
+  /**
+   * The trigger leads with a coloured mark: it wears `SELECT_MARKED` at this
+   * size (pass no look of your own), and its chevron is sized to it — 12px at
+   * `sm`, 14px at `md` — and centred on the control.
+   */
+  marked?: keyof typeof SELECT_MARKED
+}) {
   return (
-    <SelectPrimitive.Trigger className={cx(TRIGGER, className)} {...props}>
+    <SelectPrimitive.Trigger className={cx(TRIGGER, marked && SELECT_MARKED[marked], className)} {...props}>
       {children}
-      <SelectPrimitive.Icon className="shrink-0 text-icon">
-        <IconChevronDown size={14} />
+      <SelectPrimitive.Icon className={cx('shrink-0 text-icon', marked && 'inline-flex')}>
+        <IconChevronDown size={marked === 'sm' ? 12 : 14} />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -207,8 +250,37 @@ export function SelectItem({
   className,
   children,
   value,
+  mark,
+  description,
   ...props
-}: ComponentPropsWithoutRef<typeof SelectPrimitive.Item>) {
+}: ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & {
+  /** A leading mark that keeps its own colours (a level tile). Drawn on a described row. */
+  mark?: ReactNode
+  /**
+   * One line of what the choice means, under its label: the row becomes the
+   * described one (`FLOATING_DESCRIBED`) — `mark`, the label (`children`, still
+   * the text the trigger and typeahead read) over this line, then the check.
+   */
+  description?: ReactNode
+}) {
+  if (description !== undefined) {
+    return (
+      <SelectPrimitive.Item value={toRadix(value)} className={cx(FLOATING_ITEM, FLOATING_ITEM_MARKED, className)} {...props}>
+        <div className={FLOATING_DESCRIBED.body}>
+          {mark && <span className={FLOATING_DESCRIBED.mark}>{mark}</span>}
+          <span className={FLOATING_DESCRIBED.words}>
+            <SelectPrimitive.ItemText className={FLOATING_DESCRIBED.label}>{children}</SelectPrimitive.ItemText>
+            <span className={FLOATING_DESCRIBED.description}>{description}</span>
+          </span>
+          <span className={FLOATING_DESCRIBED.check}>
+            <SelectPrimitive.ItemIndicator>
+              <IconCheck size={14} className="text-text" />
+            </SelectPrimitive.ItemIndicator>
+          </span>
+        </div>
+      </SelectPrimitive.Item>
+    )
+  }
   return (
     <SelectPrimitive.Item value={toRadix(value)} className={cx(ITEM, className)} {...props}>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

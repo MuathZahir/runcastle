@@ -1,5 +1,6 @@
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { AgentRuntime } from './config'
+import { DEFAULT_INVOLVEMENT, type Involvement } from './involvement'
 import type {
   FeatureStatus,
   FindingKind,
@@ -175,6 +176,12 @@ export const features = sqliteTable('features', {
   lastHumanMessageAt: integer('last_human_message_at'),
   /** When the lead last dispatched a round (ms). */
   lastDispatchAt: integer('last_dispatch_at'),
+  /**
+   * "Involve me in" (how-involved-am-i decisions 1, 5): which moments the
+   * feature stops for the human. Every feature before the column is
+   * `everything`, which is what it was.
+   */
+  involvement: text('involvement').notNull().$type<Involvement>().default(DEFAULT_INVOLVEMENT),
 })
 
 /**

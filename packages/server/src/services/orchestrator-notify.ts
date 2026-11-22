@@ -5,7 +5,7 @@ import { agentHost } from '../threads/types'
 import { subscribeLive } from './bus'
 import { mayStartInBackground } from './database-copy'
 import type { EpicSibling } from './epic-siblings'
-import { epicSiblingsInProgress, mergeWakesEpic, ownerWords } from './epic-siblings'
+import { epicSiblingsInProgress, MERGED_BY_RUNCASTLE, mergeWakesEpic, ownerWords } from './epic-siblings'
 import { emit, getEventRow } from './events'
 import { chatNameOf } from '../threads/chat-name'
 import { epicOnAutopilot, isLocked } from './autopilot'
@@ -115,7 +115,7 @@ function describe(event: EventRow, slug: string): string | null {
       return byOrchestrator(event) ? `the drive you started failed: ${clip(event.message)}. ${context}` : null
     case 'feature.started':
       if (typeof data.autoStartedBy !== 'string') return null
-      return `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless the planning mode in its brief is with you: then hand the human its chat.`
+      return `started by itself because ${data.autoStartedBy} shipped. Nothing is working on it yet: plan_feature or send_to_feature sets it going, unless its "Involve me in" is Everything: then hand the human its chat.`
     case AUTOSTART_SKIPPED:
     case AUTOSTART_FAILED:
       return `${clip(event.message, MESSAGE_MAX)}. ${context}`
@@ -219,7 +219,7 @@ export type ShippedData = {
   base?: string
   sha?: string | null
   outcome?: string | null
-  /** The orchestrator thread whose `merge_feature` merged it; null when the human did. */
+  /** The orchestrator thread whose `merge_feature` merged it, `runcastle` (`MERGED_BY_RUNCASTLE`) when it merged by itself; null when the human did. */
   mergedBy?: string | null
 }
 
@@ -230,7 +230,7 @@ function mergeNewsFor(ctx: AppCtx, event: EventRow, feature: Feature): MergeNews
   const data = record(event.data) as ShippedData
   const mergedBy = typeof data.mergedBy === 'string' ? data.mergedBy : null
   const siblings = epicSiblingsInProgress(ctx, feature)
-  const name = mergedBy ? chatNameOf(ctx, mergedBy) : null
+  const name = mergedBy === MERGED_BY_RUNCASTLE ? 'runcastle' : mergedBy ? chatNameOf(ctx, mergedBy) : null
   return {
     epicId,
     by: ownerWords(ctx, mergedBy, epicId),

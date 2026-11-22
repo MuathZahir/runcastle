@@ -24,6 +24,7 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 | `--color-*` text | `text`, then two quiet greys: `text-secondary` and `text-tertiary` (the muted grey; `icon` is the same value); `text-disabled` | `text-text-secondary`, `text-icon` |
 | `--color-*` action | `primary`, `primary-hover`, `on-primary`, `accent`, `accent-text`, `accent-subtle`, `focus-ring` | `bg-primary`, `text-accent-text` |
 | `--color-*` status | `success`, `warning`, `danger`, `danger-subtle`; word peers `success-text`, `warning-text`, `danger-text` | `text-success`, `text-danger-text`, `bg-danger-subtle` |
+| `--color-involve-*` | the "Involve me in" level tiles, the accent fading as the human steps back: `everything`, `designs`, `result` (the tiles), `designs-mark` / `result-mark` (the icon on each), `designs-dot` / `result-dot` (a "Mixed" mark's dots) — `color-mix` references onto `accent` / `accent-text`, so both themes follow | `bg-involve-designs`, `text-involve-result-mark` |
 | `--color-phase-*` | `draft`, `ideation`, `spec`, `planning`, `tickets`, `implementation`, `building`, `review`, `shipped`; a `-text` word peer for each but `draft` | `text-phase-review`, `text-phase-review-text` |
 | `--font-*` | `sans` (Geist Variable), `mono` (Geist Mono Variable) — Fontsource, imported in `main.tsx` | `font-mono` |
 | `--text-*` | `xs` 12/16 · `sm` 13/20 controls · `md` **14/20, every row** · `base` 14/22 prose · `lg` 16/24 section title · `xl` 22/28 page title | `text-md`, `text-xl` |
@@ -150,7 +151,10 @@ What they share (`src/ui/floating.ts`): `FLOATING_SURFACE` — `surface-raised`,
 picker opened inside settings floats over its backdrop — and the row classes
 `FLOATING_ITEM` + `FLOATING_ITEM_DEFAULT` | `FLOATING_ITEM_DANGER` (32px `text-md`,
 icon + label + trailing slot, `surface-hover` where the keyboard or pointer
-is), `FLOATING_LABEL` (12px medium group heading) and `FLOATING_SEPARATOR`.
+is) | `FLOATING_ITEM_MARKED` (the default's colours without the `icon` grey on
+every icon, for a row led by a coloured mark), `FLOATING_DESCRIBED` (a
+described row's inside: mark, label over a line of what it means, check —
+hung from the top), `FLOATING_LABEL` (12px medium group heading) and `FLOATING_SEPARATOR`.
 Each content part portals to `<body>`, caps itself at the height Radix
 measured or `--menu-max-h`, whichever is less (`FLOATING_CAP`), and stops Escape so the keystroke that closes it does not also close
 the dialog around it.
@@ -158,8 +162,8 @@ the dialog around it.
 | Primitive | What it is | Notes |
 |---|---|---|
 | `Popover` | An anchored panel — and the Combobox's foundation. | `PopoverContent` pads `p-1`; pass your own for prose. |
-| `DropdownMenu` | A menu of **actions**, not a value picker. | `DropdownMenuItem` takes `icon`, `kbd`, `tone="danger"`; plus `DropdownMenuLabel`, `DropdownMenuSeparator`. |
-| `Select` | A grouped single-select over a short, fixed list. `value=""` means *unset* and is translated at the primitive's edge. Two trigger looks: `SELECT_FIELD` (a form field) and `SELECT_GHOST` (quiet, inline in a row or bar — the ticket model, the run history). `SelectValue` truncates (Radix drops its `className`, so the primitive wraps it). Pass `font-mono` on `SelectContent` for model ids. |
+| `DropdownMenu` | A menu of **actions**, not a value picker. | `DropdownMenuItem` takes `icon`, `kbd`, `tone="danger"`; `mark` (a leading mark that keeps its own colours); `description` (the described row: mark, label over one line of what the action means) with `current` (its check — "Set all to…" on an epic); plus `DropdownMenuLabel`, `DropdownMenuSeparator`. |
+| `Select` | A grouped single-select over a short, fixed list. `value=""` means *unset* and is translated at the primitive's edge. Trigger looks: `SELECT_FIELD` (a form field), `SELECT_GHOST` (quiet, inline in a row or bar — the ticket model, the run history), `SELECT_BAR` (the ghost at full height, a toolbar's one value) and `SELECT_MARKED` `sm` · `md` (the ghost led by a coloured mark — "Involve me in"; `SelectTrigger marked="sm"` wears it with a matching chevron, and a menu's trigger can wear it as a class). `SelectItem` takes `mark` and `description` for the described row (`FLOATING_DESCRIBED`); its children stay the label the trigger and typeahead read. `SelectValue` truncates (Radix drops its `className`, so the primitive wraps it). Pass `font-mono` on `SelectContent` for model ids. |
 | `Combobox` | A single-select whose list is long enough to want searching. | `ComboboxItem current` marks the held value. `ComboboxAction` is a quiet row that acts on the list (unfold "Older models") without closing it or taking the search's focus. |
 | `Tooltip` | A label after 400ms hover, or on focus. `TooltipProvider` is mounted once in `main.tsx` (a stray tooltip brings its own). | `label`, `kbd`, `side`. Every `IconButton` has one. |
 

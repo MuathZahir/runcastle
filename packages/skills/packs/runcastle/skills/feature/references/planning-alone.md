@@ -25,6 +25,10 @@ answer you would recommend and record it at once with `**Assumed.**` and its
 main alternative (`./feature-file.md`). Record only decisions the human
 must see; build detail goes to the build notes.
 
+**Below `everything`** (`./involvement.md`) no decision is the human's, an open
+what, where or who included: decide it, mark it `**Decided without you.**`
+instead of `**Assumed.**`, and build on in this run.
+
 **Check first.** Pick at most five decisions for the human to look at first:
 guesses about their intent, and decisions that force several others. Write
 their numbers in the `Check first:` line under `## Decisions`, and in the plan page's
@@ -88,7 +92,8 @@ notes and your closing message instead. Never design a screen whose what, where 
    committed). Then the workers you would start and what you would do yourself,
    and anything that stopped you (a refused or failed tool, and what you decided
    without it). End by asking them to change any decision or say go; their
-   answer starts the build, and a design still needs its own approval.
+   answer starts the build, and a design still needs its own approval (unless the level settles designs
+   itself: `resultOnly` and `nothing`).
 4. With the question written last in that message, call `wait_for_you` with a
    label such as `why: "change any decision, or go?"`, naming any design
    waiting, and end the turn. **On autopilot** the answer is the epic's: call

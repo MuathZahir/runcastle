@@ -144,6 +144,21 @@
   --color-epic-violet: #9882d4;
   --color-epic-violet-text: #b8a8ee;
 
+  /* ---- "Involve me in" levels (docs/features/how-involved-am-i) ----
+     Each level's mark is a tile whose accent fades as the human steps back:
+     Everything (the accent at full strength: `accent-text` on this tile,
+     `accent` for its dot), Designs and result, Result only. Nothing is the
+     neutral grey (`surface-hover`, `icon`, `text-tertiary`). `-mark` is the
+     icon on the tile, `-dot` its dot in a "Mixed" mark. References, so both
+     themes follow from the accent's own light values. */
+  --color-involve-everything: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  --color-involve-designs: color-mix(in oklab, var(--color-accent) 13%, transparent);
+  --color-involve-designs-mark: color-mix(in oklab, var(--color-accent-text) 85%, transparent);
+  --color-involve-designs-dot: color-mix(in oklab, var(--color-accent) 70%, transparent);
+  --color-involve-result: color-mix(in oklab, var(--color-accent) 7%, transparent);
+  --color-involve-result-mark: color-mix(in oklab, var(--color-accent-text) 65%, transparent);
+  --color-involve-result-dot: color-mix(in oklab, var(--color-accent) 40%, transparent);
+
   --color-focus-ring: var(--color-accent);
   /* the veil behind a dialog — dark in both themes, lighter in light */
   --color-scrim: rgb(0 0 0 / 0.6);

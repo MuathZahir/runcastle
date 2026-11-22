@@ -51,9 +51,16 @@ export interface EpicSibling {
   owner: string
 }
 
-/** Who merged, said to the epic `epicId`: the human, this chat, or another chat by name. */
+/**
+ * The `mergedBy` of a merge runcastle made by itself: a feature at "Involve me
+ * in: Nothing" whose lead declared it ready (how-involved-am-i).
+ */
+export const MERGED_BY_RUNCASTLE = 'runcastle'
+
+/** Who merged, said to the epic `epicId`: the human, runcastle, this chat, or another chat by name. */
 export function ownerWords(ctx: AppCtx, threadId: string | null, epicId: string): string {
   if (!threadId) return 'the human'
+  if (threadId === MERGED_BY_RUNCASTLE) return 'runcastle by itself ("Involve me in" is Nothing)'
   if (threadId === epicId) return 'this chat'
   return `the chat "${chatNameOf(ctx, threadId)}"`
 }
