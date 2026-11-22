@@ -14,8 +14,8 @@ import { listItem, need, withFoldsOpen } from './fixtures'
  * feature, the design page "workers-nested"): a feature row draws its live
  * workers under it, needs you and failed first; only the open feature folds its
  * finished ones into "N done"; a folded row keeps its need's amber dot; "+"
- * starts a worker on a feature in progress only; a locked feature's worker rows
- * wear the lock and never the dot. Tier 1: the markup is the whole behaviour.
+ * starts a worker on a feature in progress only. Tier 1: the markup is the
+ * whole behaviour.
  */
 
 const worker = (id: string, status: WorkerEntry['status'], createdAt: number, over: Partial<WorkerEntry> = {}): WorkerEntry => ({
