@@ -7,13 +7,12 @@ import {
   INVOLVEMENT_NAME,
   type Involvement,
 } from '@runcastle/core'
-import { IconCheck, IconChevronDown } from '../../icons'
+import { IconCheck, IconChevronDown, IconEye, IconGitMerge, IconImage, IconMessage } from '../../icons'
 import { cx } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger } from '../../ui/dropdown-menu'
 import {
   FLOATING_CAP,
   FLOATING_ITEM,
-  FLOATING_ITEM_DEFAULT,
   FLOATING_SCROLLBAR,
   FLOATING_SURFACE,
 } from '../../ui/floating'
@@ -29,17 +28,53 @@ import {
  * it means, so the four read as the nesting they are.
  */
 
+/**
+ * Each level's mark: the first moment it still stops for the human, drawn on
+ * a tile whose blue fades as the human steps back. "Everything" asks (a
+ * question), "Designs and result" shows screens, "Result only" is tried, and
+ * "Nothing" merges by itself, in the neutral grey of a feature that no longer
+ * waits on anyone.
+ */
+const MARK: Record<Involvement, { Icon: typeof IconMessage; tile: string; dot: string }> = {
+  everything: { Icon: IconMessage, tile: 'bg-accent/22 text-accent-text', dot: 'bg-accent' },
+  designsAndResult: { Icon: IconImage, tile: 'bg-accent/13 text-accent-text/85', dot: 'bg-accent/70' },
+  resultOnly: { Icon: IconEye, tile: 'bg-accent/7 text-accent-text/65', dot: 'bg-accent/40' },
+  nothing: { Icon: IconGitMerge, tile: 'bg-surface-hover text-icon', dot: 'bg-text-tertiary' },
+}
+
+/** A level's mark on its tile: 18px in a closed control, 28px in an open list. */
+export function LevelMark({ level, size = 'sm' }: { level: Involvement; size?: 'sm' | 'lg' }) {
+  const { Icon, tile } = MARK[level]
+  return (
+    <span className={cx('grid shrink-0 place-items-center', size === 'sm' ? 'size-[18px] rounded-sm' : 'size-7 rounded-md', tile)}>
+      <Icon size={size === 'sm' ? 12 : 15} />
+    </span>
+  )
+}
+
+/** "Mixed": one small dot per level the features hold, in the order of the levels. */
+function MixedMark({ levels }: { levels: readonly Involvement[] }) {
+  const held = INVOLVEMENT_LEVELS.filter((l) => levels.includes(l))
+  return (
+    <span className="flex size-[18px] shrink-0 items-center justify-center -space-x-px rounded-sm bg-surface-hover">
+      {held.map((l) => (
+        <span key={l} className={cx('size-[5px] rounded-full', MARK[l].dot)} />
+      ))}
+    </span>
+  )
+}
+
 /** The closed control: a quiet ghost button, as the app's inline pickers wear. */
 const TRIGGER =
-  'inline-flex min-w-0 cursor-pointer items-center gap-1 rounded-md text-text-tertiary whitespace-nowrap ' +
+  'inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md text-text-tertiary whitespace-nowrap ' +
   'transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover enabled:hover:text-text-secondary ' +
   'data-[state=open]:bg-surface-selected data-[state=open]:text-text-secondary disabled:cursor-not-allowed disabled:opacity-60'
 
 const TRIGGER_SIZE = {
   /** In a card's row: 24px, 12px words. */
-  sm: 'h-(--control-sm) px-1.5 text-xs',
+  sm: 'h-(--control-sm) pr-1.5 pl-[3px] text-xs',
   /** In a page header: 32px, 13px words. */
-  md: 'h-(--control-h) px-2 text-sm',
+  md: 'h-(--control-h) pr-2 pl-1.5 text-sm',
 } as const
 
 /** "Involve me in: <level>", the level in the stronger grey. */
@@ -51,18 +86,24 @@ function TriggerWords({ level }: { level: Involvement | null }) {
   )
 }
 
-/** A level's two lines in an open list: its name, then what it means. */
+/** A level's row in an open list: its mark, its name, then what it means. */
 function LevelLines({ level }: { level: Involvement }) {
   return (
-    <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-1">
-      <span className="text-md text-text">{INVOLVEMENT_LABEL[level]}</span>
-      <span className="text-xs leading-4 text-pretty text-text-tertiary">{INVOLVEMENT_HINT[level]}</span>
-    </span>
+    <>
+      <span className="pt-1.5">
+        <LevelMark level={level} size="lg" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-1.5">
+        <span className="text-md font-medium text-text">{INVOLVEMENT_LABEL[level]}</span>
+        <span className="text-xs leading-4 text-pretty text-text-tertiary">{INVOLVEMENT_HINT[level]}</span>
+      </span>
+    </>
   )
 }
 
-const ITEM = cx(FLOATING_ITEM, FLOATING_ITEM_DEFAULT, 'items-start gap-3')
-const LIST_W = 'w-72'
+// Not FLOATING_ITEM_DEFAULT: its rule greys every icon in the row, and each mark keeps its own colour.
+const ITEM = cx(FLOATING_ITEM, 'items-start gap-2.5 text-text hover:bg-surface-hover data-highlighted:bg-surface-hover')
+const LIST_W = 'w-80'
 
 /**
  * One feature's level. `onChange` fires with the new level; the caller saves
@@ -87,6 +128,7 @@ export function InvolvementSelect({
         aria-label={`${INVOLVEMENT_NAME}: ${INVOLVEMENT_LABEL[value]}`}
         className={cx(TRIGGER, TRIGGER_SIZE[size])}
       >
+        <LevelMark level={value} />
         <TriggerWords level={value} />
         <SelectPrimitive.Icon className="inline-flex shrink-0 text-icon">
           <IconChevronDown size={size === 'sm' ? 12 : 14} />
@@ -109,9 +151,9 @@ export function InvolvementSelect({
                   <span className="sr-only">{INVOLVEMENT_LABEL[level]}</span>
                 </SelectPrimitive.ItemText>
                 <LevelLines level={level} />
-                <span className="grid size-4 shrink-0 place-items-center pt-2.5">
+                <span className="grid size-4 shrink-0 place-items-center pt-3.5">
                   <SelectPrimitive.ItemIndicator>
-                    <IconCheck size={14} className="text-text!" />
+                    <IconCheck size={14} className="text-text" />
                   </SelectPrimitive.ItemIndicator>
                 </span>
               </SelectPrimitive.Item>
@@ -154,6 +196,7 @@ export function SetAllInvolvement({
         aria-label={`${INVOLVEMENT_NAME} for all features: ${shared ? INVOLVEMENT_LABEL[shared] : 'Mixed'}`}
         className={cx(TRIGGER, TRIGGER_SIZE.md)}
       >
+        {shared ? <LevelMark level={shared} /> : <MixedMark levels={levels} />}
         <TriggerWords level={shared} />
         <IconChevronDown size={14} className="shrink-0 text-icon" />
       </DropdownMenuTrigger>
@@ -164,8 +207,8 @@ export function SetAllInvolvement({
         {INVOLVEMENT_LEVELS.map((level) => (
           <DropdownMenuPrimitive.Item key={level} className={ITEM} onSelect={() => onSetAll(level)}>
             <LevelLines level={level} />
-            <span className="grid size-4 shrink-0 place-items-center pt-2.5">
-              {shared === level && <IconCheck size={14} className="text-text!" />}
+            <span className="grid size-4 shrink-0 place-items-center pt-3.5">
+              {shared === level && <IconCheck size={14} className="text-text" />}
             </span>
           </DropdownMenuPrimitive.Item>
         ))}
