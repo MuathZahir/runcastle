@@ -17,7 +17,7 @@ Check first: 8
 **Why:** Nothing showed who was waiting or why, so 16.4 hours of waiting went unseen. Agreed with the human as part of the orchestrator's proposal.
 
 ## 4. The default is one per 4 GB of memory, between 2 and 8
-**Decision:** With nothing set, the number is the machine's total memory divided by 4 GB, rounded down, never below 2 and never above 8. This 11 GB machine gets 2 (today it gets 1); a 32 GB machine gets 8. Settings names the default and where it came from: "default on this machine: 2, from 11 GB of memory".
+**Decision:** With nothing set, the number is the machine's total memory divided by 4 GB, rounded down, never below 2 and never above 8. This 11 GB machine gets 2 (today it gets 1). A machine reports a little less than its label, so a 32 GB one reads about 31 GB and gets 7; 8 needs 32 GB or more as reported. Settings names the default and where it came from: "default on this machine: 2, from 11 GB of memory".
 **Why:** Memory is the real ceiling. Measured on this repo: a worker's agent process holds 0.2–0.4 GB, and a typecheck peaks at 0.85 GB on top; tests and a dev server add more in bursts. 4 GB per worker leaves room for leads and the server, which on this machine already hold about 6 GB. It replaces today's default, which counts CPU cores and gives 1 on any machine with 8 cores or fewer.
 **Decided by autopilot.** Alternative it was picked over: 3 GB per worker (3 on this machine), or counting the memory free when the server starts rather than the total.
 
