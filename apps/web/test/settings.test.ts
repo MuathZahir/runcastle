@@ -118,7 +118,8 @@ describe('describeField', () => {
 
   it('renders burnConcurrency as an editable number control with an env-lock note when locked', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 3 }))
-    expect(row.label).toBe('Agents working at once')
+    expect(row.label).toBe('Workers and reviews at once')
+    expect(describeField(field({ key: 'burnConcurrency', value: 3 })).tooltip).toContain('1–16')
     expect(row.control).toBe('number')
     expect(row.value).toBe('3')
     expect(row.readOnly).toBe(false)
@@ -135,18 +136,22 @@ describe('describeField', () => {
   // beside the input, where the empty control is, not in a tooltip.
   it('says what burn concurrency defaults to on this machine while it is unset', () => {
     expect(describeField(field({ key: 'burnConcurrency', value: 1 })).unit).toBe(
-      'workers at once · default on this machine: 1',
+      'at once · default on this machine: 1',
     )
-    expect(describeField(field({ key: 'burnConcurrency', value: 3 })).unit).toBe(
-      'workers at once · default on this machine: 3',
-    )
+    expect(
+      describeField(field({ key: 'burnConcurrency', value: 3 }), undefined, undefined, { hostMemoryGb: 12 }).unit,
+    ).toBe('at once · default on this machine: 3, from 12 GB of memory')
+    // …no memory figure to quote, so none is invented.
+    expect(
+      describeField(field({ key: 'burnConcurrency', value: 3 }), undefined, undefined, { hostMemoryGb: 0 }).unit,
+    ).toBe('at once · default on this machine: 3')
     // …and the control stays empty over it: nobody chose this width.
     expect(describeField(field({ key: 'burnConcurrency', value: 3 })).ghostValue).toBe('3')
   })
 
   it('drops the machine-default once a width is actually set', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 5, source: 'file' }))
-    expect(row.unit).toBe('workers at once')
+    expect(row.unit).toBe('at once')
     expect(row.ghostValue).toBeUndefined()
     expect(row.note).toBeNull()
   })
@@ -501,18 +506,40 @@ describe('pageRows — one page per task', () => {
   it('puts the machine-wide fields on General, grouped Server, Sessions, then Workers', () => {
     const rows = pageRows(globalView(), 'general')
     expect(rows.map((r) => r.key)).toEqual(['serverPort', 'sessionMcp', 'burnConcurrency'])
-    expect(rows.map((r) => r.group)).toEqual(['server', 'sessions', 'width'])
+    expect(rows.map((r) => r.group)).toEqual(['server', 'sessions', 'workers'])
   })
 
   it('gives Models only the default model — the roster and steps are tables', () => {
     expect(pageRows(globalView(), 'models').map((r) => r.key)).toEqual(['model'])
   })
 
-  it('puts how many workers run at once on General, with the unit it counts', () => {
+  it('puts the workers-at-once number on General, in its own Workers group after the chats', () => {
+    const rows = pageRows(globalView(), 'general')
+    const row = rows.find((r) => r.key === 'burnConcurrency')
+    expect(row?.group).toBe('workers')
+    expect(rows[rows.length - 1]?.key).toBe('burnConcurrency')
+  })
+
+  it('threads the view\'s host memory into the unset default hint', () => {
+    const view = { ...globalView(), hostMemoryGb: 12 }
+    const unset = {
+      ...view,
+      fields: view.fields.map((f) =>
+        f.key === 'burnConcurrency' ? { ...f, source: 'default' as const } : f,
+      ),
+    }
+    const row = pageRows(unset, 'general').find((r) => r.key === 'burnConcurrency')
+    expect(row?.unit).toBe('at once · default on this machine: 3, from 12 GB of memory')
+  })
+
+  it('finds workers-at-once by workers, concurrency, at once and queue', () => {
+    const row = pageRows(globalView(), 'general').find((r) => r.key === 'burnConcurrency')!
+    const terms = rowSearchTerms(row).join(' ').toLowerCase()
+    for (const word of ['workers', 'concurrency', 'at once', 'queue']) expect(terms).toContain(word)
+  })
+
+  it('says nothing of sandboxes in the workers-at-once tooltip', () => {
     const row = pageRows(globalView(), 'general').find((r) => r.key === 'burnConcurrency')
-    expect(row?.label).toBe('Agents working at once')
-    expect(row?.unit).toBe('workers at once')
-    expect(row?.control).toBe('number')
     expect(row?.tooltip).not.toMatch(/sandbox|container|docker/i)
   })
 
@@ -1133,7 +1160,7 @@ describe('filterSettings', () => {
 
   it('matches the key and the tooltip, not just the label', () => {
     expect(filterSettings('burnConcurrency', items).matches).toEqual(new Set(['burnConcurrency']))
-    expect(filterSettings('under load', items).matches).toEqual(new Set(['burnConcurrency']))
+    expect(filterSettings('out of memory', items).matches).toEqual(new Set(['burnConcurrency']))
   })
 
   it('searches the extra strings a page hands it, like a model id', () => {

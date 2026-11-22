@@ -12,7 +12,8 @@ import {
   mergeModelEntries,
   modelEntryFor,
   modelRoster,
-  resolveDefaultBurnConcurrency,
+  memoryGb,
+  resolveDefaultWorkersAtOnce,
   resolveModel,
   resolveModelEntry,
   stepDefaultModel,
@@ -207,51 +208,70 @@ describe('model vocabulary — runtime-aware entries', () => {
   })
 })
 
-describe('RuncastleConfig — burnConcurrency (M2)', () => {
+describe('RuncastleConfig — burnConcurrency (workers and reviews at once)', () => {
   // The schema-level floor only. What an operator who set nothing actually gets
-  // is host-aware and applied by `loadConfig` — see `resolveDefaultBurnConcurrency`.
-  it('defaults to 3', () => {
-    expect(RuncastleConfig.parse({}).burnConcurrency).toBe(3)
+  // is host-aware and applied by `loadConfig` — see `resolveDefaultWorkersAtOnce`.
+  it('defaults to 2 on a raw parse', () => {
+    expect(RuncastleConfig.parse({}).burnConcurrency).toBe(2)
   })
 
-  it('accepts the 1..8 range', () => {
+  it('accepts the 1..16 range', () => {
     expect(RuncastleConfig.parse({ burnConcurrency: 1 }).burnConcurrency).toBe(1)
-    expect(RuncastleConfig.parse({ burnConcurrency: 8 }).burnConcurrency).toBe(8)
+    expect(RuncastleConfig.parse({ burnConcurrency: 16 }).burnConcurrency).toBe(16)
   })
 
-  it('rejects out-of-range and non-integer widths', () => {
+  it('rejects out-of-range and non-integer numbers', () => {
     expect(RuncastleConfig.safeParse({ burnConcurrency: 0 }).success).toBe(false)
-    expect(RuncastleConfig.safeParse({ burnConcurrency: 9 }).success).toBe(false)
+    expect(RuncastleConfig.safeParse({ burnConcurrency: 17 }).success).toBe(false)
     expect(RuncastleConfig.safeParse({ burnConcurrency: 2.5 }).success).toBe(false)
   })
 })
 
-/**
- * The host-aware half of that default. Three concurrent burns each size their
- * worker pools from the full visible core count, so on a small box they
- * oversubscribe it and manufacture test flakes; the threshold is 8.
- */
-describe('resolveDefaultBurnConcurrency', () => {
-  it('burns one ticket at a time on a small host', () => {
-    expect(resolveDefaultBurnConcurrency(6)).toBe(1)
-    expect(resolveDefaultBurnConcurrency(8)).toBe(1)
+const GIB = 1024 ** 3
+
+/** The host-aware half of that default: one per 4 GB of memory, between 2 and 8. */
+describe('resolveDefaultWorkersAtOnce', () => {
+  it('gives the floor of 2 on a small host', () => {
+    expect(resolveDefaultWorkersAtOnce(4 * GIB)).toBe(2)
+    expect(resolveDefaultWorkersAtOnce(8 * GIB)).toBe(2)
+    expect(resolveDefaultWorkersAtOnce(11 * GIB)).toBe(2)
   })
 
-  it('keeps width 3 above the threshold', () => {
-    expect(resolveDefaultBurnConcurrency(12)).toBe(3)
-    expect(resolveDefaultBurnConcurrency(16)).toBe(3)
+  it('gives one per 4 GB, rounded down', () => {
+    expect(resolveDefaultWorkersAtOnce(12 * GIB)).toBe(3)
+    expect(resolveDefaultWorkersAtOnce(16 * GIB)).toBe(4)
   })
 
-  it('treats a host that cannot say how many cores it has as small', () => {
-    expect(resolveDefaultBurnConcurrency(Number.NaN)).toBe(1)
-    expect(resolveDefaultBurnConcurrency(0)).toBe(1)
+  it('caps at 8', () => {
+    expect(resolveDefaultWorkersAtOnce(32 * GIB)).toBe(8)
+    expect(resolveDefaultWorkersAtOnce(64 * GIB)).toBe(8)
   })
 
-  it('stays inside the width the schema accepts', () => {
-    for (const cores of [1, 6, 8, 12, 16, 128]) {
-      const width = resolveDefaultBurnConcurrency(cores)
-      expect(RuncastleConfig.safeParse({ burnConcurrency: width }).success).toBe(true)
+  it('gives the floor when the host cannot say how much memory it has', () => {
+    expect(resolveDefaultWorkersAtOnce(0)).toBe(2)
+    expect(resolveDefaultWorkersAtOnce(Number.NaN)).toBe(2)
+    expect(resolveDefaultWorkersAtOnce(-1)).toBe(2)
+  })
+
+  it('stays inside the number the schema accepts', () => {
+    for (const gb of [0, 1, 6, 8, 12, 16, 64, 1024]) {
+      const n = resolveDefaultWorkersAtOnce(gb * GIB)
+      expect(RuncastleConfig.safeParse({ burnConcurrency: n }).success).toBe(true)
     }
+  })
+})
+
+describe('memoryGb', () => {
+  it('rounds down to whole gigabytes, as the default does', () => {
+    expect(memoryGb(12 * GIB)).toBe(12)
+    expect(memoryGb(11.6 * GIB)).toBe(11)
+    expect(memoryGb(7.4 * GIB)).toBe(7)
+  })
+
+  it('is 0 for a figure that is not a positive number', () => {
+    expect(memoryGb(0)).toBe(0)
+    expect(memoryGb(-5)).toBe(0)
+    expect(memoryGb(Number.NaN)).toBe(0)
   })
 })
 

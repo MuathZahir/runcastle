@@ -254,10 +254,10 @@ describe('SettingsDialog', () => {
 
     // The explanation is the row's description: one quiet line under the
     // label, and the control's accessible description — no hover to find it.
-    const about = screen.getByText(/Workers mid-turn at once across the machine/)
+    const about = screen.getByText(/How many workers and reviews may work at the same time/)
     expect(about.className).toContain('text-text-tertiary')
     expect(
-      screen.getByLabelText('Agents working at once').getAttribute('aria-describedby'),
+      screen.getByLabelText('Workers and reviews at once').getAttribute('aria-describedby'),
     ).toContain(about.id)
   })
 
@@ -266,12 +266,12 @@ describe('SettingsDialog', () => {
   it('shows how many workers run at once on General, under Workers', () => {
     open()
 
-    const width = screen.getByLabelText('Agents working at once') as HTMLInputElement
+    const width = screen.getByLabelText('Workers and reviews at once') as HTMLInputElement
     // Unset, so the default shows as a ghost to type over.
     expect(width.value).toBe('')
     expect(width.getAttribute('placeholder')).toBe('3')
     expect(screen.getByText('Workers')).toBeTruthy()
-    expect(screen.getByText(/^workers at once/)).toBeTruthy()
+    expect(screen.getByText(/^at once/)).toBeTruthy()
   })
 
   it('locks a field the environment owns and names the variable that set it', () => {
@@ -287,7 +287,7 @@ describe('SettingsDialog', () => {
   it('commits a change and says so beside the label', () => {
     open()
 
-    const width = screen.getByLabelText('Agents working at once')
+    const width = screen.getByLabelText('Workers and reviews at once')
     fireEvent.change(width, { target: { value: '4' } })
     fireEvent.blur(width)
 
@@ -299,7 +299,7 @@ describe('SettingsDialog', () => {
     server.reject = 'burnConcurrency must be 1–8'
     open()
 
-    const width = screen.getByLabelText('Agents working at once') as HTMLInputElement
+    const width = screen.getByLabelText('Workers and reviews at once') as HTMLInputElement
     fireEvent.change(width, { target: { value: '99' } })
     fireEvent.blur(width)
 
@@ -329,7 +329,7 @@ describe('SettingsDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'concurrency' } })
 
-    expect(screen.getByLabelText('Agents working at once')).toBeTruthy()
+    expect(screen.getByLabelText('Workers and reviews at once')).toBeTruthy()
     expect(screen.queryByLabelText('Server port')).toBeNull()
     // The group heading goes with its rows rather than standing over nothing.
     expect(screen.queryByText('Server')).toBeNull()
@@ -374,14 +374,14 @@ describe('SettingsDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: query } })
     expect(screen.getByRole('switch', { name: 'Usage ping' })).toBeTruthy()
-    expect(screen.queryByLabelText('Agents working at once')).toBeNull()
+    expect(screen.queryByLabelText('Workers and reviews at once')).toBeNull()
   })
 
   it('moves to the first page with hits when the open one has none', () => {
     open({ page: 'models' })
 
     fireEvent.change(screen.getByLabelText('Filter settings'), {
-      target: { value: 'concurrency' },
+      target: { value: 'queue' },
     })
 
     expect(screen.getByRole('button', { name: /General/ }).getAttribute('aria-current')).toBe(
@@ -420,7 +420,7 @@ describe('SettingsDialog', () => {
     open({ page: 'general', field: 'burnConcurrency' })
 
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
-    const row = screen.getByLabelText('Agents working at once').closest('div.border-b')
+    const row = screen.getByLabelText('Workers and reviews at once').closest('div.border-b')
     expect(row?.className).toContain('outline-accent')
     // The rows the link did not name are left alone.
     expect(screen.getByLabelText('Server port').closest('div.border-b')?.className).not.toContain(

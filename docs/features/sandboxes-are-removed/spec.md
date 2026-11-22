@@ -83,7 +83,8 @@ The shape:
 - **Web.** The first-run wizard drops its `afk` step and the `afkReady` flag. The
   Sandboxes settings page, its rail entry and the prerequisite card go; the reusable
   checklist pieces the runtimes step borrows from that card move to their own file. The
-  worker concurrency row moves to the General page with its current behaviour. Wording
+  worker concurrency row was moved to General first by "One number for how many build at
+  once" (merged 2026-11-22); merging main kept its version, "Workers and reviews at once". Wording
   that says agents run sandboxed (sidebar, glossary, pipeline step, worker pending hint)
   is corrected; an old worker's chat shows no "Sandbox" label. The iframe `sandbox`
   attributes are unrelated and stay.

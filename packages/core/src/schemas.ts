@@ -776,6 +776,11 @@ export const SettingsView = z.object({
   projectId: z.string().optional(),
   fields: z.array(SettingField),
   discovery: DiscoverySnapshot,
+  /**
+   * This machine's memory in whole GB, which the default number of workers at
+   * once is taken from (one-number-for-how-many-build-at-once decision 4).
+   */
+  hostMemoryGb: z.number().optional(),
 })
 export type SettingsView = z.infer<typeof SettingsView>
 

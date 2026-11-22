@@ -52,7 +52,7 @@ export function GeneralPage({ globals, projectId, filter, highlightField }: Sett
   if (!globals.data) return <>{standalone}</>
 
   const rows = pageRows(globals.data, 'general')
-  const group = (name: 'server' | 'sessions' | 'width') => rows.filter((row) => row.group === name)
+  const group = (name: 'server' | 'sessions' | 'workers') => rows.filter((row) => row.group === name)
 
   return (
     <>
@@ -71,7 +71,7 @@ export function GeneralPage({ globals, projectId, filter, highlightField }: Sett
       />
       <SettingGroup
         title="Workers"
-        rows={group('width')}
+        rows={group('workers')}
         filter={filter}
         highlightField={highlightField}
       />
@@ -79,7 +79,7 @@ export function GeneralPage({ globals, projectId, filter, highlightField }: Sett
   )
 }
 
-/** Label widths for the placeholder rows of the three groups: Server · Sessions · Workers. */
+/** Label widths for the placeholder rows of the three groups: Server · Chats · Workers. */
 export const GENERAL_SKELETON = [
   ['w-20', 'w-28'],
   ['w-24', 'w-32', 'w-20'],

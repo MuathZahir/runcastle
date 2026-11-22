@@ -4,8 +4,8 @@ import { cx } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import { needsMe, triageOf, upNextProblem } from '../lib/feature-ui'
 import { relTimeAgo } from '../lib/format'
-import { workerGroups, WORKER_STATUS_WORDS, type WorkerEntry } from '../lib/workers'
-import { IconAlert, IconChevronRight, IconMessage, IconPlus } from '../icons'
+import { ordinal, workerGroups, WORKER_STATUS_WORDS, workerStatusWhy, type WorkerEntry } from '../lib/workers'
+import { IconAlert, IconChevronRight, IconClock, IconMessage, IconPlus } from '../icons'
 import { IconButton } from '../ui'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { openRowMenu, SIDEBAR_CARD, type FeatureWorkers } from './SidebarParts'
@@ -271,7 +271,20 @@ function EpicFeatureRow({
   )
 }
 
-/** One live worker under its feature, as one line: its mark in front (asks, failed, stalled, working) and its label. */
+/**
+ * A waiting worker's few quiet words at its row's end (one-number-for-how-many-
+ * build-at-once decision 8): its place in the machine's line, or "held" when
+ * its account's limit skips it (decision 9) — the reason is too long for one
+ * line, so it is the row's tooltip and the foot line's list. Lower case, as the
+ * fold line's counts are.
+ */
+export function waitingWords(w: Pick<WorkerEntry, 'status' | 'heldBy' | 'place'>): string | undefined {
+  if (w.status !== 'queued') return undefined
+  if (w.heldBy) return 'held'
+  return w.place ? `waiting · ${ordinal(w.place)} in line` : 'waiting'
+}
+
+/** One live worker under its feature, as one line: its mark in front (asks, failed, stalled, working), its label, and a waiting one's place in line. */
 function EpicWorkerRow({
   worker: w,
   active,
@@ -291,6 +304,7 @@ function EpicWorkerRow({
   const menu = actions.length > 0 ? <FeatureActionsMenu actions={actions} label="Worker actions" /> : undefined
   // A stalled worker is its lead's to act on, not the human's (a-worker-never-shows-working-with-nothing-running decision 6): amber, not lit.
   const stalled = w.status === 'stalled'
+  const waits = waitingWords(w)
   const mark = locked ? (
     lock
   ) : asks ? (
@@ -301,6 +315,8 @@ function EpicWorkerRow({
     <IconAlert size={14} className="text-warning" aria-label="Stalled" />
   ) : w.status === 'working' ? (
     <WorkingMark />
+  ) : w.status === 'queued' ? (
+    <IconClock size={14} className="text-icon" aria-label="Waiting" />
   ) : null
   return (
     <div
@@ -312,7 +328,7 @@ function EpicWorkerRow({
     >
       <button
         type="button"
-        title={`${w.label} — ${WORKER_STATUS_WORDS[w.status]}${w.purpose ? ` · ${w.purpose}` : ''}${w.updatedAt > 0 ? ` · ${relTimeAgo(w.updatedAt)}` : ''}`}
+        title={`${w.label} — ${WORKER_STATUS_WORDS[w.status]}${workerStatusWhy(w) ? ` · ${workerStatusWhy(w)}` : ''}${w.purpose ? ` · ${w.purpose}` : ''}${w.updatedAt > 0 ? ` · ${relTimeAgo(w.updatedAt)}` : ''}`}
         aria-label={w.label}
         aria-current={active ? 'page' : undefined}
         onClick={() => onSelect(w.id)}
@@ -322,14 +338,16 @@ function EpicWorkerRow({
       <span
         className={cx(
           'pointer-events-none min-w-0 flex-1 truncate text-sm',
-          active || asks || failed ? 'text-text' : stalled ? 'text-warning-text' : 'text-text-secondary',
+          active || asks || failed ? 'text-text' : stalled ? 'text-warning-text' : w.status === 'queued' ? 'text-text-tertiary' : 'text-text-secondary',
           active && 'font-medium',
-          w.status === 'queued' && 'text-text-tertiary',
           menu && HOVER_ROOM_ONE,
         )}
       >
         {w.label}
       </span>
+      {waits && (
+        <span className={cx('pointer-events-none max-w-[65%] shrink-0 truncate text-xs text-text-tertiary', menu && CONCEAL)}>{waits}</span>
+      )}
       {menu && <RowActions beforeArrow={false}>{menu}</RowActions>}
     </div>
   )

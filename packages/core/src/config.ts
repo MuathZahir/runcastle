@@ -150,6 +150,15 @@ export const foldLegacyModelConfig = (raw: unknown): unknown => {
   return obj
 }
 
+/** Memory each worker is given room for by the default (one-number-for-how-many-build-at-once decision 4). */
+export const GB_PER_WORKER = 4
+/** The default's floor and ceiling (decision 4). */
+export const DEFAULT_WORKERS_AT_ONCE_MIN = 2
+export const DEFAULT_WORKERS_AT_ONCE_MAX = 8
+/** The most a user may set (decision 6). */
+export const WORKERS_AT_ONCE_MAX = 16
+const GIB = 1024 ** 3
+
 export const RuncastleConfig = z.preprocess(
   foldLegacyModelConfig,
   z.object({
@@ -208,23 +217,19 @@ export const RuncastleConfig = z.preprocess(
      */
     carryOnAfterLimit: z.enum(['on', 'off']).default('off'),
     /**
-     * Max tickets the burner works in parallel per run (M2, SPEC §8). Each
-     * concurrent ticket is one full agent, so this is a cost/resource knob as much as a speed
-     * knob — capped at 8. Dependency order (`blockedBy`) is always honoured
-     * regardless of the width.
+     * How many workers and reviews may be mid-turn at once, across every project
+     * on the machine (one-number-for-how-many-build-at-once decision 1). Settings
+     * calls it "Workers and reviews at once". Leads, the orchestrator and epics
+     * never count (decision 2); a worker counts only while it works (decision 5).
+     * The key keeps its old name so a value someone already set is kept.
      *
-     * Width is not free beyond the token cost: every concurrent agent runs the
-     * target repo's dependency install and test suite, each of which fans out
-     * to its own worker pool sized from the visible CPU count. Real burn logs
-     * show the setup hook stretching from ~70s at width 1 to ~500s with four
-     * tickets live, and test runners running out of memory. Lower this if suites die.
-     *
-     * Default: 3, or 1 on ≤8 logical CPUs. The schema cannot count cores (core
-     * is IO-free), so the `.default(3)` below is only the floor a raw
-     * `parse({})` sees; the host-aware value an operator actually gets is
-     * applied by `loadConfig` via {@link resolveDefaultBurnConcurrency}.
+     * Default: one per 4 GB of the machine's memory, between 2 and 8 (decision
+     * 4). The schema cannot read memory (core is IO-free), so the `.default(2)`
+     * below is only what a raw `parse({})` sees; the host-aware value an operator
+     * actually gets is applied by `loadConfig` via
+     * {@link resolveDefaultWorkersAtOnce}. A user may set up to 16 (decision 6).
      */
-    burnConcurrency: z.number().int().min(1).max(8).default(3),
+    burnConcurrency: z.number().int().min(1).max(WORKERS_AT_ONCE_MAX).default(DEFAULT_WORKERS_AT_ONCE_MIN),
     /**
      * Command run in a worker's own folder on the host before the agent
      * starts, overriding lockfile-based detection. Leave
@@ -271,30 +276,35 @@ export const RuncastleConfig = z.preprocess(
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
 
 /**
- * At or below this many logical CPUs a host is too small to burn wide, and the
- * default width drops to 1. Eight is the line because a 6C/12T box — the audited
- * machine — sits under it while a 16-thread workstation sits above.
+ * The `burnConcurrency` an operator who set nothing gets on a host with
+ * `totalMemBytes` of memory: one per {@link GB_PER_WORKER} GB, rounded down,
+ * never below {@link DEFAULT_WORKERS_AT_ONCE_MIN} nor above
+ * {@link DEFAULT_WORKERS_AT_ONCE_MAX} (one-number-for-how-many-build-at-once
+ * decision 4). Pure: the caller supplies the figure, because core may not
+ * import `node:os`; `loadConfig` is where the host is asked.
+ *
+ * Memory is the ceiling now that workers run on the host: measured on the
+ * runcastle repo, an agent process holds 0.2–0.4 GB and a typecheck peaks at
+ * 0.85 GB on top, with tests and a dev server adding bursts. 4 GB each leaves
+ * room for the leads and the server. It replaced a default that counted CPU
+ * cores and gave 1 on any machine with 8 or fewer.
+ *
+ * A figure that is not a positive number (a runtime with no answer) gets the
+ * floor.
  */
-const SMALL_HOST_LOGICAL_CPUS = 8
+export function resolveDefaultWorkersAtOnce(totalMemBytes: number): number {
+  if (!Number.isFinite(totalMemBytes) || totalMemBytes <= 0) return DEFAULT_WORKERS_AT_ONCE_MIN
+  const byMemory = Math.floor(totalMemBytes / (GB_PER_WORKER * GIB))
+  return Math.min(DEFAULT_WORKERS_AT_ONCE_MAX, Math.max(DEFAULT_WORKERS_AT_ONCE_MIN, byMemory))
+}
 
 /**
- * The `burnConcurrency` an operator who set nothing gets on a host with
- * `logicalCpus` cores: 1 at or below {@link SMALL_HOST_LOGICAL_CPUS}, else 3.
- * Pure — the caller supplies the count, because core may not import `node:os`;
- * `loadConfig` is where the host is actually asked.
- *
- * Three was a flat default until the 2026-08-27 audit on a 6C/12T host. Each
- * concurrent burn sizes its install and test worker pools from the FULL visible
- * core count, so width 3 oversubscribes a small box threefold and every agent's
- * commands slow down together. The cost is not only wall-clock: a known set of
- * frontend suites goes red under that contention and green in isolation, and six
- * burns spent tickets re-triaging flakes the width had manufactured.
- *
- * A count that is not a positive number (a runtime with no answer) is read as a
- * small host — the conservative width is the right answer to not knowing.
+ * Whole gigabytes in `bytes`, rounded down, as Settings names the machine's
+ * memory. Down, like {@link resolveDefaultWorkersAtOnce}, so the hint's figures
+ * add up: a machine reporting 11.7 GB says "2, from 11 GB", not "from 12 GB".
  */
-export function resolveDefaultBurnConcurrency(logicalCpus: number): number {
-  return Number.isFinite(logicalCpus) && logicalCpus > SMALL_HOST_LOGICAL_CPUS ? 3 : 1
+export function memoryGb(bytes: number): number {
+  return Number.isFinite(bytes) && bytes > 0 ? Math.floor(bytes / GIB) : 0
 }
 
 /**

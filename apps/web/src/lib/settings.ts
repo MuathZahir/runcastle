@@ -67,6 +67,7 @@ export type SettingsPage = 'general' | 'models' | 'project'
 export type SettingsGroup =
   | 'server'
   | 'sessions'
+  | 'workers'
   | 'default'
   | 'width'
   | 'model'
@@ -75,7 +76,7 @@ export type SettingsGroup =
 
 /** Each page's groups in render order; `pageRows` sorts its rows by it. */
 const PAGE_GROUPS: Record<SettingsPage, readonly SettingsGroup[]> = {
-  general: ['server', 'sessions', 'width'],
+  general: ['server', 'sessions', 'workers'],
   models: ['default'],
   project: ['model', 'commands', 'chat'],
 }
@@ -328,13 +329,14 @@ const FIELD_META: Record<string, FieldMeta> = {
     searchTerms: ['usage', 'limit', 'reset', 'continue', 'carry on', 'resume', 'weekly'],
   },
   burnConcurrency: {
-    label: 'Agents working at once',
+    label: 'Workers and reviews at once',
     tooltip:
-      'Workers mid-turn at once across the machine (1–8). Each runs its own installs and tests on this machine — lower it if suites die under load. A worker over the limit waits, queued, and starts by itself; one waiting for you or stopped counts for nothing.',
+      'How many workers and reviews may work at the same time, across all your projects (1–16). Past it, they wait in line and start by themselves, first come first served. Leads and the orchestrator never wait. A worker waiting for you counts for nothing. Lower it if the machine runs out of memory.',
     control: 'number',
     page: 'general',
-    group: 'width',
-    unit: 'workers at once',
+    group: 'workers',
+    unit: 'at once',
+    searchTerms: ['workers', 'reviews', 'concurrency', 'at once', 'queue', 'parallel', 'memory', 'limit'],
   },
   // The five keys with a global twin render ONCE, on "This project", where a
   // source chip says whether the value came from here or from the global
@@ -619,25 +621,27 @@ function isModelKey(key: string): boolean {
 }
 
 /**
- * What the number counts, and — for `burnConcurrency` alone — the width this
- * machine would burn at while nothing is set.
+ * What the number counts, and — for `burnConcurrency` alone — the number this
+ * machine would use while nothing is set, with the memory it came from.
  *
- * That number is read off the field rather than recomputed: the web has no way
- * to count the host's cores, and the value the server sent for an unset field
- * already IS the default it resolved. Only worth saying while the field is
- * unset; once a width is chosen, the machine no longer decides.
+ * The default is read off the field rather than recomputed: the value the
+ * server sent for an unset field already IS the default it resolved. The memory
+ * figure is the view's `hostMemoryGb`, left out when the server did not send it.
+ * Only worth saying while the field is unset; once a number is chosen, the
+ * machine no longer decides.
  */
-function unitFor(field: SettingField, meta: FieldMeta): string | undefined {
+function unitFor(field: SettingField, meta: FieldMeta, hostMemoryGb?: number): string | undefined {
   if (meta.unit === undefined) return undefined
   if (field.key !== 'burnConcurrency' || field.source !== 'default') return meta.unit
-  return `${meta.unit} · default on this machine: ${toDisplay(field.value)}`
+  const from = hostMemoryGb !== undefined && hostMemoryGb > 0 ? `, from ${hostMemoryGb} GB of memory` : ''
+  return `${meta.unit} · default on this machine: ${toDisplay(field.value)}${from}`
 }
 
 /**
  * The inherited global value for an unset project-scope twin, or undefined.
  *
  * Burn concurrency is the one machine-wide field with a ghost of its own: while
- * nothing is set, the width comes from this host's core count, and showing it as
+ * nothing is set, the number comes from this host's memory, and showing it as
  * a value would read as a choice someone made (spec §Burns).
  *
  * `env` is excluded deliberately: an env-locked field is not inheriting the
@@ -703,13 +707,14 @@ export function describeField(
   field: SettingField,
   finding?: FindingLike,
   roster: readonly ModelEntry[] = CURATED_MODELS,
+  options: { hostMemoryGb?: number } = {},
 ): SettingRow {
   const meta = metaFor(field.key, field.scope)
   const isModel = isModelKey(field.key)
   const readOnly = !field.editable
   const overridden = field.source === 'project'
 
-  const unit = unitFor(field, meta)
+  const unit = unitFor(field, meta, options.hostMemoryGb)
   const ghostValue = ghostValueFor(field)
   const sourceChip = sourceChipFor(field)
   // A deliberate none (the-orchestrator-prepares-the-project decision 2): a
@@ -805,7 +810,7 @@ export function pageRows(
         ? f.scope === 'project'
         : f.scope !== 'project' && metaFor(f.key).page === page
     })
-    .map((f) => describeField(f, byKey.get(f.key), roster))
+    .map((f) => describeField(f, byKey.get(f.key), roster, { hostMemoryGb: view.hostMemoryGb }))
     .sort(
       (a, b) =>
         groups.indexOf(a.group) - groups.indexOf(b.group) ||
