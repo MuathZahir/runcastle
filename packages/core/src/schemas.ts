@@ -48,7 +48,7 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * never takes the feature's one-terminal slot. Retired by interactive-workers:
  * no new rows are made of it, and old ones stay readable (decision 23).
  * `worker` = an interactive worker (interactive-workers): a thread owned by one
- * feature whose agent runs inside its own sandbox, on its own branch, recorded
+ * feature whose agent builds on the host, in the feature's folder or its own, recorded
  * by a `workers` row keyed by this session's id ({@link WorkerRow}).
  */
 export const SessionKind = z.enum([
@@ -412,17 +412,12 @@ export const PreparedKey = z.enum(PREPARED_KEYS)
 export type PreparedKey = z.infer<typeof PreparedKey>
 
 /**
- * Every project field that carries provenance: the prepared facts, plus the
- * ones runcastle's own machinery establishes without a preparation run.
- *
- * `sandboxImage` is the second kind and the reason this list exists apart from
- * {@link PREPARED_KEYS}. It needs the provenance rails — a human who types an
- * image tag must keep it, and `isOverwritable` is what protects it — but it is
- * NOT something a preparation conversation should ask about or record: the
- * value is written by the image build, and a key in `PREPARED_KEYS` would put
- * it on the prep session's to-do list and in `record_finding`'s vocabulary.
+ * Every project field that carries provenance: today exactly the prepared
+ * facts. The image build's `sandboxImage` was the one other key; it went with
+ * the sandboxes (sandboxes-are-removed), so an old finding row for it is no
+ * provenance key and listing skips it.
  */
-export const PROVENANCE_KEYS = [...PREPARED_KEYS, 'sandboxImage'] as const
+export const PROVENANCE_KEYS = [...PREPARED_KEYS] as const
 export const ProvenanceKey = z.enum(PROVENANCE_KEYS)
 export type ProvenanceKey = z.infer<typeof ProvenanceKey>
 
@@ -434,7 +429,7 @@ export type ProvenanceKey = z.infer<typeof ProvenanceKey>
  *
  * Everything else is unverifiable by a host drive — `dbResetCommand` has no
  * drive slot to prove it in, `driveInstructions` is prose no exit code can
- * judge, and the sandbox keys are never touched by one — so those keys carry no
+ * judge — so those keys carry no
  * verification badge at all. That reads as "unverifiable", not "failed".
  */
 export const DRIVE_LOOP_KEYS = [
@@ -455,11 +450,9 @@ export const DRIVE_LOOP_KEYS = [
  * same session is recorded as `human`, not `session`: the lock belongs to who
  * decided the value, not to which process wrote the row.
  *
- * `build` is runcastle's own machinery rather than any conversation: the image
- * build writes `sandboxImage` when it builds a project's `.runcastle/sandbox/`
- * Dockerfile. Like `session` it does not lock the key — clearing the value is
- * still what hands it back — but it must not read as "prepared", because no
- * preparation run ever measured it.
+ * `build` was the image build's, which wrote `sandboxImage` before sandboxes
+ * were removed; no key is written with it now, and it stays so old rows
+ * still read.
  */
 export const FindingSource = z.enum(['prep', 'human', 'session', 'build'])
 export type FindingSource = z.infer<typeof FindingSource>
@@ -494,8 +487,6 @@ export const Project = z.object({
   devCommand: z.string().optional(),
   /** Per-project default-model override (issue #48); unset → inherit global. */
   model: z.string().optional(),
-  /** Per-project sandbox image; unset → inherit env / global / stock default. */
-  sandboxImage: z.string().optional(),
   /** Prepared repo facts (see {@link PREPARED_KEYS}); unset → inherit global. */
   setupCommand: z.string().optional(),
   verifyCommands: z.string().optional(),
@@ -1039,7 +1030,7 @@ export function isBuildWorkerKind(kind: WorkerKind): kind is BuildWorkerKind {
  */
 export type WorkerPlacement = 'feature-folder' | 'own-folder'
 
-/** A worker's placement, read off its row; null for a sandboxed worker from before, or a drive's. */
+/** A worker's placement, read off its row; null for a worker from the container era, or a drive's. */
 export function workerPlacement(w: { folder: string | null; branch: string | null }): WorkerPlacement | null {
   if (!w.folder) return null
   return w.branch ? 'own-folder' : 'feature-folder'
@@ -1057,7 +1048,7 @@ export function isDriveWorkerKind(kind: WorkerKind): kind is DriveWorkerKind {
 /**
  * Where a Review worker runs (burns-become-workers decision 3): `drive` on the
  * host, in the human's checkout while the review drive holds the drive slot;
- * `gates` in an ordinary worker sandbox on the committed feature branch.
+ * `gates` in its own folder on the committed feature branch.
  */
 export const ReviewWorkerMode = z.enum(['drive', 'gates'])
 export type ReviewWorkerMode = z.infer<typeof ReviewWorkerMode>
@@ -1112,15 +1103,11 @@ export type WorkerOutcome = z.infer<typeof WorkerOutcome>
 export const WorkerStartedBy = z.enum(['lead', 'human'])
 export type WorkerStartedBy = z.infer<typeof WorkerStartedBy>
 
-/** The container engine a worker's sandbox runs on. */
-export const WorkerEngine = z.enum(['docker', 'podman'])
-export type WorkerEngine = z.infer<typeof WorkerEngine>
-
 /**
  * One worker (the `workers` table): its id is its thread's session id. The
- * sandbox fields (`container`, `branch`, `previewPort`) are null until its
- * sandbox is up; the handback fields hold the latest handback, and `outcome`
- * what the lead did with it.
+ * place fields (`folder`, `branch`, `previewPort`) are null until it is
+ * placed; the handback fields hold the latest handback, and `outcome` what
+ * the lead did with it.
  */
 export const WorkerRow = z.object({
   id: z.string(),
@@ -1138,14 +1125,12 @@ export const WorkerRow = z.object({
   status: WorkerStatus,
   /** What failed, in a few words, while `status` is `failed`. */
   failure: z.string().nullable(),
-  engine: WorkerEngine,
-  container: z.string().nullable(),
   /** The worker's own branch, cut from `featureBranch`; null for one in the feature's folder. */
   branch: z.string().nullable(),
   /**
    * Where a worker builds on the host (workers-build-in-the-feature-s-folder decisions 2, 3, 7):
-   * the feature's own folder, or its own worktree on `branch`. Null for a sandboxed worker
-   * (from before) and the drive's workers.
+   * the feature's own folder, or its own worktree on `branch`. Null for a worker from the
+   * container era and the drive's workers.
    */
   folder: z.string().nullable(),
   featureBranch: z.string(),
@@ -1173,7 +1158,7 @@ export type WorkerRow = z.infer<typeof WorkerRow>
 
 /**
  * The feature a worker belongs to, on a path only a feature's worker reaches
- * (its sandbox, its review, its lead). A project-owned worker has none: reaching
+ * (its folder, its review, its lead). A project-owned worker has none: reaching
  * one here is a bug, so it throws rather than reading as another feature's.
  */
 export function workerFeatureId(w: Pick<WorkerRow, 'id' | 'featureId'>): string {
