@@ -41,7 +41,7 @@ class Component extends DCLogic {
     }, 100);
     // Each section is OFF until its row is first seen; then its own clock starts at t=0.
     // A #t=<sec> hash (used by the capture scripts) lights everything at clock 0.
-    const ids = ['orc', 'sbx', 'dsg', 'rev', 'drv', 'nts', 'phn', 'end'];
+    const ids = ['orc', 'dsg', 'rev', 'drv', 'nts', 'phn', 'end'];
     const lightAll = (at) => this.setState((s) => { const litAt = { ...s.litAt }; ids.forEach((k) => { if (litAt[k] === undefined) litAt[k] = at === undefined ? s.clock : at; }); return { litAt }; });
     let captured = false;
     try { captured = /[#&]t=/.test(window.location.hash); } catch (e) {}
@@ -165,64 +165,6 @@ class Component extends DCLogic {
     wire.forEach((w, a) => { v['w' + a] = 'orc-w' + w; });
     v.tower = 'cube tower up' + (take ? ' orc-take' : '') + (hold ? ' orc-hold' : '');
     return v;
-  }
-
-  // loop: 290 still: 10.6
-  sbx(t) {
-    // A 29 s loop in two rounds, all on a fixed beat.
-    // 0.4 s   nine sandboxes rise, back to front; each lid shows its ticket, dim (Waiting)
-    // 2.0 s   a ticket card is set down in each box, 0.35 s apart, and grows into a blue worker
-    // 7-15 s  one result per second: seven land (green), two fail (red, then torn down)
-    // 17.4 s  Round 2: only the two failed tickets get fresh sandboxes, run, and land
-    // 25.6 s  every sandbox lowers into the floor; an empty grid rests until the seam
-    const ORDER = [0, 1, 3, 2, 4, 6, 5, 7, 8]; // back-to-front sweep (box = row * 3 + col)
-    const FIN = [4, 0, 8, 3, 2, 6, 1, 7, 5]; // the order results come in, one per second
-    const FAILS = [3, 7];
-    const TITLE = ['Fee math', 'Due dates', 'Reminders', 'Late fees', 'Tax lines', 'PDF export', 'Refunds', 'Discounts', 'Audit log'];
-    const PITCH = 160, ORIGIN = 44, TK = 48, R2 = 17.4;
-
-    const BX = {
-      off: 'cube sbx-box', wait: 'cube up sbx-box sbx-w', fall: 'cube up sbx-box sbx-w',
-      run: 'cube up sbx-box sbx-r', ok: 'cube up sbx-box sbx-g', done: 'cube up sbx-box sbx-g sbx-d',
-      bad: 'cube up sbx-box sbx-x', sink: 'cube up sbx-box sbx-x', down: 'cube sbx-box',
-    };
-    const TKC = {
-      off: 'cube sbx-tk sbx-hide', wait: 'cube sbx-tk sbx-hide', fall: 'cube up sbx-tk sbx-card',
-      run: 'cube up sbx-tk sbx-run', ok: 'cube up sbx-tk sbx-ok', done: 'cube up sbx-tk sbx-done',
-      bad: 'cube up sbx-tk sbx-bad', sink: 'cube sbx-tk sbx-sink', down: 'cube sbx-tk sbx-down',
-    };
-    const FL = { run: ' sbx-on', fall: ' sbx-on', ok: ' sbx-glow', done: ' sbx-g', bad: ' sbx-x', sink: ' sbx-x' };
-
-    const boxes = [];
-    for (let b = 0; b < 9; b++) {
-      const col = b % 3, row = Math.floor(b / 3), k = ORDER.indexOf(b), j = FAILS.indexOf(b);
-      const drop = 2.0 + k * 0.35, fin = 7 + FIN.indexOf(b), down = 25.6 + k * 0.12;
-      const segs = [[0, 'off'], [0.4 + k * 0.15, 'wait'], [drop, 'fall'], [drop + 0.9, 'run']];
-      if (j < 0) segs.push([fin, 'ok'], [fin + 0.7, 'done']);
-      else {
-        // failed: red, the worker sinks, the sandbox is torn down; Round 2 builds a fresh one
-        const r2 = 19.0 + j * 0.35, f2 = 23 + j;
-        segs.push([fin, 'bad'], [fin + 1.2, 'sink'], [fin + 2.2, 'off'],
-          [18.0 + j * 0.15, 'wait'], [r2, 'fall'], [r2 + 0.9, 'run'], [f2, 'ok'], [f2 + 0.7, 'done']);
-      }
-      segs.push([down, 'down']);
-      let ph = 'off';
-      for (const [at, p] of segs) if (t >= at) ph = p;
-
-      const l = ORIGIN + col * PITCH, tp = ORIGIN + row * PITCH;
-      boxes.push({
-        l, t: tp, tl: l + 60 - TK / 2, tt: tp + 58,
-        fl: 'sbx-fl' + (FL[ph] || ''),
-        bx: BX[ph], tk: TKC[ph],
-        n: 12 + k, title: TITLE[k],
-      });
-    }
-    return {
-      boxes,
-      // each round's label reads bright for its first seconds, then settles
-      r1: 'sbx-rn' + (t >= 0.3 && t < R2 ? ' sbx-on' : '') + (t < 3.2 ? ' sbx-new' : ''),
-      r2: 'sbx-rn' + (t >= R2 && t < 26.4 ? ' sbx-on' : '') + (t < R2 + 3.2 ? ' sbx-new' : ''),
-    };
   }
 
   // loop: 170 still: 14.2
@@ -461,7 +403,7 @@ class Component extends DCLogic {
     // seen -> 'lit' (the light comes up); RISE ticks later -> 'lit on' (power on, clock starts at 0)
     const RISE = 16;
     const onAt = (k) => (s.litAt[k] === undefined ? Infinity : s.litAt[k] + RISE);
-    ['orc', 'sbx', 'dsg', 'rev', 'drv', 'nts', 'phn'].forEach((k) => { lit[k] = !motion ? 'lit on' : s.litAt[k] === undefined ? '' : c >= onAt(k) ? 'lit on' : 'lit'; });
+    ['orc', 'dsg', 'rev', 'drv', 'nts', 'phn'].forEach((k) => { lit[k] = !motion ? 'lit on' : s.litAt[k] === undefined ? '' : c >= onAt(k) ? 'lit on' : 'lit'; });
     // a section's own time: frozen at 0 (its OFF frame) until on, then counting from that moment
     const sec = (k, loop, still) => (!motion ? still : c < onAt(k) ? 0 : ((c - onAt(k)) % loop) / 10);
     return {
@@ -471,7 +413,6 @@ class Component extends DCLogic {
       lit,
       endCls: 'close sec' + (!motion || s.litAt.end !== undefined ? ' lit' : ''),
       orc: this.orc(sec('orc', 300, 17.5)),
-      sbx: this.sbx(sec('sbx', 290, 10.6)),
       dsg: this.dsg(sec('dsg', 170, 14.2)),
       rev: this.rev(sec('rev', 178, 8.85)),
       drv: this.drv(sec('drv', 120, 11.2)),

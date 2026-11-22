@@ -89,11 +89,15 @@
         <ul>
           <li><strong>Claude Code or Codex</strong>, installed and signed in. They run on your own Claude or ChatGPT plan.</li>
           <li><strong>Git</strong>.</li>
-          <li><strong>Docker or Podman</strong>, running. Workers build your code inside containers, so you need one before the first build.</li>
           <li>macOS 13 or later, Windows 10 (version 1809) or later, or Linux. The installer also installs Bun, which runcastle runs on.</li>
         </ul>
         <p>
-          Setting up Docker or Podman on each system, and fixes for common problems, are in the
+          Workers run on your machine. runcastle refuses edits outside the agent's own folder and a
+          short list of destructive commands, but a script an agent runs can still reach outside its
+          folder. Run it only on projects you trust.
+        </p>
+        <p>
+          Fixes for common problems are in the
           <a href="https://github.com/MuathZahir/runcastle#prerequisites" rel="noopener" target="_blank">README</a>.
         </p>
 
