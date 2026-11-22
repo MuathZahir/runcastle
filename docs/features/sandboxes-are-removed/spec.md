@@ -39,31 +39,29 @@ The shape:
   resumes or wakes container workers; the one-off upgrade step below closes them.
 - **The upgrade step (one small module, the only code left that calls Docker).** Runs
   once per install at boot, after migrations, and records that it ran in the data
-  folder. When neither a docker nor a podman binary answers, it records itself done and
-  stops. Otherwise, for things labelled `runcastle.owner=runcastle` with this install's
-  `runcastle.data-dir`:
-  - For each unfinished container worker (a row with a container and a status that is
-    not landed, dropped or failed): fetch its branch from its copy in the data folder
-    into the project repo with plain git, mark it failed with the reason from decision
-    4, emit an event on its feature naming the branch and the container's remove
-    command, and tell the feature's lead.
-  - For each finished container worker: keep its conversation file if it was not kept
-    yet (one copy out of the container), then remove the container.
-  - Remove the labelled images, volumes and runcastle's own image builders, the project
-    copies and runtime folders under the data folder, and legacy burn-engine containers
-    of this install.
-  - Measure what was freed, write one log line and one project event saying so, and
-    name `docker builder prune` with the size of Docker's shared build cache when it is
-    large.
-  Every Docker call is best-effort: a failure is an event, never a failed boot. A later
-  release may delete this module; that is outside this feature.
-  Until the human answers decision 3, the step has two modes picked by one constant in
-  the module. "Remove" does the above. "Tell" removes nothing and calls Docker only to
-  list: it closes unfinished container workers (plain git, as above), then writes one
-  project event and log line naming what is left, its size, and the commands that
-  remove exactly those things (by name, not by a label filter, so an unfinished
-  worker's container is never in them). "Tell" ships unless the human's answer arrives
-  first.
+  folder. Never on a copied database. It must not touch existing work (decision 3), so
+  "finished" means only a known worker that landed or was dropped.
+  - For each unfinished container worker (no folder, not a drive worker, status
+    working, queued, waiting, stalled or handed back): fetch its branch from its copy in
+    the data folder into the project repo with plain git, and mark it failed with the
+    reason from decision 4, which tells the feature's lead. Boot wakes nothing until
+    this is done. This runs even when no docker or podman answers.
+  - When docker or podman answers, among things labelled `runcastle.owner=runcastle`
+    with this install's `runcastle.data-dir` (or, for older ones, named and mounted the
+    way this install made them):
+    - Removed: containers of landed or dropped workers (their conversation file copied
+      out first if it was not kept yet), the project copies of those workers, images no
+      kept container was made from, cache volumes of projects with no kept container,
+      runcastle's own image builders, and the runtime folders.
+    - Kept and named with its remove command: every other container (a worker that is
+      unfinished, failed or unknown, and the burn engine's), every other project copy,
+      the image a kept container was made from, the cache volumes of its project and
+      the old shared one while any container is kept.
+  - One log line and one project event say what was removed, the space freed, what was
+    kept with the commands that remove it, and `docker builder prune` with the size of
+    Docker's shared build cache when it is 1 GB or more. It never runs that command.
+  Every Docker call is best-effort with a timeout: a failure is part of the event, never
+  a failed boot. A later release may delete this module; that is outside this feature.
 - **Setup, doctor and CLI.** `runcastle setup` loses the Docker install, the docker group
   and the log-out step. The doctor loses its container runtime, image, cache volume, user
   mapping and unattended-token checks. The `build-image` and `token` commands go. The
@@ -106,9 +104,10 @@ subagents, fixes, and ready.
 
 - **Typecheck of the whole repo** (existing): nothing still imports what was deleted.
 - **The upgrade step against a fake container CLI** (new): given labelled containers,
-  images, volumes and worker rows in each state, it removes only finished workers' and
-  this install's things, keeps an unfinished worker's commits as a branch and marks it
-  failed, and runs only once. The existing fake engine used by the worker tests is
+  images, volumes and worker rows in each state across two projects, it removes a
+  landed or dropped worker's container and keeps a working or failed one's, removes only
+  this install's things, keeps and names whatever may hold unfinished work, keeps an
+  unfinished worker's commits as a branch and marks it failed, and runs only once. The existing fake engine used by the worker tests is
   replaced by this one fake CLI.
 - **Worker service tests on host workers only** (existing): land, send back, stop and
   previews still pass with the container branches gone.

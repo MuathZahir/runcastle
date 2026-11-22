@@ -23,6 +23,7 @@ Where: runcastle's server, its setup and docs. Who: every runcastle user.
 
 - Sandboxes removed entirely, not opt-in (quoted above).
 - The cut and its order: "Alright, you can start". Planning mode was the orchestrator's pick (plan automatically).
+- Cleanup runs by itself, once, on the first start after upgrading (2026-11-22, relayed by the orchestrator): "Yes, just make sure this doesnt affect existing work in runcastle". It removes only what belongs to workers that landed or were dropped, in every project on the machine; anything that may hold unfinished work is kept and named with the command that removes it.
 
 ## Understood
 

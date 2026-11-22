@@ -173,8 +173,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <h3 class="sub">The first start after upgrading</h3>
   <div class="flow">
     <div class="step"><b>1 · Unfinished container worker</b>Its commits are kept on a branch in the project, it is marked failed with a plain reason, and the lead is told. Its container stays, named with the command to remove it. <a class="pin" data-d="4">4</a></div>
-    <div class="step"><b>2 · Finished workers and the rest</b>Only things labelled as this install's: finished workers' containers (conversation kept first), images, cache volumes, runcastle's own builders, project copies. <a class="pin" data-d="3">3</a></div>
-    <div class="step"><b>3 · Tell</b>Until the human answers decision 3, this ships as tell-only: nothing is removed and the line names the exact commands. One timeline line with the space freed, and the one command for Docker's shared build cache, which runcastle does not touch. Runs once; no Docker means it does nothing.</div>
+    <div class="step"><b>2 · Landed or dropped workers</b>Only things labelled as this install's, in every project: those workers' containers (conversation kept first) and project copies, images and cache volumes nothing kept needs, runcastle's own builders. <a class="pin" data-d="3">3</a></div>
+    <div class="step"><b>3 · Keep and say</b>Anything that may hold unfinished work stays: a working, queued, failed or unknown worker's container and copy, its project's cache, the image it came from. One timeline line with the space freed, each kept thing's remove command, and the one command for Docker's shared build cache, which runcastle does not touch. Runs once; no Docker means it only closes unfinished workers. <a class="pin" data-d="3">3</a></div>
   </div>
 
   <h3 class="sub">Who builds what</h3>
@@ -243,7 +243,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var D = [
     ['Sandboxes are removed entirely, not kept as an option', 'The human: "if sandboxes are causing all these issues I dont think it should even be opt in."'],
     ['Build it now, in the agreed order, with no workers', 'The human asked features to build on their own, since workers keep running out of memory and disk.'],
-    ['Leftovers are cleaned up by themselves, once, on the first start after upgrading', 'The owner\'s disk filled on 2026-11-21; most users would never run a command they were only told about. Only this install\'s labelled things of finished workers are removed.', 'assumed'],
+    ['Leftovers are cleaned up by themselves, once, on the first start after upgrading', 'The human: "Yes, just make sure this doesnt affect existing work in runcastle". So only this install\'s things of landed or dropped workers go; anything unsure is kept and named.'],
     ['A worker still in a container at upgrade is stopped, and its commits are kept as a branch', 'Its commits already sit on the host, so plain git keeps them; only its container, which may hold uncommitted edits, stays. Decided by the epic.'],
     ['The wizard loses "Unattended workers", Settings loses "Sandboxes"', 'Only containers used them; "workers at once" moves unchanged to General. Decided by the epic.'],
     ['Docker is no longer a prerequisite anywhere', 'Setup, doctor, README and website stop asking for it; Docker already installed is left alone.'],
@@ -253,9 +253,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // <!-- FILL:C -->
   // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn
-  var C = [
-    [3, 'Never run Docker again; only tell users the commands', 'It deletes things outside git that cannot be undone; the epic asked the human. Built both ways; ships as "only tells" unless they answer first.', 'guess']
-  ]
+  var C = []
   var list = $('#dlist')
   D.forEach(function (d, i) {
     var el = document.createElement('details')

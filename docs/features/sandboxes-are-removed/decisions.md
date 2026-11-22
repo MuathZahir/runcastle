@@ -1,11 +1,8 @@
 # Decisions — Sandboxes are removed
 
 Planned with nobody present (2026-11-21), on the epic "Runcastle Rethink". Decisions
-marked **Assumed.** are the lead's picks, waiting for the human's word. Those marked
-**Decided by autopilot.** were taken by the epic, which runs this feature; the human
-can overturn any of them.
-
-Check first: 3
+marked **Decided by autopilot.** were taken by the epic, which runs this feature; the
+human can overturn any of them.
 
 ## 1. Sandboxes are removed entirely, not kept as an option
 **Decision:** Workers run only on the host. No container engine, no switch, no dormant
@@ -23,23 +20,24 @@ worker), reviews with its own subagents, runs the checks, then says ready.
 workers since we keep running out of memory and disk... We need to finish these fixes
 as fast as possible".
 
-## 3. Leftovers are cleaned up by themselves, once, on the first start after upgrading
+## 3. Leftovers are cleaned up by themselves, once, on the first start after upgrading, and never touch unfinished work
 **Decision:** On its first start after the upgrade, runcastle removes what it made for
-containers on this machine, but only what carries its own label and this install's data
-folder: containers of finished workers, its worker images, its cache volumes, its own
-image builders (their build cache goes with them), and the project copies under the
-data folder. Docker's shared build cache, which also holds the user's other builds, is
-not touched; the user is told the one command that clears it (`docker builder prune`)
-with the space it would free. The start's log and the timeline say what was removed and
-how much space came back. When no Docker is installed, nothing runs.
+containers on this machine, in every project, but only what carries its own label and
+this install's data folder and belongs to a worker that finished: landed or dropped.
+That is those workers' containers and project copies, the images and cache volumes
+nothing kept needs, its own image builders (their build cache goes with them), and the
+runtime folders. Anything that may hold unfinished work stays: the container and copy
+of a worker that is working, queued, waiting, failed or unknown, its project's cache
+volumes, the image it was made from, and the burn engine's old containers. The start's
+log and the timeline say what was removed and how much space came back, and name each
+kept thing with the command that removes it. Docker's shared build cache, which also
+holds the user's other builds, is not touched; the user is told the one command that
+clears it (`docker builder prune`) with its size. When no Docker is installed, nothing
+runs.
 **Why:** The owner's 96 GB disk filled with these on 2026-11-21 and stopped every
-feature; most users would never run a command they were only told about. Removing only
-labelled things of finished workers cannot lose work or touch other projects.
-**Assumed.** Alternative: never run Docker from runcastle again, and only tell the user
-the commands to run.
-**Changed by the orchestrator:** this deletes things outside git that cannot be undone,
-so the epic put it to the human. Until they answer, the cleanup is built to do either,
-and it ships as "only tells the user the commands" unless their answer comes first.
+feature; most users would never run a command they were only told about. The human, on
+2026-11-22: "Yes, just make sure this doesnt affect existing work in runcastle". So
+"finished" means landed or dropped only, and anything unsure is kept and named.
 
 ## 4. A worker still in a container at upgrade is stopped, and its commits are kept as a branch
 **Decision:** A worker that was not finished when the upgrade happened (working, queued
