@@ -9,11 +9,12 @@ import { pickOption } from './floating'
 
 /**
  * A never-run feature's chat waits for Start (a-new-feature-waits-for-start
- * decisions 1, 2, 3, 5, 8, 10): opening it launches nothing; Start and Plan it
- * yourself each launch once, on the locked composer's model pick; a refusal
- * says why under them. A feature with history keeps its typed-first start.
- * The seam is FeatureChat on its real column; `start` and `onPlanItYourself`
- * stand for the page's launches and the server is faked by path.
+ * decisions 1, 2, 3, 5, 8, 10): opening it launches nothing; its one Start
+ * launches once, on the locked composer's model pick, and the hint under it
+ * says what the lead will do at the feature's level; a refusal says why under
+ * it. No lock note ever stands in its message box. A feature with history
+ * keeps its typed-first start. The seam is FeatureChat on its real column;
+ * `start` stands for the page's launch and the server is faked by path.
  */
 
 const toasts = vi.hoisted(() => [] as string[])
@@ -27,7 +28,6 @@ const { useFeatureChatColumn } = await import('../src/components/chat/use-featur
 const { FeatureChat } = await import('../src/components/workspace/FeatureChat')
 
 type Start = (opts: { holdOpening: boolean; pick?: ModelPick }) => Promise<string>
-type PlanAlone = (pick: ModelPick) => Promise<unknown>
 
 const MODELS = {
   runtime: 'claude-code',
@@ -56,13 +56,11 @@ function Chat({
   over = NEW_FEATURE,
   holdStart = false,
   start,
-  planAlone = async () => undefined,
   refusal,
 }: {
   over?: Partial<FeatureFull>
   holdStart?: boolean
   start: Start
-  planAlone?: PlanAlone
   refusal?: string
 }) {
   const full = { ...fixture({ id: 'feat_1' }), ...NEW_FEATURE, ...over } as FeatureFull
@@ -75,7 +73,6 @@ function Chat({
       hidden={false}
       holdStart={holdStart}
       start={start}
-      onPlanItYourself={planAlone}
       refusal={refusal}
       onView={() => {}}
     />
@@ -84,7 +81,6 @@ function Chat({
 
 const settle = (): Promise<void> => act(() => new Promise<void>((r) => setTimeout(r, 10)))
 const startButton = () => screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
-const planButton = () => screen.getByRole('button', { name: 'Plan automatically' }) as HTMLButtonElement
 const box = () => screen.getByLabelText('Message') as HTMLTextAreaElement
 
 function setTabVisible(visible: boolean): void {
@@ -101,24 +97,47 @@ afterEach(() => {
 })
 
 describe('a never-run feature’s chat', () => {
-  it('waits on Start and Plan automatically, its composer locked, and launches nothing by itself', async () => {
+  it('waits on its one Start, its composer locked, and launches nothing by itself', async () => {
     const api = server()
     const start = vi.fn<Start>(async () => 'th_started')
-    const planAlone = vi.fn<PlanAlone>(async () => undefined)
-    const { rerender } = render(<Chat start={start} planAlone={planAlone} />, { wrapper: api.Wrapper })
+    const { rerender } = render(<Chat start={start} />, { wrapper: api.Wrapper })
     expect(await screen.findByRole('button', { name: 'Start' })).toBeTruthy()
-    expect(planButton()).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Plan automatically' })).toBeNull()
     expect(box().disabled).toBe(true)
     expect(box().placeholder).toBe('Start the agent first — it opens the chat')
 
-    rerender(<Chat start={start} planAlone={planAlone} />)
+    rerender(<Chat start={start} />)
     act(() => setTabVisible(false))
     act(() => setTabVisible(true))
     await act(async () => api.queryClient.invalidateQueries())
     await settle()
     expect(start).not.toHaveBeenCalled()
-    expect(planAlone).not.toHaveBeenCalled()
     expect(startButton()).toBeTruthy()
+  })
+
+  it.each([
+    ['everything', 'Involve me in: Everything. The agent reads the brief, looks through the code and asks you first.'],
+    ['designsAndResult', 'Involve me in: Designs and result. The agent plans and builds it, stopping only where your level says.'],
+    ['resultOnly', 'Involve me in: Result only. The agent plans and builds it, stopping only where your level says.'],
+    ['nothing', 'Involve me in: Nothing. The agent plans and builds it, stopping only where your level says.'],
+  ] as const)('at %s shows one Start with the level’s hint under it', async (involvement, hint) => {
+    const api = server()
+    const start = vi.fn<Start>(async () => 'th_started')
+    const feature = { ...fixture({ id: 'feat_1' }).feature, involvement }
+    render(<Chat start={start} over={{ ...NEW_FEATURE, feature }} />, { wrapper: api.Wrapper })
+    await screen.findByRole('button', { name: 'Start' })
+    expect(screen.getAllByRole('button', { name: /Start|Plan/ }).map((b) => b.textContent)).toEqual(['Start'])
+    expect(screen.getByText(hint)).toBeTruthy()
+  })
+
+  it('renders no lock note, even for a feature whose payload still names an epic’s autopilot', async () => {
+    const api = server()
+    const start = vi.fn<Start>(async () => 'th_started')
+    const old = { ...NEW_FEATURE, autopilot: { epicId: 'chat_1', epicName: 'Runcastle Rethink' } } as unknown as Partial<FeatureFull>
+    render(<Chat start={start} over={old} />, { wrapper: api.Wrapper })
+    await screen.findByRole('button', { name: 'Start' })
+    expect(screen.queryByRole('button', { name: 'End autopilot' })).toBeNull()
+    expect(screen.queryByText(/autopilot/i)).toBeNull()
   })
 
   it('waits for the thread list: shows nothing to press until it is read, and a listed main chat is the chat', async () => {
@@ -150,9 +169,8 @@ describe('a never-run feature’s chat', () => {
     await settle()
     expect(start).toHaveBeenCalledOnce()
     expect(start).toHaveBeenCalledWith({ holdOpening: false, pick: { model: 'claude-sonnet-5-5', effort: 'low', fast: true } })
-    // In flight: both off.
+    // In flight: off.
     expect(startButton().disabled).toBe(true)
-    expect(planButton().disabled).toBe(true)
 
     await act(async () => started('th_started'))
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Start' })).toBeNull())
@@ -169,7 +187,7 @@ describe('a never-run feature’s chat', () => {
     await waitFor(() => expect(start).toHaveBeenCalledWith({ holdOpening: false, pick: {} }))
   })
 
-  it('a refused Start says why under the buttons, leaves Start pressable, and does not try again by itself', async () => {
+  it('a refused Start says why under it, leaves Start pressable, and does not try again by itself', async () => {
     const api = server()
     const start = vi.fn<Start>(async () => {
       throw new Error('Claude Code is not signed in')
@@ -187,33 +205,6 @@ describe('a never-run feature’s chat', () => {
 
     fireEvent.click(startButton())
     await waitFor(() => expect(start).toHaveBeenCalledTimes(2))
-  })
-
-  it('Plan automatically launches once on the pick and shows busy; its refusal shows the same way', async () => {
-    let refuse: (e: Error) => void = () => undefined
-    const api = server()
-    const start = vi.fn<Start>(async () => 'th_started')
-    const planAlone = vi.fn<PlanAlone>(() => new Promise((_, reject) => (refuse = reject)))
-    const { rerender } = render(<Chat start={start} planAlone={planAlone} />, { wrapper: api.Wrapper })
-    const model = await screen.findByRole('button', { name: 'Model' })
-    fireEvent.click(model)
-    fireEvent.click(screen.getByRole('option', { name: /Sonnet 5.5/ }))
-    fireEvent.click(planButton())
-    fireEvent.click(planButton())
-    fireEvent.click(startButton())
-    // The page holds the chat while its self-planning launch is pending: the screen stays, busy.
-    rerender(<Chat start={start} planAlone={planAlone} holdStart />)
-    await settle()
-    expect(planAlone).toHaveBeenCalledOnce()
-    expect(planAlone).toHaveBeenCalledWith({ model: 'claude-sonnet-5-5' })
-    expect(start).not.toHaveBeenCalled()
-    expect(startButton().disabled).toBe(true)
-    expect(planButton().disabled).toBe(true)
-
-    rerender(<Chat start={start} planAlone={planAlone} />)
-    await act(async () => refuse(new Error('the agent runtime is not ready')))
-    expect((await screen.findByRole('alert')).textContent).toBe('the agent runtime is not ready')
-    expect(startButton().disabled).toBe(false)
   })
 
   it('a backlog Start’s refused launch opens on Start with its refusal; a press clears it', async () => {
@@ -255,7 +246,6 @@ describe('a never-run feature’s chat', () => {
           hidden={false}
           holdStart={false}
           start={start}
-          onPlanItYourself={async () => undefined}
           onView={() => {}}
         />
       )

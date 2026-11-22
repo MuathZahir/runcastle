@@ -351,10 +351,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
     expect(ns.alert).toBe(true)
     expect(ns.desc).toBe('Nothing left to wait on — start it or move it to the backlog')
     expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
-    expect(ns.secondary.map((a) => [a.kind, a.disabled])).toEqual([
-      ['selfPlan', undefined],
-      ['moveToBacklog', undefined],
-    ])
+    expect(ns.secondary.map((a) => [a.kind, a.disabled])).toEqual([['moveToBacklog', undefined]])
   })
 
   it('prefers the server’s autostart problem as the stuck reason', () => {
@@ -379,7 +376,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
       const ns = nextStep(unstarted(deps), {})
       expect(ns.title).toBe('Start this feature')
       expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
-      expect(ns.secondary).toEqual([{ label: 'Plan automatically', kind: 'selfPlan' }])
+      expect(ns.secondary).toEqual([])
       expect(ns.note).toBeUndefined()
     }
   })

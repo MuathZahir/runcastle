@@ -2,13 +2,12 @@ import type { ReactNode } from 'react'
 import { cx, StatusDot } from '../ui'
 import type { FeatureListItem } from '../lib/api'
 import type { ThreadEntry } from '../lib/chat-thread'
-import { IconArrowRight, IconList, IconLock, IconPlus } from '../icons'
+import { IconArrowRight, IconList, IconPlus } from '../icons'
 import { EpicIcon, epicStyle, type EpicColor, type EpicIconId } from '../lib/epic-look'
 import { epicIsIdle, idleEpicFacts, orderEpicList, type Epic } from '../lib/feature-ui/epics'
 import { featureEpic } from '../lib/sidebar-threads'
 import type { Crumb } from '../ui/page'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
-import { AutopilotMark, AutopilotTrail } from './autopilot/AutopilotParts'
 import { openRowMenu, SIDEBAR_CARD, ThreadListMore, type FeatureWorkers } from './SidebarParts'
 import { EpicFeatureList, NeedMark, needCount, type EpicFeatureItem } from './SidebarEpicFeatures'
 
@@ -81,27 +80,6 @@ export function epicCrumb(
     // It gives way with the owner and the title, down to a few letters.
     shrink: true,
     ...(epic.title.length > 6 ? { floor: 'min-w-24' } : {}),
-  }
-}
-
-/**
- * A locked feature's first crumb (epics-on-autopilot decision 3): "<epic> ·
- * Autopilot", the epic's glyph before it. The name opens the epic's chat and
- * gives way first; the mark never does. The epic's look comes from the chat
- * list when it holds it; its name is the server's.
- */
-export function autopilotCrumb(
-  autopilot: { epicId: string; epicName: string },
-  threads: readonly ThreadEntry[],
-  onOpen: ((chatId: string) => void) | undefined,
-): Crumb {
-  const chat = threads.find((t) => t.id === autopilot.epicId && t.role === 'project')
-  const epic = { title: chat?.title ?? autopilot.epicName, color: chat?.color ?? null }
-  return {
-    label: <AutopilotTrail epic={epic} working={chat?.state === 'working'} onOpenEpic={() => onOpen?.(autopilot.epicId)} />,
-    icon: <EpicGlyph small color={chat?.color} icon={chat?.icon} />,
-    shrink: true,
-    floor: 'min-w-44',
   }
 }
 
@@ -228,19 +206,12 @@ export function SidebarEpicCard({
   actions = [],
   color,
   icon,
-  autopilot = false,
   waiting = 0,
   children,
 }: {
   chat: ThreadEntry
   /** How many of its features need you: the count in its head, when shown. */
   waiting?: number
-  /**
-   * It runs its features by itself (epics-on-autopilot decision 7): the
-   * "Autopilot" mark at the name's end, and `data-autopilot` on the card for
-   * the autopilot look. Its own need still lights the amber dot.
-   */
-  autopilot?: boolean
   /** Its colour (decision 2): the head's wash, grid and tile. */
   color?: EpicColor | null | undefined
   /** Its icon (decision 1); the default chat bubble while unset. */
@@ -258,13 +229,8 @@ export function SidebarEpicCard({
   return (
     <div
       style={epicStyle(color)}
-      {...(autopilot ? { 'data-autopilot': '', 'data-autopilot-state': asking ? 'asking' : working ? 'working' : 'resting' } : {})}
-      className={cx(
-        // One hairline in every state: the head says which epic is open and which works.
-        'card relative isolate shrink-0 overflow-hidden rounded-lg',
-        // The Moving edge (theme.css): its light travels while the epic works, stops while it asks.
-        autopilot && 'autopilot-edge',
-      )}
+      // One hairline in every state: the head says which epic is open and which works.
+      className="card relative isolate shrink-0 overflow-hidden rounded-lg"
     >
       <div
         data-epic={chat.id}
@@ -291,11 +257,6 @@ export function SidebarEpicCard({
           <EpicTile open={active} icon={icon} />
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-md font-semibold tracking-tight text-text">{chat.title}</span>
-            {autopilot && (
-              <span className={cx('inline-flex transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
-                <AutopilotMark working={working} />
-              </span>
-            )}
             {asking && (
               <span className={cx('inline-flex transition-opacity duration-(--dur-1)', actions.length > 0 && CONCEAL)}>
                 <NeedMark kind="question" soft />
@@ -484,15 +445,6 @@ export interface SidebarEpicsProps {
   newEpicOpen?: boolean
 }
 
-/** A locked feature's mark: a small lock in its epic's colour. */
-function LockedMark() {
-  return (
-    <span aria-label="On autopilot" className="inline-flex text-[color-mix(in_oklab,var(--epic-text)_80%,var(--color-text-tertiary))]">
-      <IconLock size={12} />
-    </span>
-  )
-}
-
 /**
  * The list of epics, ending in "All N epics": the dotted New epic slot on top,
  * then a card for each epic with something in motion and a slim row for each
@@ -530,7 +482,6 @@ export function SidebarEpics({
       featureActions={featureActions}
       workersFor={workersFor}
       newWorkerFor={newWorkerFor}
-      lockMark={<LockedMark />}
     />
   )
   return (
@@ -562,7 +513,6 @@ export function SidebarEpics({
                 actions={epicActions?.(g.epic.chat) ?? []}
                 color={g.epic.color}
                 icon={g.epic.icon}
-                autopilot={!!g.epic.autopilot}
                 waiting={needCount(g.epic.features)}
               >
                 {g.epic.features.length > 0 ? list(g.epic.chat.id, g.epic.chat.title, g.epic.features) : undefined}

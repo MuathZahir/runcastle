@@ -40,12 +40,9 @@ export function PhoneDesignView({
   sub,
   onOpen,
   onBack,
-  locked = false,
 }: {
   featureId: string
   path?: string
-  /** The feature is on its epic's autopilot (epics-on-autopilot decision 16): no Approve; the epic approves. */
-  locked?: boolean
   /** The width asked for with no recorded design at `path`; Desktop is 1440 without one. */
   width?: number
   title: string
@@ -95,7 +92,7 @@ export function PhoneDesignView({
             <Button variant="ghost" onClick={() => setWide(!wide)} aria-label={wide ? 'Show at the phone’s width' : 'Show at desktop width'}>
               {wide ? 'Desktop' : 'Phone'}
             </Button>
-            {showing && !locked && open?.state === 'waiting' && (
+            {showing && open?.state === 'waiting' && (
               <Button variant="primary" icon={<IconCheck />} disabled={approving} onClick={() => approve(open)}>
                 {othersWaiting > 0 ? 'Approve & next' : 'Approve'}
               </Button>

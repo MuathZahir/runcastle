@@ -221,23 +221,6 @@ export function IconOrchestrator(p: IconProps) {
   )
 }
 
-/**
- * Autopilot (epics-on-autopilot): a hub with one node on an open orbit around
- * it — the epic running its features by itself. The orbit and its node are one
- * group (`data-orbit`) a caller may turn while the epic works.
- */
-export function IconAutopilot(p: IconProps) {
-  return (
-    <svg {...base(p)}>
-      <circle cx="8" cy="8" r="1.75" />
-      <g data-orbit="" style={{ transformOrigin: '8px 8px' }}>
-        <path d="M13.4 6.03A5.75 5.75 0 1 1 9.97 2.6" opacity={0.75} />
-        <circle cx="12.07" cy="3.93" r="1.25" fill="currentColor" stroke="none" />
-      </g>
-    </svg>
-  )
-}
-
 export function IconFolder(p: IconProps) {
   return (
     <svg {...base(p)}>

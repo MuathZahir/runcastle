@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { FeatureFull } from '../src/lib/api'
-import { nextStep, SELF_PLAN_ACTION } from '../src/lib/feature-ui'
+import { nextStep } from '../src/lib/feature-ui'
 import { full } from './fixtures'
 
 /**
  * features-plan-themselves ticket 2 — the bar around a self-planning run
- * (decisions 5, 10, 11, 12): a second way in beside a draft's Start, a working
- * bar with Stop and no chat, and a stopped-short bar whose way on is the chat.
+ * (decisions 5, 10, 11, 12): a working bar with Stop and no chat, and a
+ * stopped-short bar whose way on is the chat. A draft has one Start, which
+ * launches the lead as its level says, so there is no second way in beside it.
  * With no phase (tickets-and-review-are-tools-not-phases decision 12) every
  * other started feature's step is plain: the status line picks the one primary.
  */
@@ -33,32 +34,31 @@ const started = (sessions: Session[] = []): FeatureFull => {
   return { ...base, feature: { ...base.feature, lap: 1 }, sessions } as unknown as FeatureFull
 }
 
-describe('Plan automatically beside Start', () => {
-  it('keeps Start as a draft’s primary and puts Plan automatically beside it', () => {
+describe('one Start on a draft, worded by its level', () => {
+  const at = (involvement: FeatureFull['feature']['involvement']): FeatureFull => {
+    const base = full({ status: 'draft' })
+    return { ...base, feature: { ...base.feature, involvement } } as FeatureFull
+  }
+
+  it('offers Start alone, with no second way in', () => {
     const ns = nextStep(full({ status: 'draft' }), {})
 
     expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
-    expect(ns.secondary).toEqual([{ label: 'Plan automatically', kind: 'selfPlan' }])
-    expect(ns.desc).toContain('Start')
-    expect(ns.desc).toContain('Plan automatically')
+    expect(ns.secondary).toEqual([])
+    expect(ns.desc).not.toContain('Plan automatically')
   })
 
-  it('disables both with the same reason while the draft has no base branch', () => {
+  it('says the lead asks first at Everything, and plans and builds by itself below it', () => {
+    expect(nextStep(at('everything'), {}).desc).toContain('asks you first')
+    for (const level of ['designsAndResult', 'resultOnly', 'nothing'] as const) {
+      expect(nextStep(at(level), {}).desc).toContain('plans and builds it, stopping only where your level says')
+    }
+  })
+
+  it('disables Start with its reason while the draft has no base branch', () => {
     const ns = nextStep(full({ status: 'draft' }), { draftBaseMissing: 'unpicked' })
 
     expect(ns.primary?.disabled).toBe('pick a branch first')
-    expect(ns.secondary[0]).toEqual({ ...SELF_PLAN_ACTION, disabled: 'pick a branch first' })
-  })
-
-  it('disables both with the same reason while the draft waits on a dependency', () => {
-    const waiting = {
-      ...full({ status: 'draft' }),
-      dependsOn: [{ id: 'f2', slug: 'other', title: 'Other', status: 'active', merged: false }],
-    } as unknown as FeatureFull
-    const ns = nextStep(waiting, {})
-
-    expect(ns.primary?.disabled).toBeTruthy()
-    expect(ns.secondary[0]?.disabled).toBe(ns.primary?.disabled)
   })
 })
 

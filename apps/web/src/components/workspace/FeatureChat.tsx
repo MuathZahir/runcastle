@@ -12,7 +12,7 @@ import { ThreadColumn, ThreadOpening } from '../chat/ThreadColumn'
 import type { FeatureChatColumn } from '../chat/use-feature-chat-column'
 import { useFeatureWorkers, workerColumnProps, workerInFront } from '../workers/WorkerChat'
 import { OrchestratorNameContext, WorkerLinksContext } from '../chat/thread/FeatureCardItems'
-import { StartAgent, type StartAgentPress } from './StartAgent'
+import { StartAgent } from './StartAgent'
 
 const MAIN_HINT = 'One chat per feature — it knows the state, answers questions, and plans the work and hands it to workers.'
 /** A thread that is neither the lead's, the drive's Scenarios worker nor a listed worker yet: a worker whose row is still on its way. */
@@ -23,7 +23,7 @@ const WORKER_PENDING_HINT = 'A worker on this feature, on your machine.'
  * thread in front — the lead's chat, a worker's (a drive worker's too), or an old side or drive chat — through
  * `ThreadColumn`. Opening a thread launches nothing (a-new-feature-waits-for-start
  * decision 1): a new feature's main chat waits on Start ({@link startsItself}),
- * with Plan it yourself beside it and the composer locked until one is pressed.
+ * with the composer locked until it is pressed.
  * Any other main chat nobody has started is an empty thread whose first message
  * starts it (`start`, the feature's chat launch). The notice strip sits on its
  * composer while it is in view. Its thread list is the sidebar's, under the
@@ -50,10 +50,8 @@ export function FeatureChat({
   hidden,
   holdStart,
   start,
-  onPlanItYourself,
   refusal,
   onView,
-  lock,
   epicName = null,
 }: {
   full: FeatureFull
@@ -66,25 +64,18 @@ export function FeatureChat({
   standing?: readonly StandingNotice[]
   /** The panel has the whole row. */
   hidden: boolean
-  /** The page is launching the chat itself (a draft's Start, a self-planning run, a landing): no Start to offer meanwhile. */
+  /** The page is launching the chat itself (a draft's Start, a landing): no Start to offer meanwhile. */
   holdStart: boolean
   /**
    * Start the feature's main chat, holding its opening for the first message or
-   * (`holdOpening: false`, Start) saying it now on the human's model pick; answers with its thread.
+   * (`holdOpening: false`, Start) launching its lead now, as the feature's level
+   * says, on the human's model pick; answers with its thread.
    */
   start: (opts: { holdOpening: boolean; pick?: ModelPick }) => Promise<string>
-  /** Launch the self-planning run on the human's model pick; settles once the page reads it, rejects with the refusal. */
-  onPlanItYourself: (pick: ModelPick) => Promise<unknown>
   /** Why the page's own launch of the chat was refused (a backlog Start whose branch was cut): shown under Start. */
   refusal?: string | undefined
   /** Open the panel view a notice points at. */
   onView: (target: ChatNoticeTarget) => void
-  /**
-   * The feature is on its epic's autopilot (epics-on-autopilot decisions 3, 16):
-   * the lock note, in place of the message box of every chat on it — the lead's
-   * and its workers'. No Start to offer either.
-   */
-  lock?: ReactNode
   /** Its epic's name: what the epic's messages in the chat are signed with (decision 22). */
   epicName?: string | null
 }) {
@@ -111,30 +102,27 @@ export function FeatureChat({
     }))
   const startForSend = (): Promise<string> => startOnce(true)
 
-  // The waiting screen (decisions 1, 3, 8): which press is in flight, and what the last one was refused with.
-  const [pressed, setPressed] = useState<StartAgentPress | undefined>(undefined)
+  // The waiting screen (decisions 1, 3, 8): whether Start is in flight, and what the last press was refused with.
+  const [pressed, setPressed] = useState(false)
   const [said, setSaid] = useState<{ refusal?: string } | null>(null)
   const shownRefusal = said ? said.refusal : refusal
-  const refused = (e: unknown) => {
-    setPressed(undefined)
-    setSaid({ refusal: e instanceof Error ? e.message : 'the agent could not be started' })
-  }
-  const press = (which: StartAgentPress) => {
+  const press = () => {
     if (pressed || starting.current) return
-    setPressed(which)
+    setPressed(true)
     setSaid({})
-    if (which === 'start') {
-      startOnce(false).then((threadId) => {
-        setPressed(undefined)
+    startOnce(false).then(
+      (threadId) => {
+        setPressed(false)
         column.started(threadId, { stayOnPicked: true })
-      }, refused)
-    } else {
-      // Its launch holds the page until the feature reads the run, which ends the wait.
-      onPlanItYourself(pick.current).then(() => setPressed(undefined), refused)
-    }
+      },
+      (e: unknown) => {
+        setPressed(false)
+        setSaid({ refusal: e instanceof Error ? e.message : 'the agent could not be started' })
+      },
+    )
   }
   // A press of its own keeps the screen through the page's hold, so it shows busy rather than blinking out.
-  const waits = !lock && isMain && column.listRead && column.main === null && startsItself(full) && (!holdStart || pressed !== undefined)
+  const waits = isMain && column.listRead && column.main === null && startsItself(full) && (!holdStart || pressed)
 
   if (hidden) return null
   if (column.pending) return <ThreadOpening label="Chat" />
@@ -165,19 +153,13 @@ export function FeatureChat({
           ? {
               locked: true,
               empty: (
-                <StartAgent
-                  onStart={() => press('start')}
-                  onPlanItYourself={() => press('selfPlan')}
-                  starting={pressed}
-                  refusal={shownRefusal}
-                />
+                <StartAgent level={full.feature.involvement} onStart={press} starting={pressed} refusal={shownRefusal} />
               ),
             }
           : {})}
         draftKey={`feature:${full.feature.id}:main`}
         emptyHint={isMain ? MAIN_HINT : isScenario ? scenarioErrandHint(scenario.errand) : (workerProps?.emptyHint ?? WORKER_PENDING_HINT)}
         {...(workerProps ? workerProps : isScenario ? {} : { meta: `Feature worktree · ${full.feature.branch}` })}
-        {...(lock ? { closed: lock, meta: null } : {})}
         notices={alerts}
       >
         <FeatureNoticeDeck

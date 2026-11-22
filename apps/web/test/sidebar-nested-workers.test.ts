@@ -137,30 +137,6 @@ describe('workers nested under their feature', () => {
     expect(row({ onNewThread: () => {} })).toContain('aria-label="New worker"')
     expect(row()).not.toContain('New worker')
   })
-
-  it('locks the worker rows of a feature on autopilot, with nothing that says needs you', () => {
-    const epic: ThreadEntry = { id: 'chat_1', title: 'Checkout flow', role: 'project', state: 'working', createdAt: 0, updatedAt: 0, runtime: 'claude-code', need: null, autopilot: true }
-    const locked = f({ chatId: epic.id, autopilot: { epicId: epic.id, epicName: epic.title } })
-    // Its epic's fold and its workers opened, as the human would open them.
-    const html = withFoldsOpen(() => renderToStaticMarkup(
-      createElement(SidebarEpics, {
-        epics: epicsFrom([epic], [locked], () => true).epics,
-        total: 1,
-        currentChat: null,
-        currentFeature: null,
-        onOpenEpic: () => {},
-        onSelectFeature: () => {},
-        onAllEpics: () => {},
-        workersFor: () => workers(),
-      }),
-    ))
-    // The feature and each of its five live workers wear the lock.
-    expect(html.match(/aria-label="On autopilot"/g)).toHaveLength(6)
-    expect(html).not.toContain('bg-warning')
-    expect(html).not.toContain('data-needs-you')
-    expect(html).not.toContain('aria-label="Asks you"')
-    expect(order(html)).toContain('Asking one')
-  })
 })
 
 describe('the calmer epic block (a-calmer-sidebar)', () => {

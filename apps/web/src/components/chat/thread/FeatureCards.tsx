@@ -471,7 +471,7 @@ export function SteeredNote() {
  * bubble on the right. It never carries the human's words (one-place-to-answer
  * decision 11).
  */
-export function OrchestratorMessage({ text, from }: { text: string; /** The epic's name (epics-on-autopilot decision 22); "Epic" without one. */ from?: string }) {
+export function OrchestratorMessage({ text, from }: { text: string; /** The epic's name; "Epic" without one. */ from?: string }) {
   return (
     <div className="flex flex-col items-start gap-1.5 animate-rise-in">
       <span className="flex min-w-0 max-w-full items-center gap-2 text-sm">

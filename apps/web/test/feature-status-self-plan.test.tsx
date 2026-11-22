@@ -8,7 +8,7 @@ import { HeaderAction } from '../src/components/workspace/HeaderAction'
 
 /**
  * The header while the feature plans itself: the status line says so and the
- * header carries the run's Stop, so a click on Plan automatically visibly did
+ * header carries the run's Stop, so a Start below Everything visibly did
  * something. Tier 2: Stop's click reaching the dispatcher is an event, which a
  * rendered string cannot show.
  */

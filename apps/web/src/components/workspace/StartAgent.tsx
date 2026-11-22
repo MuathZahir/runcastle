@@ -1,60 +1,46 @@
+import type { Involvement } from '@runcastle/core'
 import { Button, EmptyState } from '../../ui'
-import { IconMessage, IconPlay, IconSparkle } from '../../icons'
+import { IconMessage, IconPlay } from '../../icons'
+import { startHint } from '../../lib/feature-ui/start'
 import { useIsPhone } from '../../lib/use-phone'
-
-/** Which of the two the human pressed, while its launch is in flight. */
-export type StartAgentPress = 'start' | 'selfPlan'
 
 /**
  * A never-run feature's empty main chat (a-new-feature-waits-for-start
  * decisions 1, 3, 6, 8): opening the feature starts nothing, so the chat waits
- * here. **Start** is its one primary — the agent reads its brief, explores and
- * speaks first; **Plan automatically** is a quiet button beside it, a run that
- * plans the feature alone. While one is in flight it shows busy and both are
- * off; a refused start says why on a line under them and Start stays pressable.
- * The caller removes this once either one has launched.
+ * here on one **Start**. The hint under it says what the lead does at the
+ * feature's level: at "Everything" it reads the brief, explores and asks
+ * first; below it, it plans and builds by itself.
+ * While the start is in flight it shows busy; a refused start says why on a
+ * line under it and Start stays pressable. The caller removes this once the
+ * lead has launched.
  */
 export function StartAgent({
+  level,
   onStart,
-  onPlanItYourself,
-  starting,
+  starting = false,
   refusal,
 }: {
+  /** The feature's "Involve me in" level: what the hint says Start will do. */
+  level: Involvement
   onStart: () => void
-  onPlanItYourself: () => void
-  /** The pressed one, in flight: it shows busy and both are off. */
-  starting?: StartAgentPress | undefined
+  /** The start is in flight: Start shows busy and is off. */
+  starting?: boolean
   /** Why the last press was refused ("Claude Code is not signed in. Run claude login"). */
   refusal?: string | undefined
 }) {
   const phone = useIsPhone()
-  const size = phone ? 'touch' : 'md'
-  const busy = starting !== undefined
   return (
     <EmptyState
       className="animate-fade-in"
       icon={<IconMessage />}
       title="Not started yet"
-      hint="The agent reads the brief, looks through the code and speaks first."
+      hint={startHint(level)}
       action={
         <div className="flex flex-col items-center gap-3">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Button variant="primary" size={size} icon={<IconPlay />} loading={starting === 'start'} disabled={busy} onClick={onStart}>
-              Start
-            </Button>
-            <Button
-              variant="ghost"
-              size={size}
-              icon={<IconSparkle />}
-              loading={starting === 'selfPlan'}
-              disabled={busy}
-              title="Plans the feature without you, then asks you what it decided"
-              onClick={onPlanItYourself}
-            >
-              Plan automatically
-            </Button>
-          </div>
-          {refusal && !busy && (
+          <Button variant="primary" size={phone ? 'touch' : 'md'} icon={<IconPlay />} loading={starting} disabled={starting} onClick={onStart}>
+            Start
+          </Button>
+          {refusal && !starting && (
             <p role="alert" className="m-0 max-w-80 animate-fade-in text-sm text-pretty text-danger-text">
               {refusal}
             </p>
