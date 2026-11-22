@@ -57,6 +57,14 @@ export const showsDesigns = (level: Involvement): boolean => level === 'everythi
 export const humanMerges = (level: Involvement): boolean => level !== 'nothing'
 
 /**
+ * How a feature's lead starts at this level (autopilot-retires decision 4):
+ * at `everything` it opens and asks the human first (a plain chat launch);
+ * below it, it plans and builds by itself (the `self-plan` launch purpose).
+ */
+export const startPurposeFor = (level: Involvement): 'self-plan' | undefined =>
+  asksDecisions(level) ? undefined : 'self-plan'
+
+/**
  * The mark a lead puts on a decision it settled without the human (decision
  * 2): on its own line inside the entry, like the other marks.
  */
