@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { INVOLVEMENT_HINT, INVOLVEMENT_LABEL, INVOLVEMENT_LEVELS, INVOLVEMENT_NAME, type Involvement } from '@runcastle/core'
 import { IconArrowLeft, IconChevronDown, IconMore, IconPlus } from '../../icons'
 import type { PanelView } from '../../lib/feature-ui/panel'
 import { sidebarThreadOrder, useSidebarThreads } from '../../lib/sidebar-threads'
 import { cx, IconButton, Sheet, SheetRow, StatusDot } from '../../ui'
 import { ThreadGlyph } from '../SidebarParts'
 import { PANEL_VIEW_ICON } from '../workspace/FeaturePanel'
+import { LevelMark } from '../involvement/Involvement'
 
 /**
  * A chat on the phone (docs/features/runcastle-on-your-phone decisions 1, 3):
@@ -26,11 +28,22 @@ export interface PhoneViewChoice {
   hint?: string
 }
 
+/** A feature's "Involve me in" on the phone: the level, and the pick that saves a new one. */
+export interface PhoneInvolvement {
+  value: Involvement
+  onChange: (level: Involvement) => void
+  /** A save is in flight: the sheet still lists the levels, and a pick waits for it. */
+  disabled?: boolean
+}
+
 /**
  * The phone's chat bar: Back to the list, the title — a sheet of the page's
  * threads, with New thread — the status words, and
- * "…" when the chat offers views. The threads are what the open page
- * publishes, the same list the desktop sidebar draws.
+ * "…" when the chat offers views or a feature's "Involve me in". The threads
+ * are what the open page publishes, the same list the desktop sidebar draws.
+ * The bar has no room for the header's picker, so "Involve me in" is a line
+ * of the "…" sheet that opens a sheet of the four levels
+ * (how-involved-am-i decision 3).
  */
 export function PhoneChatBar({
   title,
@@ -38,6 +51,7 @@ export function PhoneChatBar({
   views = [],
   onView,
   onBack,
+  involvement,
 }: {
   title: string
   status?: PhoneChatStatus
@@ -45,8 +59,10 @@ export function PhoneChatBar({
   views?: readonly PhoneViewChoice[]
   onView?: (view: PanelView) => void
   onBack: () => void
+  /** A feature's level, changeable from the "…" sheet; none, and the sheet has no such line. */
+  involvement?: PhoneInvolvement
 }) {
-  const [sheet, setSheet] = useState<'threads' | 'views' | null>(null)
+  const [sheet, setSheet] = useState<'threads' | 'views' | 'involvement' | null>(null)
   const published = useSidebarThreads()
   const threads = published ? sidebarThreadOrder(published.threads) : []
   // The sheet is also where New thread lives, so a lone chat opens it too.
@@ -85,7 +101,7 @@ export function PhoneChatBar({
       ) : (
         <div className="flex min-w-0 flex-1 flex-col px-1">{titleBody}</div>
       )}
-      {views.length > 0 && <IconButton label="More" size="lg" icon={<IconMore />} onClick={() => setSheet('views')} />}
+      {(views.length > 0 || involvement) && <IconButton label="More" size="lg" icon={<IconMore />} onClick={() => setSheet('views')} />}
       {published && (
         <Sheet open={sheet === 'threads'} onClose={close} title={'featureId' in published.scope ? 'Chats' : 'Epics'}>
           {/* First, so it never needs a scroll however long the list (phone-fixes decision 1). */}
@@ -106,7 +122,31 @@ export function PhoneChatBar({
         {views.map((v) => (
           <SheetRow key={v.view} icon={PANEL_VIEW_ICON[v.view]} label={v.label} {...(v.hint ? { hint: v.hint } : {})} onClick={after(() => onView?.(v.view))} />
         ))}
+        {involvement && (
+          <SheetRow
+            icon={<LevelMark level={involvement.value} />}
+            label={INVOLVEMENT_NAME}
+            hint={INVOLVEMENT_LABEL[involvement.value]}
+            onClick={() => setSheet('involvement')}
+          />
+        )}
       </Sheet>
+      {involvement && (
+        <Sheet open={sheet === 'involvement'} onClose={close} title={INVOLVEMENT_NAME}>
+          {INVOLVEMENT_LEVELS.map((level) => (
+            <SheetRow
+              key={level}
+              icon={<LevelMark level={level} />}
+              label={INVOLVEMENT_LABEL[level]}
+              hint={INVOLVEMENT_HINT[level]}
+              current={level === involvement.value}
+              onClick={after(() => {
+                if (!involvement.disabled && level !== involvement.value) involvement.onChange(level)
+              })}
+            />
+          ))}
+        </Sheet>
+      )}
     </header>
   )
 }

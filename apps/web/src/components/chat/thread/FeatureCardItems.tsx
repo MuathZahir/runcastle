@@ -8,6 +8,7 @@ import { shownWorkerStatus } from '../../../lib/workers'
 import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote, SteeredNote } from './FeatureCards'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { WorkersStartedCard } from '../../workers/WorkersStartedCard'
+import { involvementOpen, type InvolvementSaver } from '../../involvement/InvolvementControls'
 
 /**
  * What the feature rows in a chat read and open
@@ -21,6 +22,11 @@ export interface FeatureLinks {
   features: readonly FeatureListItem[]
   /** Open a feature, on one of its views when named (a design card opens its Design). */
   openFeature: (featureId: string, view?: 'details' | 'design') => void
+  /**
+   * Saves a created row's "Involve me in" pick (how-involved-am-i decision 3);
+   * without it the features card shows no picker.
+   */
+  involvement?: Pick<InvolvementSaver, 'set' | 'pendingFor'>
 }
 
 export const FeatureLinksContext = createContext<FeatureLinks | null>(null)
@@ -112,10 +118,31 @@ function WorkerFailedItem({ failed }: { failed: Extract<PromptDisplay, { workerF
   )
 }
 
-/** A turn's features card, its rows read against the live feature list. */
+/**
+ * A turn's features card, its rows read against the live feature list. Each
+ * created row carries the feature's "Involve me in" picker, its level read
+ * from that list; a feature that is gone, shipped or archived takes none.
+ */
 export function FeaturesCardItem({ rows }: { rows: Extract<ThreadItem, { kind: 'features_card' }>['rows'] }) {
   const { find, open, linked } = useLiveFeature()
-  return <FeaturesCard rows={rows.map((row) => ({ ...row, feature: find(row.featureId) }))} onOpen={open} linked={linked} />
+  const save = useContext(FeatureLinksContext)?.involvement
+  const live = rows.map((row) => ({ ...row, feature: find(row.featureId) }))
+  return (
+    <FeaturesCard
+      rows={live}
+      onOpen={open}
+      linked={linked}
+      {...(save
+        ? {
+            involvement: {
+              levelOf: ({ feature }) =>
+                feature && involvementOpen(feature) ? (save.pendingFor(feature.id) ?? feature.involvement) : null,
+              onChange: (featureId, level) => save.set(featureId, level, find(featureId)?.title),
+            },
+          }
+        : {})}
+    />
+  )
 }
 
 /**

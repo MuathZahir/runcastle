@@ -173,7 +173,7 @@ describe('the chat-first feature page', () => {
     const header = headerOf(page({ tickets: [ticket(1)] }))
     expect(header).toContain('Idle')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])
-    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar)"/.test(b))
+    const chrome = buttons.filter((b) => /aria-label="(Feature actions|Show the panel|Hide the panel|Show sidebar|Involve me in: [^"]+)"/.test(b))
     expect(buttons.length - chrome.length).toBe(1)
     expect(header).not.toContain('aria-label="New chat"')
     expect(header).not.toMatch(/>Go</)

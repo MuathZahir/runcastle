@@ -20,6 +20,7 @@ import { Button,
 import { IconPlay, IconX, ProgressIcon } from '../icons'
 import { autopilotCrumb, epicCrumb } from './SidebarEpics'
 import { AutopilotLock } from './autopilot/AutopilotLock'
+import { FeatureInvolvement, featureInvolvement, involvementOpen, useSetInvolvement } from './involvement/InvolvementControls'
 import { epicNameOf } from '../lib/feature-ui/epics'
 import {
   isNewThreadHotkey,
@@ -499,6 +500,9 @@ export function Workspace({
     onSuccess: invalidate,
     onError: (e) => toast.push(e.message),
   })
+  // "Involve me in" (how-involved-am-i decision 3): the header's picker saves
+  // through it, quietly, since the picker itself shows the new level.
+  const involvement = useSetInvolvement()
   // A draft's Start launches its chat at once, landing on the running agent
   // (a-new-feature-waits-for-start decision 4). It holds the chat until the
   // feature reads the new session, so the waiting screen never shows between.
@@ -1152,6 +1156,7 @@ export function Workspace({
             panel.dispatch({ type: 'open', view: v, origin: 'human', ...(design ? { path: design.path } : {}) })
           }}
           onBack={() => backInApp(() => onBackToList?.())}
+          {...(involvementOpen(feature) ? { involvement: featureInvolvement(feature, involvement) } : {})}
         />
       ) : (
       <PageTopbar
@@ -1219,6 +1224,9 @@ export function Workspace({
                   )}
                 </span>
               )}
+              <span className="mr-1">
+                <FeatureInvolvement feature={feature} save={involvement} />
+              </span>
               <FeatureActionsMenu actions={[...overflowActions, ...menuActions]} size="md" />
               <PanelToggle
                 open={!!shown}

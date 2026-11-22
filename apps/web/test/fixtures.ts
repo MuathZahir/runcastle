@@ -44,6 +44,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     blocks: over.blocks ?? [],
     upNext: over.upNext ?? false,
     upNextProblem: over.upNextProblem ?? null,
+    involvement: over.involvement ?? 'everything',
   } as FeatureListItem
 }
 
