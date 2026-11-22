@@ -32,8 +32,6 @@ const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   startedBy: 'lead',
   status: 'handed-back',
   failure: null,
-  engine: 'docker',
-  container: null,
   folder: null,
   branch: null,
   featureBranch: 'feature/sidebar-refresh',
@@ -157,8 +155,8 @@ describe('a Review worker in the feature’s worker list', () => {
     const review = row({ id: 'w_review', kind: 'review', label: 'Review', status: 'queued', reviewMode: 'drive' })
     expect(workerEntry(review)).toMatchObject({ label: 'Review', kind: 'review', status: 'queued' })
     expect(workerWhere({ ...review, placement: null }, 'feature/x')).toBe('Your checkout · reviewing feature/x on the drive')
-    expect(workerWhere({ kind: 'review', reviewMode: 'gates', featureBranch: 'feature/x', placement: null }, 'feature/x')).toBe('Sandbox · reviewing feature/x')
-    expect(workerWhere({ ...row(), placement: null }, 'feature/x')).toBe('Sandbox · its own branch off feature/x')
+    expect(workerWhere({ kind: 'review', reviewMode: 'gates', featureBranch: 'feature/x', placement: null }, 'feature/x')).toBe('Reviewing feature/x')
+    expect(workerWhere({ ...row(), placement: null }, 'feature/x')).toBe('Its own branch off feature/x')
   })
 })
 

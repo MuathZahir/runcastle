@@ -21,34 +21,18 @@ import { parseAgentCliVersion } from '../services/agent-cli-versions'
 /** The oldest Bun runcastle runs on; an older one is listed as an update (decision 8). */
 export const MIN_BUN_VERSION = '1.3.14'
 
-/** The Linux systems Docker's own install script covers (decision 3), by `/etc/os-release` `ID=`. */
-export const DOCKER_SCRIPT_DISTROS = [
-  'ubuntu',
-  'debian',
-  'raspbian',
-  'centos',
-  'rhel',
-  'rocky',
-  'fedora',
-  'sles',
-] as const
-
 /** Linux package managers in the order setup prefers them, then macOS's and Windows'. */
 export const LINUX_PACKAGE_MANAGERS = ['apt-get', 'dnf', 'yum', 'pacman', 'zypper', 'apk'] as const
 export type PackageManager = (typeof LINUX_PACKAGE_MANAGERS)[number] | 'brew' | 'winget'
 
 export interface MachineFacts {
   platform: NodeJS.Platform
-  /** `ID=` of `/etc/os-release`; null off Linux or when unreadable. */
-  distroId: string | null
   /** Which package managers are on PATH. */
   packageManagers: readonly PackageManager[]
   /** `DISPLAY` or `WAYLAND_DISPLAY` is set. */
   hasDesktop: boolean
   /** A runcastle service file is already installed. */
   serviceFileExists: boolean
-  /** The person's login name, for the docker group. */
-  user: string
   /** The install script added Bun to PATH, so the terminal it ran in lacks it. */
   pathChanged?: boolean
 }
@@ -81,9 +65,6 @@ export interface InstallPlan {
   /** Neither agent CLI is there and no choice was given: ask before showing the list. */
   needsAgentChoice: boolean
 }
-
-export const DOCKER_GROUP_WARNING =
-  'Adds you to the docker group, which is effectively root on this machine.'
 
 const AGENTS: Record<AgentChoice, AgentRuntime[]> = {
   claude: ['claude-code'],
@@ -247,41 +228,10 @@ export function buildInstallPlan(
     if (agent.item) install.push(agent.item)
   }
 
-  const container = row(report, 'container-runtime')
-  let dockerGroupChanged = false
-  let containerAfterwards: string | undefined
-  if (isOk(container)) {
-    present.push(withVersion(/podman/i.test(container?.detail ?? '') ? 'Podman' : 'Docker', container))
-  } else if (container?.status === 'missing' || !container) {
-    if (platform === 'linux' && DOCKER_SCRIPT_DISTROS.some((d) => d === facts.distroId)) {
-      dockerGroupChanged = true
-      install.push({
-        label: 'Docker Engine',
-        needsSudo: true,
-        warning: DOCKER_GROUP_WARNING,
-        commands: [sh('curl -fsSL https://get.docker.com | sudo sh'), sudo('usermod', '-aG', 'docker', facts.user)],
-        changesPath: false,
-      })
-    } else if (platform === 'linux') {
-      containerAfterwards = 'Install Docker: https://docs.docker.com/get-docker/'
-    } else {
-      containerAfterwards = 'Install Docker Desktop: https://docs.docker.com/desktop/'
-    }
-  } else if (container.fix) {
-    containerAfterwards = container.fix
-  }
-
-  if (dockerGroupChanged) afterwards.push('Log out and back in, so the docker group applies')
-  // Logging out covers it, so one step does for both.
-  else if (facts.pathChanged || install.some((i) => i.changesPath)) afterwards.push('Open a new terminal')
-  if (containerAfterwards) afterwards.push(containerAfterwards)
+  if (facts.pathChanged || install.some((i) => i.changesPath)) afterwards.push('Open a new terminal')
   for (const runtime of inUse) {
     const spec = RUNTIME_SPECS[runtime]
     if (!isOk(row(report, spec.ids.auth))) afterwards.push(`Sign in: ${spec.loginCommand}`)
-  }
-  const token = RUNTIME_SPECS['claude-code'].ids.afkKey
-  if (inUse.includes('claude-code') && token && !isOk(row(report, token))) {
-    afterwards.push('For unattended rounds: runcastle token')
   }
   if (platform === 'linux' && !facts.hasDesktop && !facts.serviceFileExists) {
     afterwards.push('To keep it running: runcastle service install')

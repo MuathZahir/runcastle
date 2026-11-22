@@ -1,65 +1,17 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import { DEFAULT_RUNTIME, RUNTIME_DEFAULT_MODELS, type AgentRuntime } from '@runcastle/core'
-import { envPath, sandboxBuildDir } from '@runcastle/core/paths'
 import type { ExecFn, ProbeResult } from '../doctor/doctor'
 import { RUNTIME_SPECS, gitIdentityProbe } from '../doctor/doctor'
 import type { AppCtx } from '../db/types'
 import { InvalidInputError } from '../errors'
-import { sandcastleTemplateDir } from '../launcher/asset-paths'
 import { updateSettings, type SettingsIO } from './settings'
 
 /**
- * First-run / Enable-AFK setup service (issue #50). The wizard's one hard step
- * (git identity) and the AFK card's actions (capture each runtime's unattended
- * credential into the data-dir env file, tell the embedded terminals their exact
- * command, offer an OS-specific runtime install line, seed the model defaults
- * from whatever the operator authed) all live here as a small, injected core so
- * the host is never touched under test. Everything IO is a passed-in seam:
- * {@link ExecFn} for git, {@link AfkTokenIo} for the env file + live check.
- *
- * Nothing here names one provider: which binary, which env var and which words
- * describe a credential all come from the runtime's {@link RUNTIME_SPECS} entry.
+ * First-run setup service (issue #50). The wizard's one hard step (git
+ * identity), the exact command each embedded sign-in terminal runs, and the
+ * model defaults seeded from whatever the operator signed in to all live here as
+ * a small, injected core so the host is never touched under test. Everything IO
+ * is a passed-in seam: {@link ExecFn} for git.
  */
-
-/**
- * The env var each runtime's unattended rounds authenticate with. Codex's is an OpenAI
- * API key — verified against codex-rs, `CODEX_API_KEY` is its highest-precedence
- * auth path and the one designed for headless use. Interactive Codex sessions
- * are NOT this: they inherit the human's own `codex login` (decision 5).
- */
-export const AFK_TOKEN_KEY = RUNTIME_SPECS['claude-code'].afkKey
-export const CODEX_API_KEY = RUNTIME_SPECS.codex.afkKey
-
-/**
- * The env var each runtime's unattended burns authenticate with, by runtime. One
- * map so the env-file reader, the round env builder and the setup UI never
- * disagree about which key a runtime needs.
- */
-export const RUNTIME_AUTH_KEY: Record<AgentRuntime, string> = {
-  'claude-code': AFK_TOKEN_KEY,
-  codex: CODEX_API_KEY,
-}
-
-/**
- * What to tell a human whose round aborted for missing auth, per runtime. The
- * two runtimes end in different places: Claude Code burns on a long-lived token
- * captured into `~/.runcastle/.env`, while a Codex burn borrows the operator's
- * own ChatGPT login, so its only setup step is `codex login` and naming
- * `CODEX_API_KEY` here would send them to a credential they need not have.
- */
-export const RUNTIME_AUTH_SETUP_HINT: Record<AgentRuntime, string> = {
-  'claude-code': RUNTIME_SPECS['claude-code'].afkFix,
-  codex: `Run \`${RUNTIME_SPECS.codex.loginCommand}\` on this host, then start the round again`,
-}
-
-/** Result of a live token validity check (a real `claude` call, injected). */
-export interface TokenValidity {
-  valid: boolean
-  detail: string
-  /** Copy-pasteable next step; omitted when the check passed. */
-  fix?: string
-}
 
 /**
  * Writes git identity globally — the wizard's only blocking step — then re-runs
@@ -79,69 +31,6 @@ export async function writeGitIdentity(
   await exec('git', ['config', '--global', 'user.name', name])
   await exec('git', ['config', '--global', 'user.email', email])
   return gitIdentityProbe(exec)
-}
-
-/**
- * Idempotently sets `KEY=value` in a dotenv file's text. Replaces the value on an
- * existing line (preserving a leading `export ` and every other line), otherwise
- * appends a fresh line; the result always ends in exactly one trailing newline.
- * Pure string transform so the env-file capture is unit-testable without disk.
- */
-export function upsertEnvVar(content: string, key: string, value: string): string {
-  const line = `${key}=${value}`
-  const lines = content.length === 0 ? [] : content.replace(/\n$/, '').split('\n')
-  const matcher = new RegExp(`^(export\\s+)?${key}=`)
-  let replaced = false
-  const next = lines.map((l) => {
-    if (matcher.test(l)) {
-      replaced = true
-      const exportPrefix = l.startsWith('export ') ? 'export ' : ''
-      return `${exportPrefix}${line}`
-    }
-    return l
-  })
-  if (!replaced) next.push(line)
-  return `${next.join('\n')}\n`
-}
-
-/** Injected IO for the AFK-credential capture: read/write the env file, verify live. */
-export interface AfkTokenIo {
-  read: () => string
-  write: (content: string) => void
-  verify: (token: string) => Promise<TokenValidity>
-}
-
-/**
- * The shortest Claude Code token saved. Real ones run ~108 characters; a paste
- * that wrapped on a narrow terminal saved 53 and failed a round much later.
- * Codex API keys are exempt.
- */
-export const MIN_CLAUDE_TOKEN_LENGTH = 80
-
-/**
- * Captures a runtime's AFK credential — Claude Code's `setup-token` OAuth token,
- * Codex's OpenAI API key — into the data-dir env file under that runtime's own
- * key, then runs a live validity check. Always persists a non-empty value (so a
- * transient verify failure doesn't lose it) and reports the check's verdict for
- * the UI. Rejects an empty value without touching disk. Every space and line
- * break goes first: a paste that wrapped carries them, and a real credential
- * holds neither.
- */
-export async function saveAfkCredential(
-  io: AfkTokenIo,
-  rawValue: string,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-): Promise<TokenValidity> {
-  const spec = RUNTIME_SPECS[runtime]
-  const value = rawValue.replace(/\s+/g, '')
-  if (value.length === 0) throw new InvalidInputError(`${spec.label} ${spec.afkNoun} cannot be empty`)
-  if (runtime === 'claude-code' && value.length < MIN_CLAUDE_TOKEN_LENGTH) {
-    throw new InvalidInputError(
-      `${spec.label} ${spec.afkNoun} looks cut off (${value.length} characters, expected at least ${MIN_CLAUDE_TOKEN_LENGTH}). Paste the whole value.`,
-    )
-  }
-  io.write(upsertEnvVar(io.read(), spec.afkKey, value))
-  return io.verify(value)
 }
 
 /**
@@ -199,74 +88,12 @@ export function seedModelDefaults(
   }
 }
 
-/** OS-specific guided-manual runtime install: a copyable command + a follow-up note. */
-export interface RuntimeInstallGuide {
-  command: string
-  note: string
-}
-
-/**
- * The copy-pasteable runtime install command for a guided-manual fix, per OS.
- * Podman is the default recommendation (rootless, no daemon); the note carries
- * the `podman machine init && start` follow-up the Windows/macOS VM needs.
- */
-export function runtimeInstallGuide(platform: NodeJS.Platform): RuntimeInstallGuide {
-  switch (platform) {
-    case 'win32':
-      return {
-        command: 'winget install RedHat.Podman',
-        note: 'Then initialize the VM: podman machine init && podman machine start',
-      }
-    case 'darwin':
-      return {
-        command: 'brew install podman',
-        note: 'Then initialize the VM: podman machine init && podman machine start',
-      }
-    default:
-      return {
-        command: 'sudo apt install podman   # or: sudo dnf install podman / sudo pacman -S podman',
-        note: 'Podman is rootless on Linux — no machine step needed.',
-      }
-  }
-}
-
-/** Container runtimes the embedded flows can drive. */
-export type Runtime = 'docker' | 'podman'
-
-/**
- * Picks the runtime the build-image / image-probe flows should drive. Honors the
- * configured preference when that binary is actually present; otherwise falls
- * back to whichever runtime is installed, and finally to the preference (docker)
- * so the emitted command is still something the user can act on.
- */
-export async function resolveRuntime(exec: ExecFn, preferred: Runtime): Promise<Runtime> {
-  const present = async (bin: Runtime): Promise<boolean> => {
-    const out = await exec(bin, ['--version'])
-    return out.ok && out.code === 0
-  }
-  if (await present(preferred)) return preferred
-  const other: Runtime = preferred === 'docker' ? 'podman' : 'docker'
-  if (await present(other)) return other
-  return preferred
-}
-
 /**
  * Which embedded-terminal flow to launch. Each runtime contributes a login flow
  * (`claude auth login`, `codex login`) so onboarding can auth whichever
- * providers the operator has; `setup-token` is Claude Code's separate long-lived
- * AFK-token flow, which Codex has no analogue for (its AFK credential is an API
- * key pasted straight in).
+ * providers the operator has. Workers run on the host under that same sign-in.
  */
-export type TerminalKind = 'setup-token' | 'build-image' | 'claude-login' | 'codex-login'
-
-/**
- * Whether Ctrl-C ends this terminal's program on Windows. The image build only
- * shows output, so it can only mean stop. A sign-in prompt ignores Ctrl-C, and a
- * person may press it to copy the sign-in URL.
- */
-export function ctrlCEndsTerminal(kind: TerminalKind): boolean {
-  return kind === 'build-image'
-}
+export type TerminalKind = 'claude-login' | 'codex-login'
 
 /** The login terminal kind for each runtime, as the wizard and settings offer it. */
 export const LOGIN_TERMINAL_KIND: Record<AgentRuntime, TerminalKind> = {
@@ -280,150 +107,10 @@ export interface TerminalSpec {
   args: string[]
 }
 
-/**
- * The command each interactive embedded-terminal flow runs. `setup-token` drives
- * the interactive `claude setup-token` login; `claude-login`/`codex-login` drive
- * each runtime's own interactive sign-in, which is what talk sessions run on.
- *
- * `build-image` is deliberately not here: it builds an image whose tag, context
- * and Dockerfile hash are decided from the project's own state, so its command
- * comes from `imageBuildTerminal` in `sandbox-image.ts` instead.
- */
-export function terminalSpec(kind: Exclude<TerminalKind, 'build-image'>): TerminalSpec {
-  if (kind === 'setup-token') return { cmd: 'claude', args: ['setup-token'] }
+/** The command each interactive embedded-terminal flow runs: each runtime's own sign-in. */
+export function terminalSpec(kind: TerminalKind): TerminalSpec {
   for (const spec of Object.values(RUNTIME_SPECS)) {
     if (kind === LOGIN_TERMINAL_KIND[spec.runtime]) return { cmd: spec.bin, args: spec.loginArgs }
   }
   throw new InvalidInputError(`no terminal command for ${kind}`)
-}
-
-// ---------------------------------------------------------------------------
-// Build-context scaffold (issue #50 product decision) — runcastle owns the scaffold
-// ---------------------------------------------------------------------------
-
-/** Result of a `.sandcastle/` scaffold: whether it wrote, and where it lives. */
-export interface ScaffoldResult {
-  scaffolded: boolean
-  dir: string
-}
-
-/**
- * The template dir lives with the other #51 runtime-asset resolvers now that the
- * doctor resolves it too; re-exported here so the scaffold callers keep reading
- * it from the setup service.
- */
-export { sandcastleTemplateDir }
-
-/**
- * Copy the template into `<targetDir>/.sandcastle/`, the layout a sandcastle
- * build context has. **Create-only**: an existing `.sandcastle/` — which may be
- * hand-tuned —
- * is never touched, mirroring the knowledge-docs scaffold precedent. Idempotent.
- */
-export function scaffoldSandcastleConfig(templateDir: string, targetDir: string): ScaffoldResult {
-  const dir = join(targetDir, '.sandcastle')
-  if (existsSync(dir)) return { scaffolded: false, dir }
-  mkdirSync(dir, { recursive: true })
-  for (const name of readdirSync(templateDir)) {
-    copyFileSync(join(templateDir, name), join(dir, name))
-  }
-  return { scaffolded: true, dir }
-}
-
-/** Refresh the runcastle-owned build scaffold from the currently bundled template. */
-export function refreshSandcastleConfig(templateDir: string, targetDir: string): string {
-  const dir = join(targetDir, '.sandcastle')
-  mkdirSync(dir, { recursive: true })
-  for (const name of readdirSync(templateDir)) {
-    copyFileSync(join(templateDir, name), join(dir, name))
-  }
-  return dir
-}
-
-/**
- * Ensure the runcastle-owned stock build context exists, and return the dir the
- * build is handed — the freshly-refreshed `.sandcastle/` that holds the
- * Dockerfile. The AFK image is generic and app-global (not per-project —
- * per-project deps install at sandbox start), and the card is actionable during
- * first-run before any project exists, so the context lives under the data dir
- * rather than in a project repo.
- */
-export function prepareSandboxBuildContext(
-  templateDir = sandcastleTemplateDir(),
-  target = sandboxBuildDir(),
-): string {
-  mkdirSync(target, { recursive: true })
-  return refreshSandcastleConfig(templateDir, target)
-}
-
-// ---------------------------------------------------------------------------
-// Production IO wiring (thin; the testable core is above)
-// ---------------------------------------------------------------------------
-
-/**
- * A live AFK-credential validity check: run the runtime's CLI `--version` with
- * the credential saved. We can't fully round-trip the API here without a paid
- * call, so we treat a resolvable binary as valid presence; a missing one is
- * reported honestly.
- *
- * The two ways that probe can fail are kept *distinct*, because they have
- * opposite fixes and conflating them is what made this step a dead end for real
- * users: `ok:false` is a spawn failure (nothing to run — almost always a PATH the
- * server can't see, not a missing install), while a non-zero exit means the CLI
- * ran and rejected the call, which is a runtime problem, not a runcastle one.
- * Either way the credential is already on disk, so we say so — the user's next
- * move is never "paste it again".
- */
-export function createCredentialVerifier(
-  exec: ExecFn,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-): (value: string) => Promise<TokenValidity> {
-  const spec = RUNTIME_SPECS[runtime]
-  return async (value) => {
-    if (value.length < 8) {
-      return {
-        valid: false,
-        detail: `${spec.afkNoun} looks malformed (too short) — saved to ~/.runcastle/.env anyway`,
-        fix: `${spec.afkFix}. It starts with \`sk-\`.`,
-      }
-    }
-    const out = await exec(spec.bin, ['--version'])
-    if (!out.ok) {
-      return {
-        valid: false,
-        detail:
-          `${spec.afkNoun} saved to ~/.runcastle/.env, but runcastle could not launch \`${spec.bin}\` to verify it. ` +
-          'That is a PATH problem in this server process, not a missing install — a terminal that finds ' +
-          `\`${spec.bin}\` proves nothing about the PATH runcastle was started with.`,
-        fix:
-          `Quit runcastle and start it again from a terminal where \`${spec.bin} --version\` works. ` +
-          `If it still fails, pin the path: set ${spec.binOverrideEnv} to the full path from ` +
-          `\`where.exe ${spec.bin}\` (Windows) or \`which ${spec.bin}\` (macOS/Linux), then restart runcastle.`,
-      }
-    }
-    if (out.code !== 0) {
-      const why = (out.stderr.trim() || out.stdout.trim()).split('\n')[0] ?? ''
-      return {
-        valid: false,
-        detail:
-          `${spec.afkNoun} saved to ~/.runcastle/.env, but \`${spec.bin} --version\` exited ${out.code}` +
-          `${why ? `: ${why}` : ' with no output'}.`,
-        fix: `Run \`${spec.bin} --version\` yourself and fix what it reports — the ${spec.label} install is broken, not the ${spec.afkNoun}.`,
-      }
-    }
-    return { valid: true, detail: `${spec.afkNoun} captured to ~/.runcastle/.env` }
-  }
-}
-
-/** File-backed {@link AfkTokenIo} over the data-dir env file (`~/.runcastle/.env`). */
-export function fileAfkTokenIo(exec: ExecFn, runtime: AgentRuntime = DEFAULT_RUNTIME): AfkTokenIo {
-  const path = envPath()
-  return {
-    read: () => (existsSync(path) ? readFileSync(path, 'utf8') : ''),
-    write: (content) => {
-      mkdirSync(dirname(path), { recursive: true })
-      writeFileSync(path, content, 'utf8')
-    },
-    verify: createCredentialVerifier(exec, runtime),
-  }
 }

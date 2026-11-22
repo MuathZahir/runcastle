@@ -9,7 +9,7 @@ import {
   servicePath,
 } from '../services/service-file'
 import { resolveTool } from '../util/resolve-executable'
-import { ROOT_BURN_REFUSED, runningAsRoot } from '../workers/burn-user'
+import { ROOT_REFUSED, runningAsRoot } from '../util/root-user'
 
 export const SERVICE_USAGE = [
   'usage: runcastle service install | remove',
@@ -74,7 +74,7 @@ export async function runService(argv: string[], deps: ServiceDeps = {}): Promis
     return 1
   }
   if (deps.runningAsRoot ?? runningAsRoot()) {
-    log(ROOT_BURN_REFUSED)
+    log(ROOT_REFUSED)
     return 1
   }
 

@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>How a feature goes — runcastle docs</title>
-    <meta name="description" content="A runcastle feature goes from an idea to a merged branch in four stages: plan it with its agent, workers build it in containers, a review agent tests it, you try it and merge." />
+    <meta name="description" content="A runcastle feature goes from an idea to a merged branch in four stages: plan it with its agent, workers build it, a review agent tests it, you try it and merge." />
     <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
     <link rel="canonical" href="https://runcastle.dev/docs/features/" />
     <meta name="theme-color" content="#0a0c11" />
     <meta property="og:type" content="article" />
     <meta property="og:url" content="https://runcastle.dev/docs/features/" />
     <meta property="og:title" content="How a feature goes — runcastle docs" />
-    <meta property="og:description" content="A runcastle feature goes from an idea to a merged branch in four stages: plan it with its agent, workers build it in containers, a review agent tests it, you try it and merge." />
+    <meta property="og:description" content="A runcastle feature goes from an idea to a merged branch in four stages: plan it with its agent, workers build it, a review agent tests it, you try it and merge." />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
     <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -113,10 +113,10 @@
           <figcaption>The design runs in your app. Approve accepts it.</figcaption>
         </figure>
 
-        <h2>Build: workers in containers</h2>
+        <h2>Build: workers in parallel</h2>
         <p>
           Once you approve, a round of workers builds the tickets. Each worker is an agent working
-          alone in a container. Several work at once, and each commits to the feature's branch.
+          alone in the feature's own folder. Several work at once, and each commits to the feature's branch.
           Nothing needs you, so you can close the tab.
         </p>
         <figure class="doc-fig">

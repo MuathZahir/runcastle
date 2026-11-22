@@ -13,7 +13,6 @@ import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents } from '../src/threads/log'
 import type { AgentHost } from '../src/threads/types'
-import { setSandboxEngineForTests } from '../src/workers/engine'
 import { type DriveTaken, hostReviewEnv, reviewAssignment, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
 import { projects } from '../src/db/schema'
 import { eq } from 'drizzle-orm'
@@ -27,7 +26,6 @@ import {
   listWorkers,
   resumeDriveReviewWaits,
   setReviewDriveRetryForTests,
-  withWorkers,
   workerStallBounds,
   workerTurnSlot,
 } from '../src/workers/service'
@@ -35,13 +33,13 @@ import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeTurn } from './support/fake-acp-agent'
-import { fakeEngine, initRepo, type FakeEngine } from './support/fake-workers'
+import { initRepo } from './support/fake-workers'
 import { promptsOf } from './support/thread-launch'
 
 /**
  * The end-of-feature review as a Review worker (burns-become-workers decisions
  * 3–5): a drive review runs on the host while it holds the drive slot, a gates
- * review in a worker sandbox; both report findings against themselves and hand
+ * review in the feature's folder; both report findings against themselves and hand
  * back with the Review Package; a verify review is given only its findings.
  */
 
@@ -51,7 +49,6 @@ let restoreDataDir: () => void
 let repo: string
 let feature: Feature
 let lead: string
-let engine: FakeEngine
 let host: AgentHost | undefined
 let drive: FakeDrive
 
@@ -91,8 +88,6 @@ beforeEach(async () => {
   lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo }).id
   markSessionLive(ctx, lead, { ccSessionId: `cc-${lead}` })
   markSessionEnded(ctx, lead)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
   drive = fakeDrive()
   setReviewDriveHostForTests(drive)
   setReviewDriveRetryForTests(5)
@@ -104,7 +99,6 @@ afterEach(async () => {
   await host?.stopAll('shutdown')
   host = undefined
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   setReviewDriveHostForTests(undefined)
   setReviewDriveRetryForTests(undefined)
   vi.unstubAllEnvs()
@@ -125,10 +119,9 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
 }
 
 function realHost(fake: FakeAcp): AgentHost {
-  engine.transport = fake.transport
   host = createAgentHost({
     ctx,
-    transport: withWorkers(ctx, fake.transport),
+    transport: fake.transport,
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),
@@ -204,9 +197,7 @@ describe('a drive review', () => {
     const w = review()!
     expect(drive.asks).toBe(2)
     expect(drive.given).toEqual([w.id])
-    // No sandbox, no branch: its thread runs in the project's own checkout.
-    expect(engine.created).toEqual([])
-    expect(w.container).toBeNull()
+    // No branch: its thread runs in the project's own checkout.
     expect(getSessionRow(ctx, w.id)?.worktreePath).toBe(repo)
     expect(promptsOf(w.id)[0]?.text).toContain('# Review this feature')
 
@@ -324,10 +315,7 @@ describe('a gates review', () => {
     await until(() => review()?.status === 'handed-back')
 
     const w = review()!
-    // No sandbox: it reads the feature's own folder, on no branch of its own.
-    expect(engine.created).toEqual([])
-    expect(engine.launches).toEqual([])
-    expect(w.container).toBeNull()
+    // It reads the feature's own folder, on no branch of its own.
     expect(w.branch).toBeNull()
     expect(w.folder).toBeTruthy()
     expect(getSessionRow(ctx, w.id)?.worktreePath).toBe(w.folder)

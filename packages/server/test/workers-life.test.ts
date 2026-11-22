@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BACKGROUND_WINDOW_MS, FEATURE_NEEDS_YOU, type Feature, foldThread } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markAgentWorking, markAwaitingInput, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolDeclareReady, toolDropWorker, toolLandWorker, toolMessageWorker, toolStartWorker } from '../src/mcp/server'
+import { toolDeclareReady, toolDropWorker, toolLandWorker, toolMessageWorker, toolStartWorker, toolWaitForYou } from '../src/mcp/server'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { designPassFetch } from '../src/routes/design-pass'
@@ -18,8 +18,6 @@ import { startNeedWatch } from '../src/services/need-watch'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
-import { setSandboxEngineForTests } from '../src/workers/engine'
-import { workerTools } from '../src/workers/tools'
 import { writeHostHandback } from '../src/workers/review'
 import { sweepLeftovers } from '../src/workers/sweep'
 import {
@@ -27,8 +25,6 @@ import {
   shownStatusOf,
   workerPrompted,
   startUnassignedWorker,
-
-  withWorkers,
   workerPreviews,
   workerFolder,
   workerStopped,
@@ -39,7 +35,7 @@ import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
-import { fakeEngine, fakeHost, git, initRepo, type FakeEngine } from './support/fake-workers'
+import { fakeHost, git, initRepo } from './support/fake-workers'
 
 /**
  * Interactive workers over their whole life (interactive-workers decisions 6,
@@ -56,7 +52,6 @@ let restoreDataDir: () => void
 let repo: string
 let feature: Feature
 let lead: string
-let engine: FakeEngine
 
 beforeEach(async () => {
   home = tmpRepo()
@@ -67,15 +62,12 @@ beforeEach(async () => {
   lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' }).id
   markSessionLive(ctx, lead, { ccSessionId: `cc-${lead}` })
   markSessionEnded(ctx, lead)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
   resetAgentSlotsForTests()
   vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'test-token')
 })
 
 afterEach(() => {
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   vi.unstubAllEnvs()
   restoreDataDir()
   rmTemp(home)
@@ -126,7 +118,7 @@ function realHost(fake: FakeAcp): AgentHost {
   const host = createAgentHost({
     ctx,
     // A host worker's agent comes from the base transport: the fake agent.
-    transport: withWorkers(ctx, fake.transport),
+    transport: fake.transport,
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),
@@ -256,7 +248,6 @@ describe("the feature's Stop (burns-become-workers decision 15)", () => {
     expect(logB.find((e) => e.type === 'turn_ended')).toMatchObject({ reason: 'cancelled' })
     // Both stay enterable: their threads and folders are where they were.
     expect(getWorker(ctx, a)?.status).not.toBe('failed')
-    expect(engine.removed).toEqual([])
 
     await expect(startWorker('Footer')).rejects.toThrow('Stopped by the human')
     await expect(toolMessageWorker(ctx, leadSession(), { workerId: a, text: 'go on' })).rejects.toThrow('Stopped by the human')
@@ -272,7 +263,7 @@ describe("the feature's Stop (burns-become-workers decision 15)", () => {
 describe('a worker that needs the human', () => {
   /** The worker's own `wait_for_you`, as its agent's tool reaches the server. */
   const waitForYou = (id: string, args: Record<string, unknown>) =>
-    workerTools(ctx, getWorker(ctx, id)!, {} as never, engine)('wait_for_you', args)
+    toolWaitForYou(ctx, getSessionRow(ctx, id)!, args as never)
 
   it('reads idle with no need, not working, when its turn ends without a handback', async () => {
     setAgentHostForTests(fakeHost().host)
@@ -476,8 +467,7 @@ describe('idle stop and wake', () => {
     const folder = folderOf(id)
 
     await host.stop(id, 'idle')
-    // There is no sandbox to stop: the folder stays and the engine is never called.
-    expect(engine.stopped).toEqual([])
+    // Stopping the agent leaves the folder and the worker as they were.
     expect(existsSync(folder)).toBe(true)
     expect(getWorker(ctx, id)?.status).not.toBe('dropped')
 
@@ -485,7 +475,6 @@ describe('idle stop and wake', () => {
     await until(() => readThreadEvents(id).filter((e) => e.type === 'turn_ended').length === 2)
     expect(fake.last().received[1]).toMatchObject({ method: 'session/load', params: { sessionId: conversation } })
     expect(getSessionRow(ctx, id)!.ccSessionId).toBe(conversation)
-    expect(engine.woken).toEqual([])
     await host.stopAll('shutdown')
   })
 })
@@ -505,16 +494,15 @@ describe('a server restart', () => {
     const orphan = join(workerFolder('sess_nobody'))
     mkdirSync(orphan, { recursive: true })
 
-    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 0, failed: 0 })
+    expect(await sweepLeftovers(ctx)).toMatchObject({ failed: 0 })
     expect(existsSync(workerFolder(gone))).toBe(false)
     expect(existsSync(orphan)).toBe(false)
     expect(existsSync(folderOf(working))).toBe(true)
     expect(existsSync(folderOf(inFeature))).toBe(true)
     expect(getWorker(ctx, working)?.status).toBe('working')
-    expect(engine.removed).toEqual([])
 
     // A second boot finds nothing left to do.
-    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 0, removed: 0 })
+    expect(await sweepLeftovers(ctx)).toMatchObject({ removed: 0 })
   })
 })
 
@@ -551,7 +539,6 @@ describe('cleanup', () => {
     expect(getWorker(ctx, first)).toMatchObject({ status: 'dropped' })
     expect(getWorker(ctx, second)).toMatchObject({ status: 'dropped' })
     expect(host.stopped).toEqual(expect.arrayContaining([first, second]))
-    expect(engine.removed).toEqual([])
   })
 
   it('deleting the feature removes the workers’ own folders and their rows', async () => {
@@ -574,7 +561,6 @@ describe('cleanup', () => {
 
     expect(await mergeFeatureFlow(ctx, feature.id)).toMatchObject({ ok: true })
     expect(getWorker(ctx, id)?.status).toBe('landed')
-    expect(engine.removed).toEqual([])
   })
 
   it('dropping a worker twice is fine', async () => {
@@ -613,17 +599,7 @@ describe('the preview through the design pass-through', () => {
       fetchSpy.mockRestore()
     }
     expect(forwarded).toEqual([`http://127.0.0.1:${previewPort}/index.html`])
-    expect(engine.woken).toEqual([])
     expect(host.sent).toHaveLength(before)
-  })
-
-  it('has nothing to wake or stop for a host worker', async () => {
-    setAgentHostForTests(fakeHost().host)
-    const id = await startWorker()
-    await workerPreviews(ctx, 10).wake(id)
-    await new Promise((r) => setTimeout(r, 40))
-    expect(engine.woken).toEqual([])
-    expect(engine.stopped).toEqual([])
   })
 
   it('serves nothing for a dropped worker', async () => {

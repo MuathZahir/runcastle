@@ -1,6 +1,5 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
@@ -14,23 +13,20 @@ import { createAgentHost, setAgentHostForTests, type StallBounds } from '../src/
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { waitOf } from '../src/services/waits'
-import { setSandboxEngineForTests } from '../src/workers/engine'
 import { writeHostHandback } from '../src/workers/review'
 import {
   getWorker,
   landWorker,
   setWorkerRetryDelayForTests,
-  withWorkers,
   workerStallBounds,
   workerTurnEnded,
   workerTurnSlot,
 } from '../src/workers/service'
-import { refreshWorkerFeatureBranch, workerOrigin } from '../src/workers/worker'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeTurn } from './support/fake-acp-agent'
-import { commitOn, fakeEngine, fakeHost, git, initRepo, type FakeEngine } from './support/fake-workers'
+import { fakeHost, git, initRepo } from './support/fake-workers'
 import { promptsOf } from './support/thread-launch'
 
 /**
@@ -47,7 +43,6 @@ let restoreDataDir: () => void
 let repo: string
 let feature: Feature
 let lead: string
-let engine: FakeEngine
 
 beforeEach(async () => {
   home = tmpRepo()
@@ -58,8 +53,6 @@ beforeEach(async () => {
   lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo }).id
   markSessionLive(ctx, lead, { ccSessionId: `cc-${lead}` })
   markSessionEnded(ctx, lead)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
   resetAgentSlotsForTests()
   setWorkerRetryDelayForTests(() => 5)
   vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'test-token')
@@ -69,7 +62,6 @@ afterEach(async () => {
   await host?.stopAll('shutdown')
   host = undefined
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   setWorkerRetryDelayForTests(undefined)
   vi.unstubAllEnvs()
   restoreDataDir()
@@ -99,10 +91,9 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
 
 /** A real agent host over the fake ACP agent (workers and the lead alike), the worker transport and the server's lifecycle. */
 function realHost(fake: FakeAcp, stall: StallBounds = { silenceMs: 60_000, commandMs: 60_000 }): AgentHost {
-  engine.transport = fake.transport
   host = createAgentHost({
     ctx,
-    transport: withWorkers(ctx, fake.transport),
+    transport: fake.transport,
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),
@@ -349,37 +340,5 @@ describe('a landing conflict', () => {
     expect(res.ok === false && res.sentBack).toBeFalsy()
     expect(!res.ok && res.error).toMatch(/resolve it yourself.*send_back_worker/)
     expect(status(id)).toBe('handed-back')
-  })
-
-  it('gives the worker’s bare copy the feature branch’s tip, so a clone of it can merge it in', async () => {
-    const sb = {
-      id: 'w_refresh',
-      engine: 'docker' as const,
-      runtime: 'claude-code' as const,
-      container: 'c',
-      repoPath: repo,
-      featureBranch: feature.branch,
-      branch: 'runcastle/worker/refresh',
-      port: 41001,
-      previewUrl: '',
-    }
-    const origin = workerOrigin(sb.id)
-    execFileSync('git', ['clone', '-q', '--bare', '--single-branch', '--branch', feature.branch, repo, origin])
-    git(origin, 'branch', '-f', sb.branch, feature.branch)
-    const inside = tmpRepo()
-    try {
-      execFileSync('git', ['clone', '-q', '--branch', sb.branch, origin, inside])
-      git(inside, 'config', 'user.email', 't@t.t')
-      git(inside, 'config', 'user.name', 't')
-      commitOn(repo, feature.branch, 'later.txt', 'later\n', 'feat: landed later')
-
-      await refreshWorkerFeatureBranch(sb)
-      git(inside, 'fetch', '-q', 'origin')
-      git(inside, 'merge', '-q', '--no-edit', `origin/${feature.branch}`)
-      expect(git(inside, 'log', '--format=%s', '-1', `origin/${feature.branch}`).trim()).toBe('feat: landed later')
-      expect(git(inside, 'ls-files')).toContain('later.txt')
-    } finally {
-      rmTemp(inside)
-    }
   })
 })

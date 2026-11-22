@@ -15,13 +15,8 @@ export function workerPreviewPath(workerId: string): string {
   return `${DESIGN_OPEN_PREFIX}${WORKER_OPEN_SEGMENT}${encodeURIComponent(workerId)}`
 }
 
-/**
- * A worker's preview, addressed by worker id: the published port it forwards
- * to, and the wake a stopped worker's sandbox needs before a request goes there.
- */
+/** A worker's preview, addressed by worker id: its dev server's port on this machine. */
 export interface WorkerPreviews {
   /** The worker's preview address on the host's loopback, or undefined when it has none. */
   url(workerId: string): string | undefined
-  /** Start a stopped worker's sandbox and dev server, not its agent. */
-  wake(workerId: string): Promise<void>
 }

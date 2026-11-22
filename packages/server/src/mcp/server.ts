@@ -19,7 +19,6 @@ import {
   workerWaits,
 } from '../workers/service'
 import { isHostReview, reportReviewFinding, writeHostHandback } from '../workers/review'
-import { provideWorkerFeatureRead } from '../workers/tools'
 import { driveWorkerOf } from '../workers/drive'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
@@ -156,8 +155,7 @@ import { CHARTER_DOC_KEY, contentSha, featureDocKey, recordSent, sentSha, tellOn
  * `mcp.json` (forwarded by `@hono/mcp` as `requestInfo.headers`). A caller with
  * no session header falls back to the most recently created live session — a
  * convenience for a hand-run client. Every agent runcastle launches on the host
- * carries its session header; a sandboxed worker never reaches this server at
- * all (its tools are relayed, `workers/tools.ts`).
+ * carries its session header.
  *
  * A fresh `McpServer` + transport is built per request (stateless mode,
  * `enableJsonResponse`) so there is no cross-request shared transport state.
@@ -639,9 +637,6 @@ export async function featureContextWithGit(
 ): Promise<FeatureContext> {
   return featureContext(ctx, reader, await featureScenarios(ctx, reader.featureId), options)
 }
-
-// A worker's `read_feature` reads the lead's same bundle (interactive-workers decision 9).
-provideWorkerFeatureRead((ctx, featureId) => featureContextWithGit(ctx, { featureId }))
 
 /**
  * A feature as the orchestrator reads it by default (`tools-and-skills-say-less`
@@ -1629,9 +1624,8 @@ export async function toolFeatureScenario(
 }
 
 /**
- * `report_finding` from a drive review on the host: recorded against the Review
- * worker itself (burns-become-workers decision 4). A gates review reports the
- * same way over its sandbox's relay (`workers/tools.ts`).
+ * `report_finding` from a Review worker: recorded against the Review worker
+ * itself (burns-become-workers decision 4).
  */
 export function toolReportFinding(
   ctx: AppCtx,
@@ -2670,7 +2664,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // The lead (and its side sessions) close the review's findings: `resolve_finding`.
   resolve_finding: FEATURE_KINDS,
   declare_ready: ['chat'],
-  // A build worker on the host (`worker`) asks here; a sandboxed one's is served in its sandbox (`worker-mcp-script.ts`).
+  // A build worker (`worker`) asks here.
   wait_for_you: ['chat', 'project', 'worker'],
   // The lead's hands back to the orchestrator; a host worker's (a build worker, a review, a drive worker) hands back to its lead.
   hand_back: ['chat', 'worker', 'review', 'fix-drive-worker', 'scenario-worker'],
@@ -2714,7 +2708,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   run_scenario: ['scenario-worker'],
   // The lead records it too when it sets scenarios up itself (`toolSetScenarioRunner`).
   set_scenario_runner: ['scenario-worker', 'chat'],
-  // A drive review's: `requireReviewer`. A gates review reports findings too: on the host here (an older sandboxed one, over its relay).
+  // A drive review's: `requireReviewer`. A gates review reports findings here too.
   review_drive: ['review'],
   // The lead's own drive of its feature, to prove scenarios on (`requireDriveLead`).
   feature_drive: ['chat'],

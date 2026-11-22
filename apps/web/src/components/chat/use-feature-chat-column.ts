@@ -35,7 +35,7 @@ export interface FeatureChatColumn {
   /** The thread list's id for what is in front. */
   current: string
   pick: (id: string) => void
-  /** The "+": a worker with no assignment, brought to the front once its sandbox is up. */
+  /** The "+": a worker with no assignment, brought to the front once its folder is ready. */
   newThread: () => void
   /** The unstarted main chat got its thread: on its first message, or (`stayOnPicked`) by itself, which moves no one off a thread they picked. */
   started: (threadId: string, opts?: { stayOnPicked?: boolean }) => void
@@ -84,7 +84,7 @@ export function useFeatureChatColumn({
   useEffect(() => subscribeInbox(mainChatInbox(featureId), () => setPicked(null)), [featureId])
 
   // The "+" (interactive-workers decision 7): a worker with no assignment, in
-  // place of the side chat it replaces. It answers once its sandbox is up.
+  // place of the side chat it replaces. It answers once its folder is ready.
   const create = trpc.worker.startUnassigned.useMutation({
     onSuccess: ({ workerId }) => {
       setPicked(workerId)

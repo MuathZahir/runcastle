@@ -8,7 +8,6 @@ import { listAfter } from '../src/services/events'
 import { handbackStateLine } from '../src/services/lead-handback'
 import { setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent } from '../src/threads/types'
-import { setSandboxEngineForTests } from '../src/workers/engine'
 import {
   RESUMED_DISPLAY,
   RESUMED_HUMAN_DISPLAY,
@@ -24,7 +23,7 @@ import {
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
-import { fakeEngine, fakeHost, initRepo, type FakeEngine } from './support/fake-workers'
+import { fakeHost, initRepo } from './support/fake-workers'
 
 /**
  * A worker never shows working with nothing running
@@ -42,7 +41,6 @@ let restoreDataDir: () => void
 let repo: string
 let feature: Feature
 let lead: string
-let engine: FakeEngine
 let host: ReturnType<typeof fakeHost>
 
 beforeEach(async () => {
@@ -54,8 +52,6 @@ beforeEach(async () => {
   lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' }).id
   markSessionLive(ctx, lead, { ccSessionId: `cc-${lead}` })
   markSessionEnded(ctx, lead)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
   resetAgentSlotsForTests()
   vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'test-token')
   host = fakeHost()
@@ -64,7 +60,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   vi.unstubAllEnvs()
   restoreDataDir()
   rmTemp(home)

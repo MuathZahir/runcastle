@@ -28,7 +28,7 @@ import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent, readThreadEvents } from '../src/threads/log'
 import { forgetDriveTurnBasesForTests, handBackDriveWorkers, handBackOrphanedDriveWorkers } from '../src/workers/drive'
 import { writeHostHandback } from '../src/workers/review'
-import { getWorker, listProjectWorkers, listWorkers, setStatus, withWorkers, workerTurnSlot } from '../src/workers/service'
+import { getWorker, listProjectWorkers, listWorkers, setStatus, workerTurnSlot } from '../src/workers/service'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedDriveWorker, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -131,7 +131,7 @@ beforeEach(async () => {
   const fake = createFakeAcp({ turn: (t) => onTurn(t) })
   host = createAgentHost({
     ctx,
-    transport: withWorkers(ctx, fake.transport),
+    transport: fake.transport,
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),

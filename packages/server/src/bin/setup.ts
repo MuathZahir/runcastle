@@ -13,7 +13,7 @@ import {
   type StepRunner,
 } from '../setup/runner'
 import { addInstallerDirsToPath, askKey, createStepRunner, readMachineFacts } from '../setup/system'
-import { ROOT_BURN_REFUSED, runningAsRoot } from '../workers/burn-user'
+import { ROOT_REFUSED, runningAsRoot } from '../util/root-user'
 
 export const SETUP_USAGE = 'usage: runcastle setup [--yes] [--agent claude|codex|both]'
 
@@ -71,10 +71,10 @@ export async function runSetup(argv: string[], deps: SetupDeps = {}): Promise<nu
   }
   const facts = deps.facts ?? readMachineFacts()
   if (facts.platform !== 'win32' && (deps.runningAsRoot ?? runningAsRoot())) {
-    log(ROOT_BURN_REFUSED)
+    log(ROOT_REFUSED)
     return 1
   }
-  const doctor = deps.doctor ?? (() => runDoctor(resolveDoctorEnv('gate')))
+  const doctor = deps.doctor ?? (() => runDoctor(resolveDoctorEnv()))
   const prompt = deps.prompt ?? askKey
   const tty = deps.isTTY ?? Boolean(process.stdin.isTTY)
   const c = palette(deps.color ?? Boolean(process.stdout.isTTY))

@@ -14,7 +14,7 @@ import type * as acp from '@agentclientprotocol/sdk/unstable'
  *
  * - Leaving plan mode: the option back into an elevated mode. The adapter
  *   lists them with the session's mode from before plan mode first (bypass for
- *   a lead, auto for a sandbox worker), so the first one listed is taken. A
+ *   a lead, auto for a worker), so the first one listed is taken. A
  *   clear-context option is never picked: it would drop the conversation.
  * - Anything else: the allow-once option. Never an "always" option, which
  *   would write a rule to a settings file.

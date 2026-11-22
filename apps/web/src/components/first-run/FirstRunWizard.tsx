@@ -13,7 +13,6 @@ import { useIsPhone } from '../../lib/use-phone'
 import { Spinner } from '../../ui'
 import { OnYourComputer } from '../OnYourComputer'
 import { OpenProject } from '../OpenProject'
-import { AfkStep } from './AfkStep'
 import { IdentityStep } from './IdentityStep'
 import { IntroStep } from './IntroStep'
 import { RuntimesStep } from './RuntimesStep'
@@ -28,8 +27,8 @@ import { WizardRail } from './WizardRail'
  * It opens on an intro screen: a first-time user used to meet "AFK burns" before
  * anything had told them what runcastle does (finding F13). Then two *hard*
  * steps — the git identity (commits fail late without it) and a coding agent,
- * though never a particular vendor's (decision 6) — and one optional one. Every
- * step after the intro can go Back (decision 4). It terminates in "Open your
+ * though never a particular vendor's (decision 6). Every step after the intro
+ * can go Back (decision 4). It terminates in "Open your
  * first project", straight into the pipeline UI.
  *
  * This file owns sequencing; the frame is `SetupFrame` and each step is its own
@@ -123,7 +122,6 @@ export function FirstRunWizard({
       {screen === 'runtimes' && (
         <RuntimesStep runtimes={runtimes} onBack={onBack} onNext={onNext} />
       )}
-      {screen === 'afk' && <AfkStep onBack={onBack} onNext={onNext} />}
     </SetupFrame>
   )
 }

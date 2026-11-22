@@ -1,161 +1,49 @@
-import {
-  AgentRuntime,
-  configuredRuntimes,
-  newId,
-  resolveSandboxImage,
-  type Project,
-} from '@runcastle/core'
-import { dataDir } from '@runcastle/core/paths'
-import { isNotNull, sql } from 'drizzle-orm'
+import { AgentRuntime, configuredRuntimes, newId } from '@runcastle/core'
+import { isNotNull } from 'drizzle-orm'
 import * as z from 'zod'
 import { projects } from '../../db/schema'
-import type { AppCtx } from '../../db/types'
-import { afkKeyLineCounts, envWithAfkCredentials } from '../../doctor/afk-env'
-import { burnsOnDockerCache, runDoctor, type ProjectImageEnv } from '../../doctor/doctor'
+import { runDoctor } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
-import { InvalidInputError } from '../../errors'
-import { burnerDockerfilePath } from '../../launcher/asset-paths'
 import { ptyRegistry } from '../../pty/registry'
-import { isOverwritable } from '../../services/findings'
 import { rosterConfig } from '../../services/model-discovery'
-import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
-import { emitProject } from '../../services/events'
-import { allProjects, requireProjectById } from '../../services/repo'
-import { prepareImageBuild, tryImageBuildSlot } from '../../services/image-build'
-import {
-  buildCacheKept,
-  imageBuildTarget,
-  imageBuildTerminal,
-  type ImageBuildTerminal,
-} from '../../services/sandbox-image'
-import { removeStaleSandboxImages } from '../../services/sandbox-image-cleanup'
-import {
-  fileAfkTokenIo,
-  runtimeInstallGuide,
-  saveAfkCredential,
-  seedModelDefaults,
-  ctrlCEndsTerminal,
-  terminalSpec,
-  writeGitIdentity,
-} from '../../services/setup'
+import { seedModelDefaults, terminalSpec, writeGitIdentity } from '../../services/setup'
 import { resolveSpawnTarget } from '../../util/resolve-executable'
 import { publicProcedure, router } from '../context'
 
 /**
- * Per-command bound on the doctor's probes. A healthy `docker info` answers in
- * a second or two; one that is still waiting at this point is not coming back
- * soon, and the app's landing is held on this report until it returns.
+ * Per-command bound on the doctor's probes. The app's landing is held on this
+ * report, so a command still waiting at this point is reported as failing.
  */
 const DOCTOR_PROBE_TIMEOUT_MS = 10_000
 
 /**
- * First-run wizard + Enable-AFK card backend (issue #50, SPEC §F). Drives the
- * one blocking wizard step (git identity → git config) and the AFK card's
- * non-blocking setup: a live prerequisite report, the OS-specific runtime
- * install guide, capturing the `claude setup-token` output into the data-dir env
- * file with a validity check, and spawning the two embedded-terminal flows
- * (setup-token login, image build) over the existing PTY/WS transport.
+ * First-run wizard backend (issue #50, SPEC §F). Drives the one blocking wizard
+ * step (git identity → git config), a live prerequisite report, and the two
+ * embedded sign-in terminals over the existing PTY/WS transport.
  */
 export const setupRouter = router({
-  /** The full prerequisite report the wizard and AFK card read (per-runtime readiness, runtime, image, …). */
-  doctor: publicProcedure
-    .input(
-      z
-        .object({
-          /**
-           * Whose image row this report is about. Absent in the first-run
-           * wizard, which may run before any project exists — there the image
-           * question is the machine-wide one.
-           */
-          projectId: z.string().optional(),
-        })
-        .optional(),
-    )
-    .query(({ ctx, input }) => {
-      // Which runtimes count as errors when they are missing: every one some
-      // configured model resolves to. Per-project overrides join the global
-      // default and the step matrix here; per-ticket assignments will too once
-      // tickets carry a model of their own.
-      const projectModels = ctx.db
-        .select({ model: projects.model })
-        .from(projects)
-        .where(isNotNull(projects.model))
-        .all()
-        .map((p) => p.model)
-      const project = input?.projectId ? requireProjectById(ctx, input.projectId) : null
-      return runDoctor({
-        // The app's first screen waits on this report, so each probe gets a short
-        // leash: a daemon that has not answered in this long is reported as down.
-        exec: createSystemExec({ timeoutMs: DOCTOR_PROBE_TIMEOUT_MS }),
-        burnerDockerfile: burnerDockerfilePath(),
-        // Read the data-dir `.env` fresh on every query: the AFK card writes the
-        // token there through `afkToken` while the server runs, so a probe that
-        // saw only `process.env` would keep reporting it missing forever.
-        env: envWithAfkCredentials(),
-        runtimes: configuredRuntimes(rosterConfig(ctx), projectModels),
-        // Deliberately WITHOUT the project: the probe layers the project column
-        // over this itself, so that clearing an orphaned column (decision 8)
-        // leaves it reporting on the image resolution falls back to.
-        imageName: resolveSandboxImage(ctx.config),
-        // Every project on this install, so the image row can tell a legacy
-        // machine-wide tag (named after a project runcastle no longer has, or
-        // never had) from an image someone chose on purpose.
-        knownProjectIds: allProjects(ctx).map((p) => p.id),
-        afkKeyLines: afkKeyLineCounts(),
-        ...(project ? { projectImage: projectImageEnv(ctx, project) } : {}),
-        // Only with a project in view: the check starts a container, and the
-        // app's first screen, which has no project, must not wait on one.
-        ...(project && burnsOnDockerCache(ctx.config)
-          ? {
-              burnCache: {
-                projectId: project.id,
-                imageName: resolveSandboxImage(ctx.config, project),
-              },
-            }
-          : {}),
-      })
-    }),
-
-  /** OS-specific guided-manual runtime install line + follow-up note. */
-  runtimeGuide: publicProcedure.query(() => runtimeInstallGuide(process.platform)),
-
-  /** The exact Dockerfile and tag the image action will build for this project. */
-  imageBuildTarget: publicProcedure
-    .input(z.object({ projectId: z.string().optional() }).optional())
-    .query(({ ctx, input }) => {
-      const project = input?.projectId ? requireProjectById(ctx, input.projectId) : null
-      return imageBuildTarget({
-        config: ctx.config,
-        project: project
-          ? {
-              id: project.id,
-              repoPath: project.repoPath,
-              sandboxImage: project.sandboxImage,
-              sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
-            }
-          : null,
-        stockDockerfile: burnerDockerfilePath(),
-      })
-    }),
+  /** The full prerequisite report the wizard reads (per-runtime readiness, git, ...). */
+  doctor: publicProcedure.query(({ ctx }) => {
+    // Which runtimes count as errors when they are missing: every one some
+    // configured model resolves to. Per-project overrides join the global
+    // default and the step matrix here.
+    const projectModels = ctx.db
+      .select({ model: projects.model })
+      .from(projects)
+      .where(isNotNull(projects.model))
+      .all()
+      .map((p) => p.model)
+    return runDoctor({
+      // The app's first screen waits on this report, so each probe gets a short leash.
+      exec: createSystemExec({ timeoutMs: DOCTOR_PROBE_TIMEOUT_MS }),
+      runtimes: configuredRuntimes(rosterConfig(ctx), projectModels),
+    })
+  }),
 
   /** The wizard's one hard step: write git identity globally, re-probe. */
   gitIdentity: publicProcedure
     .input(z.object({ name: z.string(), email: z.string() }))
     .mutation(({ input }) => writeGitIdentity(createSystemExec(), input)),
-
-  /**
-   * Capture a runtime's AFK credential into `~/.runcastle/.env` (Claude Code's
-   * OAuth token, Codex's `CODEX_API_KEY`) and validity-check it.
-   */
-  afkToken: publicProcedure
-    .input(z.object({ token: z.string(), runtime: AgentRuntime.default('claude-code') }))
-    .mutation(({ input }) =>
-      saveAfkCredential(
-        fileAfkTokenIo(createSystemExec(), input.runtime),
-        input.token,
-        input.runtime,
-      ),
-    ),
 
   /**
    * Onboarding completion: seed the global default + smoke model from the pair
@@ -167,148 +55,24 @@ export const setupRouter = router({
     .mutation(({ ctx, input }) => seedModelDefaults(ctx, input.runtimes)),
 
   /**
-   * Spawn one of the embedded-terminal flows and return its session id; the web
-   * `TerminalView` attaches over `/ws/terminal/:sessionId`. `build-image` streams
-   * its output there; `claude-login`/`codex-login` run each runtime's own
-   * interactive sign-in; `setup-token` runs Claude Code's long-lived AFK-token
-   * flow (which self-heals its own host-login prompt on the way).
-   *
-   * `notices` are things the human should hear about a flow that still started
-   * — only `build-image` fills it, naming a host CLI version it could not read
-   * and so did not pin.
+   * Spawn one of the embedded sign-in terminals and return its session id; the
+   * web `TerminalView` attaches over `/ws/terminal/:sessionId`.
    */
   startTerminal: publicProcedure
-    .input(
-      z.object({
-        kind: z.enum(['setup-token', 'build-image', 'claude-login', 'codex-login']),
-        /**
-         * Whose image `build-image` builds. Absent in the first-run wizard,
-         * which may run before any project exists — that build is the stock one.
-         */
-        projectId: z.string().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
+    .input(z.object({ kind: z.enum(['claude-login', 'codex-login']) }))
+    .mutation(({ input }) => {
       const sessionId = newId('setup')
-      const { spec, onExit, notices } =
-        input.kind === 'build-image'
-          ? await buildImageTerminal(ctx, input.projectId)
-          : {
-              spec: { ...terminalSpec(input.kind), cwd: process.cwd() },
-              onExit: undefined,
-              notices: [],
-            }
-
+      const spec = { ...terminalSpec(input.kind), cwd: process.cwd() }
       // Resolve through PATHEXT like the launcher does for `claude` — a bare
-      // `spawn('docker'|'claude')` misses a Windows `.cmd`/`.ps1` shim, and
-      // ConPTY can't exec any shim directly, so each goes via its interpreter.
+      // spawn misses a Windows `.cmd`/`.ps1` shim, and ConPTY can't exec any
+      // shim directly, so each goes via its interpreter.
       const { file, args } = resolveSpawnTarget(spec.cmd, spec.args)
-      try {
-        ptyRegistry().create({
-          sessionId,
-          cmd: file,
-          args,
-          opts: { cwd: spec.cwd, env: process.env, ctrlCEndsTree: ctrlCEndsTerminal(input.kind) },
-          ...(onExit ? { onExit } : {}),
-        })
-      } catch (error) {
-        // Nothing started, so nothing will exit: free what the build was holding.
-        onExit?.({ exitCode: 1 })
-        throw error
-      }
-      return { sessionId, notices }
+      ptyRegistry().create({
+        sessionId,
+        cmd: file,
+        args,
+        opts: { cwd: spec.cwd, env: process.env },
+      })
+      return { sessionId }
     }),
 })
-
-/**
- * The db half of the doctor's image row: what the project stores, whether
- * runcastle may rewrite it, and how it lets go of a value whose Dockerfile has
- * been deleted (decision 8). Kept here rather than in the probe so the doctor
- * library stays injected and testable without a database.
- */
-function projectImageEnv(ctx: AppCtx, project: Project): ProjectImageEnv {
-  return {
-    id: project.id,
-    repoPath: project.repoPath,
-    stored: project.sandboxImage ?? null,
-    overwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
-    clearStored: () => releaseProjectImage(ctx, project.id),
-  }
-}
-
-/**
- * The image build behind the AFK card's Build button, planned by
- * `prepareImageBuild` — stock alone, the two-step chain when the repo carries
- * `.runcastle/sandbox/Dockerfile`, or nothing at all when the image is a tag
- * runcastle does not manage (decision 5 — the button must never build the stock
- * template under someone's custom tag, and must not build a project image a
- * hand-typed setting would keep every burn away from).
- *
- * It holds the server's one build slot for the life of the terminal, so a burn
- * that needs an image waits for this build and the button refuses while a burn
- * is building.
- *
- * A chain that exits 0 adopts its project image as the project's `sandboxImage`,
- * on the PTY's own exit: the build IS the event that makes the tag real, and
- * writing the column any earlier would point every image consumer at a tag no
- * image answers to.
- */
-async function buildImageTerminal(
-  ctx: AppCtx,
-  projectId: string | undefined,
-): Promise<{
-  spec: ImageBuildTerminal
-  onExit: (info: { exitCode: number }) => void
-  notices: string[]
-}> {
-  const release = tryImageBuildSlot()
-  if (!release) {
-    throw new InvalidInputError(
-      'A round is building the sandbox image right now. It will be ready when that build finishes.',
-    )
-  }
-  try {
-    const project = projectId ? requireProjectById(ctx, projectId) : null
-    const exec = createSystemExec()
-    const { runtime, plan, mode, notices } = await prepareImageBuild({
-      exec,
-      config: ctx.config,
-      project: project
-        ? {
-            id: project.id,
-            repoPath: project.repoPath,
-            sandboxImage: project.sandboxImage,
-            sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
-          }
-        : null,
-    })
-    if (plan.kind === 'refused') throw new InvalidInputError(plan.reason)
-    const cacheKept = buildCacheKept(plan, mode)
-    return {
-      spec: imageBuildTerminal(runtime, plan, process.platform, mode),
-      notices: [...notices, ...(cacheKept ? [`This build keeps its build cache: ${cacheKept}.`] : [])],
-      onExit: ({ exitCode }) => {
-        release()
-        if (exitCode !== 0) return
-        if (plan.kind === 'chain' && project) adoptProjectImage(ctx, project.id, plan.projectTag)
-        // The image this build replaced is untagged now; it goes unless a container uses it,
-        // and the timeline says so (on the oldest project for the stock image, like the sweep).
-        void removeStaleSandboxImages({ engine: runtime, exec, dataDir: dataDir() }).then((out) => {
-          if (out.removed.length === 0) return
-          const on =
-            project?.id ?? ctx.db.select({ id: projects.id }).from(projects).orderBy(sql`rowid`).limit(1).get()?.id
-          if (!on) return
-          const n = out.removed.length
-          emitProject(ctx, on, {
-            type: 'cleanup.swept',
-            message: `Removed ${n} old image${n === 1 ? '' : 's'} (${(out.freedBytes / 1e9).toFixed(1)} GB)`,
-            data: { removed: { 'old images': n }, freedBytes: out.freedBytes, sizeUnknown: 0 },
-          })
-        })
-      },
-    }
-  } catch (error) {
-    release()
-    throw error
-  }
-}

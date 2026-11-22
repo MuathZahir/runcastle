@@ -13,15 +13,16 @@ import { wizardSteps, type ProbeLike } from '../src/lib/first-run'
 const ok: ProbeLike = { status: 'ok', detail: 'Ada Lovelace <ada@example.com>' }
 const unset: ProbeLike = { status: 'unset', detail: 'user.email not set — commits would fail' }
 
-const render = (current: 'identity' | 'runtimes' | 'afk', identity: ProbeLike) =>
+const render = (current: 'identity' | 'runtimes' | 'project', identity: ProbeLike) =>
   renderToStaticMarkup(createElement(WizardRail, { steps: wizardSteps(current, identity) }))
 
 describe('WizardRail', () => {
   it('names every step, whichever one is showing', () => {
     const html = render('runtimes', unset)
-    for (const label of ['Git identity', 'Coding agents', 'Unattended workers', 'First project']) {
+    for (const label of ['Git identity', 'Coding agents', 'First project']) {
       expect(html).toContain(label)
     }
+    expect(html).not.toContain('Unattended workers')
   })
 
   it('marks the current step, and the ones behind and ahead of it', () => {
@@ -34,7 +35,7 @@ describe('WizardRail', () => {
   })
 
   it('says what a step the host passed for us actually found', () => {
-    const html = render('afk', ok)
+    const html = render('project', ok)
     expect(html).toContain('detected from git config: Ada Lovelace')
     expect(html).toContain('data-state="passed"')
   })
@@ -42,12 +43,12 @@ describe('WizardRail', () => {
   // The detail line is the passed row's whole point — a rail that only went
   // green would be the silent skip this replaced.
   it('adds no detail line when nothing was detected', () => {
-    expect(render('afk', unset)).not.toContain('detected from git config')
+    expect(render('project', unset)).not.toContain('detected from git config')
   })
 
   // Legacy rules are unlayered and beat utilities (apps/web/STYLE.md), so a
   // leftover class name would silently override the new styling.
   it('carries no retired class names', () => {
-    expect(render('afk', ok)).not.toMatch(/class="[^"]*\b(wizard-|op-)/)
+    expect(render('project', ok)).not.toMatch(/class="[^"]*\b(wizard-|op-)/)
   })
 })

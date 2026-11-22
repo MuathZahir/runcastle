@@ -90,7 +90,7 @@ import { elicitationAsk, formContent, formLines, unsupportedLine } from './elici
 import { permissionAnswer } from './permission-policy'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
-import { withWorkers, workerStallBounds, workerTurnSlot } from '../workers/service'
+import { workerStallBounds, workerTurnSlot } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { assignEpicColor } from './epic-look'
@@ -125,18 +125,6 @@ export interface AgentProcess {
    * take to quit when asked before it is forced.
    */
   kill(opts?: { graceMs?: number }): Promise<void>
-  /**
-   * How the session opens, when the process runs somewhere the row's own paths
-   * do not exist (a worker's sandbox, workers spike decision 2): its cwd, MCP
-   * servers, session options and permission mode, in place of the launch's.
-   */
-  session?: { cwd: string; mcpServers: acp.McpServer[]; meta?: Record<string, unknown>; mode?: string }
-  /**
-   * Whether the runtime's record of a conversation is where this process runs,
-   * for a process whose disk is not the host's (a worker's sandbox): asked in
-   * place of {@link AgentHostDeps.conversationOnDisk}.
-   */
-  conversationOnDisk?: (conversationId: string) => Promise<boolean>
   /** The permission mode the session runs in: told as it opens, and each time the agent reports a change. */
   onMode?: (modeId: string) => void
 }
@@ -1390,9 +1378,7 @@ class Host implements AgentHost {
       clientInfo: { name: 'runcastle', version: runcastleVersion() },
     })
     t.steering = (init._meta?.steering as { supported?: unknown } | undefined)?.supported === true
-    const session: acp.NewSessionRequest = proc.session
-      ? { cwd: proc.session.cwd, mcpServers: proc.session.mcpServers, _meta: proc.session.meta ?? spec.sessionMeta }
-      : { cwd: row.worktreePath, mcpServers: [], _meta: spec.sessionMeta }
+    const session: acp.NewSessionRequest = { cwd: row.worktreePath, mcpServers: [], _meta: spec.sessionMeta }
     let opened: acp.NewSessionResponse | acp.LoadSessionResponse | acp.ForkSessionResponse
     const fork = readPendingFork(t.id).open
     if (fork && fork !== 'fresh') {
@@ -1413,9 +1399,7 @@ class Host implements AgentHost {
       } catch (err) {
         if (!saysConversationGone(err)) throw err
         // Said gone but still on disk: the CLI failed to reopen it, and a new conversation would bury it.
-        const onDisk = proc.conversationOnDisk
-          ? await proc.conversationOnDisk(row.ccSessionId).catch(() => true)
-          : this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)
+        const onDisk = this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)
         if (onDisk) {
           console.error(`thread ${t.id}: conversation ${row.ccSessionId} is on disk but did not reopen`, err)
           throw new Error(NOT_REOPENED)
@@ -1429,7 +1413,7 @@ class Host implements AgentHost {
       t.sessionId = created.sessionId
       opened = created
     }
-    const mode = proc.session?.mode ?? spec.sessionMode
+    const mode = spec.sessionMode
     t.modeId = opened.modes?.currentModeId
     if (mode && opened.modes && opened.modes.currentModeId !== mode && opened.modes.availableModes.some((m) => m.id === mode)) {
       // Taken as set unless the agent reports another while it sets it (a mode it falls back from, `onUpdate`).
@@ -1548,7 +1532,7 @@ class Host implements AgentHost {
    * Whether a newer process of `t`'s session already runs: a stop that finishes
    * after a prompt started the conversation again. Such a stop is over for the
    * old process only. It neither ends the row, says the session stopped, nor
-   * runs the stop's cleanup (a worker's sandbox, a lead's drive, a project
+   * runs the stop's cleanup (a worker's folder, a lead's drive, a project
    * session's landing), all of which belong to the process that replaced it
    * (the-orchestrator-is-never-locked-out decision 1).
    */
@@ -2325,7 +2309,7 @@ export function processAgentHost(ctx: AppCtx): AgentHost {
   if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({
       ctx,
       lifecycle: threadLifecycle(ctx),
-      transport: withWorkers(ctx, spawnAdapter),
+      transport: spawnAdapter,
       turnSlot: workerTurnSlot(ctx),
       stallBounds: workerStallBounds(),
     })

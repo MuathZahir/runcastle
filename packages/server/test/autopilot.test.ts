@@ -1,4 +1,4 @@
-import type { Feature, SessionRow, WorkerRow } from '@runcastle/core'
+import type { Feature, SessionRow } from '@runcastle/core'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
@@ -30,7 +30,6 @@ import { list as listFeatures } from '../src/services/features'
 import { recordDesign, setDesignState } from '../src/services/designs'
 import { getFeatureRow } from '../src/services/repo'
 import { setWait, waitOf } from '../src/services/waits'
-import { workerTools } from '../src/workers/tools'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { listThreads } from '../src/threads/read'
 import type { AgentHost } from '../src/threads/types'
@@ -417,25 +416,19 @@ describe('a locked lead reports to its epic', () => {
     const f = seedFeature(ctx, projectId, { slug: 'cart', chatId: e.id })
     leadOf(f)
     const worker = createSessionRow(ctx, { featureId: f.id, kind: 'worker', worktreePath: '/wt' })
-    // The worker's own tool, as its sandbox relays it; only its id, feature and label matter here.
-    const relay = workerTools(ctx, { id: worker.id, featureId: f.id, label: 'Header' } as WorkerRow, {} as never, {} as never)
     await turnOn(ctx, e.id)
 
-    const answer = await relay('wait_for_you', { why: 'grey or white?' })
-    expect(answer).toContain('went to the epic "Checkout"')
+    const answer = await toolWaitForYou(ctx, worker, { why: 'grey or white?' })
+    expect(answer).toMatchObject({ ok: true, need: null, toEpic: 'Checkout' })
     expect(waitOf(ctx, worker.id)).toBeNull()
     const told = promptTexts(e.id).at(-1)
-    expect(told).toContain('cart asks for the human (its worker "Header" called wait_for_you')
+    expect(told).toContain('cart asks for the human (its worker')
     expect(told).toContain('grey or white?')
-    expect(listAfter(ctx, f.id, 0).at(-1)).toMatchObject({ type: 'lead.handed_back', data: { asks: true, worker: 'Header' } })
-
-    const direct = await toolWaitForYou(ctx, worker, { why: 'which font?' })
-    expect(direct).toMatchObject({ ok: true, need: null, toEpic: 'Checkout' })
-    expect(waitOf(ctx, worker.id)).toBeNull()
-    expect(promptTexts(e.id).at(-1)).toContain('which font?')
+    expect(listAfter(ctx, f.id, 0).at(-1)).toMatchObject({ type: 'lead.handed_back', data: { asks: true } })
 
     await turnOff(ctx, e.id)
-    expect(await relay('wait_for_you', { why: 'grey or white?' })).toContain('The human sees that you need them')
+    const off = await toolWaitForYou(ctx, worker, { why: 'grey or white?' })
+    expect(off.need?.why).toBe('grey or white?')
     expect(waitOf(ctx, worker.id)?.why).toBe('grey or white?')
   })
 })

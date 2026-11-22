@@ -158,7 +158,7 @@ describe.skipIf(!bun)('runcastle move, end to end', () => {
     }
   })
 
-  it("keeps the destination's .env, install id and burn limits, and takes the other settings", () => {
+  it("keeps the destination's .env, install id and worker limit, and takes the other settings", () => {
     expect(f.env).toBe('NEW_MACHINE_SECRET=1\n')
     expect(f.installId).toBe('new-install\n')
     expect(f.config).toEqual({ model: 'kept-model', burnConcurrency: 5 })

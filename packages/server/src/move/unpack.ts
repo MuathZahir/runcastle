@@ -44,7 +44,7 @@ import type {
  */
 
 /** Settings that describe the machine, not the human: the destination keeps its own. */
-const MACHINE_SETTINGS = ['burnConcurrency', 'burnCpus'] as const
+const MACHINE_SETTINGS = ['burnConcurrency'] as const
 
 /** Data-dir files that belong to this machine and survive a replace. */
 const KEPT_FILES = ['.env', 'install-id'] as const

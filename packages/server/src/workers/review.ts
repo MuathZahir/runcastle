@@ -26,7 +26,6 @@ import { listByFeature as listFindings, reportFinding } from '../services/review
 import { startSaw } from '../services/review-saw'
 import { listFeatureScenarios } from '../services/scenarios'
 import { buildDriveInstructions, buildScenarioBlock, driveWithheldReason, probeDriveHost } from '../services/drive-host'
-import { IN } from './sandbox'
 import type { HandbackNote } from './worker'
 
 /**
@@ -34,8 +33,7 @@ import type { HandbackNote } from './worker'
  * review as a worker of kind `review`. A **drive** review runs on the host, in
  * the human's checkout while the review drive holds the project's one drive
  * slot; a **gates** review runs on the host too, reading the feature's own
- * folder (workers-build-in-the-feature-s-folder decision 9; a gates review made
- * before that ran in a worker sandbox and finishes there). Either runs the
+ * folder (workers-build-in-the-feature-s-folder decision 9). Either runs the
  * project's checks itself, reports findings as it goes, and hands back with the
  * Review Package. A **verify** review (either mode) is given only the findings
  * the lead fixed and the commits that fixed them.
@@ -50,7 +48,7 @@ export function reviewLabel(verify: ReviewVerify | null): string {
   return verify ? 'Review: verify' : 'Review'
 }
 
-/** A drive review: it runs on the host, with no sandbox, branch or preview. */
+/** A drive review: it runs in the human's checkout, with no branch or preview of its own. */
 export function isHostReview(w: Pick<WorkerRow, 'kind' | 'reviewMode'>): boolean {
   return w.kind === 'review' && w.reviewMode === 'drive'
 }
@@ -340,23 +338,6 @@ export function forgetDriveWait(workerId: string): void {
 
 // --- the briefing -----------------------------------------------------------------
 
-/** A Review worker's briefing in its sandbox (a gates review): appended to its system prompt like any worker's. */
-export function sandboxReviewBriefing(label: string, branch: string): string {
-  return [
-    `# You are a runcastle worker: ${label}`,
-    '',
-    "Your lead (the agent running this feature) started you to review it. You run inside a sandbox container, on a clean clone of the feature branch; the human can open this conversation at any time and type to you.",
-    '',
-    '## How you work',
-    `- Your checkout is ${IN.repo}, on branch ${branch}. You write no code and make no commits: leave it as you found it.`,
-    "- Runcastle's tools for you: report_finding (one review finding), hand_back, read_feature (the feature's state and docs) and show_file (a file into this chat). You have no others, and no route to runcastle.",
-    `- ${LINK_WHAT_YOU_NAME}`,
-    '- You run in an automatic permission mode: anything risky may be blocked. When an action is blocked, say in this chat what you wanted to do and why, then end your turn so the human can decide.',
-    "- Your assignment says what to review and how. Run the project's checks yourself, as it says.",
-    '- To hand back, call hand_back with your account, as your assignment says. Then end your turn.',
-  ].join('\n')
-}
-
 /**
  * A gates review's briefing on the host (workers-build-in-the-feature-s-folder
  * decision 9): it reads the committed feature branch in the feature's own
@@ -413,7 +394,7 @@ export function hostReviewEnv(workerId: string): Record<string, string> {
 // --- its findings -----------------------------------------------------------------
 
 /**
- * `report_finding` from a Review worker, sandboxed or on the host: recorded
+ * `report_finding` from a Review worker: recorded
  * against the worker (decision 4), refused unless it is a review at work. It
  * mints no fix ticket: the lead decides what each defect becomes.
  */

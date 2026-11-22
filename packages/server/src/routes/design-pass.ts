@@ -154,8 +154,7 @@ function rewriteOrigins(headers: Headers, target: URL): void {
  * The listener's HTTP side, a function of the request and the lookup alone so
  * tests drive it against a stub server without binding this port. The entry
  * path sets the cookie; every other request is forwarded to the cookie's
- * design server and its response streamed back unbuffered. A worker's
- * preview first wakes the worker's sandbox, should it have stopped.
+ * design server and its response streamed back unbuffered.
  */
 export async function designPassFetch(req: Request, lookup: DesignLookup, workers?: WorkerPreviews): Promise<Response> {
   const url = new URL(req.url)
@@ -164,14 +163,6 @@ export async function designPassFetch(req: Request, lookup: DesignLookup, worker
   }
   if (url.pathname.startsWith(DESIGN_OPEN_PREFIX)) {
     return req.method === 'GET' ? open(url) : page(405, 'Not allowed', 'Open the design with a link.')
-  }
-  const workerId = cookieWorker(req)
-  if (workerId && workers) {
-    try {
-      await workers.wake(workerId)
-    } catch {
-      return page(503, 'The worker’s sandbox would not start', 'Open the worker’s chat to see what went wrong.')
-    }
   }
   const target = targetFor(req, lookup, workers)
   if (!target) return notRunning()

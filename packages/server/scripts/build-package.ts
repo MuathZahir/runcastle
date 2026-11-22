@@ -16,7 +16,7 @@
  *      user's first burn instead (that was v1.2.11).
  *   2. Copy the runtime-spawned / runtime-read assets as REAL files: drizzle
  *      migrations, the hook client (spawned by `bun`), the skills pack and
- *      the review assignments, the built SPA, and the sandcastle build-context template (scaffolded on demand, issue #50).
+ *      the review assignments, the built SPA.
  *   3. Write the flattened manifest (see publish-manifest.ts) — public name, no
  *      `private`, no `workspace:*`.
  *
@@ -130,11 +130,6 @@ async function main(): Promise<void> {
   cpSync(join(SKILLS_DIR, 'review'), join(OUT, 'skills', 'review'), { recursive: true })
   // Built SPA (served by mountWebAppIfBuilt via RUNCASTLE_WEB_DIST).
   cpSync(join(WEB_DIR, 'dist'), join(OUT, 'web'), { recursive: true })
-  // Sandcastle build-context template (scaffolded into `.sandcastle/` on demand by
-  // the Enable-AFK card's build-image flow; issue #50).
-  cpSync(join(SERVER_DIR, 'src', 'assets', 'sandcastle'), join(OUT, 'sandcastle-template'), {
-    recursive: true,
-  })
 
   const readme = join(SERVER_DIR, 'README.md')
   if (existsSync(readme)) cpSync(readme, join(OUT, 'README.md'))

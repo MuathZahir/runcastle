@@ -47,7 +47,6 @@ describe('work queue line', () => {
       createElement(SidebarFootChrome, {
         health: 'ok',
         origin: 'http://localhost:4513',
-        sandbox: 'none',
         notify: null,
         theme: 'dark',
         onToggleTheme: () => undefined,

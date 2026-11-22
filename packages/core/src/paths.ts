@@ -301,27 +301,6 @@ export function worktreeDir(projectId: string, slug: string): string {
  */
 export const PROJECT_WORKTREE_SLUG = '__project'
 
-/**
- * Shared package-manager cache for burner sandboxes:
- * `~/.runcastle/cache/<pm>`. Bind-mounted into every ticket's container at the
- * manager's cache/store path so per-ticket dependency installs after the first
- * are mostly cache hits instead of full downloads.
- */
-export function burnCacheDir(pm: string): string {
-  return join(dataDir(), 'cache', pm)
-}
-
-/**
- * Runcastle-owned build context for the generic AFK burner image
- * (`~/.runcastle/sandbox-build/`). The Enable-AFK card scaffolds a vetted
- * `.sandcastle/` here on demand and hands it to `<runtime> build` as the build
- * context — so a fresh install can build the image without a hand-made config
- * and before any project exists (issue #50).
- */
-export function sandboxBuildDir(): string {
-  return join(dataDir(), 'sandbox-build')
-}
-
 /** Feature docs location relative to the TARGET repo (forward slashes). */
 export function featureDocsRel(slug: string): string {
   return `docs/features/${slug}`
