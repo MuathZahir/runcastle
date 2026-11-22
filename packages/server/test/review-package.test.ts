@@ -1,9 +1,10 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { foldThread, type Feature, type Project, type Ticket } from '@runcastle/core'
+import { DECIDED_WITHOUT_YOU_MARK, foldThread, type Feature, type Project, type Ticket } from '@runcastle/core'
 import { reviewSawDir, reviewShotPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
+import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
@@ -89,6 +90,49 @@ describe('review package', () => {
       mkdirSync(reviewSawDir(pass.id), { recursive: true })
       writeFileSync(reviewWalkthroughPath(pass.id), 'video')
       expect((await reviewPackage(ctx, ticketPass(ctx, pass), feature, project.repoPath)).hasWalkthrough).toBe(true)
+    })
+
+    it('lists what was decided without the human, from decisions.md on the feature branch', async () => {
+      const g = simpleGit(project.repoPath)
+      await g.init(['-b', 'main'])
+      await g.addConfig('user.email', 'test@runcastle.dev')
+      await g.addConfig('user.name', 'Runcastle Test')
+      writeFileSync(join(project.repoPath, 'README.md'), 'base\n')
+      await g.add(['README.md'])
+      await g.commit('initial commit')
+      await g.checkoutLocalBranch(feature.branch)
+      const docs = join(project.repoPath, 'docs', 'features', feature.slug)
+      mkdirSync(docs, { recursive: true })
+      writeFileSync(
+        join(docs, 'decisions.md'),
+        [
+          '# Demo: decisions',
+          '',
+          '## 1. One setting',
+          '**Decision:** asked.',
+          '',
+          '## 2. Blue buttons',
+          `**Decision:** blue. ${DECIDED_WITHOUT_YOU_MARK}`,
+          '',
+          '## 3. No undo',
+          `${DECIDED_WITHOUT_YOU_MARK} **Decision:** none.`,
+          '',
+        ].join('\n'),
+      )
+      await g.add(['docs'])
+      await g.commit('docs: decisions')
+      // Read from the branch, not the checkout: the human's checkout is back on main.
+      await g.checkout('main')
+
+      const pack = await reviewPackage(ctx, ticketPass(ctx, pass), feature, project.repoPath)
+      expect(pack.decidedWithoutYou).toEqual([
+        { n: 2, title: 'Blue buttons' },
+        { n: 3, title: 'No undo' },
+      ])
+    })
+
+    it('lists nothing decided without the human when the branch has no decisions.md', async () => {
+      expect((await reviewPackage(ctx, ticketPass(ctx, pass), feature, project.repoPath)).decidedWithoutYou).toEqual([])
     })
   })
 

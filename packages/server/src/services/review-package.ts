@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import {
+  decidedWithoutYou,
   noPicturesLine,
   orderedFindings,
   packageGroups,
@@ -10,11 +11,11 @@ import {
   type WorkerRow,
   workerFeatureId,
 } from '@runcastle/core'
-import { reviewShotPath, reviewWalkthroughPath } from '@runcastle/core/paths'
+import { featureDocsRel, reviewShotPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { and, eq } from 'drizzle-orm'
 import { workers } from '../db/schema'
 import type { AppCtx } from '../db/types'
-import { commitsSince } from './git'
+import { commitsSince, fileAtRef } from './git'
 import { listByFeature as listFindings } from './review-findings'
 import { readSaw } from './review-saw'
 import { listRounds } from './runs'
@@ -134,6 +135,8 @@ export async function reviewPackage(ctx: AppCtx, pass: ReviewPass, feature: Feat
   const pictures = groups.some((group) => group.shots.length > 0)
   const since = pass.reviewedCommit ? await commitsSince(repoPath, pass.reviewedCommit, feature.branch) : undefined
   const { verdict, account } = splitAccount(pass.account)
+  // What the lead settled without the human (how-involved-am-i decision 2), from decisions.md on the branch.
+  const decisions = await fileAtRef(repoPath, feature.branch, `${featureDocsRel(feature.slug)}/decisions.md`)
   return {
     ticketId: pass.id,
     featureId: pass.featureId,
@@ -158,6 +161,7 @@ export async function reviewPackage(ctx: AppCtx, pass: ReviewPass, feature: Feat
       }),
     ),
     empty: pictures ? null : noPicturesLine(pass.reviewMode, pass.failed),
+    decidedWithoutYou: decisions === null ? [] : decidedWithoutYou(decisions),
   }
 }
 

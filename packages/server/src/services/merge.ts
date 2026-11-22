@@ -29,8 +29,9 @@ export interface MergeFlowResult {
  * doc is promoted, the feature ships, its worktree is retired, and a conflict
  * lands on the timeline as `merge.conflict`.
  *
- * `opts.by` is the orchestrator thread whose `merge_feature` merged it (absent:
- * the human). It rides on `feature.shipped`, with the merge commit, so the
+ * `opts.by` is the orchestrator thread whose `merge_feature` merged it, or
+ * `runcastle` when a ready feature at "Involve me in: Nothing" merged by itself
+ * (absent: the human). It rides on `feature.shipped`, with the merge commit, so the
  * feature's epic hears who merged it (`the-epic-hears-when-its-features-merge`);
  * that news goes once the up-next drafts this merge starts have started.
  */

@@ -1,4 +1,4 @@
-import { Effort, FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
+import { Effort, FilledHttpRequest, InvolvementSchema, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import { endSession, launchSession } from '../../launcher/launcher'
 import { listFeatureSessions } from '../../services/conversations'
@@ -7,6 +7,7 @@ import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
 import { turnOff } from '../../services/autopilot'
+import { setEpicInvolvement, setInvolvement } from '../../services/involvement'
 import { mergeFeatureFlow } from '../../services/merge'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
@@ -57,6 +58,19 @@ export const featureRouter = router({
   endAutopilot: publicProcedure
     .input(z.object({ epicId: z.string() }))
     .mutation(({ ctx, input }) => turnOff(ctx, input.epicId, { by: 'human' })),
+
+  // "Involve me in" (how-involved-am-i decision 3): the feature's level, from
+  // its header or the features-created card. Refused once it has shipped; the
+  // lead is told.
+  setInvolvement: publicProcedure
+    .input(z.object({ featureId: z.string(), level: InvolvementSchema }))
+    .mutation(({ ctx, input }) => setInvolvement(ctx, input.featureId, input.level)),
+
+  // "Set all to…" on an epic (decisions 4, 7): every feature of the epic that
+  // is neither shipped nor archived. No undo.
+  setEpicInvolvement: publicProcedure
+    .input(z.object({ chatId: z.string(), level: InvolvementSchema }))
+    .mutation(({ ctx, input }) => setEpicInvolvement(ctx, input.chatId, input.level)),
 
   list: publicProcedure
     .input(z.object({ projectId: z.string() }))

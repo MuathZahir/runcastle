@@ -506,15 +506,15 @@ describe('declare_ready', () => {
   it('is refused while a worker works or holds work not landed, naming the workers', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker('Header')
-    expect(() => toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).toThrow(/Header.*working/)
+    await expect(toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).rejects.toThrow(/Header.*working/)
 
     commitOn(repo, getWorker(ctx, id)!.branch!, 'header.txt', 'header\n', 'feat: header')
     engine.handbacks.set(id, { summary: 'Done', at: Date.now() })
     await workerTurnEnded(ctx, { id })
-    expect(() => toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).toThrow(/Header.*handed-back/)
+    await expect(toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).rejects.toThrow(/Header.*handed-back/)
 
     await toolLandWorker(ctx, leadSession(), { workerId: id })
-    expect(toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).toMatchObject({ ok: true })
+    expect(await toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).toMatchObject({ ok: true })
   })
 })
 

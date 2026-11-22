@@ -1468,6 +1468,18 @@ export async function headSha(repoPath: string, ref: string): Promise<string | u
 }
 
 /**
+ * A file's text as `ref` holds it (`git show <ref>:<path>`, `path` repo-relative
+ * with forward slashes); null when the ref or the file does not exist there.
+ */
+export async function fileAtRef(repoPath: string, ref: string, path: string): Promise<string | null> {
+  try {
+    return await git(repoPath).show([`${ref}:${path}`])
+  } catch {
+    return null
+  }
+}
+
+/**
  * How many commits `branch` has gained since `sha` — the staleness distance for
  * a prepared finding. `undefined` (unknown) rather than `0` whenever the answer
  * cannot be trusted: the sha may have been rewritten out of history by a rebase

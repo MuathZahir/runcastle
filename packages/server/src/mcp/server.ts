@@ -30,6 +30,7 @@ import type {
   DriveCallResult,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
+  Involvement,
   Need,
   PreparedKey as PreparedKeyT,
   Project,
@@ -46,6 +47,7 @@ import type {
   WorkerRow,
 } from '@runcastle/core'
 import {
+  InvolvementSchema,
   PreparedKey,
   ReviewFindingInput,
   WITHHELD_FEATURE_DOCS,
@@ -84,6 +86,7 @@ import {
   type FeatureListItem,
   list as listFeatures,
   listReadyDeclarations,
+  type ReadyAutoMerge,
   requireNotStopped,
 } from '../services/features'
 import { needOf } from '../services/feature-need'
@@ -109,6 +112,7 @@ import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '..
 import { featureDocsDir } from '../services/feature-docs'
 import { autopilotOf, epicOnAutopilot, isLocked, requireMayAct } from '../services/autopilot'
 import { handBackToOrchestrator, workerAsksEpic } from '../services/lead-handback'
+import { involvementLine, involvementView } from '../services/involvement'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   closeAsAddressed,
@@ -365,6 +369,8 @@ export interface FeatureContext {
    * questions go to them with `wait_for_you`.
    */
   autopilot: { epic: string; chatId: string } | null
+  /** "Involve me in" (how-involved-am-i): the feature's level and what it stops for. Obey it. */
+  involvement: ReturnType<typeof involvementView>
   /**
    * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
    * ceiling, whole, in fill order: brief → decisions → spec. On a repeat read
@@ -573,6 +579,7 @@ export function featureContext(
     blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
     upNext: feature.upNext,
     autopilot: lock ? { epic: lock.epicName, chatId: lock.epicId } : null,
+    involvement: involvementView(feature.involvement),
     annotatedModels: annotatedModels(ctx),
     ...(scenarios ? { scenarios } : {}),
     reviewEvidence: latestReviewWorker ? workerReviewEvidenceOf(latestReviewWorker) : null,
@@ -654,6 +661,8 @@ export interface FeatureStatusView {
   need: Need | null
   /** The epic running it on autopilot; null when it is the human's. */
   autopilot: { epic: string; chatId: string } | null
+  /** "Involve me in": the feature's level. */
+  involvement: Involvement
   humanTypedAt: number | null
   /** How many of the feature's workers are in each status; a status with none is absent. */
   workerCounts: Partial<Record<WorkerStatusT, number>>
@@ -678,6 +687,7 @@ export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureSt
     status: feature.status,
     need: needOf(ctx, feature),
     autopilot: lock ? { epic: lock.epicName, chatId: lock.epicId } : null,
+    involvement: feature.involvement,
     humanTypedAt: humanTypedAt(ctx, feature.id),
     workerCounts,
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
@@ -852,14 +862,18 @@ export async function toolDropWorker(ctx: AppCtx, session: SessionRow, input: { 
   return dropWorker(ctx, worker.id)
 }
 
-export function toolDeclareReady(
+/**
+ * At "Involve me in: Nothing" the answer also carries `autoMerge`: whether
+ * runcastle merged the feature, or why it waits for the human instead.
+ */
+export async function toolDeclareReady(
   ctx: AppCtx,
   session: SessionRow,
   input: { scenario: string },
-): { ok: true; need: Need | null } {
+): Promise<{ ok: true; need: Need | null; autoMerge?: ReadyAutoMerge }> {
   const featureId = requireLeadFeatureId(session)
-  declareReady(ctx, featureId, input, session.id)
-  return { ok: true, need: waitOf(ctx, session.id) }
+  const { autoMerge } = await declareReady(ctx, featureId, input, session.id)
+  return { ok: true, need: waitOf(ctx, session.id), ...(autoMerge ? { autoMerge } : {}) }
 }
 
 /**
@@ -1822,31 +1836,23 @@ export async function toolCreateFeature(
     session.kind !== 'project'
       ? await createFeatureFor(ctx, session, input)
       : await runAsActor('orchestrator', () =>
-          createFeatureFor(ctx, session, { ...input, brief: briefWithPlanning(input) }, { threadId: session.id }),
+          createFeatureFor(ctx, session, { ...input, brief: briefWithInvolvement(input) }, { threadId: session.id }),
         )
   recordFeatureAction(ctx, session, created.id, input.draft ? 'parked' : 'created')
   return created
 }
 
-/** How a cut feature is planned (decision 13): with the human in its chat, or by itself. */
-export type PlanningChoice = 'with-me' | 'self'
-
-const PLANNING_LINE: Record<PlanningChoice, string> = {
-  'with-me': 'Planning mode: with you',
-  self: 'Planning mode: automatic',
-}
-
 /**
- * The cut-time answer: "Plan it with me" (`with-me`) or "Plan automatically"
- * (`self`). Planning is not stored on the feature: it travels in the brief (a
- * "Planning mode:" line, added when the brief has none) and in the
- * self-planning launch the chat starts later. Omitted, the brief is as given.
+ * The cut-time level ("Involve me in", how-involved-am-i): stored on the
+ * feature, and stated in its brief as an "Involve me in: <level>" line, added
+ * when the brief has none. Omitted, the feature is cut at `everything` and the
+ * brief is as given.
  */
-function briefWithPlanning(input: CreateFeatureInput): string | undefined {
-  const planning = input.planning
-  return planning === undefined || /^Planning mode:/im.test(input.brief ?? '')
+function briefWithInvolvement(input: CreateFeatureInput): string | undefined {
+  const level = input.involvement
+  return level === undefined || /^Involve me in:/im.test(input.brief ?? '')
     ? input.brief
-    : [input.brief?.trimEnd(), PLANNING_LINE[planning]].filter(Boolean).join('\n\n') + '\n'
+    : [input.brief?.trimEnd(), involvementLine(level)].filter(Boolean).join('\n\n') + '\n'
 }
 
 interface CreateFeatureInput {
@@ -1857,8 +1863,8 @@ interface CreateFeatureInput {
   draft?: boolean
   dependsOn?: string[]
   upNext?: boolean
-  /** From an orchestrator chat: how it is planned. */
-  planning?: PlanningChoice
+  /** From an orchestrator chat: the level it recommends ("Involve me in"). */
+  involvement?: Involvement
 }
 
 async function createFeatureFor(
@@ -1905,6 +1911,7 @@ async function createFeatureFor(
     brief: input.brief,
     draft: input.draft,
     ...(chat ? { chat } : {}),
+    ...(input.involvement ? { involvement: input.involvement } : {}),
   })
   if (dependencyIds.length === 0) {
     return { id: feature.id, slug: feature.slug, branch: feature.branch, status: feature.status }
@@ -3021,12 +3028,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           draft: z.boolean().optional().describe('Park it as a draft instead of starting it.'),
           dependsOn: DEPENDS_ON_SCHEMA,
           upNext: z.boolean().optional().describe('With `draft` and `dependsOn`: start by itself once they ship.'),
-          planning: z
-            .enum(['with-me', 'self'])
-            .optional()
-            .describe(
-              '`with-me` ("Plan it with me"): grilled in its chat. `self`: plans alone ("Plan automatically").',
-            ),
+          involvement: InvolvementSchema.optional().describe(
+            'Involve me in: the level you recommend for this feature; default everything.',
+          ),
         },
       },
       async (args, extra) => {
@@ -3341,8 +3345,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Declare the feature ready for the human',
         description:
           'Put a test drive in front of the human and mark the feature ready to test: it waits on the human ' +
-          'until they write, or on autopilot tells your epic. Refused while a worker is working or holds work ' +
-          'that has not landed.',
+          'until they write, or on autopilot tells your epic. At "Involve me in: Nothing" runcastle merges it ' +
+          'instead when no defect is open (`autoMerge` says what happened). Refused while a worker is working ' +
+          'or holds work that has not landed.',
         inputSchema: {
           scenario: z.string().min(1).describe('The title of the drive Test drive starts, e.g. "Checkout with a coupon".'),
         },
@@ -3350,7 +3355,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(toolDeclareReady(rs.ctx, rs.session, args))
+        return ok(await toolDeclareReady(rs.ctx, rs.session, args))
       },
     )
   }
