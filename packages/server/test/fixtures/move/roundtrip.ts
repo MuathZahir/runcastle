@@ -196,7 +196,7 @@ sourceDb.run(
 sourceDb.close()
 
 for (const [rel, body] of [
-  ['config.json', JSON.stringify({ model: 'kept-model', burnConcurrency: 2, burnCpus: 3 })],
+  ['config.json', JSON.stringify({ model: 'kept-model', burnConcurrency: 2 })],
   ['.env', 'OLD_MACHINE_SECRET=1\n'],
   ['install-id', 'old-install\n'],
   ['sessions/s1/thread.jsonl', '{"i":0}\n'],

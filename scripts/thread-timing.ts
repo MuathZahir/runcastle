@@ -83,7 +83,7 @@ async function main(): Promise<void> {
   process.env.RUNCASTLE_DATA_DIR = scratch
   process.env.RUNCASTLE_WEB_DIST = join(repo, 'apps', 'web', 'dist')
   // A session's inherited asset paths point at the installed runcastle, not this checkout.
-  for (const name of ['RUNCASTLE_MIGRATIONS_DIR', 'RUNCASTLE_SKILLS_DIR', 'RUNCASTLE_HOOK_CLIENT', 'RUNCASTLE_PTY_HOST', 'RUNCASTLE_SANDCASTLE_TEMPLATE']) {
+  for (const name of ['RUNCASTLE_MIGRATIONS_DIR', 'RUNCASTLE_SKILLS_DIR', 'RUNCASTLE_HOOK_CLIENT', 'RUNCASTLE_PTY_HOST']) {
     delete process.env[name]
   }
 

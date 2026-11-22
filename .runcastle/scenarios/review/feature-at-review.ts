@@ -140,7 +140,7 @@ async function main(): Promise<void> {
         runtime: 'claude-code',
         startedBy: 'lead',
         status: 'handed-back',
-        engine: 'docker',
+        folder: worktreeDir(feature.projectId, feature.slug),
         featureBranch: feature.branch,
         handbackSummary: ACCOUNT,
         handbackCommits: [],

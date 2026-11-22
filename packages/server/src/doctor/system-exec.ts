@@ -9,7 +9,7 @@ import type { ExecFn, ExecOutcome } from './doctor'
  * How long one command may run before it is given up on. A backstop, not a
  * budget: everything that runs through here is a probe or a short engine call
  * that answers in seconds. What it guards against is a command that never
- * answers at all — a wedged Docker daemon leaves `docker info` blocked forever,
+ * answers at all — a wedged tool can block forever,
  * and with no bound the doctor query waiting on it never returned, which held
  * the whole app on its loading screen.
  */

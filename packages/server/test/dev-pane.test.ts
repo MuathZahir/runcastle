@@ -16,7 +16,6 @@ import {
 } from '../src/pty/dev-pane'
 import { installPtyStandIn, type CreatePtyOptions } from '../src/pty/pty'
 import { listAfter } from '../src/services/events'
-import { ctrlCEndsTerminal } from '../src/services/setup'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -116,14 +115,7 @@ describe('sniffDevUrl', () => {
   })
 })
 
-describe('which terminals Ctrl-C ends on Windows', () => {
-  it('covers the panes that only show output, and leaves sign-in flows the plain key', () => {
-    expect(ctrlCEndsTerminal('build-image')).toBe(true)
-    for (const kind of ['setup-token', 'claude-login', 'codex-login'] as const) {
-      expect(ctrlCEndsTerminal(kind)).toBe(false)
-    }
-  })
-
+describe('Ctrl-C on Windows', () => {
   it('covers a dev pane, which is also how the design server starts', () => {
     const seen: CreatePtyOptions[] = []
     installPtyStandIn((_cmd, _args, opts) => {

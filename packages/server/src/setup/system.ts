@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir, userInfo } from 'node:os'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { SERVICE_FILE_PATH } from '../services/service-file'
 import { resolveExecutable, resolveSpawnTarget } from '../util/resolve-executable'
@@ -9,30 +9,14 @@ import type { StepRunner } from './runner'
 
 const PACKAGE_MANAGERS: readonly PackageManager[] = [...LINUX_PACKAGE_MANAGERS, 'brew', 'winget']
 
-/** The `ID=` of an os-release file, unquoted; null when there is none. */
-export function parseOsReleaseId(text: string): string | null {
-  const id = /^ID=(.*)$/m.exec(text)?.[1]?.trim().replace(/^["']|["']$/g, '')
-  return id || null
-}
-
-function readDistroId(): string | null {
-  try {
-    return parseOsReleaseId(readFileSync('/etc/os-release', 'utf8'))
-  } catch {
-    return null
-  }
-}
-
 /** The facts the plan needs, read from this machine. */
 export function readMachineFacts(env: NodeJS.ProcessEnv = process.env): MachineFacts {
   const platform = process.platform
   return {
     platform,
-    distroId: platform === 'linux' ? readDistroId() : null,
     packageManagers: PACKAGE_MANAGERS.filter((pm) => resolveExecutable(pm) !== pm),
     hasDesktop: Boolean(env.DISPLAY || env.WAYLAND_DISPLAY),
     serviceFileExists: platform === 'linux' && existsSync(SERVICE_FILE_PATH),
-    user: userInfo().username,
     pathChanged: env.RUNCASTLE_PATH_CHANGED === '1',
   }
 }

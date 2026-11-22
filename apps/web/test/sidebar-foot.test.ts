@@ -15,13 +15,12 @@ import { TooltipProvider } from '../src/ui/tooltip'
  * health tooltip, which exists only while it is open.
  *
  * What is pinned is what it *states*: one line of icons — settings, theme,
- * notifications, then the sandbox and the health dot — with the words in the
+ * notifications, then the health dot — with the words in the
  * tooltips, and the drive cards above it.
  */
 const STATE: SidebarFootState = {
   health: 'ok',
   origin: 'http://localhost:4513',
-  sandbox: 'docker',
   notify: { state: 'off', title: 'Notify me when agents finish a run', onToggle: () => undefined },
   theme: 'dark',
   onToggleTheme: () => undefined,
@@ -45,15 +44,14 @@ describe('sidebar foot', () => {
   it('is icons only: no words on the line', () => {
     const html = foot()
     expect(html).not.toContain('>Server<')
-    expect(html).not.toContain('>docker<')
   })
 
-  it('says the health in words, with its origin and the sandbox, in the tooltip', async () => {
+  it('says the health in words, with its origin, in the tooltip', async () => {
     render(createElement(TooltipProvider, null, createElement(SidebarFootChrome, { ...STATE, health: 'down' })))
     const health = document.querySelector<HTMLElement>('[data-health-tone]')!
     await act(async () => fireEvent.focus(health))
     expect((await screen.findByRole('tooltip')).textContent).toBe(
-      'The runcastle API at http://localhost:4513/api is not answering · agents run sandboxed via docker',
+      'The runcastle API at http://localhost:4513/api is not answering',
     )
   })
 

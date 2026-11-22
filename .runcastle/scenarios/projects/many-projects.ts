@@ -19,7 +19,7 @@
  * Each project is a small git repo (one commit) under `many-projects/` in the
  * drive's data dir, so it goes away with the drive. Opening is idempotent:
  * a second run reuses the projects and the features it seeded. The worker is a
- * row only; no container is started.
+ * row only; no agent is started.
  *
  * `SCENARIO_PROJECT` names the project whose page is the entry (default
  * runcastle-demo); it is opened if it is not already.
@@ -29,7 +29,7 @@ import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import type { Project } from '../../../packages/core/src/schemas.ts'
 import { workers } from '../../../packages/core/src/db-schema.ts'
-import { dbPath } from '../../../packages/core/src/paths.ts'
+import { dbPath, worktreeDir } from '../../../packages/core/src/paths.ts'
 import { loadConfig } from '../../../packages/core/src/config-load.ts'
 import { createDb } from '../../../packages/server/src/db/client.ts'
 import { runMigrations } from '../../../packages/server/src/db/migrate.ts'
@@ -181,7 +181,7 @@ async function main(): Promise<void> {
           startedBy: 'lead',
           status: 'working',
           failure: null,
-          engine: 'docker',
+          folder: worktreeDir(wait.id, feature.slug),
           featureBranch: feature.branch,
           createdAt: now - 20 * MINUTE,
           updatedAt: now - MINUTE,

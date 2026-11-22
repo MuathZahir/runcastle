@@ -46,32 +46,33 @@ export function workerInFront(rows: readonly WorkerListRow[], threads: readonly 
 }
 
 const WORKER_HINT = 'A worker on your machine, in the feature’s folder or its own. It hands its work back to the lead.'
-const OLD_WORKER_HINT = 'A worker in its own sandbox, on its own branch off the feature. It hands its work back to the lead.'
+const OLD_WORKER_HINT = 'A worker from before workers built on your machine, on its own branch off the feature. It hands its work back to the lead.'
 const DRIVE_WORKER_HINT = 'A drive worker in your checkout. It commits straight onto the drive’s branch.'
 
 /**
  * Where a worker runs, under its composer: a drive worker or a drive review in
  * the human's checkout, a gates review in the feature's folder, a worker in the
- * feature's folder or in its own folder on its own branch; a worker from before
- * (placement null) keeps "Sandbox". A drive worker names the branch it commits on
+ * feature's folder or in its own folder on its own branch. A worker from before
+ * (placement null) ran in a container runcastle no longer has, so it names only
+ * its branch. A drive worker names the branch it commits on
  * (drive-chats-become-workers decision 3), which on a project drive may be main.
  */
 export function workerWhere(row: Pick<WorkerListRow, 'kind' | 'reviewMode' | 'featureBranch' | 'placement'>, featureBranch: string): string {
   if (isDriveWorkerKind(row.kind)) return `Your checkout · commits on ${row.featureBranch}`
   if (row.kind === 'review') {
     if (row.reviewMode === 'drive') return `Your checkout · reviewing ${featureBranch} on the drive`
-    return !row.placement ? `Sandbox · reviewing ${featureBranch}` : `Feature folder · reviewing ${featureBranch}`
+    return !row.placement ? `Reviewing ${featureBranch}` : `Feature folder · reviewing ${featureBranch}`
   }
   if (row.placement === 'feature-folder') return `Feature folder · commits on ${featureBranch}`
   if (row.placement === 'own-folder') return `Own folder · its own branch off ${featureBranch}`
-  return `Sandbox · its own branch off ${featureBranch}`
+  return `Its own branch off ${featureBranch}`
 }
 
 /** What a dropped worker left behind: a feature-folder worker's commits stay, an own-folder one's folder and branch go. */
 function droppedHint(placement: WorkerListRow['placement'], featureBranch: string): string {
   if (placement === 'feature-folder') return `Its commits stay on ${featureBranch}; revert them with new commits if unwanted.`
   if (placement === 'own-folder') return 'Its folder and branch were removed.'
-  return 'Its sandbox and branch were removed.'
+  return 'Its branch was removed.'
 }
 
 /** What the chat column wears for a worker's thread, as `ThreadColumn` props. */

@@ -18,9 +18,9 @@ describe('workerWhere', () => {
     expect(workerWhere({ ...base, kind: 'review', reviewMode: 'drive', placement: null }, 'feature/demo')).toBe('Your checkout · reviewing feature/demo on the drive')
   })
 
-  it('keeps Sandbox for a worker from before, which has no placement', () => {
-    expect(workerWhere({ ...base, placement: null }, 'feature/demo')).toBe('Sandbox · its own branch off feature/demo')
-    expect(workerWhere({ ...base, kind: 'review', reviewMode: 'gates', placement: null }, 'feature/demo')).toBe('Sandbox · reviewing feature/demo')
+  it('shows no Sandbox label for a worker from before, which has no placement', () => {
+    expect(workerWhere({ ...base, placement: null }, 'feature/demo')).toBe('Its own branch off feature/demo')
+    expect(workerWhere({ ...base, kind: 'review', reviewMode: 'gates', placement: null }, 'feature/demo')).toBe('Reviewing feature/demo')
   })
 
   it('keeps the drive worker case, whatever its placement', () => {

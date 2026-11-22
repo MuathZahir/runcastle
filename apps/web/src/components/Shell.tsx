@@ -51,7 +51,7 @@ export function Shell() {
     )
   } else if (nav.view === 'setup') {
     // The host still owes us a git identity or a coding agent: the full
-    // first-run wizard (git identity → agents → AFK → project).
+    // first-run wizard (git identity → agents → project).
     content = (
       <Frame>
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">

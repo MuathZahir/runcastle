@@ -1,0 +1,93 @@
+# Decisions — Sandboxes are removed
+
+Planned with nobody present (2026-11-21), on the epic "Runcastle Rethink". Decisions
+marked **Decided by autopilot.** were taken by the epic, which runs this feature; the
+human can overturn any of them.
+
+## 1. Sandboxes are removed entirely, not kept as an option
+**Decision:** Workers run only on the host. No container engine, no switch, no dormant
+code path: the sandbox engine, the worker images and their build, the shared caches, the
+copy of the project into each worker and the step that brought a container's commits
+back are deleted.
+**Why:** The human: "if sandboxes are causing all these issues I dont think it should
+even be opt in. Why offer something if the user will hate it (and hate the product)."
+
+## 2. Build it now, in the agreed order, with no workers
+**Decision:** This feature starts after "Workers build in the feature's folder" (merged).
+The lead builds it itself with its own subagents, starts no workers (not even a Review
+worker), reviews with its own subagents, runs the checks, then says ready.
+**Why:** The human: "Alright, you can start", and on 2026-11-21: "prefer not to use
+workers since we keep running out of memory and disk... We need to finish these fixes
+as fast as possible".
+
+## 3. Leftovers are cleaned up by themselves, once, on the first start after upgrading, and never touch unfinished work
+**Decision:** On its first start after the upgrade, runcastle removes what it made for
+containers on this machine, in every project, but only what carries its own label and
+this install's data folder and belongs to a worker that finished: landed or dropped.
+That is those workers' containers and project copies, the images and cache volumes
+nothing kept needs, its own image builders (their build cache goes with them), and the
+runtime folders. Anything that may hold unfinished work stays: the container and copy
+of a worker that is working, queued, waiting, failed or unknown, its project's cache
+volumes, the image it was made from, and the burn engine's old containers. The start's
+log and the timeline say what was removed and how much space came back, and name each
+kept thing with the command that removes it. Docker's shared build cache, which also
+holds the user's other builds, is not touched; the user is told the one command that
+clears it (`docker builder prune`) with its size. When no Docker is installed, nothing
+runs.
+**Why:** The owner's 96 GB disk filled with these on 2026-11-21 and stopped every
+feature; most users would never run a command they were only told about. The human, on
+2026-11-22: "Yes, just make sure this doesnt affect existing work in runcastle". So
+"finished" means landed or dropped only, and anything unsure is kept and named.
+
+## 4. A worker still in a container at upgrade is stopped, and its commits are kept as a branch
+**Decision:** A worker that was not finished when the upgrade happened (working, queued
+or waiting, in a container) is marked failed with a plain reason ("it ran in a
+container, which runcastle no longer has"). Every commit it made is kept on a branch
+`runcastle/worker/<id>` in the project, and the feature's lead is told, so it can merge
+the branch or start a new worker. Its container is left in place, since it may hold
+uncommitted edits, and the timeline names it with the command that removes it.
+**Why:** Workers' commits already sit on the host (each container pushed every commit to
+a copy in the data folder), so plain git keeps them without any container code. Only the
+uncommitted edits would need the container, so it is the one thing not removed.
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: drop such workers outright, removing their containers and
+copies, and let the lead start the work again.
+
+## 5. The first-run wizard loses its "Unattended workers" step, and Settings loses its "Sandboxes" page
+**Decision:** The wizard goes straight from the runtimes step to the next one. The
+Sandboxes settings page goes with its rows: container runtime, image build, build cache,
+CPU limit, guard and image. The one setting on it that stays, how many workers run at
+once, moves unchanged to the General page. Its final home and the visible queue belong
+to the concurrency feature. The unattended token (`CLAUDE_CODE_OAUTH_TOKEN`, minted by
+`claude setup-token`) and the `runcastle token` and `runcastle build-image` commands go
+too: only containers used them; host workers use the human's own sign-in.
+**Why:** The brief: settings and screens that only made sense for containers are gone.
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: keep the Sandboxes page renamed "Workers", holding only the
+concurrency number.
+
+## 6. Docker is no longer a prerequisite anywhere
+**Decision:** `runcastle setup` stops installing Docker (and stops adding the user to the
+docker group and asking them to log out). The doctor drops its Docker, image, cache, user
+mapping and unattended-token checks. The README's requirement row and its "The unattended
+sandbox" section go, as do the website's "Docker or Podman, running" requirement and the
+VPS guide's docker-group line. Docker already installed on a machine is left alone.
+**Why:** The brief; ADR-0023 decision 1.
+
+## 7. The README and website say plainly what protects the user now
+**Decision:** Where they used to describe the sandbox, the README and the website's docs
+say in two sentences that workers run on your machine, that runcastle refuses edits
+outside the agent's own folder and a short list of destructive commands, and that a
+script an agent runs can still reach outside its folder.
+**Why:** ADR-0023 decision 1: the remaining risk "is accepted and stated plainly to
+users".
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: say nothing about safety and only remove the Docker text.
+
+## 8. The website's sandbox section is removed, not replaced
+**Decision:** The landing page's "Every ticket runs in its own sandbox" section and its
+animation are removed, and the comparison pages stop saying "sandboxed workers". No new
+section takes its place in this feature; the site files change here, and deploying them
+stays the human's step.
+**Why:** The section now describes something runcastle does not do. Designing a new
+section is landing-page taste work the human steers, so it is offered as a backlog
+feature instead.
+**Decided by autopilot.** The epic took the lead's pick on 2026-11-22. Alternative was: replace it with a section about workers running in the
+feature's folder.

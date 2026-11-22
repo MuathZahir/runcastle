@@ -5,9 +5,8 @@
  * identity the setup hook got, plus whatever setup wrote to
  * `.runcastle/drive.env` overlaid on top.
  *
- * The job is deleting the data dir setup created, after removing the containers
- * and volumes the drive's runcastle labelled with it (`drive-containers.ts`);
- * there is no external database. What deserves the care is making
+ * The job is deleting the data dir setup created; there is no external
+ * database. What deserves the care is making
  * sure it deletes only THAT dir: `~/.runcastle` (the developer's live install)
  * and `~/.runcastle-dev` (their dev tree) are siblings of it, an unset variable
  * is the normal failure mode of an env overlay, and `rmdir /s /q` on the wrong
@@ -16,7 +15,6 @@
 import { existsSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { driveEngines, removeDriveContainers } from './drive-containers.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from './drive-dir.ts'
 
 /**
@@ -44,19 +42,6 @@ const dir = targetDir()
  */
 if (!isDriveDataDir(dir)) {
   throw new Error(`refusing to delete ${dir} — not a ${DRIVE_PREFIX}* tree`)
-}
-
-/**
- * The drive's runcastle may have started workers: their containers and cache
- * volumes are labelled with this data dir, and go before it does. Best effort;
- * what stays is an orphan the live install's sweep removes.
- */
-const engines = driveEngines(dir)
-const removed = removeDriveContainers(dir, engines)
-if (removed.containers.length + removed.volumes.length > 0) {
-  console.log(
-    `[drive-stop] removed ${removed.containers.length} container(s) and ${removed.volumes.length} volume(s) of ${dir}`,
-  )
 }
 
 /** Idempotent: an already-gone tree is a successful teardown, not an error. */

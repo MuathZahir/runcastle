@@ -8,9 +8,9 @@ import { SettingGroup, SettingLine, SettingSection, SettingsSkeleton } from './S
 import { showsSetting, type SettingsPageProps } from './types'
 
 /**
- * General: how the app looks, and the machine-wide settings that are neither
- * about models nor about burns — the port the server listens on, and how a
- * launched session is sandboxed and what tools it can see.
+ * General: how the app looks, and the machine-wide settings that are not about
+ * models — the port the server listens on, what tools a launched session can
+ * see, and how many workers run at once.
  */
 
 /** The theme row's filter id. It is a browser preference, not a setting key. */

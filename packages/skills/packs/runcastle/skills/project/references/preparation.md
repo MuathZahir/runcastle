@@ -11,7 +11,7 @@ Record each with `record_finding`, with `evidence`: what you ran and what it pri
 - `devCommand`: starts the app in a drive; its first localhost URL is the "Open app" link.
 - `driveSetupCommand`, `driveStopCommand`: one line each, invoking scripts you commit.
 - `dbResetCommand`: offered only when a drive leaves the database's migrations out of step.
-- `setupCommand`: what a fresh worker sandbox runs; it replaces install detection, so include the install.
+- `setupCommand`: what runs in a worker's own folder, on this machine, before it starts; it replaces install detection, so include the install.
 - `verifyCommands`: the exact typecheck, test and lint lines, one per line.
 - `knownFailures`: what already fails on the main branch; a count and the suite names.
 - `driveInstructions`: how to exercise the app in a drive (seeded account, scratch data, how to reach deep states, what a driver may touch), as the human's standing instructions; evidence is the dry run.
@@ -34,10 +34,6 @@ Read the repo before writing: package manager, workspaces, which services the ap
 ## The env loader
 
 The drive's values arrive as process environment, which beats a `.env` file unless a loader overrides it (`dotenv.config({ override: true })` and the like), which keeps the app on the shared database while the drive looks fine. Grep the entry points for env loading. Where the process environment loses, propose the fix and make it with their yes, or record it with `record_event`, naming the file.
-
-## The sandbox image
-
-Workers run in a container with Node, Bun, git and the agent CLIs only. A repo needing a JDK, Python, Go, Rust or Ruby (`pom.xml`, `build.gradle`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Gemfile`), or another tool its commands shell out to, gets `.runcastle/sandbox/Dockerfile`: `FROM sandcastle:runcastle`, the toolchain only, no project dependencies, no package caches, one `RUN` where possible. Read the stock Dockerfile first (`~/.runcastle/sandbox-build/Dockerfile`, or `sandcastle-template/Dockerfile` in the installed package); ask if you cannot find it. A JavaScript-only repo gets none. Never build the image: the human presses Build image on the Workers page in Settings. Edit an existing one conservatively.
 
 ## The dry run
 

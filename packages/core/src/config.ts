@@ -182,9 +182,6 @@ export const RuncastleConfig = z.preprocess(
      * and where annotating a curated entry with a note lands.
      */
     models: z.array(ModelEntry).default([]),
-    // `.catch`, not `.default`: an old config file may still carry the retired
-    // `noSandbox` value, and it must load (as docker) rather than fail to parse.
-    sandbox: z.enum(['docker', 'podman']).catch('docker'),
     /**
      * Whether a launched terminal also sees the human's OWN MCP servers.
      *
@@ -198,7 +195,7 @@ export const RuncastleConfig = z.preprocess(
      * configurations"*. That word "all" is total: it drops the human's own
      * connections AND their plugins' servers, which is why it is no longer the
      * default. Sessions are the human's working terminal, not a hermetic
-     * sandbox — the burn sandbox is where hermeticity belongs. Choose
+     * environment. Choose
      * `runcastleOnly` when you want a session's tool surface to be exactly
      * reproducible, or to keep a heavy personal MCP set out of the context
      * window.
@@ -220,18 +217,6 @@ export const RuncastleConfig = z.preprocess(
      */
     carryOnAfterLimit: z.enum(['on', 'off']).default('off'),
     /**
-     * Machine-wide Docker image name for the sandcastle burner sandbox (B3 /
-     * SPEC §8) — the fallback under a project's own `sandboxImage`, which beats
-     * it (see {@link resolveSandboxImage} for the full order). When neither is
-     * set, runcastle uses {@link DEFAULT_SANDBOX_IMAGE} everywhere — build,
-     * doctor probe, and burn — via {@link resolveSandboxImage}; it does NOT let
-     * sandcastle fall back to its own `sandcastle:<repo-dir-name>` derivation,
-     * which would look up a differently-named image than the one we built. The
-     * demo image is tagged `sandcastle:runcastle-demo`. Applies to `docker` and
-     * `podman`; ignored for `noSandbox`.
-     */
-    sandboxImage: z.string().optional(),
-    /**
      * How many workers and reviews may be mid-turn at once, across every project
      * on the machine (one-number-for-how-many-build-at-once decision 1). Settings
      * calls it "Workers and reviews at once". Leads, the orchestrator and epics
@@ -246,34 +231,8 @@ export const RuncastleConfig = z.preprocess(
      */
     burnConcurrency: z.number().int().min(1).max(WORKERS_AT_ONCE_MAX).default(DEFAULT_WORKERS_AT_ONCE_MIN),
     /**
-     * Per-container CPU ceiling for burn sandboxes (`docker run --cpus`), or
-     * unset for today's unconstrained behaviour. Fractional values are allowed.
-     *
-     * This exists because N concurrent containers each see the HOST's full core
-     * count and size their install/test worker pools from it, so width N
-     * oversubscribes the box N-fold and every agent's commands slow down
-     * together. Setting this to roughly `cores / burnConcurrency` keeps each
-     * agent's wall-clock predictable. Applies to every worker sandbox.
-     *
-     * There is deliberately no matching memory ceiling: a hard cap would convert
-     * host-level pressure into a certain in-container OOM kill of the agent
-     * process. Bound memory by lowering {@link burnConcurrency} instead.
-     */
-    burnCpus: z.number().positive().max(256).optional(),
-    /**
-     * Install the burn guard — a Claude Code `PreToolUse` hook inside each
-     * worker sandbox that denies a few things the working rules already forbid
-     * (git stash, overriding test-runner concurrency, rewriting files through
-     * interpreter heredocs).
-     *
-     * On by default because prompt rules measurably did not hold on their own.
-     * Set `false` to fall back to prompt-only guidance — worth doing if a rule
-     * ever misfires, since a false deny in an unattended agent costs turns.
-     */
-    burnGuard: z.boolean().default(true),
-    /**
-     * Command run inside the worker sandbox before the agent starts,
-     * overriding lockfile-based detection. Leave
+     * Command run in a worker's own folder on the host before the agent
+     * starts, overriding lockfile-based detection. Leave
      * unset to auto-detect from the target repo (`packageManager` field, then
      * lockfiles — a root install covers JS workspaces/monorepos). Set it for
      * non-JS projects or bespoke bootstraps (e.g. `make deps`).
@@ -282,7 +241,7 @@ export const RuncastleConfig = z.preprocess(
      * ~51 minutes across 204 calls into build/codegen steps that are the same
      * boilerplate every ticket — agents discovering mid-run that they need a
      * contracts build or an ORM client generated. Chaining those here runs them
-     * once per sandbox, before the agent starts, e.g.
+     * once per worker folder, before the agent starts, e.g.
      * `corepack pnpm install --frozen-lockfile && pnpm contracts:build && pnpm prisma:generate`.
      * Note that overriding this replaces install detection entirely, so the
      * install command must be included explicitly.
@@ -312,77 +271,9 @@ export const RuncastleConfig = z.preprocess(
      * single most repeated expensive command in the logs.
      */
     knownFailures: z.string().optional(),
-    /**
-     * Whether worker sandboxes share a persistent per-project cache volume.
-     * `volume` (default) mounts one Docker/Podman named volume per project
-     * holding the package-manager store and one persistent checkout per
-     * concurrency slot, so install, `.tsbuildinfo`, the test runner's cache and
-     * turbo's cache survive between workers. `off` is a fresh clone and a cold
-     * install every time.
-     *
-     * Config-file + env only — an escape hatch, not a setting the overlay
-     * offers. Go through {@link resolveBurnCacheMode} rather than reading this
-     * field.
-     */
-    burnCache: z.enum(['volume', 'off']).default('volume'),
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
-
-/**
- * The image tag runcastle builds, probes, and burns against when a project
- * leaves `sandboxImage` unset. This MUST be an explicit constant rather than
- * letting sandcastle derive its own `sandcastle:<repo-dir-name>` default: the
- * build-image/doctor/setup paths already hard-coded `sandcastle:runcastle`, so
- * a run path that omits the name would look up a differently-named image and
- * fail with "Image not found locally". Everyone resolves through
- * {@link resolveSandboxImage} so the name can never drift again.
- */
-export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
-
-/**
- * Whatever carries a project's own sandbox image — a `Project`, a raw row, or
- * nothing at all for the callers that run outside any project: the `runcastle
- * doctor` CLI, the burn cache probe, and the build-image/doctor flows, which
- * are machine-wide today and resolve to the global image.
- */
-export type SandboxImageOwner = { sandboxImage?: string | null } | null | undefined
-
-/**
- * The sandcastle image tag to build/probe/run, resolved in four layers:
- * project column → `RUNCASTLE_SANDBOX_IMAGE` → global config file →
- * {@link DEFAULT_SANDBOX_IMAGE}. Pure.
- *
- * The env layer is not a parameter here because it is already inside
- * `config.sandboxImage`: `loadConfig` folds `RUNCASTLE_SANDBOX_IMAGE` over the
- * config file, so the two middle layers arrive as one value with the env
- * variable already winning between them. What this function adds on top is the
- * project column, and it wins over both — the image a repo needs is a fact
- * about that repo, exactly as its setup command is (see
- * {@link resolvePreparedSettings}, which orders the same way).
- *
- * Every consumer — the build flow, the doctor probe, the per-run image
- * precheck, the burn itself and the cache slot stamp — resolves here, so the
- * name they agree on can never drift apart. Which of them hands over a project
- * is up to the caller: the burn and its containers do, and the machine-wide
- * flows named on {@link SandboxImageOwner} do not.
- *
- * Empty strings are treated as unset, the way a cleared settings field arrives.
- */
-export function resolveSandboxImage(
-  config: Pick<RuncastleConfig, 'sandboxImage'>,
-  project?: SandboxImageOwner,
-): string {
-  return project?.sandboxImage?.trim() || config.sandboxImage?.trim() || DEFAULT_SANDBOX_IMAGE
-}
-
-/**
- * The burn cache mode actually in force: the configured one (both sandbox
- * engines own named volumes). Pure; the single reader of `config.burnCache`.
- */
-export function resolveBurnCacheMode(config: Pick<RuncastleConfig, 'burnCache'>): RuncastleConfig['burnCache'] {
-  return config.burnCache
-}
 
 /**
  * The `burnConcurrency` an operator who set nothing gets on a host with

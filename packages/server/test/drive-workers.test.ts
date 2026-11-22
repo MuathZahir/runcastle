@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Feature, Project, SessionKind, SessionPurpose, SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
@@ -31,7 +31,6 @@ import {
   messageWorker,
   queueHoldOf,
   sendBackWorker,
-  withWorkers,
   workersHoldingReady,
   workerTurnSlot,
 } from '../src/workers/service'
@@ -106,13 +105,6 @@ describe('host placement', () => {
     expect(input.worktreePath).toBe(repo)
     expect(input.feature).toBeUndefined()
     expect(input.hostWorker).toBeDefined()
-  })
-
-  it('routes a drive worker to the host transport, never a sandbox', async () => {
-    const session = seedDriveWorker(ctx, { feature }, 'scenario', repo)
-    const base = vi.fn(async () => ({}) as never)
-    await withWorkers(ctx, base)({} as never, session)
-    expect(base).toHaveBeenCalledOnce()
   })
 })
 

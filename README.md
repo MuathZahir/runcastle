@@ -34,7 +34,7 @@
 Every feature you build gets its own chat, its own branch and its own memory,
 and moves through four stages: **Planning, Build, Review, Shipped**. You talk
 the idea through with its agent until there is a plan and a set of tickets.
-Once you say yes to the plan, rounds of sandboxed workers build those tickets on
+Once you say yes to the plan, rounds of workers build those tickets on
 the feature's branch while you are elsewhere. You test drive the result and
 merge.
 
@@ -66,9 +66,7 @@ irm https://runcastle.dev/install.ps1 | iex            # Windows
 It installs Bun and runcastle, then shows one list: what is already there, what
 it will install (each line saying if it needs `sudo`), and what you do
 afterwards. One yes installs the lot; `--yes` answers for you on a server. It
-only lists what is missing, so it is safe to run again. On Windows and macOS it
-guides you through Docker Desktop instead of installing it, and sign-ins always
-stay yours. Both scripts can be read at those addresses before you run them.
+only lists what is missing, so it is safe to run again. Sign-ins always stay yours. Both scripts can be read at those addresses before you run them.
 Then run `runcastle` and open the address it prints (`http://localhost:4512`);
 it does not open a browser by itself.
 
@@ -105,19 +103,16 @@ must-haves.)
 | **To run runcastle** | **[Bun](https://bun.sh) 1.3.14+** | The runtime. `curl -fsSL https://bun.sh/install \| bash`, or `irm bun.sh/install.ps1 \| iex` on Windows. |
 | **To run runcastle** | **A coding agent: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex), or both** | The engines runcastle drives. You need at least one, signed in. **Claude Code** needs a paid Claude plan (Pro, Max, Team, Enterprise, or Console); install it, then log in with `claude`. **Codex** installs with `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`, or `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 \| iex"` on Windows; log in with `codex login`, on a ChatGPT plan or an API key. Use these standalone installers rather than npm: an agent installed through npm or `bun add -g` is a Node script and needs Node, which runcastle itself does not. |
 | **To run runcastle** | **[Git](https://git-scm.com)** | runcastle branches, worktrees, commits, and merges on your behalf. It also needs a commit identity: the first-run wizard collects one, or set it yourself. |
-| **Before your first round** | **A container runtime: Docker or Podman, running** | Workers build tickets inside a container. See [The unattended sandbox](#the-unattended-sandbox). |
-| **Before your first round** | **Agent credentials** | For **Claude Code**, run `runcastle token`: it has you run `claude setup-token` and saves the token to `~/.runcastle/.env` (`--stdin` reads it from a pipe). For **Codex**, run `codex login`; workers borrow the credentials the login wrote. |
+| **Before your first round** | **Signed-in agent** | Workers use the login your agent already has on this machine. For **Claude Code**, run `claude` and log in. For **Codex**, run `codex login`. |
 
-Workers run on your machine, in the feature's folder, and Docker is not needed
-for them. runcastle checks every tool call before it runs: edits stay in the
-agent's own folder, and destructive git commands and deletes are refused. A
-script an agent runs can still reach outside its folder, so run runcastle only
-on projects you trust.
+Workers run on your machine. runcastle refuses edits outside the agent's own
+folder and a short list of destructive commands, but a script an agent runs can
+still reach outside its folder, so run runcastle only on projects you trust.
 
 Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
 
-You can install and talk a feature through without the last two rows, but the
-first round of workers cannot build anything until both are in place. Either
+You can install and talk a feature through without the last row, but the
+first round of workers cannot build anything until it is in place. Either
 way you authenticate against your own subscription; nothing routes through
 runcastle. (A `CODEX_API_KEY` you put in `~/.runcastle/.env` by hand still wins
 over the borrowed login, if you would rather bill an OpenAI API key.)
@@ -133,8 +128,6 @@ over the borrowed login, if you would rather bill an OpenAI API key.)
    - **Coding agents.** Claude Code and Codex side by side: which are
      installed, which are signed in, and a button that runs the login for the
      ones that are not. One is enough.
-   - **Unattended workers.** Skippable: set up the sandbox and credentials now,
-     or later. You need them before your first round can build anything.
    - **First project.** Point runcastle at a git repo.
 3. **Prepare the project.** One chat, once, that records how your repo
    installs, verifies, and runs, so no agent has to guess.
@@ -158,13 +151,13 @@ step. You are asked twice: say yes to the plan, then merge.
 | Stage | What happens |
 |---|---|
 | **Planning** | You talk the idea through with the feature's agent in the app's chat, an agent that starts with the brief, the rules and runcastle's skill pack. The decisions and the plan are written into your repo under `docs/features/<slug>/`, split into small tickets in dependency order, each with a model picked for it. **You say yes to the plan in the chat.** |
-| **Build** | Rounds of workers build the tickets inside containers, in parallel, committing to the feature's branch. You can close the tab. |
+| **Build** | Rounds of workers build the tickets in parallel, committing to the feature's branch. You can close the tab. |
 | **Review** | A review round checks the result: it test drives the running app, records a walkthrough, runs your checks, and reports what it finds. It leaves a review package of the verdict, the checks, the findings and the walkthrough, and the feature's agent fixes what it found. Then you test drive the branch yourself. **You merge.** |
 | **Shipped** | The branch is merged. The plan, decisions and round history stay queryable. |
 
 ### Build: workers build tickets in parallel
 
-Every unblocked ticket starts at once, each with its own sandboxed worker, each
+Every unblocked ticket starts at once, each with its own worker, each
 on its own model. Workers land their commits on the feature branch, and a ticket
 that fails says why, with retry, retry on another model, and waive one click
 away.
@@ -254,67 +247,9 @@ of the *model*, so you choose models, not vendors:
   default.
 
 Both runtimes get the same treatment: the same phase rules and skill pack, the
-same lifecycle hooks, the same runcastle MCP server, the same sandbox. The model
+same lifecycle hooks, the same runcastle MCP server. The model
 roster refreshes itself from each CLI, so a new model shows up without a
 runcastle release.
-
----
-
-## The unattended sandbox
-
-Rounds of workers run inside a container via
-[sandcastle](https://github.com/mattpocock/sandcastle) (`@ai-hero/sandcastle`).
-Docker is the default and smoothest path; Podman is a fully supported free
-alternative. The first round builds the image if it is missing, which takes a
-few minutes. To build it ahead of time, run `runcastle build-image`, or click
-Build image in Settings → Workers.
-
-<details>
-<summary><b>Docker setup, per platform</b></summary>
-
-<br />
-
-| Platform | What you need |
-|---|---|
-| **Linux** | **Docker Engine is enough, Desktop is not required.** After installing, run `sudo usermod -aG docker $USER` and re-login, or every call needs `sudo`. |
-| **Windows** | **Docker Desktop.** Floor: **Windows 10 22H2** (build 19045) or Windows 11, 64-bit, with **WSL2** (the default backend) or Hyper-V, virtualization enabled in BIOS/UEFI, 8 GB RAM. |
-| **macOS** | **Docker Desktop**, current or one of the two previous major macOS releases. |
-
-Start the daemon (Docker Desktop, or `sudo systemctl start docker` on Linux)
-before a round. `runcastle doctor` tells you if the CLI is installed but the
-daemon is not responding.
-
-</details>
-
-> [!IMPORTANT]
-> **Docker Desktop licensing, if you are using this at work.**
-> Docker Desktop is free for personal use, education, non-commercial open
-> source, and small businesses, but a **paid subscription is required** for
-> larger organizations and government entities. This binds *the organization
-> running Docker Desktop*, not the tool recommending it: runcastle being open
-> source grants you nothing here. The exact thresholds change, so check
-> [docker.com/pricing](https://www.docker.com/pricing/). If you are not
-> covered, use **Podman**, which has no such restriction.
-
-<details>
-<summary><b>Podman setup (free alternative)</b></summary>
-
-<br />
-
-[Podman](https://podman.io) is Apache-2.0 with no employee or revenue threshold
-and no commercial-use restriction. The CLI alone is enough; Podman Desktop is
-optional. sandcastle drives whichever runtime is on your PATH.
-
-- **Linux:** `dnf install podman` / `apt install podman` / `pacman -S podman`.
-  Native and rootless, no VM.
-- **Windows:** `winget install -e --id RedHat.Podman`, then
-  `podman machine init && podman machine start`. Install WSL first with
-  `wsl --install` if you have not.
-- **macOS:** the official installer, then
-  `podman machine init && podman machine start`. Podman's docs discourage the
-  Homebrew build.
-
-</details>
 
 ---
 
@@ -331,17 +266,17 @@ agents you already have.
   server (for Codex, a per-chat `CODEX_HOME` holding the same things as files).
   A chat's process starts on its first message and stops when it has been idle
   for a while; the conversation stays readable either way. Terminals remain for
-  program output: dev servers and the sign-in and image-build flows in
+  program output: dev servers and the sign-in flows in
   Settings.
-- **Unattended work** runs headless through sandcastle, in a Docker or Podman
-  container, committing back to the feature branch.
+- **Unattended work** runs headless on your machine, in the feature's folder,
+  committing back to the feature branch.
 - **Knowledge lives in your repo** at `docs/features/<slug>/`: spec, decisions,
   research, notes. Versioned and agent-readable, and it outlives the tool.
 - **Machinery lives in the app's SQLite** at `~/.runcastle/`: stage state,
   chat links, round history, notes, transcript index.
 - **Git topology:** one branch per feature; each feature's chat works in its
   own worktree on that branch, so several features move in parallel; workers
-  build in containers and land on the branch; the orchestrator gets its own
+  build in the feature's folder and land on the branch; the orchestrator gets its own
   worktree on `runcastle/project`.
 
 ### Packages
@@ -541,27 +476,12 @@ that worked: `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"`, or
 </details>
 
 <details>
-<summary><b>Podman on Windows cannot mount your files</b></summary>
-
-<br />
-
-A Podman machine is its own WSL distro and cannot see paths inside *your* WSL
-distro. Windows drive paths (mounted at `/mnt/c`) do work. runcastle's data dir
-is `~/.runcastle/`, so the common Windows case is fine, but running runcastle
-*inside* WSL against a Podman machine will fail its bind mounts.
-
-</details>
-
-<details>
 <summary><b>Rounds fail with an auth error</b></summary>
 
 <br />
 
-It depends which runtime the ticket is built on. For Claude Code, make sure
-`CLAUDE_CODE_OAUTH_TOKEN` is in `~/.runcastle/.env`, generated by
-`claude setup-token`. For Codex, run `codex login` on this machine — a worker
-copies the credentials that login wrote into the sandbox, so a lapsed login is
-the usual cause. Doctor checks for both.
+Workers use the login your agent has on this machine. A lapsed login is the
+usual cause: run `claude` or `codex login` again. Doctor checks for both.
 
 </details>
 
@@ -577,5 +497,4 @@ competing commercial product or service. Each release automatically becomes
 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) two years after publication.
 
 Built with runcastle, on Claude Code. Methodology forked and adapted from
-[Matt Pocock](https://github.com/mattpocock)'s skills; the sandbox engine by
-[sandcastle](https://github.com/mattpocock/sandcastle).
+[Matt Pocock](https://github.com/mattpocock)'s skills.

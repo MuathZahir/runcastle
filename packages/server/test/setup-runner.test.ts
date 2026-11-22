@@ -4,7 +4,7 @@ import type { DoctorReport, ProbeResult, ProbeStatus } from '../src/doctor/docto
 import type { MachineFacts, SetupCommand } from '../src/setup/plan'
 import { AGENT_QUESTION } from '../src/setup/runner'
 import { createStepRunner } from '../src/setup/system'
-import { ROOT_BURN_REFUSED } from '../src/workers/burn-user'
+import { ROOT_REFUSED } from '../src/util/root-user'
 
 function probe(id: string, status: ProbeStatus, detail = ''): ProbeResult {
   return { id, label: id, tier: 1, status, severity: 'error', detail }
@@ -17,10 +17,8 @@ const fresh = report(
   probe('git', 'missing'),
   probe('claude', 'missing'),
   probe('claude-auth', 'missing'),
-  probe('afk-token', 'unset'),
   probe('codex', 'missing'),
   probe('codex-auth', 'missing'),
-  probe('container-runtime', 'missing'),
 )
 
 const done = report(
@@ -28,17 +26,13 @@ const done = report(
   probe('git', 'ok', 'git version 2.43.0'),
   probe('claude', 'ok', '2.4.1 (Claude Code)'),
   probe('claude-auth', 'ok'),
-  probe('afk-token', 'ok'),
-  probe('container-runtime', 'ok', 'Docker version 27.3.1'),
 )
 
 const ubuntu: MachineFacts = {
   platform: 'linux',
-  distroId: 'ubuntu',
   packageManagers: ['apt-get'],
   hasDesktop: false,
   serviceFileExists: false,
-  user: 'ada',
 }
 
 /** Doctor reports are served in order; the last one repeats. */
@@ -77,17 +71,14 @@ describe('runcastle setup', () => {
 
     expect(await runSetup([], h.deps)).toBe(0)
 
-    expect(h.questions).toEqual([AGENT_QUESTION, 'Install these 3? [Y/n] '])
+    expect(h.questions).toEqual([AGENT_QUESTION, 'Install these 2? [Y/n] '])
     expect(ranFiles(h.ran)).toEqual([
       'sudo apt-get update',
       'sudo apt-get install -y git',
       'sh -c curl -fsSL https://chatgpt.com/codex/install.sh | sh',
-      'sh -c curl -fsSL https://get.docker.com | sudo sh',
-      'sudo usermod -aG docker ada',
     ])
     expect(h.doctorRuns()).toBe(2)
     expect(h.lines).toContain('Everything is installed.')
-    expect(h.lines).toContain('  1. Log out and back in, so the docker group applies')
   })
 
   it('prints the list in the approved layout', async () => {
@@ -104,13 +95,13 @@ describe('runcastle setup', () => {
       'Will install',
       '  • Git                                       needs sudo',
       '  • Claude Code',
-      '  • Docker Engine                             needs sudo',
-      '    Adds you to the docker group, which is effectively root on this machine.',
       '',
       'You do afterwards',
-      '  1. Log out and back in, so the docker group applies',
+      '  1. Open a new terminal',
       '  2. Sign in: claude auth login',
-      '  3. For unattended rounds: runcastle token',
+      '  3. To keep it running: runcastle service install',
+      '',
+      'Nothing was installed.',
     ])
   })
 
@@ -123,8 +114,6 @@ describe('runcastle setup', () => {
     expect(ranFiles(h.ran)).toEqual([
       'sudo apt-get update',
       'sh -c curl -fsSL https://claude.ai/install.sh | bash',
-      'sh -c curl -fsSL https://get.docker.com | sudo sh',
-      'sudo usermod -aG docker ada',
     ])
     expect(h.doctorRuns()).toBe(2)
     expect(h.lines).toContain('Git did not install.')
@@ -146,7 +135,7 @@ describe('runcastle setup', () => {
 
     await runSetup(['--agent', 'both'], h.deps)
 
-    expect(h.questions).toEqual(['Install these 4? [Y/n] '])
+    expect(h.questions).toEqual(['Install these 3? [Y/n] '])
     expect(ranFiles(h.ran).filter((c) => c.includes('install.sh'))).toHaveLength(2)
   })
 
@@ -156,7 +145,7 @@ describe('runcastle setup', () => {
 
     await runSetup([], h.deps)
 
-    expect(h.questions).toEqual(['Install these 2? [Y/n] '])
+    expect(h.questions).toEqual(['Install this 1? [Y/n] '])
   })
 
   it('with no terminal and no --yes, shows the list, runs nothing and exits 1', async () => {
@@ -197,7 +186,7 @@ describe('runcastle setup', () => {
 
     expect(await runSetup(['--yes'], { ...h.deps, facts: { ...ubuntu, platform }, runningAsRoot: true })).toBe(1)
 
-    expect(h.lines).toEqual([ROOT_BURN_REFUSED])
+    expect(h.lines).toEqual([ROOT_REFUSED])
     expect(h.doctorRuns()).toBe(0)
     expect(h.ran).toEqual([])
   })

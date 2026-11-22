@@ -99,7 +99,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     id: 'worker',
     term: 'Worker',
     group: 'building',
-    definition: 'An agent the lead hands one piece of a feature to, in its own container and branch. You can open it, talk to it, and it hands its work back to the lead. It needs Docker or Podman.',
+    definition: 'An agent the lead hands one piece of a feature to. It builds on your machine, in the feature’s folder or in its own folder and branch. You can open it, talk to it, and it hands its work back to the lead.',
     onceCalled: ['burner', 'lane', 'AFK agent'],
   },
   {

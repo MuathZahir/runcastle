@@ -1,5 +1,0 @@
-{
-  "typecheck": "pnpm exec tsc -b",
-  "test": "pnpm exec vitest run",
-  "build": "pnpm exec turbo run build"
-}

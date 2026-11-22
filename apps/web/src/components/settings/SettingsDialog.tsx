@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { trpc } from '../../trpc'
-import { BURN_PREREQUISITES } from '../../lib/afk-rows'
 import {
   filterSettings,
   pageSearchItems,
@@ -16,33 +15,29 @@ import { SETTINGS_PAGES, SettingsRail } from './SettingsRail'
 import { GeneralPage, THEME_FIELD } from './GeneralPage'
 import { ModelsPage } from './ModelsPage'
 import { PHONE_LINK_SEARCH } from './PhoneLinkSection'
-import { SandboxesPage } from './SandboxesPage'
 import { ProjectPage } from './ProjectPage'
 import type { FilterState, SettingsPageProps } from './types'
 
 /**
- * Settings (flow-redesign-settings). One `xl` dialog: a rail of four task pages
+ * Settings (flow-redesign-settings). One `xl` dialog: a rail of three task pages
  * with a filter above it, and one scrolling page beside it.
  *
  * It stays a dialog rather than becoming a route (decision 10) because settings
  * is opened from the middle of work — Esc and the backdrop hand back whatever
- * was underneath. `location` is where the opener wants to land, so an error
- * message that says "Settings → Workers (Rebuild image)" can be a link onto that
- * row instead of an instruction to go looking.
+ * was underneath. `location` is where the opener wants to land, so a link that
+ * names a setting lands on that row instead of leaving the human to go looking.
  */
 
 /** What the header says over each page, under the page's own name. */
 const PAGE_SUBTITLE: Record<SettingsPage, string> = {
-  general: 'How runcastle looks, where its server listens, and how chats are sandboxed.',
+  general: 'How runcastle looks, where its server listens, how chats run, and how many workers run at once.',
   models: 'The default model, the roster this machine offers, and which model runs each step.',
-  sandboxes: 'What a worker’s sandbox needs before it starts, and how many cores each worker gets.',
   project: 'Values this project sets for itself. Unset fields inherit the global value, shown as ghost text.',
 }
 
 const PAGE_BODY: Record<SettingsPage, (props: SettingsPageProps) => ReactNode> = {
   general: GeneralPage,
   models: ModelsPage,
-  sandboxes: SandboxesPage,
   project: ProjectPage,
 }
 
@@ -179,10 +174,5 @@ function searchableSettings(
     const view = page === 'project' ? scoped : globals
     return view ? pageSearchItems(view, page) : []
   })
-  const prerequisites = BURN_PREREQUISITES.map((p) => ({
-    id: p.field,
-    page: 'sandboxes' as const,
-    terms: [p.label, ...p.terms],
-  }))
-  return [THEME_SEARCH, PHONE_LINK_SEARCH, ...rows, ...prerequisites]
+  return [THEME_SEARCH, PHONE_LINK_SEARCH, ...rows]
 }

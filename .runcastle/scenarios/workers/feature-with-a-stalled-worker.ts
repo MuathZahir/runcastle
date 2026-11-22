@@ -10,7 +10,7 @@
  * Run like feature-with-workers.ts (see it for the drive, the env and what
  * `ENTRY_URL=` means): the scenario runner (`bun {file}`) inside a test drive
  * of runcastle, seeding the drive's own data dir. The worker is a row only: no
- * container is started, so its agent does not answer.
+ * agent is started, so it does not answer.
  *
  * `SCENARIO_PROJECT` names a different project to seed (tests register a temp
  * repo under its own name).
@@ -104,7 +104,7 @@ function seedStalledWorker(ctx: AppCtx, feature: Feature, leadId: string, now: n
       startedBy: 'lead',
       status: 'stalled',
       failure: null,
-      engine: 'docker',
+      folder: worktreeDir(feature.projectId, feature.slug),
       featureBranch: feature.branch,
       handbackSummary: null,
       handbackCommits: null,
