@@ -697,6 +697,13 @@ async function mergeOnReady(ctx: AppCtx, feature: Feature): Promise<ReadyAutoMer
     const files = res.files.length ? ` in ${res.files.join(', ')}` : ''
     return { merged: false, why: res.conflict ? `merging into ${res.base} stopped on a conflict${files}` : `the merge into ${res.base} did not land` }
   } catch (err) {
+    // The merge flow marks the feature shipped before its cleanup (design
+    // server, workers, worktree): a throw after that point still merged.
+    const now = getFeatureRow(ctx, feature.id)
+    if (now.status === 'shipped') {
+      console.error(`${feature.slug} merged, but the cleanup after it failed`, err)
+      return { merged: true, base: now.baseBranch ?? 'its base branch' }
+    }
     return { merged: false, why: `the merge failed (${err instanceof Error ? err.message : String(err)})` }
   }
 }

@@ -83,11 +83,13 @@ describe('setInvolvement', () => {
     expect(changes(f)).toEqual([])
   })
 
-  it('is refused for a shipped feature', async () => {
-    const f = seedFeature(ctx, projectId, { slug: 'cart', status: 'shipped' })
-    await expect(setInvolvement(ctx, f.id, 'nothing')).rejects.toThrow(GateError)
-    expect(getFeatureRow(ctx, f.id).involvement).toBe('everything')
-    expect(changes(f)).toEqual([])
+  it('is refused for a shipped or archived feature', async () => {
+    for (const status of ['shipped', 'archived'] as const) {
+      const f = seedFeature(ctx, projectId, { slug: `cart-${status}`, status })
+      await expect(setInvolvement(ctx, f.id, 'nothing')).rejects.toThrow(GateError)
+      expect(getFeatureRow(ctx, f.id).involvement).toBe('everything')
+      expect(changes(f)).toEqual([])
+    }
   })
 
   it('wakes a lead waiting on a question when the new level no longer asks, to decide it itself', async () => {
@@ -101,7 +103,8 @@ describe('setInvolvement', () => {
     expect(promptsOf(lead.id)).toHaveLength(1)
     expect(prompt?.held).toBeUndefined()
     expect(prompt?.text).toContain('"Involve me in" to Designs and result')
-    expect(prompt?.text).toContain('Decide your open question yourself')
+    expect(prompt?.text).toContain('decide your open question yourself')
+    expect(prompt?.text).toContain('keep waiting')
     expect(prompt?.text).toContain(DECIDED_WITHOUT_YOU_MARK)
     expect(prompt?.text).toContain('wait_for_you({ withdraw: true })')
     expect(prompt?.text).toContain('still waits for their yes')
@@ -117,7 +120,7 @@ describe('setInvolvement', () => {
     expect(promptsOf(lead.id)).toHaveLength(1)
     expect(prompt?.held).toBe(true)
     expect(prompt?.text).toContain('"Involve me in" to Nothing. From now on:')
-    expect(prompt?.text).not.toContain('Decide your open question')
+    expect(prompt?.text).not.toContain('decide your open question')
   })
 
   it('leaves a notice row in the lead’s chat naming the level and what it now means', async () => {
@@ -149,6 +152,19 @@ describe('setInvolvement', () => {
     await setInvolvement(ctx, asks.id, 'everything')
     expect(promptsOf(asksLead.id).map((p) => p.held)).toEqual([true])
     expect(waitOf(ctx, asksLead.id)?.why).toBe('Which currency?')
+  })
+
+  it('wakes a lead already waiting as Ready to test when the level becomes Nothing, to declare ready again', async () => {
+    const f = seedFeature(ctx, projectId, { slug: 'cart', involvement: 'resultOnly' })
+    const lead = leadOf(f)
+    setWait(ctx, lead.id, readyToTestWhy('checkout'), 'agent')
+
+    await setInvolvement(ctx, f.id, 'nothing')
+
+    const [prompt] = promptsOf(lead.id)
+    expect(promptsOf(lead.id)).toHaveLength(1)
+    expect(prompt?.held).toBeUndefined()
+    expect(prompt?.text).toContain('Call declare_ready again with the same scenario')
   })
 
   it('opens no chat for a feature whose lead never started, and still stores the level', async () => {

@@ -25,6 +25,10 @@ answer you would recommend and record it at once with `**Assumed.**` and its
 main alternative (`./decisions-and-spec.md`). Record only decisions the human
 must see; build detail goes to the spec.
 
+**Below `everything`** (`./involvement.md`) no decision is the human's, an open
+what, where or who included: decide it, mark it `**Decided without you.**`
+instead of `**Assumed.**`, and build on in this run.
+
 **Check first.** Pick at most five decisions for the human to look at first:
 guesses about their intent, and decisions that force several others. Write
 their numbers in `decisions.md`'s `Check first:` line, and in the plan page's

@@ -2,6 +2,7 @@ import {
   asksDecisions,
   DECIDED_WITHOUT_YOU_MARK,
   type Feature,
+  humanMerges,
   INVOLVEMENT_LABEL,
   INVOLVEMENT_NAME,
   type Involvement,
@@ -67,13 +68,14 @@ export function involvementLine(level: Involvement): string {
 }
 
 /**
- * Set the feature's level. Refused for a shipped feature; a level it already
- * has changes nothing and emits nothing. Returns the feature as it now is.
+ * Set the feature's level. Refused for a shipped or archived feature (the
+ * same features "Set all to…" skips); a level it already has changes nothing
+ * and emits nothing. Returns the feature as it now is.
  */
 export async function setInvolvement(ctx: AppCtx, featureId: string, level: Involvement): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
-  if (feature.status === 'shipped') {
-    throw new GateError(`\`${feature.slug}\` has shipped, so its "${INVOLVEMENT_NAME}" no longer changes.`)
+  if (feature.status === 'shipped' || feature.status === 'archived') {
+    throw new GateError(`\`${feature.slug}\` is ${feature.status}, so its "${INVOLVEMENT_NAME}" no longer changes.`)
   }
   return change(ctx, feature, level)
 }
@@ -122,10 +124,11 @@ function leadToTell(ctx: AppCtx, feature: Feature): { id: string } | null {
   return lead && (lead.ccSessionId || hasThreadLog(lead.id)) ? lead : null
 }
 
-/** Whether the lead waits on the human's answer to a question (not a test drive, not a dead run). */
-function waitsOnAnswer(ctx: AppCtx, leadId: string): boolean {
+/** What the lead's own wait is on: an answer, a test drive (its "ready"), or nothing of its own. */
+function leadWait(ctx: AppCtx, leadId: string): 'answer' | 'ready' | null {
   const wait = waitOf(ctx, leadId)
-  return !!wait && wait.by === 'agent' && !isReadyToTestWhy(wait.why)
+  if (!wait || wait.by !== 'agent') return null
+  return isReadyToTestWhy(wait.why) ? 'ready' : 'answer'
 }
 
 /**
@@ -141,16 +144,30 @@ async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement): Promise
   seedFromTranscript(ctx, lead.id)
   appendThreadEvent(lead.id, { type: 'notice', text: involvementNotice(to) })
   const label = INVOLVEMENT_LABEL[to]
-  if (!asksDecisions(to) && waitsOnAnswer(ctx, lead.id)) {
+  const waiting = leadWait(ctx, lead.id)
+  if (!asksDecisions(to) && waiting === 'answer') {
     const designs = showsDesigns(to) ? ' (a new screen’s design still waits for their yes)' : ''
     await deliverToLead(ctx, feature, {
       source: 'runcastle',
       reason: 'question',
       text:
         `The human changed "${INVOLVEMENT_NAME}" to ${label}; you no longer wait on them for decisions${designs}. ` +
-        'Decide your open question yourself (your recommendation), record it in decisions.md with the mark ' +
+        'If your wait is on something this level still asks (a design’s yes while designs are shown; money, accounts, ' +
+        'anything outside git that cannot be undone, or what the brief names as the human’s), keep waiting. ' +
+        'Otherwise decide your open question yourself (your recommendation), record it in decisions.md with the mark ' +
         `${DECIDED_WITHOUT_YOU_MARK}, withdraw your wait (wait_for_you({ withdraw: true })) and carry on. ` +
         `From now on: ${INVOLVEMENT_STOPS_FOR[to]}`,
+      background: true,
+    })
+    return
+  }
+  if (!humanMerges(to) && waiting === 'ready') {
+    await deliverToLead(ctx, feature, {
+      source: 'runcastle',
+      reason: 'question',
+      text:
+        `The human changed "${INVOLVEMENT_NAME}" to ${label} while the feature waits as Ready to test. ` +
+        'Call declare_ready again with the same scenario, and runcastle merges it when no defect is open.',
       background: true,
     })
     return

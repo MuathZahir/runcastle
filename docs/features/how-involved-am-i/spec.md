@@ -69,7 +69,9 @@ From the user's side:
 ### Skills (`packages/skills`)
 
 - Feature skill: a rule that the lead reads its level from context and obeys it,
-  and the `**Decided without you.**` mark in `decisions-and-spec.md`. The
+  and the `**Decided without you.**` mark, both in a new reference
+  `references/involvement.md` (the skill's size budget left no room in
+  `SKILL.md` or `decisions-and-spec.md`). The
   planning-alone and design references follow the level. On a "level changed"
   line while waiting: decide, record, withdraw the wait, carry on.
 - Project skill: the cut asks per feature for a level (with the pick) instead of
