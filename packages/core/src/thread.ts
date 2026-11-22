@@ -270,6 +270,7 @@ const FeatureActionName = z.enum([
   'brief',
   /** An older log's: the retired tool that took a feature into a chat (epics-on-autopilot decision 1); still read. */
   'taken',
+  /** History only: an older log's autopilot switch (epics-on-autopilot, retired by autopilot-retires); still read. */
   'autopilotOn',
   'autopilotOff',
   'merged',
@@ -710,8 +711,6 @@ export interface ThreadEntry {
   icon?: EpicIconId
   /** The human picked the icon (decision 3): the orchestrator no longer changes it. */
   iconByHuman?: boolean
-  /** A project chat (an epic): whether it is on autopilot (epics-on-autopilot decision 1). Absent on other roles. */
-  autopilot?: boolean
 }
 
 /** Prompts runcastle sends wear this; the fold shows them as runcastle's line, not the human's bubble. */

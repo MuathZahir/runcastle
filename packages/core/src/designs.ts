@@ -11,7 +11,11 @@ import * as z from 'zod'
 export const DesignState = z.enum(['waiting', 'approved', 'dropped'])
 export type DesignState = z.infer<typeof DesignState>
 
-/** Who approved a design: the human's own click, or the lead marking a yes the human gave in words. */
+/**
+ * Who approved a design: the human's own click, or the lead marking a yes the
+ * human gave in words. `autopilot` is history only: a design an epic approved
+ * while autopilot existed (retired by autopilot-retires).
+ */
 export const DesignApprover = z.enum(['human', 'lead', 'autopilot'])
 export type DesignApprover = z.infer<typeof DesignApprover>
 
@@ -26,7 +30,7 @@ export interface DesignEntry {
   /** A picture of it, as a URL the web loads, when the agent passed one. */
   picture?: string
   state: DesignState
-  /** Who approved it: the human's click, the lead marking their words, or autopilot (epics-on-autopilot). */
+  /** Who approved it: the human's click, the lead marking their words, or (history only) autopilot. */
   approvedBy?: DesignApprover
   /** Shown since the human last opened it (decision 10). */
   isNew: boolean
