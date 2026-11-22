@@ -112,13 +112,14 @@ describe('settings service (#46)', () => {
     configFile = join(mkdtempSync(join(tmpdir(), 'runcastle-cfg-')), 'config.json')
   })
 
-  // A core count above the small-host threshold, so the `burnConcurrency` these
-  // tests read back is a fixed 3 rather than whatever box runs the suite.
-  const WIDE_HOST = 16
+  // A fixed 64 GiB host, so the `burnConcurrency` these tests read back is a
+  // fixed 8 rather than whatever box runs the suite.
+  const GIB = 1024 ** 3
+  const WIDE_HOST = 64 * GIB
   const io = (env: Record<string, string | undefined> = {}) => ({
     env,
     configFile,
-    logicalCpus: WIDE_HOST,
+    totalMemBytes: WIDE_HOST,
   })
 
   it('globals: with no config file, every field resolves to its schema default', () => {
@@ -277,9 +278,9 @@ describe('settings service (#46)', () => {
     )
   })
 
-  it('burnConcurrency defaults to 3, writes through, and rejects out-of-range widths', () => {
+  it('burnConcurrency defaults to the host figure, writes through, and rejects out-of-range numbers', () => {
     const before = field(getSettings(ctx, undefined, io()), 'burnConcurrency')
-    expect(before.value).toBe(3)
+    expect(before.value).toBe(8)
     expect(before.source).toBe('default')
     expect(before.scope).toBe('global')
 
@@ -290,7 +291,7 @@ describe('settings service (#46)', () => {
     expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 0 }, io())).toThrow(
       InvalidInputError,
     )
-    expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 9 }, io())).toThrow(
+    expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 17 }, io())).toThrow(
       InvalidInputError,
     )
   })
@@ -298,20 +299,27 @@ describe('settings service (#46)', () => {
   // The number under a field an operator has not set is a promise about what
   // will happen if they leave it alone, so it has to be the width THIS host
   // burns at — 1 where three parallel agents would oversubscribe the machine.
-  it('reports the width a small host actually defaults to, not the schema 3', () => {
+  it('reports the number a small host actually defaults to', () => {
     const small = field(
-      getSettings(ctx, undefined, { env: {}, configFile, logicalCpus: 6 }),
+      getSettings(ctx, undefined, { env: {}, configFile, totalMemBytes: 11 * GIB }),
       'burnConcurrency',
     )
-    expect(small.value).toBe(1)
+    expect(small.value).toBe(2)
     expect(small.source).toBe('default')
     expect(small.editable).toBe(true)
   })
 
-  it('a config-file width still wins on a small host', () => {
+  it('reports the host memory in rounded whole GB', () => {
+    expect(getSettings(ctx, undefined, io()).hostMemoryGb).toBe(64)
+    expect(
+      getSettings(ctx, undefined, { env: {}, configFile, totalMemBytes: 11.6 * GIB }).hostMemoryGb,
+    ).toBe(12)
+  })
+
+  it('a config-file number still wins on a small host', () => {
     updateSettings(ctx, { key: 'burnConcurrency', value: 3 }, io())
     const f = field(
-      getSettings(ctx, undefined, { env: {}, configFile, logicalCpus: 6 }),
+      getSettings(ctx, undefined, { env: {}, configFile, totalMemBytes: 11 * GIB }),
       'burnConcurrency',
     )
     expect(f.value).toBe(3)

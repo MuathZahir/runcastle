@@ -161,11 +161,10 @@ describe('Settings → Sandboxes', () => {
     expect(screen.getByText('Container runtime')).toBeTruthy()
   })
 
-  it('renders the two worker numbers with the unit each one counts, and none of the burn loop’s counts', () => {
+  it('renders the CPU number with the unit it counts, and none of the burn loop’s counts', () => {
     open()
 
     const units: [string, string][] = [
-      ['Agents working at once', 'workers at once · default on this machine: 3'],
       ['CPU limit per worker', 'cores · e.g. 4 on a 12-thread box at width 3'],
     ]
     for (const [label, unit] of units) {
@@ -182,14 +181,10 @@ describe('Settings → Sandboxes', () => {
     }
   })
 
-  // Nobody chose this width — the machine did — so the control stays empty over
-  // it rather than showing a number that reads like a decision.
-  it('shows this machine’s default concurrency as a ghost, not as a value', () => {
+  it('no longer carries the workers-at-once number: that lives on General', () => {
     open()
 
-    const width = screen.getByLabelText('Agents working at once') as HTMLInputElement
-    expect(width.value).toBe('')
-    expect(width.getAttribute('placeholder')).toBe('3')
+    expect(screen.queryByLabelText('Workers and reviews at once')).toBeNull()
   })
 
   it('scrolls to and flashes the checklist row a deep link named', () => {
@@ -212,7 +207,7 @@ describe('Settings → Sandboxes', () => {
 
     expect(screen.getByText('Worker image')).toBeTruthy()
     expect(screen.queryByText('Container runtime')).toBeNull()
-    expect(screen.queryByLabelText('Agents working at once')).toBeNull()
+    expect(screen.queryByLabelText('Workers and reviews at once')).toBeNull()
     expect(screen.queryByText('Workers at once')).toBeNull()
   })
 

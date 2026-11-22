@@ -101,6 +101,7 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   previewPath: null,
   passPort: 4514,
   heldBy: null,
+  queuePlace: null,
   placement: 'own-folder',
   folder: '/work/feat_1',
   // A worker needing you asked with its own line; a working one has a turn running.

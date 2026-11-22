@@ -414,7 +414,7 @@ describe('SettingsDialog', () => {
     open()
 
     fireEvent.change(screen.getByLabelText('Filter settings'), {
-      target: { value: 'concurrency' },
+      target: { value: 'AFK' },
     })
 
     expect(screen.getByRole('button', { name: /Sandboxes/ }).getAttribute('aria-current')).toBe(
@@ -422,7 +422,7 @@ describe('SettingsDialog', () => {
     )
   })
 
-  it.each(['burn', 'AFK'])('still finds the Sandboxes page by its older name %s', (word) => {
+  it.each(['AFK'])('still finds the Sandboxes page by its older name %s', (word) => {
     open()
 
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: word } })

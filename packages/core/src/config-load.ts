@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { availableParallelism } from 'node:os'
-import { RuncastleConfig, resolveDefaultBurnConcurrency } from './config'
+import { totalmem } from 'node:os'
+import { RuncastleConfig, resolveDefaultWorkersAtOnce } from './config'
 import { configPath } from './paths'
 
 /**
@@ -45,12 +45,12 @@ export const migrateCollapsedModelSteps = (raw: unknown): unknown => {
  * this module performs no IO — only calling `loadConfig()` touches disk. A
  * missing/invalid file falls back to schema defaults, except for the one
  * default that depends on the machine: `burnConcurrency`, resolved here from
- * {@link hostLogicalCpus} because core's schema may not count cores.
+ * {@link hostTotalMemory} because core's schema may not read the host.
  */
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
-  /** Host core count behind the `burnConcurrency` default; injected by tests. */
-  logicalCpus: number = hostLogicalCpus(),
+  /** Host memory in bytes behind the `burnConcurrency` default; injected by tests. */
+  totalMemBytes: number = hostTotalMemory(),
 ): RuncastleConfig {
   let fileConfig: unknown = {}
   const path = configPath()
@@ -108,20 +108,16 @@ export function loadConfig(
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
   const merged: Record<string, unknown> = { ...base, ...overrides }
-  // The one default that depends on the machine. The schema cannot count cores,
-  // so a width nobody chose is resolved here instead; a file or env value is
+  // The one default that depends on the machine. The schema cannot read memory,
+  // so a number nobody chose is resolved here instead; a file or env value is
   // already in `merged` and therefore wins untouched.
   if (merged.burnConcurrency === undefined) {
-    merged.burnConcurrency = resolveDefaultBurnConcurrency(logicalCpus)
+    merged.burnConcurrency = resolveDefaultWorkersAtOnce(totalMemBytes)
   }
   return RuncastleConfig.parse(merged)
 }
 
-/**
- * Logical CPUs this host exposes. `availableParallelism()` rather than
- * `cpus().length` because it respects CPU affinity and cgroup limits, so a
- * container that was given two of the box's sixteen cores reports two.
- */
-export function hostLogicalCpus(): number {
-  return availableParallelism()
+/** This host's total memory in bytes, behind the default number of workers at once. */
+export function hostTotalMemory(): number {
+  return totalmem()
 }

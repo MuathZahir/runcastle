@@ -66,8 +66,8 @@ describe('the skeletons are shaped like their content', () => {
     expect(count(render(ProjectsSkeleton), 'repo-path')).toBe(3)
   })
 
-  it('the general settings: the Server and Sessions rows', () => {
-    expect(count(settings(GENERAL_SKELETON), 'setting-row')).toBe(5)
+  it('the general settings: the Server, Chats and Workers rows', () => {
+    expect(count(settings(GENERAL_SKELETON), 'setting-row')).toBe(6)
   })
 
   it('every settings page: its own groups of setting rows', () => {
