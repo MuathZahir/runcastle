@@ -2,8 +2,6 @@
 
 Planned automatically, with nobody present. Decisions marked **Assumed.** are the lead's picks; those marked **Decided by autopilot.** were confirmed by the Runcastle Rethink epic on 2026-11-22, and the human can overturn any.
 
-Check first: 8
-
 ## 1. One number for how many workers and reviews run at once
 **Decision:** One setting, visible in Settings, says how many workers and reviews may be mid-turn at the same time, across every project on the machine. Its default comes from the machine's memory and is higher than today's 1.
 **Why:** In a 36-hour run workers waited 16.4 hours in line, one at a time. With containers gone the human expects many more at once ("since we don't have sandboxes, we should be able to run a much larger number of workers at once"). One number the user can see and change was chosen over a scheduler that watches memory and adjusts itself.
@@ -39,7 +37,8 @@ Check first: 8
 ## 8. The queue shows in the sidebar, where workers are already listed
 **Decision:** The sidebar gains one line at its foot: "2 of 2 working · 3 waiting". It opens a list of everything in line across all projects: those working, then those waiting in their order, each with its feature, project and kind. A waiting worker's own row under its feature says its place: "waiting · 2nd in line". The line hides when nothing is working or waiting.
 **Why:** The brief asks for the queue to be seen without hunting, and the sidebar is where running workers are already listed (with a clock mark when queued). A row alone cannot show order across features and projects, so the foot line carries the whole line-up.
-**Assumed.** Alternative: a queue section on the Settings page beside the number, which is out of sight while work runs.
+A waiting row keeps its clock mark in front, beside "waiting · 2nd in line".
+**Approved by the human on 2026-11-22** ("Yes to both", relayed by the Runcastle Rethink epic), on the design page "Work queue in the sidebar": the foot line and its list, and the clock kept on a waiting row. Alternative: a queue section on the Settings page beside the number, which is out of sight while work runs.
 
 ## 9. First come, first served, across every project
 **Decision:** Workers and reviews start in the order they asked for a place, whichever project or feature they belong to. A worker on an account that hit its usage limit is skipped, and says "held: <why>", until the limit lifts.

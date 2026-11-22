@@ -1,0 +1,18 @@
+{
+  // Typechecks the one-number-for-how-many-build-at-once design page: apps/web's own
+  // tsconfig covers src and test only. Run: bunx tsc --noEmit -p preview/tsconfig.work-queue.json
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "paths": {
+      "@runcastle/server": ["../../../packages/server/src/trpc/router.ts"],
+      "@tanstack/react-query": ["../node_modules/@tanstack/react-query"],
+      // The shared design-report helper lives outside apps/web: point its imports here.
+      "react": ["../node_modules/@types/react"],
+      "@runcastle/core": ["../node_modules/@runcastle/core"]
+    }
+  },
+  "include": ["./work-queue.tsx", "./work-queue-data.ts"]
+}
