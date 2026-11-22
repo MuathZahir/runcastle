@@ -129,4 +129,22 @@ describe('the autopilot upgrade', () => {
     expect(db.select().from(events).where(eq(events.type, AUTOPILOT_UPGRADED)).all()).toHaveLength(3)
     expect(db.select().from(events).where(eq(events.type, INVOLVEMENT_CHANGED)).all()).toHaveLength(2)
   })
+
+  it('does not return a question the epic already answered', async () => {
+    const db = await seededOldDb()
+    // The epic answered with send_to_feature after the lead's question.
+    db.run(sql.raw(
+      "INSERT INTO events (project_id, feature_id, ts, type, message, data) VALUES " +
+        "('proj_a', 'feat_all', 2, 'lead.message_queued', 'sent', json_object('source', 'runcastle', 'text', 'Euros.'))",
+    ))
+    runMigrations(db, DRIZZLE_DIR)
+    const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
+    host = createAgentHost({ ctx, transport: createFakeAcp().transport, launch: FAKE_LAUNCH })
+    setAgentHostForTests(host)
+
+    const done = await upgradeAutopilotFeatures(ctx)
+
+    expect(done.find((d) => d.featureId === 'feat_all')).toEqual({ featureId: 'feat_all', leveled: true, returnedWait: null })
+    expect(waitOf(ctx, 'sess_lead')).toBeNull()
+  })
 })

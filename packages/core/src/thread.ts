@@ -264,6 +264,7 @@ const FeatureActionName = z.enum([
   'created',
   'parked',
   'started',
+  /** History only: the retired plan_feature and stop_feature_run tools (autopilot-retires decision 4); still read. */
   'planning',
   'planningStopped',
   'messaged',
@@ -274,6 +275,7 @@ const FeatureActionName = z.enum([
   'autopilotOn',
   'autopilotOff',
   'merged',
+  /** History only: the orchestrator's retired drive tool (autopilot-retires decision 12); still read. */
   'driveStarted',
   'driveStopped',
 ])

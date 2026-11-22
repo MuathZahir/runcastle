@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, gt } from 'drizzle-orm'
 import { events } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { newestThread } from '../launcher/sessions'
@@ -6,6 +6,7 @@ import { hasThreadLog } from '../threads/log'
 import { agentHost } from '../threads/types'
 import { emit } from './events'
 import { setInvolvement } from './involvement'
+import { LEAD_MESSAGE_QUEUED } from './lead-delivery'
 import { LEAD_HANDED_BACK } from './lead-handback'
 import { getFeatureRow } from './repo'
 import { setWait, waitOf } from './waits'
@@ -88,19 +89,33 @@ async function upgradeOne(ctx: AppCtx, featureId: string): Promise<AutopilotUpgr
 
 /**
  * The question the feature last handed to its epic, if it is the newest
- * handback: a `wait_for_you` sent to the epic on autopilot (`asks`), worded for
- * the lead's chat. A later handback means the lead moved on.
+ * handback and nothing followed it: a `wait_for_you` sent to the epic on
+ * autopilot (`asks`), worded for the lead's chat. A later handback means the
+ * lead moved on; a later message to the lead (the epic's `send_to_feature`
+ * answer, or any other line) means it was answered or overtaken, and the lead,
+ * told autopilot is gone, asks the human again itself if it still needs to.
  */
 function openAsk(ctx: AppCtx, featureId: string): string | null {
   const last = newestOfType(ctx, featureId, LEAD_HANDED_BACK)
   const data = (last?.data ?? null) as { asks?: boolean; summary?: string; worker?: string } | null
-  if (!data?.asks || !data.summary?.trim()) return null
+  if (!last || !data?.asks || !data.summary?.trim()) return null
+  if (messagedSince(ctx, featureId, last.id)) return null
   return data.worker ? `${data.worker}: ${data.summary.trim()}` : data.summary.trim()
 }
 
-function newestOfType(ctx: AppCtx, featureId: string, type: string): { data: unknown } | undefined {
+/** Whether any message reached the feature's lead after event `afterId`. */
+function messagedSince(ctx: AppCtx, featureId: string, afterId: number): boolean {
+  return !!ctx.db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.featureId, featureId), eq(events.type, LEAD_MESSAGE_QUEUED), gt(events.id, afterId)))
+    .limit(1)
+    .get()
+}
+
+function newestOfType(ctx: AppCtx, featureId: string, type: string): { id: number; data: unknown } | undefined {
   return ctx.db
-    .select({ data: events.data })
+    .select({ id: events.id, data: events.data })
     .from(events)
     .where(and(eq(events.featureId, featureId), eq(events.type, type)))
     .orderBy(desc(events.id))

@@ -110,7 +110,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     held.delete(feature.id)
     failures.delete(feature.id)
     emit(ctx, feature.id, {
-      type: 'lead.message_queued',
+      type: LEAD_MESSAGE_QUEUED,
       message: `message sent to the agent's chat (${msg.source})`,
       data: { source: msg.source, sessionId: threadId, route: hold ? 'held' : 'prompt', text: msg.text },
     })
@@ -137,6 +137,9 @@ async function leadThread(ctx: AppCtx, feature: Feature): Promise<string> {
   if (chat && (chat.ccSessionId || hasThreadLog(chat.id))) return chat.id
   return (await launchSession(ctx, { featureId: feature.id, kind: 'chat' })).sessionId
 }
+
+/** A message reached the lead's chat (sent now or held for its next turn). */
+export const LEAD_MESSAGE_QUEUED = 'lead.message_queued'
 
 /** A background message a copied database (a test drive) kept from a lead it has not started. */
 export const LEAD_MESSAGE_NOT_SENT = 'lead.message_not_sent'

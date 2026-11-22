@@ -61,9 +61,7 @@ function passOf(reporter: FindingReporter): ReportingPass {
 
 /** Whether `finding` came from `pass`: a lead's own findings are the ones no review keyed. */
 function fromPass(finding: ReviewFinding, pass: ReportingPass): boolean {
-  return pass.column === null
-    ? finding.reviewTicketId === null && finding.reviewWorkerId === null
-    : finding[pass.column] === pass.id
+  return pass.column === null ? leadReported(finding) : finding[pass.column] === pass.id
 }
 
 /** Whether a finding is one the feature's lead recorded itself, from no review worker or ticket. */

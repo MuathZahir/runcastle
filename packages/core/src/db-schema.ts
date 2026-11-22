@@ -162,8 +162,7 @@ export const features = sqliteTable('features', {
   upNext: integer('up_next', { mode: 'boolean' }).notNull().default(false),
   /**
    * The feature's epic (`epics-on-autopilot` decision 13): the orchestrator
-   * chat that created it, re-pointed when the human tells another epic to also
-   * run it. Null for a feature made with New feature.
+   * chat that created it. Null for a feature made with New feature.
    */
   chatId: text('chat_id'),
   /**
