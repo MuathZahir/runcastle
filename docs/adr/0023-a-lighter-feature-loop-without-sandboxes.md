@@ -1,8 +1,7 @@
 # ADR-0023: A lighter feature loop — no sandboxes, no required plan, one involvement setting
 
-- **Status:** accepted as direction (2026-11-21). Each part comes into force when the
-  feature that builds it merges. Until then `CONTEXT.md` describes how runcastle works,
-  and the orchestrator rewrites the charter at each merge.
+- **Status:** accepted (2026-11-21); fully in force since 2026-11-22, when the last of
+  its features (`autopilot-retires`) merged.
 - **Deciders:** Muath + the orchestrator, in the epic "Runcastle Rethink"
 - **Supersedes, as its features merge:** ADR-0022 (epics on autopilot); ADR-0004,
   ADR-0005 and ADR-0018 (the worker sandbox's caches, isolated workspace and image

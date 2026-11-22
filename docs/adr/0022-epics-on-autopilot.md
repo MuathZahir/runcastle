@@ -1,6 +1,6 @@
 # ADR-0022: Epics on autopilot replace per-feature ownership
 
-- **Status:** accepted (2026-11-13); in force once `epics-on-autopilot` merges
+- **Status:** superseded by ADR-0023 (2026-11-22, when `autopilot-retires` merged). Accepted 2026-11-13.
 - **Deciders:** Muath + the orchestrator (the brief), the feature lead of `epics-on-autopilot` (assumed decisions 13–25, put to Muath at handover)
 - **Supersedes:** ADR-0016 (orchestrator threads hold features) and ADR-0021 (one place to answer)
 - **Record:** `docs/features/epics-on-autopilot/decisions.md`
