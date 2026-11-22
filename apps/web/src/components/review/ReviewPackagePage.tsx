@@ -145,6 +145,33 @@ function Words({ pack }: { pack: ReviewPackage }) {
   )
 }
 
+/**
+ * What the lead decided without the human (docs/features/how-involved-am-i
+ * decisions 2, 6), so they see it before they merge. Each is a decision in
+ * the feature's decisions.md; telling the lead overturns one.
+ */
+function DecidedWithoutYou({ pack }: { pack: ReviewPackage }) {
+  const list = pack.decidedWithoutYou ?? []
+  if (!list.length) return null
+  return (
+    <section aria-labelledby="decided-without-you" className="flex min-w-0 flex-col gap-1.5 px-1.5">
+      <h3 id="decided-without-you" className="m-0 flex items-baseline gap-1.5 text-xs font-medium text-text-tertiary">
+        Decided without you
+        <span className="font-normal tabular-nums">{list.length}</span>
+      </h3>
+      <ol className="m-0 flex min-w-0 list-none flex-col gap-1 p-0">
+        {list.map((d) => (
+          <li key={d.n} className="flex min-w-0 items-baseline gap-2 text-sm text-text-secondary">
+            <span className="w-4 shrink-0 text-right text-xs text-text-tertiary tabular-nums">{d.n}</span>
+            <span className="min-w-0 break-words">{d.title}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="m-0 pl-6 text-xs text-text-tertiary">To change one, tell the feature’s lead.</p>
+    </section>
+  )
+}
+
 function Account({ pack }: { pack: ReviewPackage }) {
   if (!pack.account) return null
   return (
@@ -181,6 +208,7 @@ function PackageBody({ pack, walkthrough }: { pack: ReviewPackage; walkthrough: 
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto flex w-full max-w-[680px] min-w-0 flex-col gap-4 px-3.5 py-6">
           <Words pack={pack} />
+          <DecidedWithoutYou pack={pack} />
           <Account pack={pack} />
         </div>
       </div>
@@ -206,6 +234,7 @@ function PackageBody({ pack, walkthrough }: { pack: ReviewPackage; walkthrough: 
       </section>
       <aside aria-label="In this package" className="flex min-w-0 shrink-0 flex-col gap-4 p-3 md:w-[320px] md:overflow-auto">
         <Words pack={pack} />
+        <DecidedWithoutYou pack={pack} />
         {groups.map((group) => (
           <div key={group ?? 'first'} className="flex min-w-0 flex-col gap-0.5">
             {group && <h3 className="m-0 px-1.5 pb-1 text-xs font-medium text-text-tertiary">{group}</h3>}
