@@ -7,7 +7,7 @@ import { queuePlaces, queueWords, WorkQueue, type QueueEntry, type WorkQueueProp
 import { toQueueEntry } from '../src/components/LiveWorkQueue'
 import { SidebarFootChrome } from '../src/components/Sidebar'
 import { waitingWords } from '../src/components/SidebarEpicFeatures'
-import { setPendingWorker, takePendingWorker } from '../src/lib/pending-worker'
+import { PENDING_WORKER_MS, setPendingWorker, takePendingWorker } from '../src/lib/pending-worker'
 
 /**
  * The machine's line of workers (one-number-for-how-many-build-at-once
@@ -123,5 +123,10 @@ describe('a worker asked for from another project', () => {
     expect(takePendingWorker('p1')).toBeNull()
     expect(takePendingWorker('p2')).toEqual({ projectId: 'p2', featureId: 'f9', workerId: 'w9' })
     expect(takePendingWorker('p2')).toBeNull()
+  })
+
+  it('lapses when its project never landed in time', () => {
+    setPendingWorker({ projectId: 'p2', featureId: 'f9', workerId: 'w9' }, NOW)
+    expect(takePendingWorker('p2', NOW + PENDING_WORKER_MS + 1)).toBeNull()
   })
 })

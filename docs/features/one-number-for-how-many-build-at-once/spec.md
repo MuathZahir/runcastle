@@ -13,7 +13,7 @@ From the user's side:
 - **The default.** total memory ÷ 4 GB, rounded down, clamped to 2–8 (decision 4).
 - **The queue.** A line at the sidebar's foot ("2 of 2 working · 3 waiting") opens a list of everyone in line across all projects: those working, then those waiting, in order. A waiting worker's row under its feature says "waiting · 2nd in line", or "held" with the reason in its tooltip when its account hit its usage limit. The line is hidden when nothing works or waits (decisions 3, 8, 9).
 
-The designed pieces, uncommitted until the human approves them:
+The designed pieces, approved by the human on 2026-11-22 (a waiting row keeps its clock mark):
 
 - `WorkQueue`, a new props-driven component: the foot line and its popover. It takes `{ limit, working, waiting, onOpen, onOpenSettings }`.
 - The sidebar foot gains an optional `queue` slot. Worker rows gain a place in line. The status word "Queued" becomes "Waiting".
@@ -31,7 +31,7 @@ The designed pieces, uncommitted until the human approves them:
 { limit: number,
   working: QueueEntry[],   // in order of admission
   waiting: QueueEntry[] }  // in queue order; held entries keep their place and carry heldBy
-type QueueEntry = { workerId, label, kind, featureId, featureTitle, projectId, projectName, since: number, heldBy: string | null }
+type QueueEntry = { workerId, label, kind, featureId, featureSlug, featureTitle, projectId, projectName, since: number, heldBy: string | null }
 ```
 
 It joins the limiter's snapshot to the worker, feature and project rows. A worker listed in the sidebar (`ListedWorker`) gains `queuePlace: number | null`, its 1-based place among the waiters that are not held.
@@ -59,4 +59,4 @@ It joins the limiter's snapshot to the worker, feature and project rows. A worke
 ## Open questions
 
 - The portfolio home has no sidebar foot today, so the queue line shows only inside a project, though it lists every project's work. Adding it to the home is a one-line follow-up if wanted.
-- A scenario: the existing "Feature with workers" scenario seeds one queued worker but no slot order, because the queue is in memory. The queue view is reached by starting real workers past the limit, or by a scenario that sets the number to 1 and seeds workers that wake into the queue on boot. Decide during the build whether the review needs it.
+- A scenario: none was added. The queue is in memory, so a seeded queued worker shows its clock and "waiting" but no place, and the foot line stays hidden. The full line is seen by starting real workers past the number, or on the design page `/preview/work-queue.html`.
