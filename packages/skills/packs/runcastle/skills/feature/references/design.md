@@ -105,8 +105,7 @@ is back:
 - At `resultOnly` and `nothing` there is no approval wait: settle the design
   yourself, commit it, and record it with `**Decided without you.**`.
 - An orchestrator message approves a design only when it relays the human's own
-  answer, or the epic runs this feature on autopilot; then record it with
-  `set_design_state`.
+  answer; then record it with `set_design_state`.
 
 A waiting design does not tell the human by itself: when you want them to look,
 say so in your reply and call `wait_for_you({ why })` with a label naming it.

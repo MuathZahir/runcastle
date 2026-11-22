@@ -31,8 +31,6 @@ with no mark. Append each the moment it settles, never in a batch at the end:
   not count as theirs).
 - `**Changed by the orchestrator:** <why>` An orchestrator message changed or
   made it. It keeps its `**Assumed.**` line, or gains one.
-- `**Decided by autopilot.**` The epic decided it while running this feature on
-  autopilot, where its answer counts as the human's.
 - `Supersedes: <n>` Replaces an earlier one. Never rewrite the old one: append
   the new one, and amend the build notes where affected.
 
@@ -92,8 +90,7 @@ whether the project has them (a runner recorded, the folder on the base branch).
 - **After the review**, write and prove a scenario for every "No scenario
   reaches <state>" it reported, before you say ready.
 - **When the drive cannot carry scenarios** (it will not start, or `drive.env`
-  lacks the database to seed), say so once (`wait_for_you`, or `hand_back` on
-  autopilot), recommend the orchestrator's project preparation, and go on.
+  lacks the database to seed), say so once (`wait_for_you`), recommend the orchestrator's project preparation, and go on.
   Never edit the drive setup yourself.
 - Pass the scenario that fits as `declare_ready`'s `scenario`.
 - Drive data copies live in `scenarios.dataDir`, outside git, read through

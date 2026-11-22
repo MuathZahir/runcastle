@@ -10,7 +10,7 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 |---|---|---|
 | `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills on what the brief did not settle, records decisions, writes the spec, builds itself or hands work to workers, has the end reviewed by a Review worker, hands over the drive; decisions and spec, design, planning alone and the preview live in its `references/` |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never changes it |
-| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: turns raw intent into features with real briefs, runs them on autopilot when asked, prepares the project, answers questions about it, and owns `CONTEXT.md` and the ADRs; the charter format and preparation live in its `references/` |
+| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: turns raw intent into features with real briefs, prepares the project, answers questions about it, and owns `CONTEXT.md` and the ADRs; the charter format and preparation live in its `references/` |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):
