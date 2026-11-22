@@ -1,13 +1,16 @@
+import { createServer, type Server } from 'node:net'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BACKGROUND_WINDOW_MS, FEATURE_NEEDS_YOU, type Feature, foldThread } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, getSessionRow, markAgentWorking, markAwaitingInput, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolDeclareReady, toolDropWorker, toolLandWorker, toolMessageWorker, toolStartWorker } from '../src/mcp/server'
+import { toolDeclareReady, toolDropWorker, toolLandWorker, toolMessageWorker, toolStartWorker, toolWaitForYou } from '../src/mcp/server'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { designPassFetch } from '../src/routes/design-pass'
 import { agentSlots, resetAgentSlotsForTests } from '../src/services/agent-slots'
-import { listAfter, listByProject } from '../src/services/events'
+import { listAfter } from '../src/services/events'
 import { needOf } from '../src/services/feature-need'
 import { archiveFeature, deleteFeature, markHumanMessage, stopFeature } from '../src/services/features'
 import { mergeFeatureFlow } from '../src/services/merge'
@@ -15,16 +18,15 @@ import { startNeedWatch } from '../src/services/need-watch'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
-import { setSandboxEngineForTests } from '../src/workers/engine'
-import { workerTools } from '../src/workers/tools'
+import { writeHostHandback } from '../src/workers/review'
 import { sweepLeftovers } from '../src/workers/sweep'
 import {
   getWorker,
+  shownStatusOf,
   workerPrompted,
   startUnassignedWorker,
-
-  withWorkers,
   workerPreviews,
+  workerFolder,
   workerStopped,
   workerTurnEnded,
   workerTurnSlot,
@@ -33,13 +35,14 @@ import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
-import { commitOn, fakeEngine, fakeHost, git, initRepo, type FakeEngine } from './support/fake-workers'
+import { fakeHost, git, initRepo } from './support/fake-workers'
 
 /**
  * Interactive workers over their whole life (interactive-workers decisions 6,
  * 14, 15, 16, 18, 19): the shared limit of agents working at once, the need a
  * worker raises, a failure's one wake, idle stop and wake, the ready guard,
- * cleanup and the preview. No container: a fake sandbox engine, and where a
+ * cleanup and the preview. Workers run on the host now (workers-build-in-the-feature-s-folder):
+ * the first in the feature's folder, a later one in a folder of its own. No container; where a
  * real agent host matters, an in-process fake ACP agent behind it.
  */
 
@@ -49,7 +52,6 @@ let restoreDataDir: () => void
 let repo: string
 let feature: Feature
 let lead: string
-let engine: FakeEngine
 
 beforeEach(async () => {
   home = tmpRepo()
@@ -60,15 +62,12 @@ beforeEach(async () => {
   lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' }).id
   markSessionLive(ctx, lead, { ccSessionId: `cc-${lead}` })
   markSessionEnded(ctx, lead)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
   resetAgentSlotsForTests()
   vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'test-token')
 })
 
 afterEach(() => {
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   vi.unstubAllEnvs()
   restoreDataDir()
   rmTemp(home)
@@ -96,17 +95,30 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
   }
 }
 
+/** Commit a file in the folder a worker builds in, as its agent would. */
+function commitIn(folder: string, file: string, body: string, subject: string): void {
+  writeFileSync(join(folder, file), body)
+  git(folder, 'add', file)
+  git(folder, 'commit', '-q', '-m', subject)
+}
+
+const folderOf = (id: string) => getWorker(ctx, id)!.folder!
+
+/** A host worker's handback, as its own `hand_back` leaves it for the turn's end to read. */
+async function handBack(id: string, summary = 'Done'): Promise<void> {
+  writeHostHandback(id, summary)
+  await workerTurnEnded(ctx, { id })
+}
+
 const status = (id: string) => getWorker(ctx, id)?.status
 const turnEnded = (id: string) => readThreadEvents(id).some((e) => e.type === 'turn_ended')
 
 /** A real agent host over the fake ACP agent, the worker transport and the server's own lifecycle. */
 function realHost(fake: FakeAcp): AgentHost {
-  engine.transport = fake.transport
   const host = createAgentHost({
     ctx,
-    transport: withWorkers(ctx, () => {
-      throw new Error('only workers run here')
-    }),
+    // A host worker's agent comes from the base transport: the fake agent.
+    transport: fake.transport,
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),
@@ -156,6 +168,29 @@ describe('one limit for agents working at once', () => {
     await until(() => turns.waiting() === 1)
     expect(status(c)).toBe('working')
     turns.release()
+    await host.stopAll('shutdown')
+  })
+
+  it('takes a waiting turn cancelled before its slot comes out of the line at once (one-number decision 5)', async () => {
+    const turns = heldTurns()
+    const host = realHost(turns.fake)
+    const slots = agentSlots(ctx.config.burnConcurrency)
+    const a = await startWorker('Header')
+    await until(() => turns.waiting() === 1)
+    const b = await startWorker('Thread list')
+    await until(() => status(b) === 'queued')
+    expect(slots.snapshot().waiting.map((e) => e.holder)).toEqual([b])
+
+    await host.cancel(b)
+    // Out of the line while the slot it waited for is still held, and idle, not queued.
+    expect(slots.snapshot().waiting).toEqual([])
+    expect(slots.snapshot().holding.map((e) => e.holder)).toEqual([a])
+    await until(() => status(b) === 'working')
+
+    turns.release()
+    await until(() => turnEnded(a))
+    expect(slots.held()).toBe(0)
+    expect(turns.waiting()).toBe(0)
     await host.stopAll('shutdown')
   })
 
@@ -211,9 +246,8 @@ describe("the feature's Stop (burns-become-workers decision 15)", () => {
     const logB = readThreadEvents(b)
     expect(logB.some((e) => e.type === 'turn_started')).toBe(false)
     expect(logB.find((e) => e.type === 'turn_ended')).toMatchObject({ reason: 'cancelled' })
-    // Both stay enterable: their threads and sandboxes are where they were.
+    // Both stay enterable: their threads and folders are where they were.
     expect(getWorker(ctx, a)?.status).not.toBe('failed')
-    expect(engine.removed).toEqual([])
 
     await expect(startWorker('Footer')).rejects.toThrow('Stopped by the human')
     await expect(toolMessageWorker(ctx, leadSession(), { workerId: a, text: 'go on' })).rejects.toThrow('Stopped by the human')
@@ -227,15 +261,15 @@ describe("the feature's Stop (burns-become-workers decision 15)", () => {
 })
 
 describe('a worker that needs the human', () => {
-  /** The worker's own `wait_for_you`, as its sandbox relays it. */
+  /** The worker's own `wait_for_you`, as its agent's tool reaches the server. */
   const waitForYou = (id: string, args: Record<string, unknown>) =>
-    workerTools(ctx, getWorker(ctx, id)!, {} as never, engine)('wait_for_you', args)
+    toolWaitForYou(ctx, getSessionRow(ctx, id)!, args as never)
 
-  it('stays working with no need when its turn ends without a handback', async () => {
+  it('reads idle with no need, not working, when its turn ends without a handback', async () => {
     setAgentHostForTests(fakeHost().host)
     const a = await startWorker('Header')
     await workerTurnEnded(ctx, { id: a })
-    expect(status(a)).toBe('working')
+    expect(shownStatusOf(ctx, getWorker(ctx, a)!)).toBe('idle')
     expect(needOf(ctx, feature)).toBeNull()
   })
 
@@ -333,7 +367,7 @@ describe('a worker whose turn ends with background work still running', () => {
     await workerTurnEnded(ctx, { id }, BACKGROUND)
     expect(status(id)).toBe('working')
 
-    engine.handbacks.set(id, { summary: 'Checks green, two findings', at: Date.now() })
+    writeHostHandback(id, 'Checks green, two findings')
     await workerTurnEnded(ctx, { id }, { reason: 'end_turn' })
     expect(status(id)).toBe('handed-back')
   })
@@ -410,96 +444,66 @@ describe('a failed worker', () => {
     const host = fakeHost()
     setAgentHostForTests(host.host)
     const id = await startWorker()
-    appendThreadEvent(id, { type: 'process', state: 'stopped', error: 'its sandbox runcastle-worker-x is gone' })
+    appendThreadEvent(id, { type: 'process', state: 'stopped', error: 'its agent stopped: connection lost' })
     await workerStopped(ctx, { id }, 'crashed')
     await workerStopped(ctx, { id }, 'crashed')
 
-    expect(getWorker(ctx, id)).toMatchObject({ status: 'failed', failure: 'its sandbox runcastle-worker-x is gone' })
+    expect(getWorker(ctx, id)).toMatchObject({ status: 'failed', failure: 'its agent stopped: connection lost' })
     const toLead = host.sent.filter((s) => s.threadId === lead)
     expect(toLead).toHaveLength(1)
-    expect(toLead[0]?.display).toEqual({ workerFailed: { workerId: id, label: 'Header', failure: 'its sandbox runcastle-worker-x is gone' } })
+    expect(toLead[0]?.display).toEqual({ workerFailed: { workerId: id, label: 'Header', failure: 'its agent stopped: connection lost' } })
     // The lead decides whether the human hears of it (needs-you decision 9).
     expect(needOf(ctx, feature)).toBeNull()
   })
 })
 
 describe('idle stop and wake', () => {
-  it('stops the sandbox on idle; a message restarts it and reloads the same conversation', async () => {
+  it('leaves a host worker’s folder alone on idle; a message starts its agent again and reloads the same conversation', async () => {
     const fake = createFakeAcp()
     const host = realHost(fake)
     const id = await startWorker()
     await until(() => turnEnded(id))
     const conversation = getSessionRow(ctx, id)!.ccSessionId
-    const container = getWorker(ctx, id)!.container!
+    const folder = folderOf(id)
 
     await host.stop(id, 'idle')
-    await until(() => engine.stopped.includes(container))
+    // Stopping the agent leaves the folder and the worker as they were.
+    expect(existsSync(folder)).toBe(true)
+    expect(getWorker(ctx, id)?.status).not.toBe('dropped')
 
     await host.prompt(id, { text: 'Make it taller' }, { source: 'human' })
     await until(() => readThreadEvents(id).filter((e) => e.type === 'turn_ended').length === 2)
-    expect(engine.woken.filter((c) => c === container)).toHaveLength(2)
     expect(fake.last().received[1]).toMatchObject({ method: 'session/load', params: { sessionId: conversation } })
-    expect(getSessionRow(ctx, id)!.ccSessionId).toBe(conversation)
-    await host.stopAll('shutdown')
-  })
-
-  it('asks inside the sandbox when a reload fails, and starts no new conversation over one still there', async () => {
-    const fake = createFakeAcp()
-    const host = realHost(fake)
-    const id = await startWorker()
-    await until(() => turnEnded(id))
-    const conversation = getSessionRow(ctx, id)!.ccSessionId!
-    await host.stop(id, 'idle')
-
-    // The host disk never holds a worker's transcript; the sandbox does.
-    engine.conversations.add(conversation)
-    fake.script.gone = true
-    await host.prompt(id, { text: 'Still there?' }, { source: 'human' })
-    await until(() => readThreadEvents(id).filter((e) => e.type === 'process' && e.state === 'stopped').length >= 2)
-    expect(fake.last().received.map((r) => r.method)).toEqual(['initialize', 'session/load'])
-    expect(foldThread(readThreadEvents(id)).items.at(-1)).toMatchObject({ kind: 'error', message: expect.stringContaining('would not reopen') })
     expect(getSessionRow(ctx, id)!.ccSessionId).toBe(conversation)
     await host.stopAll('shutdown')
   })
 })
 
 describe('a server restart', () => {
-  it('stops every worker sandbox the last server left running and removes a gone worker’s leftover, touching nothing else', async () => {
+  it('removes a dropped worker’s leftover own folder and keeps a working worker’s, touching nothing else', async () => {
     setAgentHostForTests(fakeHost().host)
-    const running = await startWorker('Header')
-    const asleep = await startWorker('Footer')
+    const inFeature = await startWorker('Header')
+    const working = await startWorker('Footer')
     const gone = await startWorker('Sidebar')
-    const containerOf = (id: string) => getWorker(ctx, id)!.container!
-    engine.held.set(containerOf(asleep), false)
+    expect(folderOf(inFeature)).not.toBe(folderOf(working))
     await toolDropWorker(ctx, leadSession(), { workerId: gone })
-    // A container the drop did not get, and another install's worker on the same engine.
-    engine.held.set(containerOf(gone), true)
-    engine.held.set('runcastle-worker-elsewhere', true)
-    engine.stopped.length = 0
-    engine.removed.length = 0
+    expect(existsSync(workerFolder(gone))).toBe(false)
+    // A folder the drop did not get, and one no worker row knows of.
+    mkdirSync(workerFolder(gone), { recursive: true })
+    writeFileSync(join(workerFolder(gone), 'leftover.txt'), 'x')
+    const orphan = join(workerFolder('sess_nobody'))
+    mkdirSync(orphan, { recursive: true })
 
-    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 1, removed: 1, failed: 0 })
-    expect(engine.stopped).toEqual([containerOf(running)])
-    expect(engine.removed).toEqual([containerOf(gone)])
-    expect(engine.held.get('runcastle-worker-elsewhere')).toBe(true)
-    expect(getWorker(ctx, running)?.status).toBe('working')
-    const stopped = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'worker.stopped')
-    expect(stopped.map((e) => (e.data as { workerId: string }).workerId)).toEqual([running])
-    const swept = listByProject(ctx, feature.projectId).filter((e) => e.type === 'cleanup.swept')
-    expect(swept.map((e) => e.message)).toEqual([expect.stringMatching(/^Removed 1 leftover container \(/)])
+    expect(await sweepLeftovers(ctx)).toMatchObject({ failed: 0 })
+    expect(existsSync(workerFolder(gone))).toBe(false)
+    expect(existsSync(orphan)).toBe(false)
+    expect(existsSync(folderOf(working))).toBe(true)
+    expect(existsSync(folderOf(inFeature))).toBe(true)
+    expect(getWorker(ctx, working)?.status).toBe('working')
 
     // A second boot finds nothing left to do.
-    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 0, removed: 0 })
+    expect(await sweepLeftovers(ctx)).toMatchObject({ removed: 0 })
   })
-
-  it('leaves a sandbox whose agent still runs (a hot reload kept it)', async () => {
-    const host = fakeHost()
-    setAgentHostForTests({ ...host.host, isRunning: () => true } as AgentHost)
-    const id = await startWorker()
-    expect(await sweepLeftovers(ctx)).toMatchObject({ stopped: 0, removed: 0 })
-    expect(engine.held.get(getWorker(ctx, id)!.container!)).toBe(true)
-  })
-
 })
 
 describe('declare_ready', () => {
@@ -508,9 +512,8 @@ describe('declare_ready', () => {
     const id = await startWorker('Header')
     await expect(toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).rejects.toThrow(/Header.*working/)
 
-    commitOn(repo, getWorker(ctx, id)!.branch!, 'header.txt', 'header\n', 'feat: header')
-    engine.handbacks.set(id, { summary: 'Done', at: Date.now() })
-    await workerTurnEnded(ctx, { id })
+    commitIn(folderOf(id), 'header.txt', 'header\n', 'feat: header')
+    await handBack(id)
     await expect(toolDeclareReady(ctx, leadSession(), { scenario: 'smoke' })).rejects.toThrow(/Header.*handed-back/)
 
     await toolLandWorker(ctx, leadSession(), { workerId: id })
@@ -519,38 +522,44 @@ describe('declare_ready', () => {
 })
 
 describe('cleanup', () => {
-  it('archiving the feature removes every worker’s container and branch and drops the open ones', async () => {
+  it('archiving the feature removes each own folder and branch, keeps the feature-folder worker’s commits, and drops the open ones', async () => {
     const host = fakeHost()
     setAgentHostForTests(host.host)
-    const id = await startWorker()
-    const { container, branch } = getWorker(ctx, id)!
+    const first = await startWorker('Header')
+    const second = await startWorker('Footer')
+    const { folder, branch } = getWorker(ctx, second)!
+    expect(branch).toMatch(/^runcastle\/worker\//)
+    expect(git(repo, 'branch', '--list', branch!)).not.toBe('')
+    commitIn(folderOf(first), 'header.txt', 'header\n', 'feat: header')
+
     await archiveFeature(ctx, feature.id)
-    expect(engine.removed).toEqual([container])
+    expect(existsSync(folder!)).toBe(false)
     expect(git(repo, 'branch', '--list', branch!)).toBe('')
-    expect(getWorker(ctx, id)).toMatchObject({ status: 'dropped' })
-    expect(host.stopped).toContain(id)
+    expect(git(repo, 'log', '--format=%s', feature.branch)).toContain('feat: header')
+    expect(getWorker(ctx, first)).toMatchObject({ status: 'dropped' })
+    expect(getWorker(ctx, second)).toMatchObject({ status: 'dropped' })
+    expect(host.stopped).toEqual(expect.arrayContaining([first, second]))
   })
 
-  it('deleting the feature removes the workers’ sandboxes and their rows', async () => {
+  it('deleting the feature removes the workers’ own folders and their rows', async () => {
     setAgentHostForTests(fakeHost().host)
-    const id = await startWorker()
-    const { container } = getWorker(ctx, id)!
+    const first = await startWorker('Header')
+    const second = await startWorker('Footer')
+    const folder = folderOf(second)
     await deleteFeature(ctx, feature.id)
-    expect(engine.removed).toEqual([container])
-    expect(getWorker(ctx, id)).toBeUndefined()
+    expect(existsSync(folder)).toBe(false)
+    expect(getWorker(ctx, first)).toBeUndefined()
+    expect(getWorker(ctx, second)).toBeUndefined()
   })
 
   it('merging the feature removes its workers, a landed one keeping its record', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker()
-    const { container } = getWorker(ctx, id)!
-    commitOn(repo, getWorker(ctx, id)!.branch!, 'header.txt', 'header\n', 'feat: header')
-    engine.handbacks.set(id, { summary: 'Done', at: Date.now() })
-    await workerTurnEnded(ctx, { id })
+    commitIn(folderOf(id), 'header.txt', 'header\n', 'feat: header')
+    await handBack(id)
     await toolLandWorker(ctx, leadSession(), { workerId: id })
 
     expect(await mergeFeatureFlow(ctx, feature.id)).toMatchObject({ ok: true })
-    expect(engine.removed).toEqual([container])
     expect(getWorker(ctx, id)?.status).toBe('landed')
   })
 
@@ -567,12 +576,12 @@ describe('cleanup', () => {
 describe('the preview through the design pass-through', () => {
   const PASS = 'http://127.0.0.1:4514'
 
-  it('is addressed by worker id, forwards to the worker’s published port, and wakes its sandbox but not its agent', async () => {
+  it('is addressed by worker id, forwards to the worker’s own port on this machine, and wakes nothing', async () => {
     const host = fakeHost()
     setAgentHostForTests(host.host)
     const id = await startWorker()
     const before = host.sent.length
-    const { container } = getWorker(ctx, id)!
+    const { previewPort } = getWorker(ctx, id)!
 
     const open = await designPassFetch(new Request(`${PASS}/__runcastle/open/worker/${id}?path=/`), () => undefined, workerPreviews(ctx))
     expect(open.status).toBe(302)
@@ -589,29 +598,41 @@ describe('the preview through the design pass-through', () => {
     } finally {
       fetchSpy.mockRestore()
     }
-    expect(forwarded).toEqual(['http://127.0.0.1:41001/index.html'])
-    expect(engine.woken).toEqual([container])
+    expect(forwarded).toEqual([`http://127.0.0.1:${previewPort}/index.html`])
     expect(host.sent).toHaveLength(before)
   })
 
-  it('stops the sandbox it woke once the preview goes unopened, and serves nothing for a dropped worker', async () => {
+  it('serves nothing for a dropped worker', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker()
-    const { container } = getWorker(ctx, id)!
-    await workerPreviews(ctx, 10).wake(id)
-    await until(() => engine.stopped.includes(container))
-
     await toolDropWorker(ctx, leadSession(), { workerId: id })
     expect(workerPreviews(ctx).url(id)).toBeUndefined()
   })
 
-  it('is on worker.list as the pass-through path once the worker has started its dev server', async () => {
+  it('serves nothing for a landed worker', async () => {
+    setAgentHostForTests(fakeHost().host)
+    const id = await startWorker()
+    writeHostHandback(id, 'Done.')
+    await workerTurnEnded(ctx, { id })
+    await toolLandWorker(ctx, leadSession(), { workerId: id })
+    expect(getWorker(ctx, id)!.status).toBe('landed')
+    expect(workerPreviews(ctx).url(id)).toBeUndefined()
+  })
+
+  it('is on worker.list as the pass-through path once something listens on the worker’s port', async () => {
     setAgentHostForTests(fakeHost().host)
     const id = await startWorker()
     const list = () => createCallerFactory(appRouter)(ctx).worker.list({ featureId: feature.id })
-    expect((await list())[0]).toMatchObject({ id, previewPath: null })
-    engine.devServers.add(id)
     await workerTurnEnded(ctx, { id })
+    expect((await list())[0]).toMatchObject({ id, previewPath: null })
+
+    const server: Server = createServer((socket) => socket.end())
+    await new Promise<void>((resolve) => server.listen(getWorker(ctx, id)!.previewPort!, '127.0.0.1', resolve))
+    try {
+      await workerTurnEnded(ctx, { id })
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
     expect((await list())[0]).toMatchObject({ id, previewPath: `/__runcastle/open/worker/${encodeURIComponent(id)}`, passPort: ctx.config.serverPort + 2 })
   })
 })

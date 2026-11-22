@@ -52,7 +52,12 @@ export interface PromptOptions {
   fast?: boolean
 }
 
-/** Why a thread's process stops. None of them is shown to the human as "ended". */
+/**
+ * Why a thread's process stops. None of them is shown to the human as "ended".
+ * `stalled` is a turn the watch killed for no progress; it is not the worker
+ * status `stalled` (a-worker-never-shows-working-with-nothing-running spec,
+ * "Naming"), and both keep their names.
+ */
 export type StopReason = 'idle' | 'shutdown' | 'archived' | 'crashed' | 'stalled'
 
 export interface AgentHost {

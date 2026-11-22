@@ -21,7 +21,6 @@ import type {
   ReviewWorkerMode,
   TicketKind,
   TicketStatus,
-  WorkerEngine,
   WorkerKind,
   WorkerOutcome,
   WorkerStartedBy,
@@ -53,13 +52,6 @@ export const projects = sqliteTable('projects', {
   // (config file / env / schema default); resolution is `project ?? global`.
   // Additive + nullable so the migration leaves existing projects inheriting.
   model: text('model'),
-  sandbox: text('sandbox'),
-  // The container image this project's burns and sessions run in. A project
-  // column rather than the global config alone because the toolchain a repo
-  // needs — a JDK, a Python, a Go — is a fact about that repo, and a machine
-  // -wide image cannot be right for two projects at once. Null inherits, and
-  // resolution runs through `resolveSandboxImage` for every consumer.
-  sandboxImage: text('sandbox_image'),
   // Multi-project (issue #43): a project is "open" while `closedAt` is null.
   // `project.close` sets it (hiding the project); re-`open` clears it. Additive
   // and nullable so the migration leaves existing (open) projects untouched.
@@ -440,9 +432,13 @@ export const workers = sqliteTable(
     startedBy: text('started_by').notNull().$type<WorkerStartedBy>(),
     status: text('status').notNull().$type<WorkerStatus>(),
     failure: text('failure'),
-    engine: text('engine').notNull().$type<WorkerEngine>(),
-    container: text('container'),
     branch: text('branch'),
+    /**
+     * Where a worker builds on the host (workers-build-in-the-feature-s-folder): the
+     * feature's own folder (then `branch` is null and it commits on `featureBranch`),
+     * or its own worktree on `branch`. Null for a container-era worker and the drive's.
+     */
+    folder: text('folder'),
     featureBranch: text('feature_branch').notNull(),
     previewPort: integer('preview_port'),
     devServer: integer('dev_server', { mode: 'boolean' }).notNull().default(false),

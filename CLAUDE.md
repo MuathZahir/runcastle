@@ -82,7 +82,7 @@ so typecheck + the UI work end-to-end before wave B lands.
 | `src/mcp/server.ts`               | B1 | 4 MCP tools, zod-validated (§6) — build-era count; the server registers **26** today, filtered per session kind so no session sees all of them |
 | `src/mcp/sent-memory.ts`          | — | per-session memory of what a conversation was already sent (stubs, chat read position); in-process, reset on SessionStart |
 | `src/services/runs.ts`            | A1 | frozen run and round history reads; `freezeStaleRuns` closes a run the old server left running |
-| `src/workers/*`                   | —  | the worker service, sandbox engine, review worker, burn-cache/image/guard (ADR-0019, ADR-0020) — where the retired `src/workflows/` burn engine's duties now live |
+| `src/workers/*`                   | —  | the worker service, host placement in the feature's folder, the review worker, the guard, and the one-off upgrade step that cleans up container leftovers (ADR-0019, ADR-0020, ADR-0023) — where the retired `src/workflows/` burn engine's duties now live |
 
 Other dir owners: `packages/skills` = A2 (§9); `apps/web` = A3 (§10).
 

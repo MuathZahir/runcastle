@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- FILL:title -->
+<title>Workers build in the feature's folder preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#04060b;--color-surface:#080c13;--color-surface-raised:#0e131e;--color-surface-hover:color-mix(in oklab, var(--color-text) 3%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 6%, transparent);--color-fill-card:var(--color-surface-hover);--color-fill-well:var(--color-surface-selected);--color-surface-inset:var(--color-canvas);
+  --color-border:#181f2d;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#293243;
+  --color-text:#eceef4;--color-text-secondary:#a9b1c1;--color-text-tertiary:#798294;--color-text-disabled:#424a5b;--color-icon:var(--color-text-tertiary);
+  --color-primary:#eceef4;--color-on-primary:var(--color-canvas);
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+  --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:color-mix(in oklab, var(--color-text) 3.5%, transparent);--color-surface-selected:color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#454f62;--color-text-tertiary:#677083;--color-text-disabled:#a4aab9;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#3a7ef0;--color-accent-text:#2361d4;--color-accent-subtle:#ecf2fe;
+    --color-success:#23955a;--color-warning:#c06e00;--color-danger:#df5050;--color-danger-subtle:#fdeeee;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a title, one line, the states its switcher holds, and the component file and design page it names (no button) */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.col{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;background:var(--color-surface-raised)}
+.col h3{margin-bottom:10px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.step{display:flex;gap:10px;align-items:flex-start;padding:6px 0;color:var(--color-text-secondary)}
+.step .n{font:500 11px/18px var(--font-mono);color:var(--color-text-tertiary);min-width:16px}
+.step.gone{text-decoration:line-through;color:var(--color-text-disabled)}
+.flow{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-top:12px}
+.box{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 12px;background:var(--color-surface-raised)}
+.box.q{border-left:2px solid var(--color-accent)}
+.box b{font-weight:500;color:var(--color-text)}
+.box p{color:var(--color-text-secondary);margin-top:4px}
+.arr{color:var(--color-text-tertiary);font-family:var(--font-mono);font-size:12px;text-align:center}
+.tbl{width:100%;border-collapse:collapse;margin-top:12px}
+.tbl th,.tbl td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--color-border-subtle);vertical-align:top}
+.tbl th{color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.tbl td{color:var(--color-text-secondary)}
+.who li{display:flex;gap:10px;align-items:baseline;min-height:28px;color:var(--color-text-secondary)}
+.who ul{margin:8px 0 0;padding:0;list-style:none}
+.who b{font-weight:500;color:var(--color-text);min-width:150px}
+.wline{padding:10px 14px;font:12px/18px var(--font-sans);color:var(--color-text-tertiary);border-top:1px solid var(--color-border-subtle)}
+.wline.old{text-decoration:line-through;color:var(--color-text-disabled)}
+@media (max-width:760px){.ba,.flow{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <!-- FILL:what -->
+  <h1>Workers build in the feature's folder</h1>
+  <p class="lede">Workers run on your machine in the feature's own folder, with no container, and the lead can build small things itself. Planned with nobody present; the epic settled the open decisions on 2026-11-21, and you can overturn any.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/workers-build-in-the-feature-s-folder/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <!-- FILL:show -->
+  <div class="sub">
+    <h3>A worker's life, before and after</h3>
+    <p class="hint">The container and the landing step go. The worker's commits are on the feature branch as it makes them. <a class="pin" data-d="1">1</a> <a class="pin" data-d="2">2</a></p>
+    <div class="ba">
+      <div class="col"><h3>Today</h3>
+        <div class="step"><span class="n">1</span>Start a Docker container, copy the project in, install</div>
+        <div class="step"><span class="n">2</span>Build on a private clone of the feature branch</div>
+        <div class="step"><span class="n">3</span>Hand back; the clone may be stale by now</div>
+        <div class="step"><span class="n">4</span>The lead lands it: fetch, merge, maybe conflict</div>
+        <div class="step"><span class="n">5</span>Container removed</div>
+      </div>
+      <div class="col"><h3>After</h3>
+        <div class="step"><span class="n">1</span>Start in the feature's folder, on your machine</div>
+        <div class="step"><span class="n">2</span>Commit straight onto the feature branch</div>
+        <div class="step"><span class="n">3</span>Hand back; its commits are already there</div>
+        <div class="step gone"><span class="n">4</span>No landing</div>
+        <div class="step gone"><span class="n">5</span>No container, no Docker needed</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Where a new worker builds</h3>
+    <p class="hint">Runcastle decides, not the lead, and the same rule holds when you start one with "+". <a class="pin" data-d="7">7</a></p>
+    <div class="flow">
+      <div class="box q"><b>Is another worker building in the feature's folder?</b></div>
+      <div class="arr">no →</div>
+      <div class="box"><b>Feature folder</b><p>On the feature branch. No landing. <a class="pin" data-d="2">2</a></p></div>
+      <div></div>
+      <div class="arr">yes →</div>
+      <div class="box"><b>Its own folder and branch</b><p>Merged back once the lead has run the project's checks in its folder and skimmed it. <a class="pin" data-d="3">3</a> <a class="pin" data-d="15">15</a></p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Sharing one folder</h3>
+    <p class="hint">What answers the brief's open questions about two agents in one folder.</p>
+    <table class="tbl">
+      <tr><th>Who</th><th>While a worker or review is in the folder</th></tr>
+      <tr><td>The lead</td><td>Leaves code alone and writes only its docs, by a rule in its skill; nothing refuses it <a class="pin" data-d="14">14</a></td></tr>
+      <tr><td>A worker you start with "+"</td><td>Gets its own folder and branch <a class="pin" data-d="7">7</a></td></tr>
+      <tr><td>The review</td><td>Starts only once every worker is landed or dropped; runs in the folder and edits no code <a class="pin" data-d="9">9</a></td></tr>
+      <tr><td>Dropping the worker</td><td>Its commits stay; the lead reverts them if unwanted <a class="pin" data-d="13">13</a></td></tr>
+    </table>
+  </div>
+
+  <div class="sub">
+    <h3>What a worker is refused</h3>
+    <p class="hint">Checks before each tool call are the only protection. A script can still reach outside the folder, and the docs say so. <a class="pin" data-d="5">5</a> <a class="pin" data-d="10">10</a> <a class="pin" data-d="11">11</a></p>
+    <table class="tbl">
+      <tr><th>Refused</th><th>Today</th><th>After</th></tr>
+      <tr><td>Editing a file outside its own folder</td><td>Inside the container only</td><td>Refused (temp folder allowed)</td></tr>
+      <tr><td>Deleting outside its folder, force push</td><td>Refused for every agent</td><td>Same</td></tr>
+      <tr><td>Any <span class="mono">git push</span></td><td>Pushed to a private clone</td><td>Refused</td></tr>
+      <tr><td>Rewriting history: reset --hard, rebase, amend, deleting branches</td><td>Inside the container only</td><td>Refused</td></tr>
+      <tr><td>Switching branch, <span class="mono">git stash</span></td><td>Inside the container only</td><td>Refused (the folder and the stash are shared)</td></tr>
+      <tr><td>Windows: PowerShell deletes, backslash paths</td><td>Not read</td><td>Read and tested, best effort</td></tr>
+    </table>
+  </div>
+
+  <div class="sub">
+    <h3>The one visible change: wording</h3>
+    <p class="hint">Under a worker's message box. No screen gains or loses a part, so nothing was designed.</p>
+<!-- screen:worker-where-line -->
+    <div class="screen">
+      <div class="wline old">Sandbox · its own branch off feature/faster-reviews</div>
+      <div class="wline">Feature folder · commits on feature/faster-reviews</div>
+      <div class="wline">Own folder · its own branch off feature/faster-reviews</div>
+    </div>
+<!-- /screen:worker-where-line -->
+  </div>
+
+  <div class="sub who">
+    <h3>Who builds what</h3>
+    <p class="hint">You asked features to build on their own, with no workers, to save memory and disk.</p>
+    <ul>
+      <li><b>The lead (me)</b>Builds it all in this folder: the worker placement and host launch, landing with checks, the guards, the wording, the lead's rules.</li>
+      <li><b>My subagents</b>Guard tests on Windows command forms and the worker service tests, in parallel; then a review of the diff.</li>
+      <li><b>The review</b>Run by my own subagents, not a Review worker, against the brief and the repo's standards; I fix what they find, run typecheck and the affected tests, then say ready.</li>
+      <li><b>Workers</b>None started.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <!-- FILL:later -->
+    <div><h3>Later</h3><ul>
+      <li><i class="dot"></i>Confining the lead's own edits to its folder</li>
+      <li><i class="dot"></i>A check that stops the lead editing code while a worker holds the folder (a rule for now)</li>
+    </ul></div>
+    <!-- FILL:not-this -->
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Deleting the sandbox code, images, settings page and Docker prerequisite ("Sandboxes are removed")</li>
+      <li><i class="dot"></i>How many workers run at once and the queue ("One number for how many build at once")</li>
+      <li><i class="dot"></i>The review's rules, docs shape, plan approval, involvement setting, autopilot</li>
+      <li><i class="dot"></i>The drive's two chats and the drive review</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <!-- FILL:hood -->
+      <table class="tbl">
+        <tr><th>Part</th><th>Change</th></tr>
+        <tr><td>Worker row</td><td>New folder column and a placement (feature-folder or own-folder); the container engine column stops being required. Old sandbox workers finish the old way.</td></tr>
+        <tr><td>Starting a worker</td><td>Build workers join the host path the drive workers and drive review already use: host briefing, host permissions, a real folder. An own-folder worker gets a new worktree cut from the feature branch's tip, and the project's setup command if one is set.</td></tr>
+        <tr><td>Handback</td><td>A feature-folder worker's commits come from the per-turn commit record the drive workers use. "Land" only marks it landed.</td></tr>
+        <tr><td>Landing an own-folder worker</td><td>The lead runs the checks in its folder first; landing merges through the feature's landing queue and removes the folder. Conflict handling unchanged.</td></tr>
+        <tr><td>Hook route</td><td>Workers get folder containment in place of the docs-only rule and a git command check modelled on the drive's checkout guard; the remote guard learns the worker's folder; the command splitter learns PowerShell and Windows paths.</td></tr>
+        <tr><td>Review</td><td>A review that does not drive the app runs on the host in the feature's folder, writing only its notes.</td></tr>
+        <tr><td>Words</td><td>The feature skill, worker tool descriptions, worker briefing, review template, guard refusals, web wording, and a plain risk statement in the README. CONTEXT.md lines are left for the orchestrator.</td></tr>
+        <tr><td>Tests</td><td>The hook route (allow or refuse per kind and folder, Windows forms) and the worker service against a temporary git repo.</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // <!-- FILL:D -->
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Workers run on the host, with no sandbox and no opt-in', 'Your words: why offer something the user will hate.'],
+    ["One worker builds in the feature's own folder, on the feature branch", 'The folder rule you agreed; no stale copy, no landing.'],
+    ['Parallel workers each get their own folder and branch, merged back on green checks and the lead\'s skim', 'The folder rule you agreed; one review of the whole feature at the end.'],
+    ['The lead builds small things itself', 'You agreed; the code already allows it, the rules and messages catch up.'],
+    ['Guards are the only protection, and the remaining risk is stated plainly', 'You accepted that a script can still reach outside the folder.'],
+    ['Parallel workers get work that does not share a port or database', 'Nothing separates them any more (ADR-0023).'],
+    ['The feature folder goes to the first worker; any other worker at the same time gets its own folder', 'One rule, nothing for the lead to get wrong, and "+" fits it.', 'by the epic'],
+    ["(Replaced by 14) A check refusing the lead's code edits while the folder is held", 'The epic chose a written rule instead.', 'assumed'],
+    ["The review runs in the feature's folder and does not edit code", 'No second install and no extra folder.', 'by the epic'],
+    ['A worker may not push, rewrite history or leave its branch', 'Your list, plus switching branch and stash, which would break the shared folder.', 'by the epic'],
+    ['The same guards on Windows, best effort, said plainly', 'Workers need guards wherever runcastle runs; promising more would be false.', 'by the epic'],
+    ['(Replaced by 15) Runcastle runs the checks before a merge-back', 'The epic kept runcastle language-agnostic.', 'assumed'],
+    ["Dropping a worker in the feature's folder keeps its commits", 'Undoing them would rewrite the branch history that decision 10 refuses.', 'by the epic'],
+    ["Sharing the feature's folder is a rule in the lead's skill, with no check", 'Less machinery; the clash is rare and a refusal would stop the lead building small things.', 'by the epic'],
+    ['The lead runs the checks before merging a parallel worker back', 'As today; runcastle need not know a project\'s check commands.', 'by the epic']
+  ]
+  // <!-- FILL:C -->
+  // check first, an automatically planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function reveal(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; reveal(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

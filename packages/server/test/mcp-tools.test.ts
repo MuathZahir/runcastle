@@ -385,7 +385,7 @@ describe('mcp tool registration by audience', () => {
     await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
     const tool = (await client.listTools()).tools.find((t) => t.name === 'start_review')
     // A bad pass is refused before the tool runs: an empty commit, no commands.
-    const bad = await client.callTool({ name: 'start_review', arguments: { checksPassed: { commit: '', commands: [] } } })
+    const bad = await client.callTool({ name: 'start_review', arguments: { mode: 'gates', checksPassed: { commit: '', commands: [] } } })
     await client.close()
     const props = (tool?.inputSchema.properties ?? {}) as Record<string, { description?: string; properties?: Record<string, unknown>; required?: string[] }>
     expect(tool?.inputSchema.required ?? []).not.toContain('checksPassed')
@@ -402,11 +402,27 @@ describe('mcp tool registration by audience', () => {
     const client = new Client({ name: 'start-review-sha-test', version: '1' })
     await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
     for (const commit of ['HEAD', 'feature/faster-cheaper-reviews', 'main~1', 'abc']) {
-      const res = await client.callTool({ name: 'start_review', arguments: { checksPassed: { commit, commands: ['bun run test'] } } })
+      const res = await client.callTool({ name: 'start_review', arguments: { mode: 'gates', checksPassed: { commit, commands: ['bun run test'] } } })
       expect(res.isError).toBe(true)
       expect(JSON.stringify(res.content)).toMatch(/commit SHA/)
     }
     await client.close()
+  })
+
+  it('start_review refuses a call with no mode: the lead picks drive or gates (read the diff)', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'start-review-mode-test', version: '1' })
+    await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
+    const tool = (await client.listTools()).tools.find((t) => t.name === 'start_review')
+    const res = await client.callTool({ name: 'start_review', arguments: {} })
+    await client.close()
+    expect(res.isError).toBe(true)
+    expect(JSON.stringify(res.content)).toMatch(/mode/)
+    expect(tool?.inputSchema.required).toContain('mode')
+    expect(tool?.description).toMatch(/a screen, a command’s output or options, an API’s responses, a library’s public functions/)
+    expect(tool?.description).toMatch(/For a project with no screen, driving is running the command or calling the API as its user would/)
+    expect(tool?.description).toMatch(/only after a large fix set/)
+    expect(tool?.description).not.toMatch(/After fixing defects/)
   })
 
   // Mapped ideation is retired (ADR-0012): its three tools are not registered at

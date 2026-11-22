@@ -33,27 +33,26 @@ describe('firstSetupStep', () => {
 
 describe('wizardSteps', () => {
   it('keeps the whole sequence on the rail, whichever step is showing', () => {
-    expect(wizardSteps('afk', ok).map((s) => s.key)).toEqual([
+    expect(wizardSteps('runtimes', ok).map((s) => s.key)).toEqual([
       'identity',
       'runtimes',
-      'afk',
       'project',
     ])
   })
 
-  // The bug this fixes: landing on AFK burns with "Git identity" listed first and
+  // The bug this fixes: landing on a later step with "Git identity" listed first and
   // never shown, so the user cannot tell whether it passed or needs attention.
   it('shows a step the host satisfied as passed, with what was detected', () => {
-    const rows = wizardSteps('afk', ok)
+    const rows = wizardSteps('runtimes', ok)
     expect(rows[0]?.state).toBe('passed')
     expect(rows[0]?.detected).toBe('detected from git config: Ada Lovelace <ada@example.com>')
-    expect(rows.find((s) => s.key === 'afk')?.state).toBe('current')
+    expect(rows.find((s) => s.key === 'runtimes')?.state).toBe('current')
   })
 
   // An unset probe's detail is a complaint ("commits would fail"), not a value —
   // a crossed step with nothing detected is just done.
   it('never dresses a missing identity up as a detected one', () => {
-    const [identity] = wizardSteps('afk', unset)
+    const [identity] = wizardSteps('runtimes', unset)
     expect(identity?.state).toBe('done')
     expect(identity?.detected).toBeUndefined()
   })
@@ -61,12 +60,11 @@ describe('wizardSteps', () => {
   it('claims nothing is passed on the step the user is being shown', () => {
     const rows = wizardSteps('identity', unset)
     expect(rows[0]?.detected).toBeUndefined()
-    expect(rows.map((s) => s.state)).toEqual(['current', 'todo', 'todo', 'todo'])
+    expect(rows.map((s) => s.state)).toEqual(['current', 'todo', 'todo'])
   })
 
   it('walks forward as the user advances', () => {
     expect(wizardSteps('project', unset).map((s) => s.state)).toEqual([
-      'done',
       'done',
       'done',
       'current',
@@ -96,12 +94,10 @@ describe('runtimeReadiness', () => {
   const claudeReady = [
     probe('claude-code', 'binary', 'ok'),
     probe('claude-code', 'auth', 'ok'),
-    probe('claude-code', 'afk-key', 'unset'),
   ]
   const codexMissing = [
     probe('codex', 'binary', 'missing', { fix: 'Install Codex: npm install -g @openai/codex' }),
     probe('codex', 'auth', 'missing'),
-    probe('codex', 'afk-key', 'unset'),
   ]
 
   it('shows both providers, whichever the host has', () => {
@@ -119,46 +115,33 @@ describe('runtimeReadiness', () => {
 
   it('counts a runtime ready for sessions once it is installed and logged in', () => {
     const [claude] = runtimeReadiness([...claudeReady, ...codexMissing])
-    expect(claude).toMatchObject({ installed: true, authed: true, afkReady: false, talkReady: true })
+    expect(claude).toMatchObject({ installed: true, authed: true, talkReady: true })
   })
 
-  // Claude Code's unattended token authenticates a session too — an operator who
-  // pasted one is not sent back to log in a second time.
-  it('accepts Claude Code’s AFK token in place of an interactive login', () => {
-    const [claude] = runtimeReadiness([
-      probe('claude-code', 'binary', 'ok'),
-      probe('claude-code', 'auth', 'unset'),
-      probe('claude-code', 'afk-key', 'ok'),
-    ])
-    expect(claude?.talkReady).toBe(true)
-  })
-
-  // Codex burns borrow the file `codex login` writes (decision 4), so the login
-  // is the AFK credential — being signed in makes Codex ready for both.
-  it('counts a signed-in Codex ready for sessions and for burns', () => {
+  it('counts a signed-in Codex ready for sessions', () => {
     const [, codex] = runtimeReadiness([
       probe('codex', 'binary', 'ok'),
       probe('codex', 'auth', 'ok'),
     ])
-    expect(codex).toMatchObject({ installed: true, authed: true, afkReady: true, talkReady: true })
+    expect(codex).toMatchObject({ installed: true, authed: true, talkReady: true })
   })
 
-  // The bug this prevents: the wizard calling Codex ready off a pasted key while
-  // the launcher, which wants the login file, refuses to spawn it.
-  it('never counts a key alone as a Codex login', () => {
-    const [, codex] = runtimeReadiness([
-      probe('codex', 'binary', 'ok'),
-      probe('codex', 'auth', 'unset'),
-      probe('codex', 'afk-key', 'ok'),
+  // sandboxes-are-removed: the unattended token is gone, so an older server's
+  // `afk-key` row makes nothing ready — only the interactive login does.
+  it('never counts a stray unattended-key probe as a login', () => {
+    const [claude] = runtimeReadiness([
+      { status: 'ok', detail: 'claude 2.1', runtime: 'claude-code', check: 'binary' },
+      { status: 'unset', detail: 'not signed in', runtime: 'claude-code', check: 'auth' },
+      { status: 'ok', detail: 'token set', runtime: 'claude-code', check: 'afk-key' },
     ])
-    expect(codex).toMatchObject({ authed: false, afkReady: false, talkReady: false })
+    expect(claude?.talkReady).toBe(false)
+    expect(claude).not.toHaveProperty('afkReady')
   })
 
   it('never calls an installed-but-unauthed runtime ready', () => {
     const [, codex] = runtimeReadiness([
       probe('codex', 'binary', 'ok'),
       probe('codex', 'auth', 'unset'),
-      probe('codex', 'afk-key', 'unset'),
     ])
     expect(codex?.installed).toBe(true)
     expect(codex?.talkReady).toBe(false)
@@ -184,10 +167,8 @@ describe('runtimeReadiness', () => {
     const cards = runtimeReadiness([
       probe('codex', 'binary', 'ok'),
       probe('codex', 'auth', 'ok'),
-      probe('codex', 'afk-key', 'unset'),
       probe('claude-code', 'binary', 'missing'),
       probe('claude-code', 'auth', 'missing'),
-      probe('claude-code', 'afk-key', 'unset'),
     ])
     expect(readyRuntimes(cards)).toEqual(['codex'])
   })
@@ -196,8 +177,7 @@ describe('runtimeReadiness', () => {
 describe('nextSetupStep', () => {
   it('walks the setup order and stops at the end', () => {
     expect(nextSetupStep('identity')).toBe('runtimes')
-    expect(nextSetupStep('runtimes')).toBe('afk')
-    expect(nextSetupStep('afk')).toBe('project')
+    expect(nextSetupStep('runtimes')).toBe('project')
     expect(nextSetupStep('project')).toBeUndefined()
   })
 })
@@ -209,8 +189,7 @@ describe('nextSetupStep', () => {
  */
 describe('prevSetupStep', () => {
   it('walks back down the setup order', () => {
-    expect(prevSetupStep('project', unset)).toBe('afk')
-    expect(prevSetupStep('afk', unset)).toBe('runtimes')
+    expect(prevSetupStep('project', unset)).toBe('runtimes')
     expect(prevSetupStep('runtimes', unset)).toBe('identity')
   })
 
@@ -222,8 +201,7 @@ describe('prevSetupStep', () => {
 
   it('never lands on an identity step the host passed for us', () => {
     expect(prevSetupStep('runtimes', ok)).toBeUndefined()
-    expect(prevSetupStep('afk', ok)).toBe('runtimes')
-    expect(prevSetupStep('project', ok)).toBe('afk')
+    expect(prevSetupStep('project', ok)).toBe('runtimes')
   })
 })
 

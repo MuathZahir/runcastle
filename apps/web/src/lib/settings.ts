@@ -37,13 +37,10 @@ import {
 export const FIELD_ENV_VAR: Record<string, string> = {
   serverPort: 'RUNCASTLE_SERVER_PORT',
   model: 'RUNCASTLE_MODEL',
-  sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
   sessionMcp: 'RUNCASTLE_SESSION_MCP',
   usageSignal: 'RUNCASTLE_USAGE_SIGNAL',
   carryOnAfterLimit: 'RUNCASTLE_CARRY_ON_AFTER_LIMIT',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
-  burnCpus: 'RUNCASTLE_BURN_CPUS',
-  burnGuard: 'RUNCASTLE_BURN_GUARD',
   setupCommand: 'RUNCASTLE_SETUP_COMMAND',
   verifyCommands: 'RUNCASTLE_VERIFY_COMMANDS',
   knownFailures: 'RUNCASTLE_KNOWN_FAILURES',
@@ -60,16 +57,17 @@ export const RUNTIME_LABEL: Record<AgentRuntime, string> = {
 // ---------------------------------------------------------------------------
 
 /**
- * The dialog's four task pages (decision 3). Cut by what the human came to do,
+ * The dialog's three task pages (decision 3). Cut by what the human came to do,
  * not by the config file's global/project split — that split is expressed inside
  * "This project" by a source chip, never by a page.
  */
-export type SettingsPage = 'general' | 'models' | 'sandboxes' | 'project'
+export type SettingsPage = 'general' | 'models' | 'project'
 
 /** A section within a page. */
 export type SettingsGroup =
   | 'server'
   | 'sessions'
+  | 'workers'
   | 'default'
   | 'width'
   | 'model'
@@ -78,15 +76,14 @@ export type SettingsGroup =
 
 /** Each page's groups in render order; `pageRows` sorts its rows by it. */
 const PAGE_GROUPS: Record<SettingsPage, readonly SettingsGroup[]> = {
-  general: ['server', 'sessions'],
+  general: ['server', 'sessions', 'workers'],
   models: ['default'],
-  sandboxes: ['width'],
   project: ['model', 'commands', 'chat'],
 }
 
 /**
- * Somewhere in settings: a page, and optionally a field (a setting key, or a
- * doctor probe id on the Burns checklist) to scroll to and highlight. Anything
+ * Somewhere in settings: a page, and optionally a field (a setting key) to
+ * scroll to and highlight. Anything
  * that points at settings — the titlebar, the palette, an error message — hands
  * one of these over so the human lands on the row rather than on the dialog.
  */
@@ -200,8 +197,8 @@ const STEP_META: readonly {
   // Sessions — you are in the terminal.
   { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature chat' },
   { step: 'project', label: 'Epic chat', group: 'sessions', description: 'The project-level chat' },
-  // Unattended — burns and scripted runs.
-  { step: 'implement', label: 'Implement', group: 'unattended', description: 'Works a ticket in the sandbox' },
+  // Unattended — workers and scripted runs.
+  { step: 'implement', label: 'Implement', group: 'unattended', description: 'The model a worker builds with' },
   { step: 'review', label: 'Review', group: 'unattended', description: 'The Review worker’s model' },
   // The step keeps its `prepare` key; preparation itself runs on the Orchestrator's model.
   { step: 'prepare', label: 'Drive chats', group: 'unattended', description: 'Scenario and drive-fix chats' },
@@ -241,7 +238,7 @@ interface FieldMeta {
   options?: string[]
   /**
    * Human wording for an option whose stored value is a config identifier.
-   * `noSandbox` and `inherit` are what the file holds; they are not what a
+   * `runcastleOnly` and `inherit` are what the file holds; they are not what a
    * dropdown should read out (findings F17.7).
    */
   optionLabels?: Record<string, string>
@@ -299,15 +296,6 @@ const FIELD_META: Record<string, FieldMeta> = {
     page: 'models',
     group: 'default',
   },
-  sandboxImage: {
-    label: 'Sandbox image',
-    tooltip:
-      'The Docker image chats and workers are sandboxed in. Leave blank to use sandcastle:runcastle, which the first worker builds if it is not there.',
-    control: 'text',
-    page: 'general',
-    group: 'sessions',
-    placeholder: 'sandcastle:runcastle',
-  },
   sessionMcp: {
     label: 'MCP servers in chats',
     tooltip:
@@ -341,32 +329,14 @@ const FIELD_META: Record<string, FieldMeta> = {
     searchTerms: ['usage', 'limit', 'reset', 'continue', 'carry on', 'resume', 'weekly'],
   },
   burnConcurrency: {
-    label: 'Agents working at once',
+    label: 'Workers and reviews at once',
     tooltip:
-      'Workers mid-turn at once across the machine (1–8). Each has its own container, sizing its install and test workers from the whole core count — lower it if suites die under load. A worker over the limit waits, queued, and starts by itself; one waiting for you or stopped counts for nothing.',
+      'How many workers and reviews may work at the same time, across all your projects (1–16). Past it, they wait in line and start by themselves, first come first served. Leads and the orchestrator never wait. A worker waiting for you counts for nothing. Lower it if the machine runs out of memory.',
     control: 'number',
-    page: 'sandboxes',
-    group: 'width',
-    unit: 'workers at once',
-  },
-  burnCpus: {
-    label: 'CPU limit per worker',
-    tooltip:
-      'CPU ceiling per worker sandbox (--cpus). Blank leaves it unconstrained. Roughly cores ÷ agents working at once keeps parallel workers from oversubscribing the machine.',
-    control: 'number',
-    page: 'sandboxes',
-    group: 'width',
-    placeholder: 'unlimited',
-    unit: 'cores · e.g. 4 on a 12-thread box at width 3',
-  },
-  burnGuard: {
-    label: 'Stop repeated full test runs',
-    tooltip:
-      "Inside a Claude Code worker's sandbox, refuse a second run of the whole test suite or the project's verify commands: the worker runs the tests for what it touched, and the lead runs the full checks. Off lets workers rerun the full suite as often as they like. Applies at a worker's next start or wake.",
-    control: 'switch',
-    page: 'sandboxes',
-    group: 'width',
-    searchTerms: ['guard', 'test', 'suite', 'verify', 'repeat', 'tokens'],
+    page: 'general',
+    group: 'workers',
+    unit: 'at once',
+    searchTerms: ['workers', 'reviews', 'concurrency', 'at once', 'queue', 'parallel', 'memory', 'limit'],
   },
   // The five keys with a global twin render ONCE, on "This project", where a
   // source chip says whether the value came from here or from the global
@@ -374,7 +344,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   setupCommand: {
     label: 'Setup',
     tooltip:
-      'Takes a clean checkout to a buildable state inside the worker sandbox — dependency install plus any codegen. Blank auto-detects from the lockfile.',
+      'Takes a clean checkout to a buildable state in a worker’s own folder — dependency install plus any codegen. Blank auto-detects from the lockfile.',
     control: 'text',
     page: 'project',
     group: 'commands',
@@ -488,12 +458,6 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
     page: 'project',
     group: 'model',
   },
-  sandboxImage: {
-    tooltip:
-      'The Docker image THIS project’s chats and workers are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
-    page: 'project',
-    group: 'model',
-  },
 }
 
 /**
@@ -503,7 +467,6 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
  */
 const TWIN_KEYS = new Set([
   'model',
-  'sandboxImage',
   'setupCommand',
   'verifyCommands',
   'knownFailures',
@@ -588,8 +551,6 @@ export interface SettingRow {
   ghostValue?: string
   /** Where this value came from, as a chip. Absent when there is nothing to say. */
   sourceChip?: SourceChip
-  /** A machine-wide value that can be removed outright, back to the default. */
-  clearable: boolean
   /** Who established a prepared value, and the evidence behind the chip. */
   provenanceChip?: ProvenanceChip
   /** A `select` may also accept a free-text model id (the Default-model combobox). */
@@ -636,9 +597,8 @@ export type FieldCommit = { value: string | number | null } | { error: string }
  * The value a settings field commits for what was typed into it.
  *
  * Numeric fields used to go through a bare `Number(trimmed)`, and `Number('')`
- * is `0`: blanking "CPU limit per burn" — the documented way to unconstrain it —
- * wrote a zero the server's `z.number().positive()` then rejected, and anything
- * non-numeric wrote `NaN`. A blank numeric field means "unset this"; anything
+ * is `0`: blanking a number to unset it wrote a zero the server's
+ * `z.number().positive()` then rejected, and anything non-numeric wrote `NaN`. A blank numeric field means "unset this"; anything
  * that is not a number is a question for the human, not a value to send.
  */
 export function fieldCommit(control: ControlKind, raw: string): FieldCommit {
@@ -661,25 +621,27 @@ function isModelKey(key: string): boolean {
 }
 
 /**
- * What the number counts, and — for `burnConcurrency` alone — the width this
- * machine would burn at while nothing is set.
+ * What the number counts, and — for `burnConcurrency` alone — the number this
+ * machine would use while nothing is set, with the memory it came from.
  *
- * That number is read off the field rather than recomputed: the web has no way
- * to count the host's cores, and the value the server sent for an unset field
- * already IS the default it resolved. Only worth saying while the field is
- * unset; once a width is chosen, the machine no longer decides.
+ * The default is read off the field rather than recomputed: the value the
+ * server sent for an unset field already IS the default it resolved. The memory
+ * figure is the view's `hostMemoryGb`, left out when the server did not send it.
+ * Only worth saying while the field is unset; once a number is chosen, the
+ * machine no longer decides.
  */
-function unitFor(field: SettingField, meta: FieldMeta): string | undefined {
+function unitFor(field: SettingField, meta: FieldMeta, hostMemoryGb?: number): string | undefined {
   if (meta.unit === undefined) return undefined
   if (field.key !== 'burnConcurrency' || field.source !== 'default') return meta.unit
-  return `${meta.unit} · default on this machine: ${toDisplay(field.value)}`
+  const from = hostMemoryGb !== undefined && hostMemoryGb > 0 ? `, from ${hostMemoryGb} GB of memory` : ''
+  return `${meta.unit} · default on this machine: ${toDisplay(field.value)}${from}`
 }
 
 /**
  * The inherited global value for an unset project-scope twin, or undefined.
  *
  * Burn concurrency is the one machine-wide field with a ghost of its own: while
- * nothing is set, the width comes from this host's core count, and showing it as
+ * nothing is set, the number comes from this host's memory, and showing it as
  * a value would read as a choice someone made (spec §Burns).
  *
  * `env` is excluded deliberately: an env-locked field is not inheriting the
@@ -694,25 +656,6 @@ function ghostValueFor(field: SettingField): string | undefined {
   if (!TWIN_KEYS.has(field.key)) return undefined
   if (field.source !== 'file' && field.source !== 'default') return undefined
   return toDisplay(field.value) || undefined
-}
-
-/**
- * The machine-wide keys a `Clear` link is offered for — the server's own
- * `GLOBAL_CLEARABLE_KEYS`, which is `sandboxImage` alone. Blanking the control
- * is not the same affordance: a text field commits `''`, which the server
- * refuses, so without this the doctor's "clear the sandbox image setting" named
- * a remedy nothing on this surface could perform.
- */
-const GLOBAL_CLEARABLE_KEYS = new Set(['sandboxImage'])
-
-/**
- * Whether this row offers a `Clear` link. Only at global scope, only for a value
- * that is really SET (`file`): a schema default has nothing to remove, an
- * env-locked field cannot be written at all, and a project-scope row clears
- * through `Use global` instead.
- */
-function isClearable(field: SettingField): boolean {
-  return field.scope === 'global' && field.source === 'file' && GLOBAL_CLEARABLE_KEYS.has(field.key)
 }
 
 /** Which of the three chips a row shows for where its value came from. */
@@ -764,13 +707,14 @@ export function describeField(
   field: SettingField,
   finding?: FindingLike,
   roster: readonly ModelEntry[] = CURATED_MODELS,
+  options: { hostMemoryGb?: number } = {},
 ): SettingRow {
   const meta = metaFor(field.key, field.scope)
   const isModel = isModelKey(field.key)
   const readOnly = !field.editable
   const overridden = field.source === 'project'
 
-  const unit = unitFor(field, meta)
+  const unit = unitFor(field, meta, options.hostMemoryGb)
   const ghostValue = ghostValueFor(field)
   const sourceChip = sourceChipFor(field)
   // A deliberate none (the-orchestrator-prepares-the-project decision 2): a
@@ -816,7 +760,6 @@ export function describeField(
     ...(ghostValue ? { ghostValue } : {}),
     // A none was decided for this project; a Global chip would say it was inherited.
     ...(sourceChip && !none ? { sourceChip } : {}),
-    clearable: isClearable(field),
     ...(finding ? { provenanceChip: provenanceChipFor(finding) } : {}),
     ...(finding?.evidence ? { evidence: finding.evidence } : {}),
     stale: finding ? isStale(finding) : false,
@@ -827,11 +770,18 @@ export function describeField(
 }
 
 /**
- * Settings the server still reports that govern nothing a human runs any more
- * (burns-become-workers decision 18): the sandbox on/off switch. It renders
- * nowhere.
+ * Settings an older server may still report that govern nothing a human runs
+ * any more: the sandbox on/off switch (burns-become-workers decision 18) and the
+ * container settings that went with the sandboxes (sandboxes-are-removed). They
+ * render nowhere.
  */
-const RETIRED_KEYS: ReadonlySet<string> = new Set(['sandbox'])
+const RETIRED_KEYS: ReadonlySet<string> = new Set([
+  'sandbox',
+  'sandboxImage',
+  'burnCpus',
+  'burnGuard',
+  'burnCache',
+])
 
 /** A field that renders as a row — not a per-step model, not the roster itself, not a retired setting. */
 function isRowKey(key: string): boolean {
@@ -841,7 +791,7 @@ function isRowKey(key: string): boolean {
 /**
  * The rows of one page, in group order.
  *
- * `general` and `sandboxes` are machine-wide and read the GLOBAL view; `project`
+ * `general` is machine-wide and reads the GLOBAL view; `project`
  * reads the project-scoped view and takes exactly the fields a project can
  * override. `models` has no rows — it renders the roster and per-step tables.
  */
@@ -860,7 +810,7 @@ export function pageRows(
         ? f.scope === 'project'
         : f.scope !== 'project' && metaFor(f.key).page === page
     })
-    .map((f) => describeField(f, byKey.get(f.key), roster))
+    .map((f) => describeField(f, byKey.get(f.key), roster, { hostMemoryGb: view.hostMemoryGb }))
     .sort(
       (a, b) =>
         groups.indexOf(a.group) - groups.indexOf(b.group) ||
@@ -1251,7 +1201,7 @@ export function filterSettings(
   query: string,
   items: readonly SearchableSetting[],
 ): SettingsFilter {
-  const counts: Record<SettingsPage, number> = { general: 0, models: 0, sandboxes: 0, project: 0 }
+  const counts: Record<SettingsPage, number> = { general: 0, models: 0, project: 0 }
   const needle = query.trim().toLowerCase()
   if (needle === '') return { counts, matches: new Set(items.map((i) => i.id)) }
 
@@ -1262,45 +1212,4 @@ export function filterSettings(
     counts[item.page] += 1
   }
   return { counts, matches }
-}
-
-/**
- * The settings location an error message points at, so "Settings → Sandboxes
- * (Rebuild image)" can be a link that lands on the image row instead of an
- * instruction to go looking. Both the doctor's stale-image detail and the
- * burner's missing-binary message carry that wording.
- */
-export function settingsLocationFromMessage(text: string): SettingsLocation | null {
-  return SETTINGS_POINTER.test(text) ? { page: 'sandboxes', field: 'sandcastle-image' } : null
-}
-
-/**
- * "Settings → Sandboxes", or any of the page's older names — a message stored
- * before a rename still points at the same row.
- */
-const SETTINGS_POINTER = /Settings\s*→\s*(?:Sandboxes|Workers|AFK burns|Burns)/i
-
-/** A message split around the settings pointer inside it, ready to render. */
-export interface SettingsMention {
-  before: string
-  /** The phrase itself — this is what becomes the link. */
-  phrase: string
-  after: string
-  location: SettingsLocation
-}
-
-/**
- * Where the pointer sits in a message, so the phrase can be a link and the rest
- * of the sentence stays prose. `null` when the message points nowhere.
- */
-export function settingsMention(text: string): SettingsMention | null {
-  const match = SETTINGS_POINTER.exec(text)
-  const location = settingsLocationFromMessage(text)
-  if (!match || !location) return null
-  return {
-    before: text.slice(0, match.index),
-    phrase: match[0],
-    after: text.slice(match.index + match[0].length),
-    location,
-  }
 }

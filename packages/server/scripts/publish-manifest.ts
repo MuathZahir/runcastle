@@ -63,7 +63,6 @@ export const PUBLISHED_FILES = [
   'drizzle',
   'skills',
   'web',
-  'sandcastle-template',
 ] as const
 
 /**

@@ -113,4 +113,44 @@ describe('lead guard', () => {
     expect(verdict('git push origin main')?.reason).toMatch(/main.*human/s)
     expect(verdict('git push origin main', 'Edit')).toBeNull()
   })
+
+  /** Decision 11 of workers-build-in-the-feature-s-folder: PowerShell's statement forms and Windows paths. */
+  it('splits PowerShell statements, continuations and escapes', () => {
+    for (const cmd of [
+      'git status; git push origin main',
+      'git status\r\ngit push origin main',
+      'git fetch && git push origin main',
+      'git fetch || git push origin main',
+      'git log | Select-Object -First 1; git push origin main',
+      'git status `\n; git push origin main',
+      'if ($ok) { git push origin main }',
+    ]) expect(verdict(cmd, 'PowerShell'), cmd).not.toBeNull()
+    for (const cmd of [
+      'git commit -m "push `"main`""',
+      'git commit -m x`; git push origin main',
+      "git commit -F - @'\ngit push origin main\n'@",
+    ]) expect(verdict(cmd, 'PowerShell'), cmd).toBeNull()
+  })
+
+  it('joins a bash line continuation', () => {
+    expect(verdict('git push \\\n  origin main')).not.toBeNull()
+  })
+
+  it('compares Windows folders in any case', () => {
+    const win = (command: string) =>
+      evaluateLeadGuard({
+        toolName: 'PowerShell',
+        command,
+        worktreePath: 'C:\\Users\\u\\.runcastle\\worktrees\\p1\\dark-mode',
+        mainCheckout: 'C:\\code\\app',
+        worktreesDir: 'C:\\Users\\u\\.runcastle\\worktrees\\p1',
+        featureBranch: 'feature/dark-mode',
+        baseBranch: 'main',
+        platform: 'win32',
+      })
+    expect(win('git -C c:\\users\\U\\.runcastle\\worktrees\\P1\\dark-mode status')).toBeNull()
+    expect(win('git log runcastle/worker/w1 --oneline; git diff feature/dark-mode...runcastle/worker/w1')).toBeNull()
+    expect(win('git -C c:\\CODE\\app status')).not.toBeNull()
+    expect(win('Set-Location ..\\other; git status')).not.toBeNull()
+  })
 })

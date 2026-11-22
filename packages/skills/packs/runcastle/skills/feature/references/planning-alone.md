@@ -14,7 +14,7 @@ left open.
 
 **What, where and who come first.** Check them against the brief: only the
 request it quotes and its `## Decided with the human` section count. If any is
-open, stop there: write no decisions, spec, designs or plan. Your closing
+open, stop there: write no decisions, build notes, designs or plan. Your closing
 message says which is open and asks each in full, numbered, with your
 recommendation and the real options the survey found, then call
 `wait_for_you` with a label such as `why: "what, where or who is open"`. When the answers arrive,
@@ -22,8 +22,8 @@ record them as the human's (no mark) and finish the plan as below.
 
 **Decide as you would recommend.** Where you would ask the human, take the
 answer you would recommend and record it at once with `**Assumed.**` and its
-main alternative (`./decisions-and-spec.md`). Record only decisions the human
-must see; build detail goes to the spec.
+main alternative (`./feature-file.md`). Record only decisions the human
+must see; build detail goes to the build notes.
 
 **Below `everything`** (`./involvement.md`) no decision is the human's, an open
 what, where or who included: decide it, mark it `**Decided without you.**`
@@ -31,12 +31,12 @@ instead of `**Assumed.**`, and build on in this run.
 
 **Check first.** Pick at most five decisions for the human to look at first:
 guesses about their intent, and decisions that force several others. Write
-their numbers in `decisions.md`'s `Check first:` line, and in the plan page's
+their numbers in the `Check first:` line under `## Decisions`, and in the plan page's
 `C` list if you draw one.
 
-**Plan, then build only when nothing is the human's.** Write the docs
-(`decisions.md`, `spec.md`, and `preview.html` only when a picture helps:
-`./preview.md`) and, where the feature reshapes screens, design them (below).
+**Plan, then build only when nothing is the human's.** Write the feature
+file's decisions and build notes (and `preview.html` only when a picture
+helps: `./preview.md`) and, where the feature reshapes screens, design them (below).
 While any decision is marked `**Assumed.**` or any design waits, write no other
 code and call neither `start_worker` nor `start_review`.
 
@@ -50,11 +50,11 @@ finds when back; never call `show_panel`.
 ## Designing alone
 
 Design only when the feature **adds a screen or changes a screen's layout**. A
-small visual change (a colour, a label, one control) is described in the spec
-and your closing message instead. Never design a screen whose what, where or who you guessed.
+small visual change (a colour, a label, one control) is described in the build
+notes and your closing message instead. Never design a screen whose what, where or who you guessed.
 
-- **When:** once the decisions are recorded and before the spec, so the spec can
-  name the designed components.
+- **When:** once the decisions are recorded and before the build notes, so
+  they can name the designed components.
 - **How:** as `./design.md` says: one design page per screen, its states on a
   switcher, sample data, real components, the project's design docs. Design
   against the feature's base branch, never another feature's worktree. If a
@@ -77,7 +77,7 @@ and your closing message instead. Never design a screen whose what, where or who
 
 ## The end
 
-1. Write `spec.md`, choose the workers you would start (label, purpose, kind;
+1. Write the build notes, choose the workers you would start (label, purpose, kind;
    for a small feature, usually you alone), and commit the docs. If you drew a
    plan page, run its self-check (`./preview.md`) and show it with `show_file`.
 2. **With nothing of the human's open** (no `**Assumed.**` decision, no design

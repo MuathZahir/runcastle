@@ -25,7 +25,7 @@ import type { SettingsPageProps } from './types'
 
 /** The three sections, in render order, with the heading each one carries. */
 const GROUPS: readonly { group: SettingsGroup; title: string }[] = [
-  { group: 'model', title: 'Model & sandbox' },
+  { group: 'model', title: 'Model' },
   { group: 'commands', title: 'Commands' },
   { group: 'chat', title: 'Epics' },
 ]

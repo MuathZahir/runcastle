@@ -3,6 +3,7 @@ import {
   DEFAULT_RUNTIME,
   foldThread,
   lastHumanAt,
+  lastTurnAnsweredHuman,
   newestNeed,
   type Need,
   outsideCompactions,
@@ -230,6 +231,35 @@ export function leadState(ctx: AppCtx, featureId: string): LeadState {
     }
   }
   return newest?.state ?? NO_LEAD
+}
+
+/**
+ * Whether a turn of the thread actually runs now (runcastle-says-when-nothing-is-running):
+ * its process is up and its log says a turn or its background work runs. A
+ * thread with no process never runs, whatever its log was cut off at.
+ */
+export function threadBusy(ctx: AppCtx, threadId: string): boolean {
+  if (!agentHost(ctx).isRunning(threadId)) return false
+  if (!hasThreadLog(threadId)) return true
+  const activity = threadActivity(foldedLog(threadId).events, true, Date.now())
+  return activity === 'turn' || activity === 'background'
+}
+
+/**
+ * Whether the feature's lead last answered the human's own message (its newest
+ * main chat with a log, as {@link leadState} picks it): then the next move is
+ * the human's (runcastle-says-when-nothing-is-running decision 4).
+ */
+export function leadAnsweredHuman(ctx: AppCtx, featureId: string): boolean {
+  let newest: { at: number; answered: boolean } | null = null
+  for (const row of featureSessions(ctx, featureId, ['chat'])) {
+    if (!hasThreadLog(row.id)) continue
+    const { events } = foldedLog(row.id)
+    const at = outsideCompactions(events).at(-1)?.at ?? row.createdAt ?? 0
+    if (newest && newest.at >= at) continue
+    newest = { at, answered: lastTurnAnsweredHuman(events) }
+  }
+  return newest?.answered ?? false
 }
 
 /**

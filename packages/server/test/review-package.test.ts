@@ -131,6 +131,46 @@ describe('review package', () => {
       ])
     })
 
+    it('reads them from brief.md’s ## Decisions when the feature has no decisions.md', async () => {
+      const g = simpleGit(project.repoPath)
+      await g.init(['-b', 'main'])
+      await g.addConfig('user.email', 'test@runcastle.dev')
+      await g.addConfig('user.name', 'Runcastle Test')
+      writeFileSync(join(project.repoPath, 'README.md'), 'base\n')
+      await g.add(['README.md'])
+      await g.commit('initial commit')
+      await g.checkoutLocalBranch(feature.branch)
+      const docs = join(project.repoPath, 'docs', 'features', feature.slug)
+      mkdirSync(docs, { recursive: true })
+      writeFileSync(
+        join(docs, 'brief.md'),
+        [
+          '## Purpose',
+          '',
+          'A demo.',
+          '',
+          '## Decisions',
+          '',
+          '### 1. One setting',
+          '**Decision:** asked.',
+          '',
+          '### 2. Blue buttons',
+          '**Decision:** blue.',
+          `**Why:** fits. ${DECIDED_WITHOUT_YOU_MARK}`,
+          '',
+          '## Build notes',
+          '',
+          'Short.',
+        ].join('\n'),
+      )
+      await g.add(['docs'])
+      await g.commit('docs: brief')
+      await g.checkout('main')
+
+      const pack = await reviewPackage(ctx, ticketPass(ctx, pass), feature, project.repoPath)
+      expect(pack.decidedWithoutYou).toEqual([{ n: 2, title: 'Blue buttons' }])
+    })
+
     it('lists nothing decided without the human when the branch has no decisions.md', async () => {
       expect((await reviewPackage(ctx, ticketPass(ctx, pass), feature, project.repoPath)).decidedWithoutYou).toEqual([])
     })

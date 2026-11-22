@@ -43,24 +43,13 @@ describe('README for strangers', () => {
     expect(README).toContain('bun run dev')
   })
 
-  it('has an unmissable Docker Desktop licensing callout that links pricing without hardcoding numbers', () => {
-    expect(README).toMatch(/docker desktop/i)
-    expect(README).toMatch(/licens/i)
-    expect(README).toMatch(/docker\.com\/pricing/i)
-    // Link the pricing page; never hardcode the thresholds (they have moved twice).
-    expect(README).not.toMatch(/250 employees/i)
-    expect(README).not.toMatch(/\$10 ?M|10 million/i)
-  })
-
-  it('documents the Podman alternative and the Windows floor', () => {
-    expect(README).toMatch(/podman/i)
-    // Windows Docker floor: 10 22H2 + WSL2/Hyper-V.
-    expect(README).toMatch(/22H2/)
-    expect(README).toMatch(/WSL2|Hyper-V/i)
+  it('needs no container runtime, and says plainly what protects you instead', () => {
+    expect(README).not.toMatch(/docker|podman/i)
+    expect(README).toMatch(/Workers run on your machine/)
+    expect(README).toMatch(/still reach outside its folder/)
   })
 
   it('covers the troubleshooting notes the setup path can hit', () => {
-    expect(README).toMatch(/WSL[^\n]*bind[- ]?mount|bind[- ]?mount[^\n]*WSL/i)
     expect(README).toMatch(/embedded terminal will not start/i)
   })
 

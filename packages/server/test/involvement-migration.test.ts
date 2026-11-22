@@ -15,12 +15,12 @@ const DRIZZLE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle
 function beforeInvolvementDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'runcastle-involvement-migrate-'))
   for (const file of readdirSync(DRIZZLE_DIR)) {
-    if (file.endsWith('.sql') && file < '0076') copyFileSync(join(DRIZZLE_DIR, file), join(dir, file))
+    if (file.endsWith('.sql') && file < '0078') copyFileSync(join(DRIZZLE_DIR, file), join(dir, file))
   }
   return dir
 }
 
-describe('involvement migration (0076, how-involved-am-i)', () => {
+describe('involvement migration (0078, how-involved-am-i)', () => {
   it('gives every existing feature "Involve me in: Everything"', async () => {
     const SQL = await initSqlJs()
     const db = drizzle(new SQL.Database(), { schema }) as unknown as Db

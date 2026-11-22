@@ -1,8 +1,9 @@
 import { homedir, tmpdir } from 'node:os'
-import { basename, resolve } from 'node:path'
+import { basename } from 'node:path'
 import type { EditDenial } from './edit-guard'
+import { type PathFlavor, pathApi, samePath, within } from './guard-paths'
 import { SHELL_TOOLS } from './install-guard'
-import { CD_VERBS, commandsOf, isGit, VALUE_OPTIONS, within } from './lead-guard'
+import { CD_VERBS, commandsOf, dialectOf, isGit, type ShellDialect, VALUE_OPTIONS } from './lead-guard'
 
 /**
  * The remote guard (`agents-never-stop-for-approval` decisions 8 and 9): a
@@ -24,8 +25,11 @@ import { CD_VERBS, commandsOf, isGit, VALUE_OPTIONS, within } from './lead-guard
  *   folder, and any extra folder the session owns, are inside.
  *
  * Like the lead guard, what it cannot read (a target in a variable, a command
- * built at run time) is allowed: a guard must never wedge a session. It reads
- * through `sudo`/`env`-style wrappers and a `bash -c` / `pwsh -Command` script.
+ * built at run time, a path piped into `Remove-Item`) is allowed: a guard must
+ * never wedge a session. It reads through `sudo`/`env`-style wrappers and a
+ * `bash -c` / `pwsh -Command` script, and reads Windows paths — drive letters,
+ * backslashes, Git Bash's `/c/…`, any case — on a Windows host
+ * (workers-build-in-the-feature-s-folder decision 11).
  */
 export interface RemoteGuardInput {
   /** `tool_name` from the hook payload; only the shell tools are read. */
@@ -46,20 +50,32 @@ export interface RemoteGuardInput {
   home?: string
   /** The temp folders deletes may run in; the OS's and `/tmp` by default. */
   tempFolders?: string[]
+  /**
+   * Runcastle's data folder. It holds other sessions' folders, so a path inside
+   * it never counts as temp, even when the data folder itself sits in one.
+   */
+  dataDir?: string
+  /** The path rules to read targets by; the host's by default. */
+  platform?: PathFlavor
 }
 
 /** Evaluate one tool call; `null` means the guard has no objection. */
 export function evaluateRemoteGuard(input: RemoteGuardInput): EditDenial | null {
   if (!input.toolName || !(SHELL_TOOLS as readonly string[]).includes(input.toolName)) return null
   if (!input.command) return null
+  const flavor = input.platform ?? (process.platform === 'win32' ? 'win32' : 'posix')
+  const { resolve } = pathApi(flavor)
   const ctx: Ctx = {
+    flavor,
     root: resolve(input.worktreePath),
     home: input.home ?? homedir(),
-    owned: [...(input.ownFolders ?? []), ...(input.tempFolders ?? [tmpdir(), '/tmp'])].map((p) => resolve(p)),
+    owned: (input.ownFolders ?? []).map((p) => resolve(p)),
+    temps: (input.tempFolders ?? [tmpdir(), '/tmp']).map((p) => resolve(p)),
+    ...(input.dataDir ? { dataDir: resolve(input.dataDir) } : {}),
   }
   // `${HOME}`'s braces would read as a group to the shell split.
   const start = input.cwd ? resolve(input.cwd) : ctx.root
-  const why = evaluateScript(ctx, input.command.replace(/\$\{HOME\}/g, '$HOME'), start, 0)
+  const why = evaluateScript(ctx, input.command.replace(/\$\{HOME\}/g, '$HOME'), dialectOf(input.toolName), start, 0)
   return why ? { reason: `${why} ${FOOTER}` } : null
 }
 
@@ -69,19 +85,23 @@ const FOOTER =
   'tell the human what and why, so they can run it themselves.'
 
 interface Ctx {
+  flavor: PathFlavor
   root: string
   home: string
-  /** Folders a delete may run inside (not on): temp and the session's own extras. */
+  /** Folders a delete may run inside (not on): the session's own extras. */
   owned: string[]
+  /** Temp folders a delete may run inside, except within `dataDir`. */
+  temps: string[]
+  dataDir?: string
 }
 
 /** How deep `bash -c` scripts are read inside one another. */
 const MAX_DEPTH = 3
 
 /** The first refused act in a shell script, run from `cwd` (undefined once it is unknowable). */
-function evaluateScript(ctx: Ctx, script: string, start: string | undefined, depth: number): string | null {
+function evaluateScript(ctx: Ctx, script: string, dialect: ShellDialect, start: string | undefined, depth: number): string | null {
   let cwd = start
-  for (const raw of commandsOf(script)) {
+  for (const raw of commandsOf(script, dialect)) {
     const words = unwrap(raw)
     const [verb, ...args] = words
     if (!verb) continue
@@ -95,7 +115,7 @@ function evaluateScript(ctx: Ctx, script: string, start: string | undefined, dep
     const nested = nestedScript(name, args)
     if (nested !== undefined) {
       if (depth >= MAX_DEPTH) continue
-      const why = evaluateScript(ctx, nested, cwd, depth + 1)
+      const why = evaluateScript(ctx, nested.script, nested.dialect, cwd, depth + 1)
       if (why) return why
       continue
     }
@@ -106,7 +126,7 @@ function evaluateScript(ctx: Ctx, script: string, start: string | undefined, dep
 }
 
 /** `rm`, `Remove-Item`, `rmdir.exe` → lower-case name with no folder or `.exe`. */
-function commandName(verb: string): string {
+export function commandName(verb: string): string {
   return basename(verb.replace(/\\/g, '/')).toLowerCase().replace(/\.exe$/, '')
 }
 
@@ -124,7 +144,7 @@ const WRAPPERS: Record<string, Set<string>> = {
 }
 
 /** The command a wrapper runs: `sudo -u x env A=1 rm -rf y` → `rm -rf y`. */
-function unwrap(words: string[]): string[] {
+export function unwrap(words: string[]): string[] {
   let rest = words
   for (;;) {
     const first = rest[0]
@@ -141,20 +161,28 @@ function unwrap(words: string[]): string[] {
   }
 }
 
-/** The script a shell is handed to run: `bash -c '…'`, `pwsh -Command '…'`, `cmd /c …`, `eval …`. */
-function nestedScript(name: string, args: string[]): string | undefined {
-  if (name === 'eval') return args.join(' ')
+/**
+ * The script a shell is handed to run, and its dialect: `bash -c '…'`,
+ * `pwsh -Command '…'`, `cmd /c …`, `eval …` (`iex` in PowerShell).
+ */
+export function nestedScript(name: string, args: string[]): { script: string; dialect: ShellDialect } | undefined {
+  if (name === 'eval') return { script: args.join(' '), dialect: 'bash' }
+  if (name === 'iex' || name === 'invoke-expression') {
+    const i = args.findIndex((a) => /^-command$/i.test(a))
+    return { script: args.slice(i + 1).join(' '), dialect: 'powershell' }
+  }
   if (['bash', 'sh', 'zsh', 'dash', 'ksh'].includes(name)) {
     const i = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a))
-    return i < 0 ? undefined : args[i + 1]
+    const script = i < 0 ? undefined : args[i + 1]
+    return script === undefined ? undefined : { script, dialect: 'bash' }
   }
   if (name === 'pwsh' || name === 'powershell') {
     const i = args.findIndex((a) => /^-c(o(m(m(a(n(d)?)?)?)?)?)?$/i.test(a))
-    return i < 0 ? undefined : args.slice(i + 1).join(' ')
+    return i < 0 ? undefined : { script: args.slice(i + 1).join(' '), dialect: 'powershell' }
   }
   if (name === 'cmd') {
     const i = args.findIndex((a) => /^\/[ck]$/i.test(a))
-    return i < 0 ? undefined : args.slice(i + 1).join(' ')
+    return i < 0 ? undefined : { script: args.slice(i + 1).join(' '), dialect: 'bash' }
   }
   return undefined
 }
@@ -230,7 +258,7 @@ const DELETERS = new Set(['rm', 'remove-item', 'ri', 'del', 'erase', 'rd', 'rmdi
 const CMD_DELETERS = new Set(['rd', 'rmdir', 'del', 'erase'])
 
 /** PowerShell `Remove-Item` options whose value is not a target. */
-const PS_VALUE_OPTIONS = /^-(filter|include|exclude|credential|stream)$/i
+const PS_VALUE_OPTIONS = /^-(filter|include|exclude|credential|stream|erroraction|ea|warningaction|wa)$/i
 
 function evaluateDelete(ctx: Ctx, cwd: string | undefined, name: string, args: string[]): string | null {
   let targets: string[]
@@ -249,6 +277,8 @@ function evaluateDelete(ctx: Ctx, cwd: string | undefined, name: string, args: s
       else if (a === '--') positional = true
       else if (PS_VALUE_OPTIONS.test(a)) i++
     }
+    // PowerShell takes several paths as one comma-separated array: `Remove-Item a,b -Recurse`.
+    targets = targets.flatMap((t) => t.split(',')).filter((t) => t !== '')
   } else {
     return null
   }
@@ -256,9 +286,13 @@ function evaluateDelete(ctx: Ctx, cwd: string | undefined, name: string, args: s
     const path = at(ctx, cwd, target)
     if (path === undefined) continue
     // `find .` deletes what matches inside the folder, never the folder.
-    if (path === ctx.root && name !== 'find') return `A recursive delete of the session's own folder (${path}) is refused.`
-    if (within(ctx.root, path)) continue
-    if (ctx.owned.some((dir) => within(dir, path) && resolve(dir) !== path)) continue
+    if (samePath(path, ctx.root, ctx.flavor) && name !== 'find') {
+      return `A recursive delete of the session's own folder (${path}) is refused.`
+    }
+    if (within(ctx.root, path, ctx.flavor)) continue
+    const inside = (dir: string) => within(dir, path, ctx.flavor) && !samePath(dir, path, ctx.flavor)
+    if (ctx.owned.some(inside)) continue
+    if (ctx.temps.some(inside) && !(ctx.dataDir && within(ctx.dataDir, path, ctx.flavor))) continue
     return `A recursive delete outside the session's folder (${path}) is refused.`
   }
   return null
@@ -282,11 +316,14 @@ function isRecursive(args: string[]): boolean {
  */
 function at(ctx: Ctx, cwd: string | undefined, target: string): string | undefined {
   // A backslash is a separator in the PowerShell and cmd spellings; read it as one everywhere.
-  const expanded = target
+  let expanded = target
     .replace(/\\/g, '/')
-    .replace(/^~(?=$|\/)/, ctx.home)
-    .replace(/^(\$HOME|\$env:HOME|\$env:USERPROFILE|%USERPROFILE%|%HOMEPATH%)(?=$|\/)/i, ctx.home)
+    .replace(/^~(?=$|\/)/, ctx.home.replace(/\\/g, '/'))
+    .replace(/^(\$HOME|\$env:HOME|\$env:USERPROFILE|%USERPROFILE%|%HOMEPATH%)(?=$|\/)/i, ctx.home.replace(/\\/g, '/'))
   if (/[$`%]/.test(expanded)) return undefined
+  // Git Bash spells `C:\x` as `/c/x`; a bare `C:` is that drive's root here, not a folder on it.
+  if (ctx.flavor === 'win32') expanded = expanded.replace(/^\/([A-Za-z])(\/|$)/, '$1:/').replace(/^([A-Za-z]:)$/, '$1/')
+  const { resolve } = pathApi(ctx.flavor)
   const absolute = /^(\/|[A-Za-z]:\/)/.test(expanded)
   if (!absolute && cwd === undefined) return undefined
   return absolute ? resolve(expanded) : resolve(cwd as string, expanded)

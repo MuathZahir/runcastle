@@ -11,7 +11,6 @@ import { pathFor } from '../lib/routes'
 import { useLivePoll, useLiveStatus } from '../lib/live'
 import { clampSidebarWidth } from '../lib/sidebar-width'
 import { shortcut } from '../lib/platform'
-import { SANDBOX_MODE } from '../lib/env'
 import { notifyButton, type NotifyState } from '../lib/notifications'
 import { useDesktopNotifications } from '../lib/use-notifications'
 import { useTheme } from '../lib/theme'
@@ -112,6 +111,8 @@ export interface SidebarProps {
   /** The feature test drive this shell started, or null. */
   driving?: DriveState | null
   onDriveChange?: (d: DriveState | null) => void
+  /** The machine's line of workers (a `WorkQueue`), in the foot under the drives; nothing while none work or wait. */
+  queue?: ReactNode
 }
 
 /**
@@ -673,7 +674,6 @@ export interface SidebarFootState {
   health: FrameHealth
   /** The origin the API calls go to, for the health tooltip. */
   origin: string
-  sandbox: string
   /** `null` when the browser has no Notification API to toggle. */
   notify: { state: NotifyState; title: string; onToggle: () => void } | null
   theme: 'dark' | 'light'
@@ -685,6 +685,8 @@ export interface SidebarFootState {
   onOpenPhoneSetup?: () => void
   /** Rows above the status line (live drives). */
   rows?: ReactNode
+  /** The machine's line of workers (a `WorkQueue`), between the rows and the status line. */
+  queue?: ReactNode
 }
 
 /**
@@ -696,7 +698,6 @@ export interface SidebarFootState {
 export function SidebarFootChrome({
   health,
   origin,
-  sandbox,
   notify,
   theme,
   onToggleTheme,
@@ -704,6 +705,7 @@ export function SidebarFootChrome({
   onOpenGlossary,
   onOpenPhoneSetup,
   rows,
+  queue,
 }: SidebarFootState) {
   const healthTip =
     health === 'ok'
@@ -716,10 +718,10 @@ export function SidebarFootChrome({
   return (
     <div className="flex shrink-0 flex-col gap-2 pt-2">
       {rows}
+      {queue}
       <SidebarStatusLine
         healthTone={HEALTH_TONE[health]}
         healthTip={healthTip}
-        sandbox={sandbox}
         notify={notify}
         theme={theme}
         onToggleTheme={onToggleTheme}
@@ -747,6 +749,7 @@ function SidebarFoot({
   onOpenWorkerChat,
   driving = null,
   onDriveChange,
+  queue,
 }: SidebarProps) {
   const toast = useToast()
   const openGlossary = useOpenGlossary()
@@ -800,7 +803,6 @@ function SidebarFoot({
         list.isError ? 'down' : !healthy ? 'connecting' : live === 'live' ? 'ok' : live === 'connecting' ? 'connecting' : 'reconnecting'
       }
       origin={apiOrigin()}
-      sandbox={SANDBOX_MODE}
       notify={notify.supported ? { ...notifyState, onToggle: notify.toggle } : null}
       theme={theme.resolved}
       onToggleTheme={theme.toggle}
@@ -808,6 +810,7 @@ function SidebarFoot({
       onOpenGlossary={openGlossary ? () => openGlossary() : undefined}
       onOpenPhoneSetup={onOpenPhoneSetup}
       rows={rows}
+      queue={queue}
     />
   )
 }

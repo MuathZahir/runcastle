@@ -20,7 +20,7 @@ export const SESSION_WAITING = 'session.waiting'
 export const SESSION_WAIT_CLEARED = 'session.wait_cleared'
 
 /** What cleared a wait (decision 7). */
-export type WaitEnd = 'human' | 'answered' | 'stopped' | 'withdrawn' | 'closed' | 'autopilot'
+export type WaitEnd = 'human' | 'answered' | 'stopped' | 'withdrawn' | 'closed' | 'autopilot' | 'resumed'
 
 const WAIT_END_WORDS: Record<WaitEnd, string> = {
   human: 'the human wrote in the chat',
@@ -29,6 +29,7 @@ const WAIT_END_WORDS: Record<WaitEnd, string> = {
   withdrawn: 'the agent withdrew it',
   closed: 'the work was closed',
   autopilot: 'the feature went on autopilot: its epic answers now',
+  resumed: 'work started again',
 }
 
 type WaitColumns = { waitWhy: string | null; waitSince: number | null; waitBy: NeedBy | null }

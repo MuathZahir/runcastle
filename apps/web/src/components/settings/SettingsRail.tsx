@@ -1,11 +1,11 @@
 import type { RefObject } from 'react'
 import type { SettingsPage } from '../../lib/settings'
-import { IconCube, IconFolder, IconSettings, IconShield } from '../../icons'
+import { IconCube, IconFolder, IconSettings } from '../../icons'
 import { NavItem, SearchField } from '../../ui'
 import type { FilterState } from './types'
 
 /**
- * The dialog's left rail: the filter box, the four task pages, and the project
+ * The dialog's left rail: the filter box, the three task pages, and the project
  * the bottom page belongs to.
  *
  * The pages are cut by what someone came to do, not by the config file's
@@ -19,7 +19,6 @@ export const SETTINGS_PAGES: readonly {
 }[] = [
   { page: 'general', label: 'General', Icon: IconSettings },
   { page: 'models', label: 'Models', Icon: IconCube },
-  { page: 'sandboxes', label: 'Sandboxes', Icon: IconShield },
   { page: 'project', label: 'This project', Icon: IconFolder },
 ]
 

@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { DEFAULT_RUNTIME, type Feature } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
@@ -29,7 +29,10 @@ export interface MainChatExcerpt {
   quote: string | null
   /** The main chat's transcript on disk, when it has one. */
   transcriptPath: string | null
-  /** Absolute path of the feature's `decisions.md` in the main chat's worktree. */
+  /**
+   * Absolute path, in the main chat's worktree, of the file holding the
+   * feature's decisions: `brief.md`, or an older feature's `decisions.md`.
+   */
   decisionsPath: string | null
 }
 
@@ -83,8 +86,10 @@ export function mainChatTurns(ctx: AppCtx, feature: Feature): MainChatTurns {
     .at(-1)
   if (!chat) return { turns: [], transcriptPath: null, decisionsPath: null }
   const runtime = chat.runtime ?? DEFAULT_RUNTIME
-  const decisionsPath = chat.worktreePath
-    ? join(chat.worktreePath, featureDocsRel(feature.slug), 'decisions.md')
+  const docsDir = chat.worktreePath ? join(chat.worktreePath, featureDocsRel(feature.slug)) : null
+  // An older feature keeps its decisions in decisions.md; a one-file one, in brief.md.
+  const decisionsPath = docsDir
+    ? existsSync(join(docsDir, 'decisions.md')) ? join(docsDir, 'decisions.md') : join(docsDir, 'brief.md')
     : null
   const transcript = readTranscript(chat.transcriptPath, runtime)
   const kickoffs = [kickoffLineFor('chat', undefined, runtime), selfPlanKickoffFor(runtime)]
@@ -141,7 +146,7 @@ export function mainChatContext(
   }
   const paths = [
     transcriptPath ? `the main chat's full transcript: ${transcriptPath}` : null,
-    decisionsPath ? `decisions.md: ${decisionsPath}` : null,
+    decisionsPath ? `the decisions, in ${basename(decisionsPath)}: ${decisionsPath}` : null,
   ].filter(Boolean)
   const pathLine =
     paths.length > 0 ? `\nTo read further back, only when the human's ask needs more — ${paths.join('; ')}.` : ''

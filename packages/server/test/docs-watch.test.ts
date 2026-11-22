@@ -8,9 +8,10 @@ import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { launchSession } from '../src/launcher/launcher'
 import { claudeRuntime } from '../src/launcher/runtimes/claude'
-import { markSessionEnded } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
+import { reviveIfRunning } from '../src/threads/revive'
 import type { AgentHost } from '../src/threads/types'
 import { createFakeAcp, FAKE_LAUNCH } from './support/fake-acp-agent'
 import { createFeatureBranch } from '../src/services/git'
@@ -183,6 +184,26 @@ describe('docs watcher', () => {
     await sleep(SETTLE_MS)
 
     expect(docsEvents()).toHaveLength(0)
+  })
+
+  /**
+   * A stale signal's end stopped the watch; the conversation kept running. Its
+   * next turn revives the row and watches its docs again
+   * (the-orchestrator-is-never-locked-out decision 2).
+   */
+  it('watches again when a turn revives a chat runcastle still runs', () => {
+    const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: docsDir })
+    const worker = createSessionRow(ctx, { featureId: feature.id, kind: 'worker', worktreePath: docsDir })
+    for (const row of [chat, worker]) markSessionEnded(ctx, row.id)
+    setAgentHostForTests({ isRunning: () => true } as unknown as AgentHost)
+    try {
+      reviveIfRunning(ctx, getSessionRow(ctx, worker.id)!, 'turn')
+      expect(docsWatchCount()).toBe(0)
+      reviveIfRunning(ctx, getSessionRow(ctx, chat.id)!, 'turn')
+      expect(docsWatchCount()).toBe(1)
+    } finally {
+      setAgentHostForTests(undefined)
+    }
   })
 })
 

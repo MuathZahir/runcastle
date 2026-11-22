@@ -317,11 +317,8 @@ export function SettingRow({
     write(commit.value)
   }
 
-  // One null write, two labels, because clearing is the same act in both scopes:
-  // at project scope it drops the override and the row goes back to showing the
-  // global as a ghost ("Use global", decision 7 — no OVERRIDDEN badge); at
-  // global scope it removes the machine-wide value and the field falls back to
-  // its default ("Clear").
+  // At project scope a null write drops the override and the row goes back to
+  // showing the global as a ghost ("Use global", decision 7 — no OVERRIDDEN badge).
   const clear = () => write(null)
 
   // Scoped, because most keys appear in both the global and the project view.
@@ -334,7 +331,7 @@ export function SettingRow({
   const describedBy =
     cx(descriptionId, row.shortHelp ? helpId : null, invalid ? errorId : null) || undefined
 
-  const hasMeta = row.sourceChip || row.clearable || row.provenanceChip
+  const hasMeta = row.sourceChip || row.provenanceChip
   return (
     <SettingLine
       rowRef={rowRef}
@@ -383,15 +380,6 @@ export function SettingRow({
               {row.sourceChip === 'project' && (
                 <Button variant="ghost" size="sm" onClick={clear} className="-ml-1.5">
                   Use global
-                </Button>
-              )}
-              {/* The machine-wide twin of "Use global": a set global value has
-                  no chip to hang a link off, and blanking the control commits ''
-                  rather than removing anything — so without this the way back to
-                  the default was unreachable from the UI that recommends it. */}
-              {row.clearable && (
-                <Button variant="ghost" size="sm" onClick={clear} className="-ml-1.5">
-                  Clear
                 </Button>
               )}
               {row.provenanceChip && (
@@ -539,7 +527,7 @@ function RowControl({
                 </SelectGroup>
               ))
             : row.options.map((opt) => (
-                // The stored value is a config identifier ("noSandbox",
+                // The stored value is a config identifier ("runcastleOnly",
                 // "inherit"); the dropdown reads out what it means.
                 <SelectItem key={opt} value={opt}>
                   {row.optionLabels[opt] ?? opt}

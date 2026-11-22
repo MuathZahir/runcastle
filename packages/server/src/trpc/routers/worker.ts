@@ -1,16 +1,15 @@
-import type { Need, WorkerRow } from '@runcastle/core'
+import { workerPlacement } from '@runcastle/core'
+import type { Need, WorkerPlacement, WorkerRow } from '@runcastle/core'
 import * as z from 'zod'
 import type { AppCtx } from '../../db/types'
-import { askWorkerToHandBack, listLiveWorkers, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, startUnassignedWorker } from '../../workers/service'
+import { askWorkerToHandBack, listLiveWorkers, listProjectWorkers, listWorkers, locateWorker, queueHoldOf, queuePlaceOf, startUnassignedWorker, turnRunning, workQueue } from '../../workers/service'
 import { workerPreviewPath } from '../../routes/design-pass-paths'
 import { phoneDesignPort } from '../../services/phone-link'
 import { publicProcedure, router } from '../context'
 import { threadNeed } from '../../threads/read'
-import { agentHost } from '../../threads/types'
-import { getSessionRow } from '../../launcher/sessions'
 
-/** A worker as the web lists it: its row, its preview's entry path and port, and any account hold it waits behind. */
-type ListedWorker = WorkerRow & { previewPath: string | null; passPort: number; heldBy: string | null; need: Need | null; turnRunning: boolean }
+/** A worker as the web lists it: its row, its preview's entry path and port, any account hold it waits behind, and its place in line. */
+type ListedWorker = WorkerRow & { previewPath: string | null; passPort: number; heldBy: string | null; queuePlace: number | null; placement: WorkerPlacement | null; need: Need | null; turnRunning: boolean }
 
 function listed(ctx: AppCtx, w: WorkerRow): ListedWorker {
   return {
@@ -18,9 +17,11 @@ function listed(ctx: AppCtx, w: WorkerRow): ListedWorker {
     previewPath: w.previewPort !== null && w.devServer ? workerPreviewPath(w.id) : null,
     passPort: phoneDesignPort(ctx.config),
     heldBy: queueHoldOf(ctx, w),
+    queuePlace: queuePlaceOf(ctx, w.id),
+    placement: workerPlacement(w),
     need: threadNeed(ctx, w),
     // A worker `working` by status with no turn running reads Idle (needs-you decision 6).
-    turnRunning: agentHost(ctx).isRunning(w.id) && getSessionRow(ctx, w.id)?.awaitingInput === false,
+    turnRunning: turnRunning(ctx, w.id),
   }
 }
 
@@ -59,6 +60,13 @@ export const workerRouter = router({
   listLive: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }): ListedWorker[] => listLiveWorkers(ctx, input.projectId).map((w) => listed(ctx, w))),
+
+  /**
+   * The machine's line-up under its one limit of workers and reviews at once,
+   * across every project: who works, then who waits, in order
+   * (one-number-for-how-many-build-at-once decisions 3, 8 and 9).
+   */
+  queue: publicProcedure.query(({ ctx }) => workQueue(ctx)),
 
   /**
    * A worker's feature (id and slug), so a `worker:<id>` link in a chat can

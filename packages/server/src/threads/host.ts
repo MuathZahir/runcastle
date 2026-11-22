@@ -90,7 +90,7 @@ import { elicitationAsk, formContent, formLines, unsupportedLine } from './elici
 import { permissionAnswer } from './permission-policy'
 import { forgetWorktreeFiles } from './files'
 import { saveThreadImage } from './images'
-import { withWorkers, workerStallBounds, workerTurnSlot } from '../workers/service'
+import { workerStallBounds, workerTurnSlot } from '../workers/service'
 import { acpLaunchFor, resolvedThreadModel } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { assignEpicColor } from './epic-look'
@@ -125,18 +125,6 @@ export interface AgentProcess {
    * take to quit when asked before it is forced.
    */
   kill(opts?: { graceMs?: number }): Promise<void>
-  /**
-   * How the session opens, when the process runs somewhere the row's own paths
-   * do not exist (a worker's sandbox, workers spike decision 2): its cwd, MCP
-   * servers, session options and permission mode, in place of the launch's.
-   */
-  session?: { cwd: string; mcpServers: acp.McpServer[]; meta?: Record<string, unknown>; mode?: string }
-  /**
-   * Whether the runtime's record of a conversation is where this process runs,
-   * for a process whose disk is not the host's (a worker's sandbox): asked in
-   * place of {@link AgentHostDeps.conversationOnDisk}.
-   */
-  conversationOnDisk?: (conversationId: string) => Promise<boolean>
   /** The permission mode the session runs in: told as it opens, and each time the agent reports a change. */
   onMode?: (modeId: string) => void
 }
@@ -172,9 +160,10 @@ export interface AgentHostDeps {
    * The slot a thread's turn must hold to run, under the machine's limit of
    * agents working at once (interactive-workers decision 14): resolves, maybe
    * later, with the slot's release, which the host calls as the turn ends.
-   * Undefined for a thread that needs none.
+   * Undefined for a thread that needs none. `withdraw` aborts when the turn
+   * ends before its slot comes (a cancel, a stop): it leaves the line then.
    */
-  turnSlot?: (row: SessionRow) => Promise<() => void> | undefined
+  turnSlot?: (row: SessionRow, withdraw: AbortSignal) => Promise<() => void> | undefined
   /**
    * The bounds a thread's prompted turn is watched with (burns-become-workers
    * decision 9), undefined for a thread nobody watches: a turn silent past
@@ -224,6 +213,8 @@ export interface TurnEnding {
   subagents?: boolean
   /** The account's usage limit stopped it, however it ended: the chat is held for the reset, and the turn failed at nothing of its own. */
   usageLimit?: boolean
+  /** A prompt already waits to run next: the thread is not done, whatever this turn left. */
+  queued?: boolean
 }
 
 /** How long a watched turn may show no progress ({@link AgentHostDeps.stallBounds}). */
@@ -436,7 +427,7 @@ export function autoCompactCommand(runtime: AgentRuntime, slug: string | undefin
     'Keep in the summary: what you are waiting on (the human, a round, a drive, a review);',
     "the human's latest words, and anything agreed with them but not yet written down;",
     'the work in progress and its uncommitted files.',
-    `Every settled decision is already in ${docs} (decisions.md, spec.md), so the summary need not repeat them.`,
+    `Every settled decision is already in ${docs} (brief.md; an older feature's decisions.md and spec.md), so the summary need not repeat them.`,
     'After this compaction, your first move is to call the runcastle MCP tool get_feature_context before acting.',
   ].join(' ')
 }
@@ -546,6 +537,8 @@ interface Turn {
   release?: () => void
   /** The prompt of a turn still waiting for its slot: the agent has not heard it yet. */
   waiting?: Queued
+  /** Takes a turn still waiting for its slot out of the line. */
+  withdraw?: AbortController
   /** The stall watch on a prompted turn ({@link AgentHostDeps.stallBounds}). */
   watch?: StallWatch
 }
@@ -570,6 +563,7 @@ function endWatch(turn: Turn | null | undefined): void {
 /** Give back a turn's slot, once, and end its stall watch. */
 function releaseSlot(turn: Turn | null | undefined): void {
   endWatch(turn)
+  turn?.withdraw?.abort()
   const release = turn?.release
   if (!turn || !release) return
   delete turn.release
@@ -982,7 +976,6 @@ class Host implements AgentHost {
       const pending = readPendingFork(t.id)
       writePendingFork(t.id, { ...pending, preface: pending.preface !== undefined ? `${PLANNING_HALTED_PREFACE}\n\n${pending.preface}` : PLANNING_HALTED_PREFACE })
     }
-    appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
     this.ended(t, reason)
   }
 
@@ -1385,9 +1378,7 @@ class Host implements AgentHost {
       clientInfo: { name: 'runcastle', version: runcastleVersion() },
     })
     t.steering = (init._meta?.steering as { supported?: unknown } | undefined)?.supported === true
-    const session: acp.NewSessionRequest = proc.session
-      ? { cwd: proc.session.cwd, mcpServers: proc.session.mcpServers, _meta: proc.session.meta ?? spec.sessionMeta }
-      : { cwd: row.worktreePath, mcpServers: [], _meta: spec.sessionMeta }
+    const session: acp.NewSessionRequest = { cwd: row.worktreePath, mcpServers: [], _meta: spec.sessionMeta }
     let opened: acp.NewSessionResponse | acp.LoadSessionResponse | acp.ForkSessionResponse
     const fork = readPendingFork(t.id).open
     if (fork && fork !== 'fresh') {
@@ -1408,9 +1399,7 @@ class Host implements AgentHost {
       } catch (err) {
         if (!saysConversationGone(err)) throw err
         // Said gone but still on disk: the CLI failed to reopen it, and a new conversation would bury it.
-        const onDisk = proc.conversationOnDisk
-          ? await proc.conversationOnDisk(row.ccSessionId).catch(() => true)
-          : this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)
+        const onDisk = this.conversationOnDisk(row.runtime ?? DEFAULT_RUNTIME, row.ccSessionId)
         if (onDisk) {
           console.error(`thread ${t.id}: conversation ${row.ccSessionId} is on disk but did not reopen`, err)
           throw new Error(NOT_REOPENED)
@@ -1424,7 +1413,7 @@ class Host implements AgentHost {
       t.sessionId = created.sessionId
       opened = created
     }
-    const mode = proc.session?.mode ?? spec.sessionMode
+    const mode = spec.sessionMode
     t.modeId = opened.modes?.currentModeId
     if (mode && opened.modes && opened.modes.currentModeId !== mode && opened.modes.availableModes.some((m) => m.id === mode)) {
       // Taken as set unless the agent reports another while it sets it (a mode it falls back from, `onUpdate`).
@@ -1503,8 +1492,7 @@ class Host implements AgentHost {
     if (t.state === 'stopped') return
     this.detach(t)
     await this.endProcess(t)
-    appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: failedStartText(err) })
-    this.ended(t, 'crashed')
+    this.ended(t, 'crashed', failedStartText(err))
   }
 
   private crashed(t: Thread, stderr: string): void {
@@ -1513,8 +1501,7 @@ class Host implements AgentHost {
     // The adapter is gone, but what it started may not be.
     void this.endProcess(t)
     this.keepStderr(t.id, stderr)
-    appendThreadEvent(t.id, { type: 'process', state: 'stopped', error: crashText(stderr) })
-    this.ended(t, 'crashed')
+    this.ended(t, 'crashed', crashText(stderr))
   }
 
   /** A dead process's stderr, for whoever debugs it: appended to the session dir's log, never the thread. */
@@ -1530,10 +1517,28 @@ class Host implements AgentHost {
     }
   }
 
-  /** The row's process is over: mark it so, and let the lifecycle react. */
-  private ended(t: Thread, reason: StopReason): void {
+  /**
+   * The row's process is over: say so on the thread, mark the row ended, and
+   * let the lifecycle react. Nothing at all when the session was superseded.
+   */
+  private ended(t: Thread, reason: StopReason, error?: string): void {
+    if (this.superseded(t)) return
+    appendThreadEvent(t.id, { type: 'process', state: 'stopped', ...(error !== undefined ? { error } : {}) })
     const row = markSessionEnded(this.ctx, t.id)
     if (row) this.hook(() => this.lifecycle.stopped?.(row, reason, t.startedBy))
+  }
+
+  /**
+   * Whether a newer process of `t`'s session already runs: a stop that finishes
+   * after a prompt started the conversation again. Such a stop is over for the
+   * old process only. It neither ends the row, says the session stopped, nor
+   * runs the stop's cleanup (a worker's folder, a lead's drive, a project
+   * session's landing), all of which belong to the process that replaced it
+   * (the-orchestrator-is-never-locked-out decision 1).
+   */
+  private superseded(t: Thread): boolean {
+    const current = this.threads.get(t.id)
+    return current !== undefined && current !== t
   }
 
   /** Run a lifecycle hook; one that throws is logged, never the thread's failure. */
@@ -1828,7 +1833,8 @@ class Host implements AgentHost {
     t.turn = turn
     // A turn over the limit of agents working at once waits here for a slot, its prompt logged.
     const slotRow = getSessionRow(this.ctx, t.id)
-    const slot = slotRow ? this.turnSlot(slotRow) : undefined
+    turn.withdraw = new AbortController()
+    const slot = slotRow ? this.turnSlot(slotRow, turn.withdraw.signal) : undefined
     if (slot) {
       turn.waiting = item
       turn.release = await slot
@@ -1896,6 +1902,7 @@ class Host implements AgentHost {
         ...(end.error !== undefined ? { error: end.error } : {}),
         ...backgroundOf(t),
         ...(limited ? { usageLimit: true } : {}),
+        ...(t.queue.length ? { queued: true } : {}),
       }
       this.hook(() => this.lifecycle.turnEnded?.(row, item.source, ending))
     }
@@ -1984,6 +1991,8 @@ class Host implements AgentHost {
     if (turn.quiet) clearTimeout(turn.quiet)
     const files = await this.turnFiles(t, turn)
     appendThreadEvent(t.id, { type: 'turn_ended', reason: 'error', error, ...(files.length ? { files } : {}) })
+    // A prompt already started the conversation again: its retry is done, and the rest is the new process's.
+    if (this.superseded(t)) return
     appendThreadEvent(t.id, { type: 'process', state: 'stopped' })
     const row = markSessionEnded(this.ctx, t.id)
     if (!row) return
@@ -2041,6 +2050,7 @@ class Host implements AgentHost {
    */
   private endWaitingTurn(t: Thread, turn: Turn, item: Queued): void {
     delete turn.waiting
+    turn.withdraw?.abort()
     t.turn = null
     this.logAwaits(t.id, { type: 'turn_ended', reason: 'cancelled' })
     markAwaitingInput(this.ctx, t.id)
@@ -2067,7 +2077,10 @@ class Host implements AgentHost {
     else if (reason === 'end_turn') this.ranPastLimit(t.id)
     // Its end is heard like any other: a worker may have handed back in it.
     const row = getSessionRow(this.ctx, t.id)
-    if (row) this.hook(() => this.lifecycle.turnEnded?.(row, 'agent', { reason, ...backgroundOf(t), ...(limited ? { usageLimit: true } : {}) }))
+    if (row) {
+      const ending: TurnEnding = { reason, ...backgroundOf(t), ...(limited ? { usageLimit: true } : {}), ...(t.queue.length ? { queued: true } : {}) }
+      this.hook(() => this.lifecycle.turnEnded?.(row, 'agent', ending))
+    }
     this.pump(t)
   }
 
@@ -2296,7 +2309,7 @@ export function processAgentHost(ctx: AppCtx): AgentHost {
   if (!g[HOST_KEY]) g[HOST_KEY] = createAgentHost({
       ctx,
       lifecycle: threadLifecycle(ctx),
-      transport: withWorkers(ctx, spawnAdapter),
+      transport: spawnAdapter,
       turnSlot: workerTurnSlot(ctx),
       stallBounds: workerStallBounds(),
     })

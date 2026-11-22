@@ -82,8 +82,6 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   startedBy: 'lead',
   status: 'needs-you',
   failure: null,
-  engine: 'docker',
-  container: `rc-${id}`,
   branch: `runcastle/worker/${id}`,
   featureBranch: 'feature/demo',
   previewPort: null,
@@ -101,6 +99,9 @@ const worker = (id: string, label: string, over: Partial<WorkerListRow> = {}): W
   previewPath: null,
   passPort: 4514,
   heldBy: null,
+  queuePlace: null,
+  placement: 'own-folder',
+  folder: '/work/feat_1',
   // A worker needing you asked with its own line; a working one has a turn running.
   need: (over.status ?? 'needs-you') === 'needs-you' ? { why: `${label} asks`, since: at, threadId: id, by: 'agent' } : null,
   turnRunning: over.status === 'working',
@@ -381,7 +382,7 @@ describe('the open feature’s workers, nested under its row (workers-nest-under
     expect(api.inputs('thread.new')).toEqual([])
     const card = await within(column()).findByRole('region', { name: 'Assignment: New worker' })
     expect(card.textContent).toContain('Started by you')
-    expect(within(column()).getByText('Sandbox · its own branch off feature/demo')).toBeTruthy()
+    expect(within(column()).getByText('Own folder · its own branch off feature/demo')).toBeTruthy()
     expect(within(column()).queryByText(/Feature worktree/)).toBeNull()
   })
 
@@ -604,7 +605,7 @@ describe('the Scenarios worker in the column (drive-chats-become-workers decisio
     goal: null,
     doneWhen: null,
     startedBy: 'human',
-    container: null,
+    folder: null,
     branch: null,
   })
 

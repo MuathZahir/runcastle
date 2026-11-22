@@ -52,6 +52,15 @@ export type LiveSignal =
       kind: 'thread'
       threadId: string
     }
+  | {
+      /**
+       * The line of workers waiting for a place moved (one-number decision 3): a
+       * slot granted or given back, a turn starting to wait, the limit retuned.
+       * It writes no timeline row: a turn's slot is not news anyone reads back,
+       * and it moves at every turn's start and end.
+       */
+      kind: 'queue'
+    }
 
 type Subscriber = (signal: LiveSignal) => void
 

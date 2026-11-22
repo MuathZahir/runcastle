@@ -4,7 +4,7 @@ import { readyRuntimes, RUNTIME_LOGIN, type RuntimeReadiness } from '../../lib/f
 import { useToast } from '../../lib/toast'
 import { IconArrowRight, IconTerminal } from '../../icons'
 import { Button } from '../../ui'
-import { Checklist, ChecklistRow, CommandLine, RowTerminal } from '../EnableAfkCard'
+import { Checklist, ChecklistRow, CommandLine, RowTerminal } from '../Checklist'
 import { StepActions, StepHeading } from './StepLayout'
 
 /**
@@ -12,10 +12,6 @@ import { StepActions, StepHeading } from './StepLayout'
  * that runtime's own sign-in, and states what it unlocks; the operator auths
  * whichever they have or want. The step continues once ONE runtime can open a
  * session — that is the invariant the pipeline actually needs.
- *
- * The rows are the Enable-AFK checklist's own primitives: the two surfaces
- * genuinely do render the same row, and the Settings flow owns the shared
- * component (decision 9).
  */
 export function RuntimesStep({
   runtimes,
@@ -62,7 +58,7 @@ export function RuntimesStep({
   )
 }
 
-/** One provider row: detected state, its sign-in flow, and what AFK adds. */
+/** One provider row: detected state and its sign-in flow. */
 function RuntimeRow({ runtime }: { runtime: RuntimeReadiness }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const toast = useToast()
@@ -116,12 +112,6 @@ function RuntimeRow({ runtime }: { runtime: RuntimeReadiness }) {
       )}
       {runtime.apiKeyNote && (
         <span className="basis-full text-right text-xs text-warning-text">{runtime.apiKeyNote}</span>
-      )}
-      {runtime.talkReady && !runtime.afkReady && (
-        <span className="basis-full text-right text-xs text-text-tertiary">
-          Signed in for chats you watch. Unattended workers on {runtime.label} also need its key —
-          the next step sets that up.
-        </span>
       )}
     </ChecklistRow>
   )

@@ -135,8 +135,12 @@ export async function reviewPackage(ctx: AppCtx, pass: ReviewPass, feature: Feat
   const pictures = groups.some((group) => group.shots.length > 0)
   const since = pass.reviewedCommit ? await commitsSince(repoPath, pass.reviewedCommit, feature.branch) : undefined
   const { verdict, account } = splitAccount(pass.account)
-  // What the lead settled without the human (how-involved-am-i decision 2), from decisions.md on the branch.
-  const decisions = await fileAtRef(repoPath, feature.branch, `${featureDocsRel(feature.slug)}/decisions.md`)
+  // What the lead settled without the human (how-involved-am-i decision 2), from the feature's
+  // decisions on the branch: an older feature's decisions.md, else the one growing brief.md.
+  const docs = featureDocsRel(feature.slug)
+  const decisions =
+    (await fileAtRef(repoPath, feature.branch, `${docs}/decisions.md`)) ??
+    (await fileAtRef(repoPath, feature.branch, `${docs}/brief.md`))
   return {
     ticketId: pass.id,
     featureId: pass.featureId,

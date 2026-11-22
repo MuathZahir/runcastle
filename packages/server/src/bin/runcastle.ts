@@ -18,9 +18,7 @@ import { runcastleVersion } from '../version'
  *   runcastle doctor     run the pre-boot gate/diagnostic (forwards --gate etc.)
  *   runcastle move       move this machine's runcastle to another machine
  *   runcastle move-in    the receiving end of a move
- *   runcastle token      save the unattended Claude Code token
  *   runcastle service    keep runcastle running on a Linux machine
- *   runcastle build-image  build the stock sandbox image, with no app
  *   runcastle --version  print the installed version
  *   runcastle --help     print usage
  *
@@ -32,9 +30,7 @@ export type Command =
   | 'serve'
   | 'setup'
   | 'doctor'
-  | 'token'
   | 'service'
-  | 'build-image'
   | 'move'
   | 'move-in'
   | 'version'
@@ -56,9 +52,7 @@ export function parseCommand(argv: string[]): ParsedCommand {
   if (first === 'doctor') return { command: 'doctor', args: rest }
   if (first === 'move') return { command: 'move', args: rest }
   if (first === 'move-in') return { command: 'move-in', args: rest }
-  if (first === 'token') return { command: 'token', args: rest }
   if (first === 'service') return { command: 'service', args: rest }
-  if (first === 'build-image') return { command: 'build-image', args: rest }
   if (first === 'serve') return { command: 'serve', args: rest }
   // Unknown token: show help rather than silently booting on a typo.
   return { command: 'help', args: argv }
@@ -88,11 +82,8 @@ Usage:
                        Move runcastle to another machine; only reads this one
   runcastle move-in <pack> [--replace] [--repos-dir <dir>]
                        Bring a move in on this machine
-  runcastle token      Save the unattended Claude Code token (--stdin to read it from a pipe)
   runcastle service install
                        Keep runcastle running on this Linux machine (service remove undoes it)
-  runcastle build-image
-                       Build the sandbox image without the app (the first round builds it if it is missing)
   runcastle --version  Print the installed version
   runcastle --help     Show this help
 `
@@ -128,17 +119,9 @@ async function main(argv: string[]): Promise<number> {
       const { runMoveInCli } = await import('../move/cli')
       return runMoveInCli(args)
     }
-    case 'token': {
-      const { runToken } = await import('./token')
-      return runToken(args)
-    }
     case 'service': {
       const { runService } = await import('./service')
       return runService(args)
-    }
-    case 'build-image': {
-      const { runBuildImage } = await import('./build-image')
-      return runBuildImage(args)
     }
     case 'serve': {
       const tooOld = bunTooOldLine(Bun.version)

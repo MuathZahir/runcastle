@@ -3,8 +3,8 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 import { LINK_WHAT_YOU_NAME } from '../src/workers/link-rule'
-import { hostReviewBriefing, sandboxReviewBriefing } from '../src/workers/review'
-import { type WorkerBrief, type WorkerSandbox, workerBriefing } from '../src/workers/worker'
+import { hostGatesReviewBriefing, hostReviewBriefing } from '../src/workers/review'
+import { type HostWorkerPlace, hostWorkerBriefing } from '../src/workers/worker'
 
 /**
  * Every agent that talks to the human carries one statement of the linking rule,
@@ -22,18 +22,15 @@ const PLACES: Array<[string, string[]]> = [
   ['the Q&A skill', ['qa', 'SKILL.md']],
 ]
 
-const sandbox: WorkerSandbox = {
-  id: 'w1',
-  engine: 'docker',
-  runtime: 'claude-code',
-  container: 'c1',
-  repoPath: '/repo',
+const place: HostWorkerPlace = {
+  placement: 'feature-folder',
+  folder: '/repo',
   featureBranch: 'feature/x',
-  branch: 'runcastle/worker/x',
+  branch: null,
   port: 41001,
   previewUrl: 'http://localhost:41001/',
 }
-const brief = (kind: WorkerBrief['kind']): WorkerBrief => ({ label: 'Header', kind, goal: 'g', doneWhen: 'd' })
+const brief = (kind: 'on-its-own' | 'with-you' | 'unassigned') => ({ label: 'Header', kind, goal: 'g', doneWhen: 'd' })
 
 describe('the linking rule', () => {
   it.each(PLACES)('%s carries it once, word for word', (_name, parts) => {
@@ -41,10 +38,10 @@ describe('the linking rule', () => {
   })
 
   it("every worker's briefing carries it", () => {
-    for (const kind of ['on-its-own', 'with-you', 'unassigned', 'review'] as const) {
-      expect(workerBriefing(sandbox, brief(kind))).toContain(`- ${LINK_WHAT_YOU_NAME}\n`)
+    for (const kind of ['on-its-own', 'with-you', 'unassigned'] as const) {
+      expect(hostWorkerBriefing(brief(kind), place)).toContain(`- ${LINK_WHAT_YOU_NAME}\n`)
     }
-    expect(sandboxReviewBriefing('Review', 'b')).toContain(`- ${LINK_WHAT_YOU_NAME}\n`)
+    expect(hostGatesReviewBriefing({ label: 'Review', featureBranch: 'feature/x' }, '/repo')).toContain(`- ${LINK_WHAT_YOU_NAME}\n`)
     expect(hostReviewBriefing({ label: 'Review', featureBranch: 'feature/x' }, '/repo')).toContain(`- ${LINK_WHAT_YOU_NAME}\n`)
   })
 

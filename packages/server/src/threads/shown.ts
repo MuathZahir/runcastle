@@ -179,24 +179,6 @@ export function showFile(
   })
 }
 
-/**
- * Show a file runcastle itself fetched from where the session's agent runs (a
- * worker's sandbox, interactive-workers decision 9): `file` is runcastle's own
- * copy on the host, `path` the name the agent knows it by. Only the size cap
- * applies: the places check guards the host's disk, and this copy is runcastle's.
- */
-export function showFetchedFile(
-  ctx: AppCtx,
-  sessionId: string,
-  input: { file: string; path: string; caption?: string | undefined },
-): { shown: true; name: string; as: ShownAs } {
-  const size = statSync(input.file).size
-  if (size > SHOWN_MAX_BYTES) {
-    throw new GateError(`${input.path} is ${Math.ceil(size / 1_000_000)} MB, and show_file takes at most 100 MB`)
-  }
-  return logShown(ctx, sessionId, { real: input.file, name: basename(input.path), path: input.path, size, caption: input.caption })
-}
-
 /** Copy a checked file beside the thread's log and log it as shown. */
 function logShown(
   ctx: AppCtx,

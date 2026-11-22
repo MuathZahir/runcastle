@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DEFAULT_SANDBOX_IMAGE, EMPTY_DISCOVERY_SNAPSHOT, RuncastleConfig, resolveSandboxImage, type DiscoverySnapshot } from '@runcastle/core'
+import { EMPTY_DISCOVERY_SNAPSHOT, RuncastleConfig, type DiscoverySnapshot } from '@runcastle/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
@@ -9,7 +9,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { listByProject } from '../src/services/events'
 import { getProjectById } from '../src/services/repo'
-import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
+import { getSettings, updateSettings } from '../src/services/settings'
 import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
@@ -84,7 +84,7 @@ describe('model discovery settings socket', () => {
 
 /**
  * Settings backend (issue #46): the scope-resolved settings surface. Globals live
- * in the machine config file; per-project overrides (model, sandbox, devCommand)
+ * in the machine config file; per-project overrides (model, devCommand)
  * live on project rows; resolution is `project ?? global`. `env` always wins and
  * locks the field. Tests inject a fresh temp config file + a fake env so nothing
  * touches the real `~/.runcastle/config.json`.
@@ -112,13 +112,14 @@ describe('settings service (#46)', () => {
     configFile = join(mkdtempSync(join(tmpdir(), 'runcastle-cfg-')), 'config.json')
   })
 
-  // A core count above the small-host threshold, so the `burnConcurrency` these
-  // tests read back is a fixed 3 rather than whatever box runs the suite.
-  const WIDE_HOST = 16
+  // A fixed 64 GiB host, so the `burnConcurrency` these tests read back is a
+  // fixed 8 rather than whatever box runs the suite.
+  const GIB = 1024 ** 3
+  const WIDE_HOST = 64 * GIB
   const io = (env: Record<string, string | undefined> = {}) => ({
     env,
     configFile,
-    logicalCpus: WIDE_HOST,
+    totalMemBytes: WIDE_HOST,
   })
 
   it('globals: with no config file, every field resolves to its schema default', () => {
@@ -164,11 +165,8 @@ describe('settings service (#46)', () => {
     expect(model.source).toBe('project')
     expect(model.scope).toBe('project')
 
-    // sandbox has no override — inherits the global default
-    const sandbox = field(view, 'sandbox')
-    expect(sandbox.value).toBe('docker')
-    expect(sandbox.source).toBe('default')
-    expect(sandbox.scope).toBe('project')
+    // burnConcurrency is global-only: no override even in a project view
+    expect(field(view, 'burnConcurrency').scope).toBe('global')
 
     // serverPort is global-only even in a project view
     expect(field(view, 'serverPort').scope).toBe('global')
@@ -228,24 +226,16 @@ describe('settings service (#46)', () => {
     expect(() => updateSettings(ctx, { key: 'bogus', value: '1' }, io())).toThrow(InvalidInputError)
   })
 
-  // Burn-internals escape hatches: config file + env var, no descriptor. They
-  // are deliberately invisible here so the overlay never grows a control for
-  // them — `burnCache` joins `burnWorkspace` and `burnGuard` on that list.
-  it('keeps the config-only burn knobs out of the settings surface', () => {
+  // The retired burn and sandbox keys (sandboxes-are-removed) are no settings:
+  // nothing shows them and a write of one is refused.
+  it('keeps the retired burn and sandbox keys out of the settings surface', () => {
     const view = getSettings(ctx, undefined, io())
-    // burnGuard became a Sandboxes switch (burns-become-workers review); burnWorkspace is gone.
-    for (const key of ['burnCache', 'burnWorkspace']) {
+    for (const key of ['burnCache', 'burnWorkspace', 'burnGuard', 'burnCpus', 'sandbox', 'sandboxImage']) {
       expect(view.fields.find((f) => f.key === key), key).toBeUndefined()
       expect(() => updateSettings(ctx, { key, value: 'off' }, io()), key).toThrow(InvalidInputError)
     }
   })
 
-  it('serves the test-suite guard as a boolean switch that writes through', () => {
-    expect(getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'burnGuard')?.value).toBe(true)
-    updateSettings(ctx, { key: 'burnGuard', value: false }, io())
-    expect(ctx.config.burnGuard).toBe(false)
-    expect(() => updateSettings(ctx, { key: 'burnGuard', value: 'off' }, io())).toThrow(InvalidInputError)
-  })
 
   it('global write persists to the config file AND refreshes the in-memory config in place', () => {
     updateSettings(ctx, { key: 'model', value: 'claude-sonnet-5' }, io())
@@ -277,9 +267,9 @@ describe('settings service (#46)', () => {
     )
   })
 
-  it('burnConcurrency defaults to 3, writes through, and rejects out-of-range widths', () => {
+  it('burnConcurrency defaults to the host figure, writes through, and rejects out-of-range numbers', () => {
     const before = field(getSettings(ctx, undefined, io()), 'burnConcurrency')
-    expect(before.value).toBe(3)
+    expect(before.value).toBe(8)
     expect(before.source).toBe('default')
     expect(before.scope).toBe('global')
 
@@ -290,7 +280,7 @@ describe('settings service (#46)', () => {
     expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 0 }, io())).toThrow(
       InvalidInputError,
     )
-    expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 9 }, io())).toThrow(
+    expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 17 }, io())).toThrow(
       InvalidInputError,
     )
   })
@@ -298,20 +288,27 @@ describe('settings service (#46)', () => {
   // The number under a field an operator has not set is a promise about what
   // will happen if they leave it alone, so it has to be the width THIS host
   // burns at — 1 where three parallel agents would oversubscribe the machine.
-  it('reports the width a small host actually defaults to, not the schema 3', () => {
+  it('reports the number a small host actually defaults to', () => {
     const small = field(
-      getSettings(ctx, undefined, { env: {}, configFile, logicalCpus: 6 }),
+      getSettings(ctx, undefined, { env: {}, configFile, totalMemBytes: 11 * GIB }),
       'burnConcurrency',
     )
-    expect(small.value).toBe(1)
+    expect(small.value).toBe(2)
     expect(small.source).toBe('default')
     expect(small.editable).toBe(true)
   })
 
-  it('a config-file width still wins on a small host', () => {
+  it('reports the host memory in whole GB, rounded down like the default', () => {
+    expect(getSettings(ctx, undefined, io()).hostMemoryGb).toBe(64)
+    expect(
+      getSettings(ctx, undefined, { env: {}, configFile, totalMemBytes: 11.6 * GIB }).hostMemoryGb,
+    ).toBe(11)
+  })
+
+  it('a config-file number still wins on a small host', () => {
     updateSettings(ctx, { key: 'burnConcurrency', value: 3 }, io())
     const f = field(
-      getSettings(ctx, undefined, { env: {}, configFile, logicalCpus: 6 }),
+      getSettings(ctx, undefined, { env: {}, configFile, totalMemBytes: 11 * GIB }),
       'burnConcurrency',
     )
     expect(f.value).toBe(3)
@@ -328,17 +325,6 @@ describe('settings service (#46)', () => {
     expect(f.editable).toBe(false)
   })
 
-  it('burnCpus is unset by default, writes through, and rejects a non-positive ceiling', () => {
-    const before = field(getSettings(ctx, undefined, io()), 'burnCpus')
-    expect(before.value).toBeNull() // an optional field with no default reads as null
-    expect(before.source).toBe('default')
-
-    updateSettings(ctx, { key: 'burnCpus', value: 1.5 }, io())
-    expect(ctx.config.burnCpus).toBe(1.5)
-    expect(field(getSettings(ctx, undefined, io()), 'burnCpus').source).toBe('file')
-
-    expect(() => updateSettings(ctx, { key: 'burnCpus', value: 0 }, io())).toThrow(InvalidInputError)
-  })
 
   it('verifyCommands and knownFailures round-trip multi-line values', () => {
     // Both are rendered verbatim into the burner prompt, so the newlines that
@@ -434,97 +420,13 @@ describe('settings service (#46)', () => {
     expect(model.value).toBe('claude-opus-5')
   })
 
-  // A global `sandboxImage` written by an older runcastle poisons every project
-  // that has no column of its own, and clearing the PROJECT override only falls
-  // through to it again — so the global value has to be clearable too.
-  it('a null value clears the global sandboxImage out of the config file', () => {
-    writeFileSync(configFile, JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo' }))
-    ctx.config.sandboxImage = 'sandcastle:runcastle-demo'
 
-    const cleared = updateSettings(ctx, { key: 'sandboxImage', value: null }, io())
 
-    expect(cleared.value).toBeNull()
-    expect(cleared.source).toBe('default')
-    expect(JSON.parse(readFileSync(configFile, 'utf8'))).not.toHaveProperty('sandboxImage')
-    // The shared config object the launcher reads at each launch, not just disk.
-    expect(ctx.config.sandboxImage).toBeUndefined()
-    expect(resolveSandboxImage(ctx.config)).toBe(DEFAULT_SANDBOX_IMAGE)
-    expect(listByProject(ctx, 'global', 0).map((e) => e.type)).toContain('settings.updated')
-  })
 
-  it('clearing the global sandboxImage leaves the other config-file keys alone', () => {
-    writeFileSync(
-      configFile,
-      JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo', model: 'claude-sonnet-5' }),
-    )
-    updateSettings(ctx, { key: 'sandboxImage', value: null }, io())
-    expect(field(getSettings(ctx, undefined, io()), 'model').value).toBe('claude-sonnet-5')
-  })
 
-  it('a global key that is not sandboxImage still refuses to be cleared', () => {
-    expect(() => updateSettings(ctx, { key: 'model', value: null }, io())).toThrow(InvalidInputError)
-  })
 
-  it('a null value on a project still clears the column, not the global', () => {
-    const project = seedProject(ctx)
-    writeFileSync(configFile, JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo' }))
-    updateSettings(
-      ctx,
-      { projectId: project.id, key: 'sandboxImage', value: 'sandcastle:runcastle-p1' },
-      io(),
-    )
-    updateSettings(ctx, { projectId: project.id, key: 'sandboxImage', value: null }, io())
 
-    const image = field(getSettings(ctx, project.id, io()), 'sandboxImage')
-    expect(image.source).toBe('file')
-    expect(image.value).toBe('sandcastle:runcastle-demo')
-    expect(JSON.parse(readFileSync(configFile, 'utf8')).sandboxImage).toBe(
-      'sandcastle:runcastle-demo',
-    )
-  })
 
-  it('sandbox override accepts the three-way choice and rejects anything else', () => {
-    const project = seedProject(ctx)
-    for (const choice of ['docker', 'podman']) {
-      updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: choice }, io())
-      expect(field(getSettings(ctx, project.id, io()), 'sandbox').value).toBe(choice)
-    }
-    expect(() =>
-      updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: 'vm' }, io()),
-    ).toThrow(InvalidInputError)
-  })
-
-  it('the sandbox env override accepts podman and locks the field', () => {
-    const project = seedProject(ctx)
-    const withEnv = io({ RUNCASTLE_SANDBOX: 'podman' })
-    const sandbox = field(getSettings(ctx, project.id, withEnv), 'sandbox')
-    expect(sandbox.value).toBe('podman')
-    expect(sandbox.source).toBe('env')
-    expect(sandbox.editable).toBe(false)
-  })
-
-  // Boot is where the poisoning gets named; the value itself is never deleted,
-  // because the same string could have been typed on purpose.
-  it('boot names a legacy machine-wide image on the global timeline, without removing it', () => {
-    seedProject(ctx)
-    ctx.config.sandboxImage = 'sandcastle:runcastle-demo'
-
-    expect(warnLegacyGlobalImage(ctx)).toBe('sandcastle:runcastle-demo')
-
-    const warning = listByProject(ctx, 'global', 0).find((e) => e.type === 'settings.legacyImage')
-    expect(warning?.message).toContain('sandcastle:runcastle-demo')
-    expect(warning?.message).toContain('Clear the machine-wide sandbox image setting')
-    expect(ctx.config.sandboxImage).toBe('sandcastle:runcastle-demo')
-  })
-
-  it('boot stays silent for the stock image, an unset one, and a live project’s own tag', () => {
-    const project = seedProject(ctx)
-    for (const image of [undefined, DEFAULT_SANDBOX_IMAGE, `${DEFAULT_SANDBOX_IMAGE}-${project.id}`]) {
-      ctx.config.sandboxImage = image
-      expect(warnLegacyGlobalImage(ctx)).toBeNull()
-    }
-    expect(listByProject(ctx, 'global', 0).map((e) => e.type)).not.toContain('settings.legacyImage')
-  })
 
   it('a global settings mutation emits an event', () => {
     updateSettings(ctx, { key: 'model', value: 'claude-sonnet-5' }, io())

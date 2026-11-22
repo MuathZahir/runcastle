@@ -5,7 +5,7 @@ import type { Feature, ReviewFindingInput, WorkerRow } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolReportFinding, toolResolveFinding, toolReviewHandBack, toolStartReview } from '../src/mcp/server'
+import { sessionAudience, toolReportFinding, toolReviewDrive, toolsForAudience, toolResolveFinding, toolReviewHandBack, toolStartReview } from '../src/mcp/server'
 import { resetAgentSlotsForTests } from '../src/services/agent-slots'
 import { listByFeature as listFindings, reportFinding } from '../src/services/review-findings'
 import { reviewPackage, workerPass } from '../src/services/review-package'
@@ -13,7 +13,6 @@ import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents } from '../src/threads/log'
 import type { AgentHost } from '../src/threads/types'
-import { setSandboxEngineForTests } from '../src/workers/engine'
 import { type DriveTaken, hostReviewEnv, reviewAssignment, type ReviewDriveHost, setReviewDriveHostForTests } from '../src/workers/review'
 import { projects } from '../src/db/schema'
 import { eq } from 'drizzle-orm'
@@ -27,7 +26,6 @@ import {
   listWorkers,
   resumeDriveReviewWaits,
   setReviewDriveRetryForTests,
-  withWorkers,
   workerStallBounds,
   workerTurnSlot,
 } from '../src/workers/service'
@@ -35,13 +33,13 @@ import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeTurn } from './support/fake-acp-agent'
-import { fakeEngine, initRepo, type FakeEngine } from './support/fake-workers'
+import { initRepo } from './support/fake-workers'
 import { promptsOf } from './support/thread-launch'
 
 /**
  * The end-of-feature review as a Review worker (burns-become-workers decisions
  * 3–5): a drive review runs on the host while it holds the drive slot, a gates
- * review in a worker sandbox; both report findings against themselves and hand
+ * review in the feature's folder; both report findings against themselves and hand
  * back with the Review Package; a verify review is given only its findings.
  */
 
@@ -51,7 +49,6 @@ let restoreDataDir: () => void
 let repo: string
 let feature: Feature
 let lead: string
-let engine: FakeEngine
 let host: AgentHost | undefined
 let drive: FakeDrive
 
@@ -91,8 +88,6 @@ beforeEach(async () => {
   lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo }).id
   markSessionLive(ctx, lead, { ccSessionId: `cc-${lead}` })
   markSessionEnded(ctx, lead)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
   drive = fakeDrive()
   setReviewDriveHostForTests(drive)
   setReviewDriveRetryForTests(5)
@@ -104,7 +99,6 @@ afterEach(async () => {
   await host?.stopAll('shutdown')
   host = undefined
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   setReviewDriveHostForTests(undefined)
   setReviewDriveRetryForTests(undefined)
   vi.unstubAllEnvs()
@@ -125,10 +119,9 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
 }
 
 function realHost(fake: FakeAcp): AgentHost {
-  engine.transport = fake.transport
   host = createAgentHost({
     ctx,
-    transport: withWorkers(ctx, fake.transport),
+    transport: fake.transport,
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),
@@ -197,16 +190,14 @@ describe('a drive review', () => {
       }),
     )
 
-    const started = await toolStartReview(ctx, leadSession(), {})
+    const started = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(started).toMatchObject({ mode: 'drive', status: 'queued' })
     await until(() => review()?.status === 'handed-back')
 
     const w = review()!
     expect(drive.asks).toBe(2)
     expect(drive.given).toEqual([w.id])
-    // No sandbox, no branch: its thread runs in the project's own checkout.
-    expect(engine.created).toEqual([])
-    expect(w.container).toBeNull()
+    // No branch: its thread runs in the project's own checkout.
     expect(getSessionRow(ctx, w.id)?.worktreePath).toBe(repo)
     expect(promptsOf(w.id)[0]?.text).toContain('# Review this feature')
 
@@ -230,7 +221,7 @@ describe('a drive review', () => {
 
   it('gives the slot back when it is dropped or stopped, and fails when the drive cannot start', async () => {
     realHost(reviewer(() => {}))
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     await until(() => readThreadEvents(workerId).some((e) => e.type === 'turn_ended'))
     await dropWorker(ctx, workerId)
     expect(drive.given).toContain(workerId)
@@ -248,13 +239,13 @@ describe('a drive review', () => {
         },
       }),
     )
-    const stopped = await toolStartReview(ctx, leadSession(), {})
+    const stopped = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     await until(() => reviewing)
     await host!.cancel(stopped.workerId)
     await until(() => drive.given.includes(stopped.workerId))
 
     drive.answers = [{ ok: false, retriable: false, reason: 'uncommitted files: notes.txt' }]
-    const second = await toolStartReview(ctx, leadSession(), {})
+    const second = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(getWorker(ctx, second.workerId)).toMatchObject({ status: 'failed', failure: expect.stringContaining('uncommitted files') })
     expect(drive.given).toContain(second.workerId)
   })
@@ -274,7 +265,7 @@ describe('a drive review', () => {
         toolReviewHandBack(ctx, getSessionRow(ctx, w.id)!, { summary: 'Drive review: fine' })
       }),
     )
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     await until(() => getWorker(ctx, workerId)?.status === 'handed-back')
 
     expect(getWorker(ctx, workerId)?.tokens).toBe(42)
@@ -286,7 +277,7 @@ describe('a drive review', () => {
     setReviewDriveRetryForTests(60_000)
     drive.answers = [held]
     realHost(reviewer((w) => toolReviewHandBack(ctx, getSessionRow(ctx, w.id)!, { summary: 'Drive review: fine' })))
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(getWorker(ctx, workerId)?.status).toBe('queued')
 
     // The server dies: its re-ask timer goes with it, and nothing asks for the slot again.
@@ -309,24 +300,41 @@ describe('a drive review', () => {
 })
 
 describe('a gates review', () => {
-  it('runs in a worker sandbox on the feature branch, reports findings through the relay, and hands back its package', async () => {
+  it('runs on the host in the feature’s folder, reports findings through the main MCP server, and hands back its package', async () => {
     drive.canDrive = false
     realHost(
-      reviewer(async (w) => {
-        await engine.processes[0]!.tools('report_finding', defect('The typecheck fails'))
-        engine.handbacks.set(w.id, { summary: 'Gates review: typecheck red · 1 defect', at: Date.now() })
+      reviewer((w) => {
+        const session = getSessionRow(ctx, w.id)!
+        toolReportFinding(ctx, { session }, defect('The typecheck fails'))
+        toolReviewHandBack(ctx, session, { summary: 'Gates review: typecheck red · 1 defect' })
       }),
     )
 
-    const started = await toolStartReview(ctx, leadSession(), {})
+    const started = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
     expect(started.mode).toBe('gates')
     await until(() => review()?.status === 'handed-back')
 
     const w = review()!
-    expect(engine.created).toEqual([expect.objectContaining({ featureBranch: 'feature/work', baseBranch: 'main' })])
-    expect(engine.launches[0]?.session.mcpServers[0]).toMatchObject({ env: expect.arrayContaining([{ name: 'RUNCASTLE_WORKER_REVIEW', value: '1' }]) })
+    // It reads the feature's own folder, on no branch of its own.
+    expect(w.branch).toBeNull()
+    expect(w.folder).toBeTruthy()
+    expect(getSessionRow(ctx, w.id)?.worktreePath).toBe(w.folder)
     expect(listFindings(ctx, feature.id)).toEqual([expect.objectContaining({ reviewWorkerId: w.id, title: 'The typecheck fails' })])
     expect(leadPackages()).toHaveLength(1)
+    expect(leadPackages()[0]?.text).toContain('The typecheck fails')
+    expect(drive.asks).toBe(0)
+  })
+
+  it('is offered report_finding and hand_back, and review_drive is refused to it when called', async () => {
+    realHost(reviewer(() => {}))
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'gates' })
+    const session = getSessionRow(ctx, workerId)!
+    const audience = sessionAudience(ctx, session)
+    expect(audience).toBe('review')
+    const offered = toolsForAudience(audience)
+    expect(offered).toContain('report_finding')
+    expect(offered).toContain('hand_back')
+    await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toBeInstanceOf(GateError)
     expect(drive.asks).toBe(0)
   })
 
@@ -358,7 +366,7 @@ describe('a verify review', () => {
     expect(assignment).toContain('abc1234 fix: persist the theme')
     expect(assignment).not.toContain('The header overflows')
 
-    await expect(toolStartReview(ctx, leadSession(), { verify: { findingIds: ['finding_nope'], commits: [] } })).rejects.toThrow(/no finding finding_nope/)
+    await expect(toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: ['finding_nope'], commits: [] } })).rejects.toThrow(/no finding finding_nope/)
   })
 })
 
@@ -380,7 +388,7 @@ describe("a review's model", () => {
     const verify = await toolStartReview(ctx, leadSession(), { mode: 'gates', verify: { findingIds: [fixed.id], commits: [] } })
     expect(modelOf(verify.workerId)).toBe('claude-sonnet-5-5')
     drive.answers = [{ ok: false, retriable: true, reason: 'busy' }]
-    const driven = await toolStartReview(ctx, leadSession(), {})
+    const driven = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(driven.mode).toBe('drive')
     expect(modelOf(driven.workerId)).toBe('claude-sonnet-5-5')
   })
@@ -422,7 +430,7 @@ describe("the lead's passed checks", () => {
   it("reach a drive review's kept assignment", async () => {
     drive.answers = [{ ok: false, retriable: true, reason: 'busy' }]
     realHost(reviewer(() => {}))
-    const { workerId } = await toolStartReview(ctx, leadSession(), { checksPassed })
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive', checksPassed })
     expect(reviewAssignment(workerId)).toContain('commit `abc1234def`')
   })
 })
@@ -445,7 +453,7 @@ describe("a review in the lead's workers card", () => {
   it('appends one for a drive review as it starts queued', async () => {
     drive.answers = [{ ok: false, retriable: true, reason: 'A test drive of feature/work is running — stop it first' }]
     realHost(reviewer(() => {}))
-    const { workerId } = await toolStartReview(ctx, leadSession(), {})
+    const { workerId } = await toolStartReview(ctx, leadSession(), { mode: 'drive' })
     expect(started()).toEqual([expect.objectContaining({ workerId, kind: 'review', purpose: 'Drives the feature for review' })])
   })
 })

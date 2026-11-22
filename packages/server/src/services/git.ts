@@ -778,6 +778,21 @@ async function addWorktree(
   }
 }
 
+/**
+ * A worker's own folder (workers-build-in-the-feature-s-folder decision 3): a
+ * new worktree at `path` on a new `branch` cut from `from`'s tip.
+ */
+export async function addWorkerWorktree(repoPath: string, path: string, branch: string, from: string): Promise<void> {
+  const parent = dirname(path)
+  mkdirSync(parent, { recursive: true })
+  try {
+    await git(repoPath).raw(['worktree', 'add', '-b', branch, path, from])
+  } catch (e) {
+    removeIfEmpty(parent)
+    throw new InvalidInputError(`could not create the worker's folder at ${path}: ${errMsg(e)}`)
+  }
+}
+
 /** `rmdir`, which refuses a non-empty dir — so a sibling worktree is never at risk. */
 function removeIfEmpty(dir: string): void {
   try {
@@ -1877,6 +1892,15 @@ export function docsCommitMessage(
   prefix: string | undefined = DEFAULT_DOCS_COMMIT_PREFIX,
 ): string {
   return `${prefix} ${summary}`
+}
+
+/** A file's text as `HEAD` holds it in `repoPath` (a repo-relative, `/`-separated path), or null when HEAD has no such file. */
+export async function readCommitted(repoPath: string, rel: string): Promise<string | null> {
+  try {
+    return await git(repoPath).show([`HEAD:${rel}`])
+  } catch {
+    return null
+  }
 }
 
 /**

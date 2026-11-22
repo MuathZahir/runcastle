@@ -14,10 +14,12 @@ import {
   DEFAULT_DOCS_COMMIT_PREFIX,
   RuncastleConfig as RuncastleConfigSchema,
   foldLegacyModelConfig,
-  resolveDefaultBurnConcurrency,
+  memoryGb,
+  resolveDefaultWorkersAtOnce,
+  WORKERS_AT_ONCE_MAX,
   stepDefaultModel,
 } from '@runcastle/core'
-import { hostLogicalCpus, migrateCollapsedModelSteps } from '@runcastle/core/config-load'
+import { hostTotalMemory, migrateCollapsedModelSteps } from '@runcastle/core/config-load'
 import { configPath } from '@runcastle/core/paths'
 import * as z from 'zod'
 import { eq } from 'drizzle-orm'
@@ -28,12 +30,11 @@ import { InvalidInputError } from '../errors'
 import { emitProject } from './events'
 import { recordHuman } from './findings'
 import { allProjects, requireProjectById } from './repo'
-import { legacyGlobalImage, legacyGlobalImageReason } from './sandbox-image'
 
 /**
  * Settings backend (issue #46, SPEC §4). Two stores: global defaults in the
  * machine config file (`~/.runcastle/config.json`), per-project overrides
- * (model, sandbox, devCommand) on project rows. Resolution is `project ??
+ * (model, devCommand) on project rows. Resolution is `project ??
  * global`, with `env` always winning (it locks the field). A global write is
  * write-through: it persists to the config file AND refreshes the in-memory
  * `ctx.config` IN PLACE, so the next session launch (reads `ctx.config`) and the
@@ -52,8 +53,6 @@ const GLOBAL_EVENT_KEY = 'global'
 /** Which override column a project-overridable field maps to. */
 type ProjectColumn =
   | 'model'
-  | 'sandbox'
-  | 'sandboxImage'
   | 'sessionBranch'
   | 'devCommand'
   | 'setupCommand'
@@ -114,29 +113,6 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   {
-    key: 'sandbox',
-    configKey: 'sandbox',
-    envVar: 'RUNCASTLE_SANDBOX',
-    projectColumn: 'sandbox',
-    restartRequired: false,
-    valueSchema: z.enum(['docker', 'podman']),
-    parseEnv: idEnv,
-  },
-  // Which image a repo's burns need is a fact about that repo — a JDK here, a
-  // Go toolchain there — so it takes a project override on top of its global
-  // twin, and the project value is the one runcastle writes when it builds an
-  // image for the project. A tag typed here instead is stamped `human` and no
-  // build overwrites it (see `isOverwritable`).
-  {
-    key: 'sandboxImage',
-    configKey: 'sandboxImage',
-    envVar: 'RUNCASTLE_SANDBOX_IMAGE',
-    projectColumn: 'sandboxImage',
-    restartRequired: false,
-    valueSchema: z.string().min(1),
-    parseEnv: idEnv,
-  },
-  {
     key: 'sessionMcp',
     configKey: 'sessionMcp',
     envVar: 'RUNCASTLE_SESSION_MCP',
@@ -169,26 +145,8 @@ const DESCRIPTORS: FieldDescriptor[] = [
     configKey: 'burnConcurrency',
     envVar: 'RUNCASTLE_BURN_CONCURRENCY',
     restartRequired: false,
-    valueSchema: z.number().int().min(1).max(8),
+    valueSchema: z.number().int().min(1).max(WORKERS_AT_ONCE_MAX),
     parseEnv: (raw) => Number(raw),
-  },
-  {
-    key: 'burnCpus',
-    configKey: 'burnCpus',
-    envVar: 'RUNCASTLE_BURN_CPUS',
-    restartRequired: false,
-    valueSchema: z.number().positive().max(256),
-    parseEnv: (raw) => Number(raw),
-  },
-  // Read by the worker service each time it copies a Claude Code worker's setup
-  // in, so a change applies at the worker's next start or wake (burns-become-workers decision 18).
-  {
-    key: 'burnGuard',
-    configKey: 'burnGuard',
-    envVar: 'RUNCASTLE_BURN_GUARD',
-    restartRequired: false,
-    valueSchema: z.boolean(),
-    parseEnv: (raw) => raw !== '0' && raw !== 'false',
   },
   // The three prepared burn fields. Each keeps its global config twin (an
   // operator who set one machine-wide keeps it as the inherited fallback) and
@@ -305,13 +263,13 @@ const DEFAULTS = RuncastleConfigSchema.parse({})
 
 /**
  * The defaults an operator who set nothing gets on THIS machine: the schema's,
- * with `burnConcurrency` resolved from the host's core count exactly as
+ * with `burnConcurrency` resolved from the host's memory exactly as
  * `loadConfig` resolves it. The settings view is where that number is read out,
- * so it has to be the width a run would really use rather than the schema's
- * host-blind 3 — a UI that promises 3 on a box that burns 1 is just wrong.
+ * so it has to be the number a run would really use rather than the schema's
+ * host-blind floor.
  */
-function hostDefaults(logicalCpus: number): RuncastleConfig {
-  return { ...DEFAULTS, burnConcurrency: resolveDefaultBurnConcurrency(logicalCpus) }
+function hostDefaults(totalMemBytes: number): RuncastleConfig {
+  return { ...DEFAULTS, burnConcurrency: resolveDefaultWorkersAtOnce(totalMemBytes) }
 }
 
 export interface SettingsIO {
@@ -319,8 +277,8 @@ export interface SettingsIO {
   env?: Record<string, string | undefined>
   /** Config-file path (default `~/.runcastle/config.json`); tests inject a temp file. */
   configFile?: string
-  /** Host core count behind the `burnConcurrency` default; tests inject a fixed one. */
-  logicalCpus?: number
+  /** Host memory in bytes behind the `burnConcurrency` default; tests inject a fixed one. */
+  totalMemBytes?: number
 }
 
 /**
@@ -374,8 +332,6 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
   const row = ctx.db
     .select({
       model: projects.model,
-      sandbox: projects.sandbox,
-      sandboxImage: projects.sandboxImage,
       sessionBranch: projects.sessionBranch,
       devCommand: projects.devCommand,
       setupCommand: projects.setupCommand,
@@ -393,8 +349,6 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     .get()
   return {
     model: row?.model ?? null,
-    sandbox: row?.sandbox ?? null,
-    sandboxImage: row?.sandboxImage ?? null,
     sessionBranch: row?.sessionBranch ?? null,
     devCommand: row?.devCommand ?? null,
     setupCommand: row?.setupCommand ?? null,
@@ -458,7 +412,8 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
   const fileRaw = readRawConfig(io.configFile ?? configPath())
   const overrides = projectId !== undefined ? projectOverrides(ctx, projectId) : null
 
-  const defaults = hostDefaults(io.logicalCpus ?? hostLogicalCpus())
+  const totalMemBytes = io.totalMemBytes ?? hostTotalMemory()
+  const defaults = hostDefaults(totalMemBytes)
 
   const visible = DESCRIPTORS.filter((d) => projectId !== undefined || d.configKey !== undefined)
   const fields = visible.map((d) => resolveField(d, { env, fileRaw, overrides, defaults }))
@@ -468,30 +423,15 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
     projectId,
     fields: [...fields, ...stepModelFields(fileRaw, rosterConfig(ctx))],
     discovery: discoverySnapshot(ctx),
+    hostMemoryGb: memoryGb(totalMemBytes),
   }
 }
-
-/**
- * The global-scope keys a `null` write may remove from the config file.
- *
- * Deliberately `sandboxImage` alone rather than "every key with an optional
- * schema default". It is the one key runcastle itself used to write machine-wide
- * — older versions put a project's built image (then tagged by project NAME)
- * into `~/.runcastle/config.json`, so every project without its own column
- * inherits a foreign image and clearing the project override only falls through
- * to it again. Clearing the global value is the documented way out
- * (`unmanagedImageReason`), which is exactly why it has to be possible. The
- * other config-file keys were all typed by a human on purpose; nothing asks to
- * un-type them, so nothing here pretends they can be.
- */
-const GLOBAL_CLEARABLE_KEYS = new Set(['sandboxImage'])
 
 /**
  * Write a setting. With `projectId` (and a project-overridable field) writes the
  * project override — a `null` value clears it; otherwise writes the global
  * default write-through (config file + in-place `ctx.config` refresh). A `null`
- * write at global scope removes the key from the config file, for the fields
- * {@link GLOBAL_CLEARABLE_KEYS} allows it for. Rejects env-locked fields,
+ * write at global scope removes the key from the config file,  Rejects env-locked fields,
  * unknown keys, and type-invalid values. Returns the resolved field after the
  * write.
  */
@@ -525,7 +465,7 @@ export function updateSettings(
   const toProject = input.projectId !== undefined && desc.projectColumn !== undefined
 
   if (input.value === null) {
-    if (!toProject) return clearGlobal(ctx, desc, input, configFile, io)
+    if (!toProject) throw new InvalidInputError(`${desc.key} cannot be cleared`)
     const project = requireProjectById(ctx, input.projectId as string)
     ctx.db
       .update(projects)
@@ -583,34 +523,6 @@ export function updateSettings(
 }
 
 /**
- * Remove a global default, so the field resolves to its schema default again.
- *
- * Write-through in both directions like every other global write: the key comes
- * OUT of the config file and out of the shared `ctx.config` object, so the next
- * launch resolves without it rather than keeping the value this call just
- * deleted from disk.
- */
-function clearGlobal(
-  ctx: AppCtx,
-  desc: FieldDescriptor,
-  input: SettingsUpdateInput,
-  configFile: string,
-  io: SettingsIO,
-): SettingField {
-  if (!desc.configKey || !GLOBAL_CLEARABLE_KEYS.has(desc.key)) {
-    throw new InvalidInputError(`${desc.key} cannot be cleared`)
-  }
-  removeGlobal(configFile, desc.configKey)
-  delete (ctx.config as Record<string, unknown>)[desc.configKey]
-  emitProject(ctx, GLOBAL_EVENT_KEY, {
-    type: 'settings.updated',
-    message: `${desc.key} cleared`,
-    data: { key: desc.key, scope: 'global', value: null },
-  })
-  return field(getSettings(ctx, input.projectId, io), desc.key)
-}
-
-/**
  * A written value as event-message text. Every field but the `models` roster is
  * a scalar `String()` renders fine; the roster is an array, which `String()`
  * would flatten to `[object Object]` — an event that says nothing about what
@@ -624,13 +536,6 @@ function describeValue(value: unknown): string {
 function writeGlobal(configFile: string, configKey: keyof RuncastleConfig, value: unknown): void {
   const raw = readRawConfig(configFile)
   raw[configKey] = value
-  saveRawConfig(configFile, raw)
-}
-
-/** Drop one key from the config file, preserving the rest. */
-function removeGlobal(configFile: string, configKey: keyof RuncastleConfig): void {
-  const raw = readRawConfig(configFile)
-  delete raw[configKey]
   saveRawConfig(configFile, raw)
 }
 
@@ -692,35 +597,6 @@ function writeStepModel(configFile: string, step: ModelStep, value: string | nul
   else stepModels[step] = value
   raw.stepModels = stepModels
   saveRawConfig(configFile, raw)
-}
-
-/**
- * Name a machine-wide `sandboxImage` that is residue from an older runcastle
- * (see {@link legacyGlobalImage}), once, at boot. Returns the offending tag, or
- * null when there is nothing to say.
- *
- * Loud on purpose and destructive on purpose-not: the symptom this heals is a
- * burn failing deep inside a container built for a different repo (`claude is
- * not installed in image sandcastle:runcastle-demo`), which names the image but
- * not the reason it was ever chosen. Boot is the one moment every install passes
- * through, so it is where the reason gets said. The value itself stays — the
- * human clears it from Settings, which is the fix text the doctor's image row
- * prints too.
- */
-export function warnLegacyGlobalImage(ctx: AppCtx): string | null {
-  const legacy = legacyGlobalImage(
-    ctx.config.sandboxImage,
-    allProjects(ctx).map((p) => p.id),
-  )
-  if (legacy === null) return null
-  const message = legacyGlobalImageReason(legacy)
-  console.warn(`runcastle: ${message}`)
-  emitProject(ctx, GLOBAL_EVENT_KEY, {
-    type: 'settings.legacyImage',
-    message,
-    data: { key: 'sandboxImage', scope: 'global', value: legacy },
-  })
-  return legacy
 }
 
 function field(view: SettingsView, key: string): SettingField {

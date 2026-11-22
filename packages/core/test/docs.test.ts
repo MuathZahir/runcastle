@@ -6,7 +6,25 @@ import {
   agentDigestDocOrder,
   agentDigestFillRank,
   isAgentDigestDoc,
+  isOldShapeFeature,
 } from '../src/docs'
+
+describe('isOldShapeFeature', () => {
+  it('is old-shape with decisions.md or spec.md', () => {
+    expect(isOldShapeFeature(['brief.md', 'decisions.md'])).toBe(true)
+    expect(isOldShapeFeature(['brief.md', 'spec.md', 'outcome.md'])).toBe(true)
+    expect(isOldShapeFeature(['Spec.md'])).toBe(true)
+  })
+
+  it('is one-file with neither', () => {
+    expect(isOldShapeFeature([])).toBe(false)
+    expect(isOldShapeFeature(['brief.md', 'preview.html', 'outcome.md'])).toBe(false)
+  })
+
+  it('ignores a decisions.md or spec.md in a subfolder', () => {
+    expect(isOldShapeFeature(['brief.md', 'research/spec.md', 'old\\decisions.md'])).toBe(false)
+  })
+})
 
 /**
  * The agent-digest allowlist. Two independent payload builders — the MCP

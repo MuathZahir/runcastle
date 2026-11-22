@@ -12,13 +12,13 @@ import {
   messageWorker,
   requireFeatureWorker,
   sendBackWorker,
+  shownStatusOf,
   startReviewWorker,
   startWorker,
   workerPrompted,
   workerWaits,
 } from '../workers/service'
 import { isHostReview, reportReviewFinding, writeHostHandback } from '../workers/review'
-import { provideWorkerFeatureRead } from '../workers/tools'
 import { driveWorkerOf } from '../workers/drive'
 import { join, relative, resolve, sep } from 'node:path'
 import { StreamableHTTPTransport } from '@hono/mcp'
@@ -44,6 +44,7 @@ import type {
   SessionRow,
   TicketStatus as TicketStatusT,
   WorkerStatus as WorkerStatusT,
+  ShownWorkerStatus,
   WorkerRow,
 } from '@runcastle/core'
 import {
@@ -53,6 +54,7 @@ import {
   WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
   isAgentDigestDoc,
+  isDriveWorkerKind,
   isProjectSessionKind,
   unstartedState,
   SAW_MAX_SHOTS,
@@ -157,8 +159,7 @@ import { CHARTER_DOC_KEY, contentSha, featureDocKey, recordSent, sentSha, tellOn
  * `mcp.json` (forwarded by `@hono/mcp` as `requestInfo.headers`). A caller with
  * no session header falls back to the most recently created live session — a
  * convenience for a hand-run client. Every agent runcastle launches on the host
- * carries its session header; a sandboxed worker never reaches this server at
- * all (its tools are relayed, `workers/tools.ts`).
+ * carries its session header.
  *
  * A fresh `McpServer` + transport is built per request (stateless mode,
  * `enableJsonResponse`) so there is no cross-request shared transport state.
@@ -644,9 +645,6 @@ export async function featureContextWithGit(
   return featureContext(ctx, reader, await featureScenarios(ctx, reader.featureId), options)
 }
 
-// A worker's `read_feature` reads the lead's same bundle (interactive-workers decision 9).
-provideWorkerFeatureRead((ctx, featureId) => featureContextWithGit(ctx, { featureId }))
-
 /**
  * A feature as the orchestrator reads it by default (`tools-and-skills-say-less`
  * decision 2): where it is and whether it needs the orchestrator, with worker
@@ -664,8 +662,8 @@ export interface FeatureStatusView {
   /** "Involve me in": the feature's level. */
   involvement: Involvement
   humanTypedAt: number | null
-  /** How many of the feature's workers are in each status; a status with none is absent. */
-  workerCounts: Partial<Record<WorkerStatusT, number>>
+  /** How many of the feature's workers show each status (Working only while a turn runs); a status with none is absent. */
+  workerCounts: Partial<Record<ShownWorkerStatus, number>>
   latestReady: ReadyDeclaration | null
   /** Defects the feature's reviews reported that nothing has resolved yet. */
   openFindings: number
@@ -678,8 +676,11 @@ export interface FeatureStatusView {
 
 export function featureStatusView(ctx: AppCtx, reader: FeatureReader): FeatureStatusView {
   const feature = getFeatureRow(ctx, reader.featureId)
-  const workerCounts: Partial<Record<WorkerStatusT, number>> = {}
-  for (const w of listWorkers(ctx, feature.id)) workerCounts[w.status] = (workerCounts[w.status] ?? 0) + 1
+  const workerCounts: Partial<Record<ShownWorkerStatus, number>> = {}
+  for (const w of listWorkers(ctx, feature.id)) {
+    const shown = shownStatusOf(ctx, w)
+    workerCounts[shown] = (workerCounts[shown] ?? 0) + 1
+  }
   const lock = autopilotOf(ctx, feature)
   return {
     slug: feature.slug,
@@ -794,7 +795,7 @@ export async function toolStartReview(
   ctx: AppCtx,
   session: SessionRow,
   input: {
-    mode?: 'drive' | 'gates'
+    mode: 'drive' | 'gates'
     verify?: { findingIds: string[]; commits: string[] }
     model?: string
     checksPassed?: { commit: string; commands: string[] }
@@ -805,11 +806,28 @@ export async function toolStartReview(
   return startReviewWorker(ctx, feature, { ...input, startedBy: 'lead' })
 }
 
-/** The Review worker this session is, on the host: its own `hand_back`, `review_drive` and `report_finding` act on it alone. */
+/**
+ * The Review worker this session is, on the host: its own `hand_back` and `report_finding` act on it alone. A drive
+ * review, or a gates review in the feature's folder (workers-build-in-the-feature-s-folder decision 9).
+ */
 function hostReviewOf(ctx: AppCtx, session: SessionRow | undefined): WorkerRow | undefined {
   if (session?.kind !== 'worker') return undefined
   const w = getWorker(ctx, session.id)
-  return w && isHostReview(w) ? w : undefined
+  return w && w.kind === 'review' && (isHostReview(w) || w.folder !== null) ? w : undefined
+}
+
+/** The build worker this session is, on the host (workers-build-in-the-feature-s-folder decisions 2, 3): its own `hand_back` acts on it alone. */
+function hostBuildWorkerOf(ctx: AppCtx, session: SessionRow | undefined): WorkerRow | undefined {
+  if (session?.kind !== 'worker') return undefined
+  const w = getWorker(ctx, session.id)
+  return w && w.kind !== 'review' && !isDriveWorkerKind(w.kind) && w.folder !== null ? w : undefined
+}
+
+/** A build worker's hand-back on the host: its summary, read when its turn ends, when runcastle adds its commits and tells its lead. */
+export function toolBuildWorkerHandBack(ctx: AppCtx, session: SessionRow, input: { summary: string }): { handedBack: true } {
+  const w = hostBuildWorkerOf(ctx, session)
+  if (!w) throw new GateError(`hand_back here belongs to a worker, and this is a ${session.kind} session.`)
+  return handBackOnHost(w, input.summary)
 }
 
 /**
@@ -1070,7 +1088,7 @@ const ResolveFindingShape = {
   disposition: z
     .enum(['addressed', 'dismissed'])
     .describe('`addressed`: work already answers it. `dismissed`: not worth fixing.'),
-  note: z.string().optional().describe('REQUIRED: what addressed it, or why it was dismissed.'),
+  note: z.string().optional().describe('REQUIRED: what addressed it (name the fix commit), or why it was dismissed.'),
 }
 
 /**
@@ -1393,9 +1411,9 @@ export interface ReviewCaller {
  * it boots the app on the human's machine, authority that belongs to the review
  * runcastle started for this feature and to no ordinary talk session.
  */
-function requireReviewer(ctx: AppCtx, caller: ReviewCaller, tool: string): WorkerRow {
+function requireReviewer(ctx: AppCtx, caller: ReviewCaller, tool: string, drive = true): WorkerRow {
   const w = hostReviewOf(ctx, caller.session)
-  if (w) return w
+  if (w && (!drive || isHostReview(w))) return w
   const who = caller.session ? `this is a ${caller.session.kind} session` : 'this call carries no session'
   throw new GateError(
     `${tool} belongs to a drive review (a Review worker on the host), and ${who}. It acts on the ` +
@@ -1620,16 +1638,15 @@ export async function toolFeatureScenario(
 }
 
 /**
- * `report_finding` from a drive review on the host: recorded against the Review
- * worker itself (burns-become-workers decision 4). A gates review reports the
- * same way over its sandbox's relay (`workers/tools.ts`).
+ * `report_finding` from a Review worker: recorded against the Review worker
+ * itself (burns-become-workers decision 4).
  */
 export function toolReportFinding(
   ctx: AppCtx,
   caller: ReviewCaller,
   input: ReviewFindingInputT,
 ): { findingId: string } {
-  const review = requireReviewer(ctx, caller, 'report_finding')
+  const review = requireReviewer(ctx, caller, 'report_finding', false)
   return { findingId: reportReviewFinding(ctx, review.id, input).finding.id }
 }
 
@@ -1793,7 +1810,8 @@ function createFeatureProject(
   input: { draft?: boolean },
 ): Project {
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
-  if (!DRAFTING_KINDS.includes(session.kind)) {
+  const buildWorker = hostBuildWorkerOf(ctx, session)
+  if (!DRAFTING_KINDS.includes(session.kind) && !buildWorker) {
     throw new GateError(
       `a ${session.kind} session may not create features, drafts included. ` +
         'Tell the human what is worth capturing; the orchestrator is where features are made.',
@@ -2258,15 +2276,18 @@ function featureIndexLine(feature: FeatureListItem, workerState = ''): string {
   return `${feature.slug} — ${feature.title} [${workerState ? `in flight: ${workerState}` : 'in flight'}]${edges}`
 }
 
-/** An in-flight feature's workers for its index line: `2 working, 1 needs you`; empty when none is at work or waiting. */
+/** An in-flight feature's workers for its index line, as shown: `2 working, 1 needs you, 1 idle`; empty when it has none in play. */
 function workerStateOf(ctx: AppCtx, feature: FeatureListItem): string {
   if (feature.status !== 'active') return ''
-  const rows = listWorkers(ctx, feature.id)
-  const count = (...statuses: WorkerRow['status'][]) => rows.filter((w) => statuses.includes(w.status)).length
+  // As shown: a worker with no turn running is not "working" (a-worker-never-shows-working-with-nothing-running decision 1).
+  const shown = listWorkers(ctx, feature.id).map((w) => shownStatusOf(ctx, w))
+  const count = (status: ShownWorkerStatus) => shown.filter((s) => s === status).length
   return [
     [count('working'), 'working'],
     [count('queued'), 'queued'],
     [count('needs-you'), 'needs you'],
+    [count('stalled'), 'stalled'],
+    [count('idle'), 'idle'],
   ]
     .filter(([n]) => n !== 0)
     .map(([n, label]) => `${n} ${label}`)
@@ -2645,19 +2666,17 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Feature reads. Also reachable by a drive review, which reads ITS OWN
   // feature (a review legitimately wants the branch's context). The project
   // session reads any feature of its project by `slug` (`projectFeatureReader`).
-  get_feature_context: [...FEATURE_KINDS, 'review', 'project', 'fix-drive-worker'],
-  read_feature_doc: [...FEATURE_KINDS, 'review', 'project', 'fix-drive-worker'],
+  get_feature_context: [...FEATURE_KINDS, 'worker', 'review', 'project', 'fix-drive-worker'],
+  read_feature_doc: [...FEATURE_KINDS, 'worker', 'review', 'project', 'fix-drive-worker'],
   // The lead (and its side sessions) close the review's findings: `resolve_finding`.
   resolve_finding: FEATURE_KINDS,
   declare_ready: ['chat'],
-  // A worker's own is served in its sandbox (`worker-mcp-script.ts`) and answered over the relay.
-  wait_for_you: ['chat', 'project'],
-  // The lead's hands back to the orchestrator; a host worker's (a drive review, a drive worker) hands back to its lead.
-  hand_back: ['chat', 'review', 'fix-drive-worker', 'scenario-worker'],
-  // A `worker` session is in no list here: its tools are its own, served in its
-  // sandbox (`worker-mcp-script.ts`) and answered over the relay runcastle opens
-  // into it (`workers/tools.ts`); its only way to change the feature is its
-  // handback (decision 9).
+  // A build worker (`worker`) asks here.
+  wait_for_you: ['chat', 'project', 'worker'],
+  // The lead's hands back to the orchestrator; a host worker's (a build worker, a review, a drive worker) hands back to its lead.
+  hand_back: ['chat', 'worker', 'review', 'fix-drive-worker', 'scenario-worker'],
+  // A build worker on the host (`worker`) gets only its own tools here: the feature's reads, wait_for_you, hand_back,
+  // show_file and parking a draft. None of the lead's: its only way to change the feature is its handback (decision 9).
   // The lead's worker tools (decision 4): `requireLeadFeatureId`.
   start_worker: ['chat'],
   start_review: ['chat'],
@@ -2675,7 +2694,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   show_design: ['chat', 'project'],
   set_design_state: ['chat'],
   // Every session with a thread to show it in.
-  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'review', 'fix-drive-worker', 'scenario-worker'],
+  show_file: [...FEATURE_KINDS, ...PROJECT_KINDS, 'worker', 'review', 'fix-drive-worker', 'scenario-worker'],
   show_review_package: [...FEATURE_KINDS, ...PROJECT_KINDS],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
@@ -2689,14 +2708,14 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   set_feature_dependencies: ['project'],
   // `createFeatureProject`: the project kinds get the whole door, the drafting
   // talk kinds get parking only, `qa` and the drive workers get nothing.
-  create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
+  create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS, 'worker'],
   // Single-kind tools, each gated on that kind at call time.
   dry_run_drive: ['project'],
   retry_drive: ['fix-drive-worker'],
   run_scenario: ['scenario-worker'],
   // The lead records it too when it sets scenarios up itself (`toolSetScenarioRunner`).
   set_scenario_runner: ['scenario-worker', 'chat'],
-  // A drive review's: `requireReviewer`. A gates review gets report_finding over its relay.
+  // A drive review's: `requireReviewer`. A gates review reports findings here too.
   review_drive: ['review'],
   // The lead's own drive of its feature, to prove scenarios on (`requireDriveLead`).
   feature_drive: ['chat'],
@@ -3367,11 +3386,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start a worker',
         description:
-          'Start a worker: an agent in its own sandbox and branch off this feature branch, with ' +
-          'one assignment. `with-you` is taste work the human iterates on and hands back when happy (never a design: that is yours); ' +
-          '`on-its-own` ' +
-          'hands back when done. Past the machine’s agent limit it waits queued. Nothing lands until land_worker. ' +
-          'Refused after the human presses Stop, until they reply.',
+          'Start a worker on this machine with one assignment. The first builds in your folder, on the feature branch; one ' +
+          'started while it works gets its own folder and branch. `with-you`: taste work the human iterates on (never a ' +
+          'design: that is yours); `on-its-own`: hands back when done. Past the agent limit it queues. Refused after Stop ' +
+          'until the human replies.',
         inputSchema: {
           label: z.string().min(1).max(60).describe('A short name for the worker, e.g. "Header".'),
           purpose: z.string().min(1).max(160).describe('One line on what it does, shown under its label.'),
@@ -3398,12 +3416,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Start the Review worker',
         description:
-          'Start the feature’s Review worker once the work is done. It writes no code: it runs the project’s checks, ' +
-          'then drives the app on this machine when it can (holding the one drive slot, waiting while the human ' +
-          'drives) or reads the diff (`gates`), and hands back a Review Package. After fixing defects you judged real, ' +
-          'start one with `verify`. Refused after the human presses Stop, until they reply.',
+          'Start the feature’s one Review worker when the work is done. `drive` if the change reaches what a user meets: ' +
+          'a screen, a command’s output or options, an API’s responses, a library’s public functions. ' +
+          'For a project with no screen, driving is running the command or calling the API as its user would. ' +
+          'Else `gates` (read the diff). `verify` only after a large fix set. Refused after Stop until a reply.',
         inputSchema: {
-          mode: z.enum(['drive', 'gates']).optional().describe('`gates` when there is nothing to drive; omit to drive whenever this machine can.'),
+          mode: z.enum(['drive', 'gates']).describe('`drive`: use what the change reaches as its user would. `gates`: read the diff.'),
           verify: z
             .object({
               findingIds: z.array(z.string().min(1)).min(1).describe('The findings you fixed.'),
@@ -3462,8 +3480,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Land a worker’s handback',
         description:
-          'Land a handed-back worker’s branch on the feature branch, through the landing queue. Then run the project’s ' +
-          'checks yourself. On a conflict nothing lands: resolve it and call this again.',
+          'Accept a handed-back worker. One in your folder: its commits are already on the branch, so this only settles it. ' +
+          'One in its own folder: run the project’s checks there first; this merges its branch through the landing queue ' +
+          'and removes its folder. On a conflict nothing lands: resolve it and call this again.',
         inputSchema: { workerId: z.string().min(1).describe('The worker’s id.') },
       },
       async (args, extra) => {
@@ -3500,7 +3519,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       'drop_worker',
       {
         title: 'Drop a worker',
-        description: 'Drop a worker and throw its work away: its sandbox and branch are removed. Nothing of it lands.',
+        description:
+          'Drop a worker. One in its own folder: its folder and branch are removed, nothing lands. One in your folder: it stops ' +
+          'and its commits stay on the branch; revert any you do not want.',
         inputSchema: { workerId: z.string().min(1).describe('The worker’s id.') },
       },
       async (args, extra) => {
@@ -3551,6 +3572,24 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolReviewHandBack(rs.ctx, rs.session, args))
+      },
+    )
+  } else if (wants('hand_back') && audience === 'worker') {
+    server.registerTool(
+      'hand_back',
+      {
+        title: 'Hand back to your lead',
+        description:
+          'Hand back when your assignment is done (or cannot be): a short summary of what was done, what was not, where to look, and every ' +
+          'direction the human gave you here. Runcastle adds your commits and files and tells your lead. Commit first; end your turn after.',
+        inputSchema: {
+          summary: z.string().min(1).describe('What was done, what was not, where to look, and what the human told you.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolBuildWorkerHandBack(rs.ctx, rs.session, args))
       },
     )
   } else if (wants('hand_back') && (audience === 'fix-drive-worker' || audience === 'scenario-worker')) {

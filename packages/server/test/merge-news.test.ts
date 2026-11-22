@@ -115,7 +115,7 @@ describe('a merge tells the feature’s epic', () => {
         '[runcastle] export-csv merged into main by the human.',
         'In progress in this epic:',
         '- import-csv: Import CSV (run by the human)',
-        `Read the change: the merge commit ${sha.slice(0, 12)} and docs/features/export-csv/outcome.md.`,
+        `Read the change: the merge commit ${sha.slice(0, 12)} and the "## Review summary" section of docs/features/export-csv/brief.md.`,
       ].join('\n'),
     )
     expect(prompt.display).toEqual({

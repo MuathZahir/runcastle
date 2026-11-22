@@ -38,7 +38,6 @@ import { getFeatureRow, projectForFeature, requireProjectById, tryGetFeature } f
 import { listScenarioPaths } from '../services/scenarios'
 import { hasThreadLog, readThreadEvents } from '../threads/log'
 import { agentHost } from '../threads/types'
-import { sandboxEngine } from './engine'
 import { isHostReview } from './review'
 import { emitWorker, getWorker, humanWrote, listProjectWorkers, listWorkers, setStatus, updateWorker } from './service'
 
@@ -55,11 +54,13 @@ import { emitWorker, getWorker, humanWrote, listProjectWorkers, listWorkers, set
 export const DRIVE_WORKER_REFUSAL = 'a drive worker commits straight onto the driven branch and only the human talks to it'
 
 /**
- * A worker that runs on the host, with no sandbox, branch or preview: a drive
- * review (burns-become-workers decision 3), or a drive worker (decision 1).
+ * A worker that runs on the host: a drive review
+ * (burns-become-workers decision 3), a drive worker (decision 1), or any worker
+ * started since workers build in a folder of the feature (its row names the
+ * folder: workers-build-in-the-feature-s-folder decision 1).
  */
-export function isHostWorker(w: Pick<WorkerRow, 'kind' | 'reviewMode'>): boolean {
-  return isHostReview(w) || isDriveWorkerKind(w.kind)
+export function isHostWorker(w: Pick<WorkerRow, 'kind' | 'reviewMode' | 'folder'>): boolean {
+  return isHostReview(w) || isDriveWorkerKind(w.kind) || w.folder !== null
 }
 
 /** The drive worker a `worker` session is the conversation of, if it is one. */
@@ -252,7 +253,6 @@ function createDriveWorker(ctx: AppCtx, kind: DriveWorkerKind, project: Project,
       runtime: model.runtime,
       startedBy: 'human',
       status: 'working',
-      engine: sandboxEngine(ctx.config.sandbox).name,
       featureBranch: branch,
       handbackCommits: [],
       handbackFiles: [],
@@ -376,6 +376,11 @@ function workerRules(
 
 /** Each drive worker's driven-branch tip when its current turn began: its commits are what the branch gained since. */
 const turnBases = new Map<string, string>()
+
+/** Note where the branch a worker commits straight onto stands as its turn begins: a drive worker's driven branch, a worker's in the feature's folder. */
+export async function noteWorkerTurnBase(ctx: AppCtx, w: WorkerRow): Promise<void> {
+  await noteTurnBase(projectOf(ctx, w), w)
+}
 
 async function noteTurnBase(project: Project, w: WorkerRow): Promise<void> {
   const tip = await git.headSha(project.repoPath, w.featureBranch)

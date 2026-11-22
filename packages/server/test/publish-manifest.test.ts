@@ -93,7 +93,6 @@ describe('buildPublishedManifest', () => {
       'drizzle',
       'skills',
       'web',
-      'sandcastle-template',
     ]) {
       expect(files).toContain(f)
     }

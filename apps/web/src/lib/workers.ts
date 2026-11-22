@@ -1,5 +1,7 @@
+import { shownWorkerStatus } from '@runcastle/core'
 import type {
   Need,
+  ShownWorkerStatus,
   ThreadEntry,
   WorkerKind as CoreWorkerKind,
   WorkerRow as CoreWorkerRow,
@@ -9,7 +11,7 @@ import type { StatusTone } from '../ui'
 
 /**
  * Interactive workers as the web draws them (docs/features/interactive-workers).
- * A feature's lead hands work to workers: sandboxed threads, each with a label,
+ * A feature's lead hands work to workers: threads on the host, each with a label,
  * a one-line purpose, a kind and a status. These are the view shapes the
  * sidebar's worker list and a worker's chat read; the wire shape is core's
  * `WorkerRow`, and the status and kind here are its own.
@@ -22,17 +24,18 @@ import type { StatusTone } from '../ui'
  * branch, failed, or dropped. `idle` is the web's own word for a worker in
  * play with no turn running.
  */
-export type WorkerStatus = CoreWorkerStatus | 'idle'
+export type WorkerStatus = ShownWorkerStatus
 
 /**
  * A worker's status as it shows (decision 6): its own need, else Working while
- * a turn of it runs, else Idle; a settled, queued or failed worker its own word.
+ * a turn of it runs, else Idle; a settled, queued, failed or stalled worker its
+ * own word. Core's, so the lead and the epic read the same (a-worker-never-
+ * shows-working-with-nothing-running decision 1).
  */
-export function shownWorkerStatus(w: { status: CoreWorkerStatus; need?: Need | null; turnRunning?: boolean }): WorkerStatus {
-  if (w.need) return 'needs-you'
-  if (w.status === 'working' || w.status === 'needs-you') return w.turnRunning ? 'working' : 'idle'
-  return w.status
-}
+export { shownWorkerStatus }
+
+/** The line after a stalled worker's status, and its notice in the lead's chat (decision 5). */
+export const WORKER_STALLED_WHY = 'stopped twice without handing back'
 
 /** How many workers are at work, counted as their cards read them: a turn running, not a stored status (needs-you decision 6). */
 export function workersAtWork(rows: readonly { status: CoreWorkerStatus; need?: Need | null; turnRunning?: boolean }[]): number {
@@ -68,6 +71,12 @@ export interface WorkerEntry {
   failure?: string
   /** Why it waits, while `status` is queued behind an account error's hold (burns-become-workers decision 21). */
   heldBy?: string
+  /**
+   * Its place in the machine's one line while it waits for a place, 1 = next
+   * (one-number-for-how-many-build-at-once decisions 8, 9). Absent when held:
+   * a held worker is skipped in the order.
+   */
+  place?: number
   /** What it needs from the human, in its agent's own line (needs-you decision 6). */
   need?: Need
 }
@@ -116,6 +125,8 @@ const GROUP: Record<WorkerStatus, keyof WorkerGroups> = {
   working: 'working',
   idle: 'working',
   queued: 'working',
+  // The lead's to act on, not the human's (decision 5): with the live workers, its amber word says it.
+  stalled: 'working',
   'handed-back': 'done',
   landed: 'done',
   dropped: 'done',
@@ -155,12 +166,13 @@ export function workersNeedYou(workers: readonly WorkerEntry[]): boolean {
 export const WORKER_STATUS_WORDS: Record<WorkerStatus, string> = {
   working: 'Working',
   idle: 'Idle',
-  queued: 'Queued',
+  queued: 'Waiting',
   'needs-you': 'Needs you',
   'handed-back': 'Handed back',
   landed: 'Landed',
   failed: 'Failed',
   dropped: 'Dropped',
+  stalled: 'Stalled',
 }
 
 /** A status's dot in the chat header: shape first, the hue confirms. */
@@ -173,23 +185,34 @@ export const WORKER_STATUS_TONE: Record<WorkerStatus, StatusTone> = {
   landed: 'success',
   failed: 'danger',
   dropped: 'neutral',
+  stalled: 'warning',
+}
+
+/** A place in line as words: 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st. */
+export function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13
+  const suffix = teen ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
+  return `${n}${suffix}`
 }
 
 /**
  * The few words after a worker's status, in its row and its chat's status
- * line: the agent's line while it needs you, what failed, or why a queued
- * worker is held (decision 21) — "Queued · held: <reason>". Undefined when its
- * status says it all.
+ * line: the agent's line while it needs you, what failed, why a waiting
+ * worker is held (decision 21) — "Waiting · held: <reason>" — or its place in
+ * the line — "Waiting · 2nd in line". Undefined when its status says it all.
  */
 export function workerStatusWhy(w: {
   status: WorkerStatus
   need?: Need | null
   failure?: string | null
   heldBy?: string | null
+  place?: number | null
 }): string | undefined {
   if (w.need) return w.need.why
   if (w.status === 'failed' && w.failure) return w.failure
+  if (w.status === 'stalled') return WORKER_STALLED_WHY
   if (w.status === 'queued' && w.heldBy) return `held: ${w.heldBy}`
+  if (w.status === 'queued' && w.place) return `${ordinal(w.place)} in line`
   return undefined
 }
 
@@ -226,7 +249,7 @@ export function workerIsOpen(w: Pick<WorkerEntry, 'status' | 'old'>): boolean {
 type WireWorker = Pick<
   CoreWorkerRow,
   'id' | 'label' | 'purpose' | 'kind' | 'goal' | 'doneWhen' | 'model' | 'startedBy' | 'status' | 'failure' | 'createdAt' | 'updatedAt'
-> & { heldBy?: string | null; need?: Need | null; turnRunning?: boolean }
+> & { heldBy?: string | null; queuePlace?: number | null; need?: Need | null; turnRunning?: boolean }
 
 const STARTED_BY: Record<CoreWorkerRow['startedBy'], WorkerEntry['startedBy']> = { lead: 'lead', human: 'you' }
 
@@ -244,6 +267,7 @@ export function workerEntry(w: WireWorker): WorkerEntry {
     updatedAt: w.updatedAt,
     ...(w.status === 'failed' && w.failure ? { failure: w.failure } : {}),
     ...(w.status === 'queued' && w.heldBy ? { heldBy: w.heldBy } : {}),
+    ...(w.status === 'queued' && !w.heldBy && w.queuePlace ? { place: w.queuePlace } : {}),
   }
 }
 
@@ -268,9 +292,13 @@ export function workerAssignment(w: WireWorker): WorkerAssignment {
   }
 }
 
-/** Whether the human can ask a worker to hand back (decision 5): while it works or waits, not once it has, landed, dropped or failed. */
+/**
+ * Whether the human can ask a worker to hand back (decision 5): while it works
+ * or waits, or has stalled (its prompt sets it working again: a-worker-never-
+ * shows-working-with-nothing-running), not once it has, landed, dropped or failed.
+ */
 export function workerCanHandBack(status: WorkerStatus): boolean {
-  return status === 'needs-you' || status === 'working' || status === 'idle' || status === 'queued'
+  return status === 'needs-you' || status === 'working' || status === 'idle' || status === 'queued' || status === 'stalled'
 }
 
 /**

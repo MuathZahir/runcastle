@@ -14,7 +14,7 @@
  * prints the inner runcastle's page for that feature as `ENTRY_URL=…`, which
  * the drive resolves against its own URL.
  *
- * The workers are rows only: no container is started, so a worker's preview
+ * The workers are rows only: no agent is started, so a worker's preview
  * and its agent do not answer. The worker rows nested under the feature's
  * sidebar row, the worker chats' assignment cards and headers, and the lead's
  * handback cards are what this lands on.
@@ -112,7 +112,7 @@ const ALL_WORKERS: SeededWorker[] = [
     handback: { summary: 'Shelves sit 16px apart.', commits: ['9f8e7d6 Shelf spacing'], files: ['apps/web/src/components/SidebarParts.tsx'] },
     outcome: { kind: 'dropped' },
   },
-  { label: 'Search box', purpose: 'Filter the worker list', kind: 'on-its-own', status: 'failed', ago: 60, failure: 'its container stopped unexpectedly' },
+  { label: 'Search box', purpose: 'Filter the worker list', kind: 'on-its-own', status: 'failed', ago: 60, failure: 'its turn stopped unexpectedly' },
 ]
 
 const WORKERS = AT_WORK_ONLY ? ALL_WORKERS.filter((w) => w.status === 'working' || w.status === 'queued') : ALL_WORKERS
@@ -193,7 +193,7 @@ function seedWorker(ctx: AppCtx, feature: Feature, leadId: string, w: SeededWork
       startedBy: 'lead',
       status: w.status,
       failure: w.failure ?? null,
-      engine: 'docker',
+      folder: worktreeDir(feature.projectId, feature.slug),
       featureBranch: feature.branch,
       handbackSummary: w.handback?.summary ?? null,
       handbackCommits: w.handback?.commits ?? null,

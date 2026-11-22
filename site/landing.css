@@ -192,10 +192,6 @@ body{margin:0;background:#0a0c11}
 .cube.q.up:not(.glow) .f-t{background:var(--c-solid)}
 .cube.q-ctr{left:224px;top:224px}.cube.q-a{left:40px;top:312px}.cube.q-b{left:312px;top:40px}.cube.q-c{left:360px;top:360px}
 
-/* sandboxes */
-.cube.glass.box{width:96px;height:96px}
-.cube.glass.box.up{--h:64px}
-
 /* design: an outline tries shapes on your app, then turns solid */
 .cube.slab{width:264px;height:264px;left:132px;top:132px}
 .cube.slab.up{--h:8px}
@@ -541,91 +537,6 @@ body{margin:0;background:#0a0c11}
    no request, no lines, no glow. Lit, the edge and mark come up over .8s */
 .x-orc:not(.on) .cube.tower .f-t{box-shadow:inset 0 0 0 1px var(--c-edge);color:#4c5264}
 .x-orc:not(.on) .orc-seg,.x-orc:not(.on) .orc-bar,.x-orc:not(.on) .orc-scan{opacity:0}
-
-/* ===== section sbx ===== */
-/* section sbx: nine low glass sandboxes in rounds. Each lid carries its ticket as a
-   header band along the back edge (number + short title, read from the south); the
-   worker stands in the open front half, so label and worker never overlap. State is
-   colour only: dim = Waiting, blue = Running, green = Landed, red = Failed. */
-
-/* frame: the grid's visual centre sits a little above the plane's, so drop the camera */
-.x-sbx.row .stage .iso{top:calc(50% + 14px);scale:.94}
-
-/* the floor slot: always there, so an empty grid still reads as nine places */
-.x-sbx .sbx-fl{position:absolute;width:120px;height:120px;transform:translateZ(0);background:rgba(122,170,250,.02);box-shadow:inset 0 0 0 1px rgba(122,170,250,.1);transition:background .6s,box-shadow .6s}
-.x-sbx .sbx-fl.sbx-on{background:rgba(79,142,247,.045);box-shadow:inset 0 0 0 1px rgba(122,170,250,.16)}
-/* the scene's one soft glow: a ticket that has just landed */
-.x-sbx .sbx-fl.sbx-glow{background:rgba(70,182,122,.12);box-shadow:inset 0 0 0 1px rgba(70,182,122,.5),0 0 28px rgba(70,182,122,.2);transition:background .35s,box-shadow .35s}
-.x-sbx .sbx-fl.sbx-g{background:rgba(70,182,122,.055);box-shadow:inset 0 0 0 1px rgba(70,182,122,.26)}
-.x-sbx .sbx-fl.sbx-x{background:rgba(240,99,99,.06);box-shadow:inset 0 0 0 1px rgba(240,99,99,.36)}
-
-/* the sandbox: a low glass box; it rises on the beat and lowers back into its slot */
-.x-sbx .cube.sbx-box{width:120px;height:120px;pointer-events:none;transition:--h 1s cubic-bezier(.65,0,.35,1)}
-.x-sbx .cube.sbx-box.up{--h:36px;transition:--h .9s cubic-bezier(.2,.8,.2,1)}
-.x-sbx .sbx-box i{background:rgba(122,170,250,.025);box-shadow:inset 0 0 0 1px rgba(122,170,250,.2);transition:opacity .45s .55s,background .6s,box-shadow .6s}
-.x-sbx .sbx-box.up i{transition:opacity .5s,background .6s,box-shadow .6s}
-.x-sbx .sbx-box .f-t{background:transparent;box-shadow:inset 0 0 0 1px rgba(122,170,250,.24)}
-.x-sbx .sbx-box.sbx-r i{box-shadow:inset 0 0 0 1px rgba(122,170,250,.32)}
-.x-sbx .sbx-box.sbx-g i{box-shadow:inset 0 0 0 1px rgba(110,210,155,.4)}
-.x-sbx .sbx-box.sbx-x i{box-shadow:inset 0 0 0 1px rgba(240,99,99,.48)}
-
-/* the lid's header band: the ticket, printed flat on the glass */
-.x-sbx .sbx-lb{position:absolute;left:0;right:0;top:0;height:40px;padding:0 11px;display:flex;align-items:center;gap:7px;white-space:nowrap;background:rgba(200,215,255,.045);box-shadow:inset 0 -1px 0 rgba(122,170,250,.16);opacity:0;transition:opacity .35s}
-.x-sbx .sbx-box.up .sbx-lb{opacity:1;transition:opacity .5s .3s}
-.x-sbx .sbx-n{font-size:13px;line-height:16px;font-weight:500;color:#7a8195;transition:color .5s}
-.x-sbx .sbx-tt{font-size:14px;line-height:16px;font-weight:500;color:var(--text-3);letter-spacing:-0.005em;transition:color .5s}
-.x-sbx .sbx-r .sbx-n{color:var(--accent-text)}
-.x-sbx .sbx-r .sbx-tt,.x-sbx .sbx-g .sbx-tt{color:var(--text)}
-.x-sbx .sbx-g .sbx-n{color:#7fd3a5}
-.x-sbx .sbx-g.sbx-d .sbx-tt,.x-sbx .sbx-x .sbx-tt{color:var(--text-2)}
-.x-sbx .sbx-x .sbx-n{color:var(--danger-text)}
-
-/* the ticket: a card set down into the open half, then it grows into the worker */
-.x-sbx .cube.sbx-tk{width:48px;height:48px;--h:6px;transform:translateZ(1px);transition:--h .6s cubic-bezier(.2,.8,.2,1),transform .8s cubic-bezier(.65,0,.35,1)}
-.x-sbx .cube.sbx-tk i{transition:opacity .4s,background .5s,box-shadow .5s}
-/* it appears just under the lid, clear of the printed band, and is set down */
-.x-sbx .cube.sbx-tk.sbx-hide{transform:translateZ(30px);transition:none}
-.x-sbx .cube.sbx-tk.sbx-hide i{transition:none}
-.x-sbx .cube.sbx-tk:is(.sbx-hide,.sbx-card) .f-t{background:linear-gradient(135deg,#3b4458,#283041);box-shadow:inset 0 0 0 1px rgba(160,195,255,.42)}
-.x-sbx .cube.sbx-tk:is(.sbx-hide,.sbx-card) .f-s{background:#1d2330}
-.x-sbx .cube.sbx-tk:is(.sbx-hide,.sbx-card) .f-e{background:#171c27}
-.x-sbx .cube.sbx-tk.sbx-run{--h:22px}
-.x-sbx .cube.sbx-tk.sbx-run .f-t{background:linear-gradient(135deg,#3a6fd0,#1f3f7a);box-shadow:inset 0 0 0 1px rgba(122,170,250,.55)}
-.x-sbx .cube.sbx-tk.sbx-run .f-s{background:#16233d}
-.x-sbx .cube.sbx-tk.sbx-run .f-e{background:#111b30}
-/* just landed: bright green; it then settles to a quieter green so the newest result leads */
-.x-sbx .cube.sbx-tk:is(.sbx-ok,.sbx-done,.sbx-down){--h:22px}
-.x-sbx .cube.sbx-tk.sbx-ok .f-t{background:linear-gradient(135deg,#46b67a,#25704a);box-shadow:inset 0 0 0 1px rgba(170,235,200,.6)}
-.x-sbx .cube.sbx-tk.sbx-ok .f-s{background:#173826}
-.x-sbx .cube.sbx-tk.sbx-ok .f-e{background:#122b1e}
-.x-sbx .cube.sbx-tk:is(.sbx-done,.sbx-down) .f-t{background:linear-gradient(135deg,#2f7f57,#1b4a33);box-shadow:inset 0 0 0 1px rgba(120,205,160,.38)}
-.x-sbx .cube.sbx-tk:is(.sbx-done,.sbx-down) .f-s{background:#132c1f}
-.x-sbx .cube.sbx-tk:is(.sbx-done,.sbx-down) .f-e{background:#0f2218}
-.x-sbx .cube.sbx-tk.sbx-done i{transition:opacity .3s,background 1.2s,box-shadow 1.2s}
-.x-sbx .cube.sbx-tk:is(.sbx-bad,.sbx-sink){--h:22px}
-.x-sbx .cube.sbx-tk:is(.sbx-bad,.sbx-sink) .f-t{background:linear-gradient(135deg,#8a3039,#4c1d23);box-shadow:inset 0 0 0 1px rgba(240,99,99,.6)}
-.x-sbx .cube.sbx-tk:is(.sbx-bad,.sbx-sink) .f-s{background:#2a1418}
-.x-sbx .cube.sbx-tk:is(.sbx-bad,.sbx-sink) .f-e{background:#22100f}
-/* a failed worker sinks into the floor; at the end every worker lowers with its box */
-.x-sbx .cube.sbx-tk.sbx-sink{--h:0px;transition:--h .9s cubic-bezier(.65,0,.35,1)}
-.x-sbx .cube.sbx-tk.sbx-sink i{transition:opacity .4s .5s}
-.x-sbx .cube.sbx-tk.sbx-down{--h:0px;transition:--h .8s cubic-bezier(.65,0,.35,1)}
-.x-sbx .cube.sbx-tk.sbx-down i{transition:opacity .4s .45s}
-
-/* the round, printed on the floor along the front edge */
-.x-sbx .sbx-rd{position:absolute;width:200px;height:24px;transform:translateZ(0)}
-.x-sbx .sbx-rn{position:absolute;left:0;top:0;font:500 15px/24px "Geist Mono","Cascadia Code",ui-monospace,Consolas,monospace;color:var(--text-2);white-space:nowrap;opacity:0;transition:opacity .4s}
-.x-sbx .sbx-rn.sbx-on{opacity:1;transition:opacity .6s .4s,color 1.2s}
-.x-sbx .sbx-rn.sbx-on.sbx-new{color:var(--text)}
-
-/* narrow screens: the kit shrinks the camera, so print bigger; number only on phones */
-@media (max-width:980px){.x-sbx.row .stage .iso{left:50%;top:calc(50% + 13px);scale:.88}.x-sbx .sbx-n{font-size:14px}.x-sbx .sbx-tt{font-size:15px}.x-sbx .sbx-rn{font-size:16px}}
-@media (max-width:640px){.x-sbx.row .stage .iso{left:50%;top:calc(50% + 12px);scale:.5}.x-sbx .sbx-tt{display:none}.x-sbx .sbx-n{font-size:24px;line-height:26px}.x-sbx .sbx-lb{height:44px;padding:0 12px}.x-sbx .sbx-rn{font-size:24px}}
-
-/* switched off (before the row is seen): faint neutral slots, no blue tint, no round label.
-   On lit the slots ease to their tint through their own .6s transition. */
-.x-sbx:not(.on) .sbx-fl{background:rgba(200,215,255,.012);box-shadow:inset 0 0 0 1px rgba(200,215,255,.075)}
-.x-sbx:not(.on) .sbx-rn{opacity:0}
 
 /* ===== section dsg ===== */
 /* section dsg: your app's invoice page is ONE thin slab lying on the grid, its UI drawn flat on top.

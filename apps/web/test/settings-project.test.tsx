@@ -144,9 +144,10 @@ describe('Settings — This project', () => {
   it('shows the eleven fields in three groups, with example placeholders and no retired text', () => {
     open()
 
-    for (const title of ['Model & sandbox', 'Commands', 'Epics']) {
-      expect(screen.getByText(title)).toBeTruthy()
+    for (const title of ['Model', 'Commands', 'Epics']) {
+      expect(screen.getByRole('heading', { name: title })).toBeTruthy()
     }
+    expect(screen.queryByText(/sandbox/i)).toBeNull()
     const labels = [
       'Model',
       'Setup',

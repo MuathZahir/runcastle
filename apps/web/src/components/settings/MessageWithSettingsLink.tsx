@@ -1,18 +1,13 @@
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import { settingsMention, type SettingsLocation } from '../../lib/settings'
+import type { SettingsLocation } from '../../lib/settings'
 import { LINK } from '../../ui'
 
 /**
- * Turning "…Rebuild it from Settings → Workers (Rebuild image)." into a link that
- * actually goes there (decision 9).
- *
- * The doctor's stale-image fix and the burner's missing-binary failure both name
- * a settings page in prose, and the walk found every one of those pointers to be
- * an instruction to go looking. They surface far from the shell — inside a
- * ticket's error, a lane's headline — so opening settings travels as context
- * rather than as a prop threaded through every phase body between here and the
- * shell that owns the dialog.
+ * Links that open settings on the row they name (decision 9). They surface far
+ * from the shell — inside a chat card, a drive state — so opening settings
+ * travels as context rather than as a prop threaded through every body between
+ * here and the shell that owns the dialog.
  */
 const OpenSettings = createContext<((location: SettingsLocation) => void) | null>(null)
 
@@ -32,10 +27,8 @@ export function useOpenSettings() {
 }
 
 /**
- * A phrase that opens settings on the row it names. Where a surface knows its
- * own destination — the drive states name the dev-command field directly — this
- * is the link to reach for; {@link MessageWithSettingsLink} is for prose that has
- * to be scanned for a pointer first. Renders as plain text outside the provider,
+ * A phrase that opens settings on the row it names — the drive states name the
+ * dev-command field directly. Renders as plain text outside the provider,
  * because a link that goes nowhere is worse than none.
  */
 export function SettingsLink({
@@ -59,23 +52,5 @@ export function SettingsLink({
     >
       {children}
     </button>
-  )
-}
-
-/**
- * A message with its settings pointer, if it has one, rendered as a link. Falls
- * back to the plain text — a message nobody can act on should not look like it
- * offers something.
- */
-export function MessageWithSettingsLink({ text }: { text: string }) {
-  const open = useContext(OpenSettings)
-  const mention = settingsMention(text)
-  if (!open || !mention) return <>{text}</>
-  return (
-    <>
-      {mention.before}
-      <SettingsLink location={mention.location}>{mention.phrase}</SettingsLink>
-      {mention.after}
-    </>
   )
 }

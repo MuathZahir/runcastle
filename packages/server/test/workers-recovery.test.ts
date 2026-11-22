@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
@@ -12,22 +13,20 @@ import { createAgentHost, setAgentHostForTests, type StallBounds } from '../src/
 import { threadLifecycle } from '../src/threads/lifecycle'
 import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { waitOf } from '../src/services/waits'
-import { setSandboxEngineForTests } from '../src/workers/engine'
+import { writeHostHandback } from '../src/workers/review'
 import {
   getWorker,
   landWorker,
   setWorkerRetryDelayForTests,
-  withWorkers,
   workerStallBounds,
   workerTurnEnded,
   workerTurnSlot,
 } from '../src/workers/service'
-import { refreshWorkerFeatureBranch, workerOrigin } from '../src/workers/worker'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 import { createFakeAcp, FAKE_LAUNCH, type FakeAcp, type FakeTurn } from './support/fake-acp-agent'
-import { commitOn, fakeEngine, fakeHost, git, initRepo, type FakeEngine } from './support/fake-workers'
+import { fakeHost, git, initRepo } from './support/fake-workers'
 import { promptsOf } from './support/thread-launch'
 
 /**
@@ -44,7 +43,6 @@ let restoreDataDir: () => void
 let repo: string
 let feature: Feature
 let lead: string
-let engine: FakeEngine
 
 beforeEach(async () => {
   home = tmpRepo()
@@ -55,8 +53,6 @@ beforeEach(async () => {
   lead = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repo }).id
   markSessionLive(ctx, lead, { ccSessionId: `cc-${lead}` })
   markSessionEnded(ctx, lead)
-  engine = fakeEngine()
-  setSandboxEngineForTests(engine)
   resetAgentSlotsForTests()
   setWorkerRetryDelayForTests(() => 5)
   vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'test-token')
@@ -66,7 +62,6 @@ afterEach(async () => {
   await host?.stopAll('shutdown')
   host = undefined
   setAgentHostForTests(undefined)
-  setSandboxEngineForTests(undefined)
   setWorkerRetryDelayForTests(undefined)
   vi.unstubAllEnvs()
   restoreDataDir()
@@ -96,10 +91,9 @@ async function until(done: () => boolean, ms = 3000): Promise<void> {
 
 /** A real agent host over the fake ACP agent (workers and the lead alike), the worker transport and the server's lifecycle. */
 function realHost(fake: FakeAcp, stall: StallBounds = { silenceMs: 60_000, commandMs: 60_000 }): AgentHost {
-  engine.transport = fake.transport
   host = createAgentHost({
     ctx,
-    transport: withWorkers(ctx, fake.transport),
+    transport: fake.transport,
     launch: FAKE_LAUNCH,
     lifecycle: threadLifecycle(ctx),
     turnSlot: workerTurnSlot(ctx),
@@ -134,7 +128,8 @@ describe('a transient error', () => {
   it('is retried in the same conversation after a backoff, the worker staying working', async () => {
     const fake = failing('API Error: 529 overloaded_error')
     realHost(fake)
-    const id = await startWorker()
+    // With you: its retried turn ends with no handback, which would nudge an "on its own" worker.
+    const id = await startWorker('Header', 'with-you')
     await until(() => turnDone(id))
 
     expect(workerPrompts(id)).toEqual(['Start your assignment: Build the Header', expect.stringContaining('[runcastle] The last turn stopped on a transient error (')])
@@ -288,20 +283,32 @@ describe('a stalled turn', () => {
 })
 
 describe('a landing conflict', () => {
-  /** The worker's branch and the feature branch both change README.md since the worker forked. */
+  /**
+   * A first worker holds the feature's folder, so the one under test gets its own folder and branch. Both it and the feature
+   * branch change README.md since it forked, each committed in the folder that has the branch checked out.
+   */
   async function conflictingHandback(id: string, round: number): Promise<void> {
     const w = getWorker(ctx, id)!
-    commitOn(repo, w.branch!, 'README.md', `worker ${round}\n`, `feat: worker side ${round}`)
-    commitOn(repo, feature.branch, 'README.md', `feature ${round}\n`, `feat: feature side ${round}`)
-    engine.handbacks.set(id, { summary: 'Done', at: Date.now() })
+    commitIn(w.folder!, `worker ${round}\n`, `feat: worker side ${round}`)
+    commitIn(getWorker(ctx, holder)!.folder!, `feature ${round}\n`, `feat: feature side ${round}`)
+    writeHostHandback(id, 'Done')
     await workerTurnEnded(ctx, { id })
   }
+  const commitIn = (dir: string, body: string, subject: string): void => {
+    git(dir, 'config', 'user.email', 't@t.t')
+    git(dir, 'config', 'user.name', 't')
+    writeFileSync(join(dir, 'README.md'), body)
+    git(dir, 'add', 'README.md')
+    git(dir, 'commit', '-q', '-m', subject)
+  }
+  let holder: string
 
   it('sends an "on its own" worker back twice with the files and the other side’s commits, then leaves it to the lead', async () => {
     const fake = fakeHost()
     setAgentHostForTests(fake.host)
+    holder = await startWorker('Holder', 'with-you')
     const id = await startWorker('Header', 'on-its-own')
-    const container = getWorker(ctx, id)!.container!
+    expect(getWorker(ctx, id)).toMatchObject({ branch: expect.stringMatching(/^runcastle\/worker\//) })
 
     for (const round of [1, 2]) {
       await conflictingHandback(id, round)
@@ -312,9 +319,9 @@ describe('a landing conflict', () => {
       const told = fake.sent.filter((s) => s.threadId === id).at(-1)!.text
       expect(told).toContain('Conflicting files: README.md')
       expect(told).toContain(`feat: feature side ${round}`)
-      expect(told).toContain(`git merge origin/${feature.branch}`)
+      expect(told).toContain(`git merge ${feature.branch}`)
+      expect(told).not.toContain('origin')
     }
-    expect(engine.refreshed).toEqual([container, container])
 
     await conflictingHandback(id, 3)
     const third = await landWorker(ctx, id)
@@ -326,43 +333,12 @@ describe('a landing conflict', () => {
 
   it('leaves a "with you" worker’s conflict to the lead at once, naming both choices', async () => {
     setAgentHostForTests(fakeHost().host)
+    holder = await startWorker('Holder', 'with-you')
     const id = await startWorker('Header', 'with-you')
     await conflictingHandback(id, 1)
     const res = await landWorker(ctx, id)
     expect(res.ok === false && res.sentBack).toBeFalsy()
     expect(!res.ok && res.error).toMatch(/resolve it yourself.*send_back_worker/)
     expect(status(id)).toBe('handed-back')
-  })
-
-  it('gives the worker’s bare copy the feature branch’s tip, so a clone of it can merge it in', async () => {
-    const sb = {
-      id: 'w_refresh',
-      engine: 'docker' as const,
-      runtime: 'claude-code' as const,
-      container: 'c',
-      repoPath: repo,
-      featureBranch: feature.branch,
-      branch: 'runcastle/worker/refresh',
-      port: 41001,
-      previewUrl: '',
-    }
-    const origin = workerOrigin(sb.id)
-    execFileSync('git', ['clone', '-q', '--bare', '--single-branch', '--branch', feature.branch, repo, origin])
-    git(origin, 'branch', '-f', sb.branch, feature.branch)
-    const inside = tmpRepo()
-    try {
-      execFileSync('git', ['clone', '-q', '--branch', sb.branch, origin, inside])
-      git(inside, 'config', 'user.email', 't@t.t')
-      git(inside, 'config', 'user.name', 't')
-      commitOn(repo, feature.branch, 'later.txt', 'later\n', 'feat: landed later')
-
-      await refreshWorkerFeatureBranch(sb)
-      git(inside, 'fetch', '-q', 'origin')
-      git(inside, 'merge', '-q', '--no-edit', `origin/${feature.branch}`)
-      expect(git(inside, 'log', '--format=%s', '-1', `origin/${feature.branch}`).trim()).toBe('feat: landed later')
-      expect(git(inside, 'ls-files')).toContain('later.txt')
-    } finally {
-      rmTemp(inside)
-    }
   })
 })

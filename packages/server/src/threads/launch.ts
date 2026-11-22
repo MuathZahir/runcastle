@@ -13,8 +13,9 @@ import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { getFeatureRow, projectForFeature, requireProjectById } from '../services/repo'
 import { listScenarioPaths } from '../services/scenarios'
 import { clearEndedErrand } from '../services/resolved-merge'
-import { hostReviewBriefing, hostReviewEnv, isHostReview } from '../workers/review'
-import { getWorker } from '../workers/service'
+import { hostGatesReviewBriefing, hostReviewBriefing, hostReviewEnv, isHostReview } from '../workers/review'
+import { getWorker, hostWorkerPlace } from '../workers/service'
+import { hostWorkerBriefing } from '../workers/worker'
 import { driveWorkerBriefing, driveWorkerOf } from '../workers/drive'
 
 /**
@@ -160,9 +161,20 @@ export async function acpLaunchInput(ctx: AppCtx, thread: SessionRow): Promise<R
           ...hostSidePosture(runtime),
         }
       }
-      // Its process runs in its sandbox (`withWorkers`), which says where its
-      // session opens and briefs it; only the model is read from this launch.
-      return { ...base, feature, permissionMode: 'bypassPermissions' }
+      // A worker made since workers-build-in-the-feature-s-folder runs on the host, in the folder it was given:
+      // the feature's own, or a worktree of its own (decisions 2, 3, 9).
+      if (w && w.folder !== null) {
+        // The feature's folder may have gone since (an archive); it comes back where it was.
+        const folder = w.branch ? w.folder : await ensureFeatureWorktree(ctx, project, feature)
+        const place = hostWorkerPlace(ctx, { ...w, folder })
+        const briefing =
+          w.kind === 'review'
+            ? hostGatesReviewBriefing(w, folder)
+            : hostWorkerBriefing({ label: w.label, kind: w.kind as 'with-you' | 'on-its-own' | 'unassigned', goal: w.goal, doneWhen: w.doneWhen }, place!)
+        return { ...base, worktreePath: folder, feature, hostWorker: { briefing, env: {} }, ...hostSidePosture(runtime) }
+      }
+      // A worker from before workers built on the host ran in a container, which runcastle no longer has: its conversation stays readable, nothing runs it.
+      throw new GateError('this worker ran in a container, which runcastle no longer has: start a new worker instead')
     }
     case 'project': {
       const { worktreePath, base: branchBase } = await git.ensureProjectWorktree(project)

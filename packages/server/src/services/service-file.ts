@@ -21,7 +21,7 @@ export function renderServiceFile(input: ServiceFileInput): string {
   return [
     '[Unit]',
     'Description=runcastle',
-    'After=network-online.target docker.service',
+    'After=network-online.target',
     'Wants=network-online.target',
     '',
     '[Service]',

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { availableParallelism } from 'node:os'
-import { RuncastleConfig, resolveDefaultBurnConcurrency } from './config'
+import { totalmem } from 'node:os'
+import { RuncastleConfig, resolveDefaultWorkersAtOnce } from './config'
 import { configPath } from './paths'
 
 /**
@@ -45,12 +45,12 @@ export const migrateCollapsedModelSteps = (raw: unknown): unknown => {
  * this module performs no IO — only calling `loadConfig()` touches disk. A
  * missing/invalid file falls back to schema defaults, except for the one
  * default that depends on the machine: `burnConcurrency`, resolved here from
- * {@link hostLogicalCpus} because core's schema may not count cores.
+ * {@link hostTotalMemory} because core's schema may not read the host.
  */
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
-  /** Host core count behind the `burnConcurrency` default; injected by tests. */
-  logicalCpus: number = hostLogicalCpus(),
+  /** Host memory in bytes behind the `burnConcurrency` default; injected by tests. */
+  totalMemBytes: number = hostTotalMemory(),
 ): RuncastleConfig {
   let fileConfig: unknown = {}
   const path = configPath()
@@ -65,7 +65,7 @@ export function loadConfig(
   const overrides: Record<string, unknown> = {}
   /**
    * Set a numeric override from an env var. An UNSET variable and an
-   * exported-but-EMPTY one (`export RUNCASTLE_BURN_CPUS=`, or a CI matrix that
+   * exported-but-EMPTY one (`export RUNCASTLE_BURN_CONCURRENCY=`, or a CI matrix that
    * declares a variable without giving it a value) both mean "no override":
    * `Number('')` is `0`, which is a meaningful setting for some of these keys
    * and would otherwise land silently.
@@ -84,44 +84,26 @@ export function loadConfig(
   // Legacy env var (issue #48): folded into `stepModels.smoke` by the schema's
   // read-compat preprocess unless the smoke step is already set explicitly.
   if (env.RUNCASTLE_SMOKE_MODEL) overrides.smokeModel = env.RUNCASTLE_SMOKE_MODEL
-  if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
   if (env.RUNCASTLE_SESSION_MCP) overrides.sessionMcp = env.RUNCASTLE_SESSION_MCP
   if (env.RUNCASTLE_USAGE_SIGNAL) overrides.usageSignal = env.RUNCASTLE_USAGE_SIGNAL
   if (env.RUNCASTLE_CARRY_ON_AFTER_LIMIT) overrides.carryOnAfterLimit = env.RUNCASTLE_CARRY_ON_AFTER_LIMIT
-  if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
   num('burnConcurrency', env.RUNCASTLE_BURN_CONCURRENCY)
-  num('burnCpus', env.RUNCASTLE_BURN_CPUS)
-  // Kill switch for the in-sandbox PreToolUse guard. Config-file + env only
-  // (like `burnCache`): a rarely-touched escape hatch, and the settings
-  // overlay has no boolean control. Empty is unset here too — an exported-empty
-  // var meant "guard on, explicitly", which is not what the operator said.
-  if (env.RUNCASTLE_BURN_GUARD !== undefined && env.RUNCASTLE_BURN_GUARD !== '') {
-    overrides.burnGuard = env.RUNCASTLE_BURN_GUARD !== '0' && env.RUNCASTLE_BURN_GUARD !== 'false'
-  }
   if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
   if (env.RUNCASTLE_VERIFY_COMMANDS) overrides.verifyCommands = env.RUNCASTLE_VERIFY_COMMANDS
   if (env.RUNCASTLE_KNOWN_FAILURES) overrides.knownFailures = env.RUNCASTLE_KNOWN_FAILURES
-  // Kill switch for the persistent burn cache volume. Config-file + env only,
-  // for the same reason: it exists so cache-induced weirdness
-  // is diagnosable in one change, not so it is routinely tuned.
-  if (env.RUNCASTLE_BURN_CACHE) overrides.burnCache = env.RUNCASTLE_BURN_CACHE
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
   const merged: Record<string, unknown> = { ...base, ...overrides }
-  // The one default that depends on the machine. The schema cannot count cores,
-  // so a width nobody chose is resolved here instead; a file or env value is
+  // The one default that depends on the machine. The schema cannot read memory,
+  // so a number nobody chose is resolved here instead; a file or env value is
   // already in `merged` and therefore wins untouched.
   if (merged.burnConcurrency === undefined) {
-    merged.burnConcurrency = resolveDefaultBurnConcurrency(logicalCpus)
+    merged.burnConcurrency = resolveDefaultWorkersAtOnce(totalMemBytes)
   }
   return RuncastleConfig.parse(merged)
 }
 
-/**
- * Logical CPUs this host exposes. `availableParallelism()` rather than
- * `cpus().length` because it respects CPU affinity and cgroup limits, so a
- * container that was given two of the box's sixteen cores reports two.
- */
-export function hostLogicalCpus(): number {
-  return availableParallelism()
+/** This host's total memory in bytes, behind the default number of workers at once. */
+export function hostTotalMemory(): number {
+  return totalmem()
 }

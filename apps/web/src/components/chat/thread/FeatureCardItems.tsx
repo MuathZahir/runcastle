@@ -4,7 +4,7 @@ import type { ThreadItem } from '../../../lib/chat-thread'
 import { FeatureHandbackCard, HandbackCard, WorkerFailedCard, type HandbackOutcome } from '../../workers/WorkerParts'
 import type { FeatureListItem } from '../../../lib/api'
 import { relTimeAgo } from '../../../lib/format'
-import { shownWorkerStatus } from '../../../lib/workers'
+import { shownWorkerStatus, WORKER_STALLED_WHY } from '../../../lib/workers'
 import { FeaturesCard, NewsBlock, OrchestratorMessage, RuncastleNote, SteeredNote } from './FeatureCards'
 import { ReviewPackageItem } from '../../review/ReviewPackageItem'
 import { WorkersStartedCard } from '../../workers/WorkersStartedCard'
@@ -118,6 +118,20 @@ function WorkerFailedItem({ failed }: { failed: Extract<PromptDisplay, { workerF
   )
 }
 
+/** A worker that stalled (a-worker-never-shows-working-with-nothing-running decision 6): the failed notice's line, in amber. */
+function WorkerStalledItem({ stalled }: { stalled: Extract<PromptDisplay, { workerStalled: unknown }>['workerStalled'] }) {
+  const links = useContext(WorkerLinksContext)
+  return (
+    <WorkerFailedCard
+      workerId={stalled.workerId}
+      workerLabel={stalled.label}
+      reason={WORKER_STALLED_WHY}
+      stalled
+      onOpenWorker={(id) => links?.openWorker(id)}
+    />
+  )
+}
+
 /**
  * A turn's features card, its rows read against the live feature list. Each
  * created row carries the feature's "Involve me in" picker, its level read
@@ -201,6 +215,7 @@ export function RuncastleDisplay({
   if ('summary' in display) return <RuncastleNote summary={display.summary} agentText={agentText} />
   if ('handback' in display) return <HandbackItem handback={display.handback} />
   if ('workerFailed' in display) return <WorkerFailedItem failed={display.workerFailed} />
+  if ('workerStalled' in display) return <WorkerStalledItem stalled={display.workerStalled} />
   // A Review worker's handback is its Review Package card (burns-become-workers decision 4).
   if ('reviewPackage' in display) return <ReviewPackageItem ticketId={display.reviewPackage.workerId} />
   if ('featureHandback' in display) {

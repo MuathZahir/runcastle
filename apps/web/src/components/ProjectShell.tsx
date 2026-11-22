@@ -25,6 +25,8 @@ import { FeatureCommandsProvider } from '../lib/feature-commands'
 import { useIsPhone } from '../lib/use-phone'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar } from './Sidebar'
+import { LiveWorkQueue, type LiveQueueEntry } from './LiveWorkQueue'
+import { setPendingWorker, takePendingWorker } from '../lib/pending-worker'
 import { Frame, useFrame } from './Frame'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -256,6 +258,23 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     openConversations,
   ])
 
+  // A worker's chat asked for from another project's line (pending-worker.ts):
+  // once landed on its feature, bring that worker to the front.
+  useEffect(() => {
+    if (!landed) return
+    const asked = takePendingWorker(projectId)
+    if (asked) openWorkerChat(asked.featureId, asked.workerId)
+  }, [landed, projectId, openWorkerChat])
+
+  // An entry in the machine's line (one-number-for-how-many-build-at-once
+  // decision 8): its worker's chat, entering its project first when another's.
+  const openQueueEntry = (e: LiveQueueEntry) => {
+    if (!e.featureId) return
+    if (e.projectId === projectId) return openWorkerChat(e.featureId, e.id)
+    setPendingWorker({ projectId: e.projectId, featureId: e.featureId, workerId: e.id })
+    nav.enterProject(e.projectId, e.featureSlug ?? undefined)
+  }
+
   // The address this shell is showing, and the setters a Back or Forward drives.
   //
   // Null in the two windows where the shell has no address to state: before the
@@ -428,6 +447,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onOpenWorkerChat={openWorkerChat}
             driving={driving}
             onDriveChange={setDriving}
+            queue={
+              <LiveWorkQueue
+                projectId={projectId}
+                onOpen={openQueueEntry}
+                onOpenSettings={() => ws.openSettings({ page: 'general', field: 'burnConcurrency' })}
+              />
+            }
           />
         }
       >

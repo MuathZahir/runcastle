@@ -150,6 +150,15 @@ export const foldLegacyModelConfig = (raw: unknown): unknown => {
   return obj
 }
 
+/** Memory each worker is given room for by the default (one-number-for-how-many-build-at-once decision 4). */
+export const GB_PER_WORKER = 4
+/** The default's floor and ceiling (decision 4). */
+export const DEFAULT_WORKERS_AT_ONCE_MIN = 2
+export const DEFAULT_WORKERS_AT_ONCE_MAX = 8
+/** The most a user may set (decision 6). */
+export const WORKERS_AT_ONCE_MAX = 16
+const GIB = 1024 ** 3
+
 export const RuncastleConfig = z.preprocess(
   foldLegacyModelConfig,
   z.object({
@@ -173,9 +182,6 @@ export const RuncastleConfig = z.preprocess(
      * and where annotating a curated entry with a note lands.
      */
     models: z.array(ModelEntry).default([]),
-    // `.catch`, not `.default`: an old config file may still carry the retired
-    // `noSandbox` value, and it must load (as docker) rather than fail to parse.
-    sandbox: z.enum(['docker', 'podman']).catch('docker'),
     /**
      * Whether a launched terminal also sees the human's OWN MCP servers.
      *
@@ -189,7 +195,7 @@ export const RuncastleConfig = z.preprocess(
      * configurations"*. That word "all" is total: it drops the human's own
      * connections AND their plugins' servers, which is why it is no longer the
      * default. Sessions are the human's working terminal, not a hermetic
-     * sandbox — the burn sandbox is where hermeticity belongs. Choose
+     * environment. Choose
      * `runcastleOnly` when you want a session's tool surface to be exactly
      * reproducible, or to keep a heavy personal MCP set out of the context
      * window.
@@ -211,67 +217,22 @@ export const RuncastleConfig = z.preprocess(
      */
     carryOnAfterLimit: z.enum(['on', 'off']).default('off'),
     /**
-     * Machine-wide Docker image name for the sandcastle burner sandbox (B3 /
-     * SPEC §8) — the fallback under a project's own `sandboxImage`, which beats
-     * it (see {@link resolveSandboxImage} for the full order). When neither is
-     * set, runcastle uses {@link DEFAULT_SANDBOX_IMAGE} everywhere — build,
-     * doctor probe, and burn — via {@link resolveSandboxImage}; it does NOT let
-     * sandcastle fall back to its own `sandcastle:<repo-dir-name>` derivation,
-     * which would look up a differently-named image than the one we built. The
-     * demo image is tagged `sandcastle:runcastle-demo`. Applies to `docker` and
-     * `podman`; ignored for `noSandbox`.
+     * How many workers and reviews may be mid-turn at once, across every project
+     * on the machine (one-number-for-how-many-build-at-once decision 1). Settings
+     * calls it "Workers and reviews at once". Leads, the orchestrator and epics
+     * never count (decision 2); a worker counts only while it works (decision 5).
+     * The key keeps its old name so a value someone already set is kept.
+     *
+     * Default: one per 4 GB of the machine's memory, between 2 and 8 (decision
+     * 4). The schema cannot read memory (core is IO-free), so the `.default(2)`
+     * below is only what a raw `parse({})` sees; the host-aware value an operator
+     * actually gets is applied by `loadConfig` via
+     * {@link resolveDefaultWorkersAtOnce}. A user may set up to 16 (decision 6).
      */
-    sandboxImage: z.string().optional(),
+    burnConcurrency: z.number().int().min(1).max(WORKERS_AT_ONCE_MAX).default(DEFAULT_WORKERS_AT_ONCE_MIN),
     /**
-     * Max tickets the burner works in parallel per run (M2, SPEC §8). Each
-     * concurrent ticket is one full AFK agent (its own container under a
-     * container sandbox), so this is a cost/resource knob as much as a speed
-     * knob — capped at 8. Dependency order (`blockedBy`) is always honoured
-     * regardless of the width.
-     *
-     * Width is not free beyond the token cost: every concurrent agent runs the
-     * target repo's dependency install and test suite, each of which fans out
-     * to its own worker pool sized from the visible CPU count. Real burn logs
-     * show the setup hook stretching from ~70s at width 1 to ~500s with four
-     * tickets live, and test runners OOM-ing inside the sandbox. {@link
-     * burnCpus} bounds the CPU side of that; the memory side is bounded only by
-     * the container runtime's own VM limit, so lower this if suites die.
-     *
-     * Default: 3, or 1 on ≤8 logical CPUs. The schema cannot count cores (core
-     * is IO-free), so the `.default(3)` below is only the floor a raw
-     * `parse({})` sees; the host-aware value an operator actually gets is
-     * applied by `loadConfig` via {@link resolveDefaultBurnConcurrency}.
-     */
-    burnConcurrency: z.number().int().min(1).max(8).default(3),
-    /**
-     * Per-container CPU ceiling for burn sandboxes (`docker run --cpus`), or
-     * unset for today's unconstrained behaviour. Fractional values are allowed.
-     *
-     * This exists because N concurrent containers each see the HOST's full core
-     * count and size their install/test worker pools from it, so width N
-     * oversubscribes the box N-fold and every agent's commands slow down
-     * together. Setting this to roughly `cores / burnConcurrency` keeps each
-     * agent's wall-clock predictable. Applies to every worker sandbox.
-     *
-     * There is deliberately no matching memory ceiling: a hard cap would convert
-     * host-level pressure into a certain in-container OOM kill of the agent
-     * process. Bound memory by lowering {@link burnConcurrency} instead.
-     */
-    burnCpus: z.number().positive().max(256).optional(),
-    /**
-     * Install the burn guard — a Claude Code `PreToolUse` hook inside each
-     * worker sandbox that denies a few things the working rules already forbid
-     * (git stash, overriding test-runner concurrency, rewriting files through
-     * interpreter heredocs).
-     *
-     * On by default because prompt rules measurably did not hold on their own.
-     * Set `false` to fall back to prompt-only guidance — worth doing if a rule
-     * ever misfires, since a false deny in an unattended agent costs turns.
-     */
-    burnGuard: z.boolean().default(true),
-    /**
-     * Command run inside the worker sandbox before the agent starts,
-     * overriding lockfile-based detection. Leave
+     * Command run in a worker's own folder on the host before the agent
+     * starts, overriding lockfile-based detection. Leave
      * unset to auto-detect from the target repo (`packageManager` field, then
      * lockfiles — a root install covers JS workspaces/monorepos). Set it for
      * non-JS projects or bespoke bootstraps (e.g. `make deps`).
@@ -280,7 +241,7 @@ export const RuncastleConfig = z.preprocess(
      * ~51 minutes across 204 calls into build/codegen steps that are the same
      * boilerplate every ticket — agents discovering mid-run that they need a
      * contracts build or an ORM client generated. Chaining those here runs them
-     * once per sandbox, before the agent starts, e.g.
+     * once per worker folder, before the agent starts, e.g.
      * `corepack pnpm install --frozen-lockfile && pnpm contracts:build && pnpm prisma:generate`.
      * Note that overriding this replaces install detection entirely, so the
      * install command must be included explicitly.
@@ -310,103 +271,40 @@ export const RuncastleConfig = z.preprocess(
      * single most repeated expensive command in the logs.
      */
     knownFailures: z.string().optional(),
-    /**
-     * Whether worker sandboxes share a persistent per-project cache volume.
-     * `volume` (default) mounts one Docker/Podman named volume per project
-     * holding the package-manager store and one persistent checkout per
-     * concurrency slot, so install, `.tsbuildinfo`, the test runner's cache and
-     * turbo's cache survive between workers. `off` is a fresh clone and a cold
-     * install every time.
-     *
-     * Config-file + env only — an escape hatch, not a setting the overlay
-     * offers. Go through {@link resolveBurnCacheMode} rather than reading this
-     * field.
-     */
-    burnCache: z.enum(['volume', 'off']).default('volume'),
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
 
 /**
- * The image tag runcastle builds, probes, and burns against when a project
- * leaves `sandboxImage` unset. This MUST be an explicit constant rather than
- * letting sandcastle derive its own `sandcastle:<repo-dir-name>` default: the
- * build-image/doctor/setup paths already hard-coded `sandcastle:runcastle`, so
- * a run path that omits the name would look up a differently-named image and
- * fail with "Image not found locally". Everyone resolves through
- * {@link resolveSandboxImage} so the name can never drift again.
- */
-export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
-
-/**
- * Whatever carries a project's own sandbox image — a `Project`, a raw row, or
- * nothing at all for the callers that run outside any project: the `runcastle
- * doctor` CLI, the burn cache probe, and the build-image/doctor flows, which
- * are machine-wide today and resolve to the global image.
- */
-export type SandboxImageOwner = { sandboxImage?: string | null } | null | undefined
-
-/**
- * The sandcastle image tag to build/probe/run, resolved in four layers:
- * project column → `RUNCASTLE_SANDBOX_IMAGE` → global config file →
- * {@link DEFAULT_SANDBOX_IMAGE}. Pure.
- *
- * The env layer is not a parameter here because it is already inside
- * `config.sandboxImage`: `loadConfig` folds `RUNCASTLE_SANDBOX_IMAGE` over the
- * config file, so the two middle layers arrive as one value with the env
- * variable already winning between them. What this function adds on top is the
- * project column, and it wins over both — the image a repo needs is a fact
- * about that repo, exactly as its setup command is (see
- * {@link resolvePreparedSettings}, which orders the same way).
- *
- * Every consumer — the build flow, the doctor probe, the per-run image
- * precheck, the burn itself and the cache slot stamp — resolves here, so the
- * name they agree on can never drift apart. Which of them hands over a project
- * is up to the caller: the burn and its containers do, and the machine-wide
- * flows named on {@link SandboxImageOwner} do not.
- *
- * Empty strings are treated as unset, the way a cleared settings field arrives.
- */
-export function resolveSandboxImage(
-  config: Pick<RuncastleConfig, 'sandboxImage'>,
-  project?: SandboxImageOwner,
-): string {
-  return project?.sandboxImage?.trim() || config.sandboxImage?.trim() || DEFAULT_SANDBOX_IMAGE
-}
-
-/**
- * The burn cache mode actually in force: the configured one (both sandbox
- * engines own named volumes). Pure; the single reader of `config.burnCache`.
- */
-export function resolveBurnCacheMode(config: Pick<RuncastleConfig, 'burnCache'>): RuncastleConfig['burnCache'] {
-  return config.burnCache
-}
-
-/**
- * At or below this many logical CPUs a host is too small to burn wide, and the
- * default width drops to 1. Eight is the line because a 6C/12T box — the audited
- * machine — sits under it while a 16-thread workstation sits above.
- */
-const SMALL_HOST_LOGICAL_CPUS = 8
-
-/**
  * The `burnConcurrency` an operator who set nothing gets on a host with
- * `logicalCpus` cores: 1 at or below {@link SMALL_HOST_LOGICAL_CPUS}, else 3.
- * Pure — the caller supplies the count, because core may not import `node:os`;
- * `loadConfig` is where the host is actually asked.
+ * `totalMemBytes` of memory: one per {@link GB_PER_WORKER} GB, rounded down,
+ * never below {@link DEFAULT_WORKERS_AT_ONCE_MIN} nor above
+ * {@link DEFAULT_WORKERS_AT_ONCE_MAX} (one-number-for-how-many-build-at-once
+ * decision 4). Pure: the caller supplies the figure, because core may not
+ * import `node:os`; `loadConfig` is where the host is asked.
  *
- * Three was a flat default until the 2026-08-27 audit on a 6C/12T host. Each
- * concurrent burn sizes its install and test worker pools from the FULL visible
- * core count, so width 3 oversubscribes a small box threefold and every agent's
- * commands slow down together. The cost is not only wall-clock: a known set of
- * frontend suites goes red under that contention and green in isolation, and six
- * burns spent tickets re-triaging flakes the width had manufactured.
+ * Memory is the ceiling now that workers run on the host: measured on the
+ * runcastle repo, an agent process holds 0.2–0.4 GB and a typecheck peaks at
+ * 0.85 GB on top, with tests and a dev server adding bursts. 4 GB each leaves
+ * room for the leads and the server. It replaced a default that counted CPU
+ * cores and gave 1 on any machine with 8 or fewer.
  *
- * A count that is not a positive number (a runtime with no answer) is read as a
- * small host — the conservative width is the right answer to not knowing.
+ * A figure that is not a positive number (a runtime with no answer) gets the
+ * floor.
  */
-export function resolveDefaultBurnConcurrency(logicalCpus: number): number {
-  return Number.isFinite(logicalCpus) && logicalCpus > SMALL_HOST_LOGICAL_CPUS ? 3 : 1
+export function resolveDefaultWorkersAtOnce(totalMemBytes: number): number {
+  if (!Number.isFinite(totalMemBytes) || totalMemBytes <= 0) return DEFAULT_WORKERS_AT_ONCE_MIN
+  const byMemory = Math.floor(totalMemBytes / (GB_PER_WORKER * GIB))
+  return Math.min(DEFAULT_WORKERS_AT_ONCE_MAX, Math.max(DEFAULT_WORKERS_AT_ONCE_MIN, byMemory))
+}
+
+/**
+ * Whole gigabytes in `bytes`, rounded down, as Settings names the machine's
+ * memory. Down, like {@link resolveDefaultWorkersAtOnce}, so the hint's figures
+ * add up: a machine reporting 11.7 GB says "2, from 11 GB", not "from 12 GB".
+ */
+export function memoryGb(bytes: number): number {
+  return Number.isFinite(bytes) && bytes > 0 ? Math.floor(bytes / GIB) : 0
 }
 
 /**

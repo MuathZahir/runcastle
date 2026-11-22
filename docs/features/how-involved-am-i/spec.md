@@ -44,7 +44,7 @@ From the user's side:
 
 ### Server (`packages/server`)
 
-- Migration `0076_involvement.sql` (generated, `db:generate`), copying the shape
+- Migration `0078_involvement.sql` (generated, `db:generate`), copying the shape
   of `0073_autopilot.sql`. `rowToFeature` carries the field; `list()` and
   `getFeatureFull` return it.
 - `services/involvement.ts`: `setInvolvement(featureId, level)` and

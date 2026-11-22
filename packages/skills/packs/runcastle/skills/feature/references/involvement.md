@@ -19,8 +19,8 @@ git that cannot be undone, and for anything the brief names as theirs.
 
 ## Decisions made without them
 
-Write each one in `decisions.md` with the line `**Decided without you.**`
-inside the entry, like the other marks (`./decisions-and-spec.md`). The review
+Record each one under `## Decisions` (`./feature-file.md`) with the line
+`**Decided without you.**` under **Why:**, like the other marks. The review
 package lists them; they overturn one by telling you.
 
 ## When the level changes mid-feature

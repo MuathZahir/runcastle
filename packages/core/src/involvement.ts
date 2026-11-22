@@ -57,21 +57,22 @@ export const showsDesigns = (level: Involvement): boolean => level === 'everythi
 export const humanMerges = (level: Involvement): boolean => level !== 'nothing'
 
 /**
- * The mark a lead puts on a `decisions.md` entry it settled without the human
- * (decision 2): on its own line inside the entry, like the other marks.
+ * The mark a lead puts on a decision it settled without the human (decision
+ * 2): on its own line inside the entry, like the other marks.
  */
 export const DECIDED_WITHOUT_YOU_MARK = '**Decided without you.**'
 
 /**
- * Every `decisions.md` entry carrying {@link DECIDED_WITHOUT_YOU_MARK}, by its
- * number and title (`## 4. Expired cards stay`), in file order. An entry
+ * Every decision carrying {@link DECIDED_WITHOUT_YOU_MARK}, by its number and
+ * title, in file order: `### 4. Expired cards stay` under a `brief.md`'s
+ * `## Decisions`, or `## 4. …` in an older feature's `decisions.md`. An entry
  * without a number is skipped: the human overturns one by its number.
  */
 export function decidedWithoutYou(markdown: string): DecidedWithoutYou[] {
   const found: DecidedWithoutYou[] = []
-  const sections = markdown.split(/^(?=## )/m)
+  const sections = markdown.split(/^(?=#{2,3} )/m)
   for (const section of sections) {
-    const head = /^## +(\d+)\.\s*(.+?)\s*$/m.exec(section)
+    const head = /^#{2,3} +(\d+)\.\s*(.+?)\s*$/m.exec(section)
     if (!head || !section.includes(DECIDED_WITHOUT_YOU_MARK)) continue
     found.push({ n: Number(head[1]), title: head[2]! })
   }

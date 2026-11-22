@@ -32,8 +32,7 @@ const row = (over: Partial<WorkerRow> = {}): WorkerRow => ({
   startedBy: 'lead',
   status: 'handed-back',
   failure: null,
-  engine: 'docker',
-  container: null,
+  folder: null,
   branch: null,
   featureBranch: 'feature/sidebar-refresh',
   previewPort: null,
@@ -155,9 +154,9 @@ describe('a Review worker in the feature’s worker list', () => {
   it('is listed by its label and status, and says where it runs', () => {
     const review = row({ id: 'w_review', kind: 'review', label: 'Review', status: 'queued', reviewMode: 'drive' })
     expect(workerEntry(review)).toMatchObject({ label: 'Review', kind: 'review', status: 'queued' })
-    expect(workerWhere(review, 'feature/x')).toBe('Your checkout · reviewing feature/x on the drive')
-    expect(workerWhere({ kind: 'review', reviewMode: 'gates', featureBranch: 'feature/x' }, 'feature/x')).toBe('Sandbox · reviewing feature/x')
-    expect(workerWhere(row(), 'feature/x')).toBe('Sandbox · its own branch off feature/x')
+    expect(workerWhere({ ...review, placement: null }, 'feature/x')).toBe('Your checkout · reviewing feature/x on the drive')
+    expect(workerWhere({ kind: 'review', reviewMode: 'gates', featureBranch: 'feature/x', placement: null }, 'feature/x')).toBe('Reviewing feature/x')
+    expect(workerWhere({ ...row(), placement: null }, 'feature/x')).toBe('Its own branch off feature/x')
   })
 })
 
@@ -178,7 +177,7 @@ describe('a drive worker (drive-chats-become-workers decisions 3, 5)', () => {
   }
 
   it('says it works in your checkout and names the branch it commits on', () => {
-    expect(workerWhere(drive(), 'feature/x')).toBe('Your checkout · commits on main')
+    expect(workerWhere({ ...drive(), placement: null }, 'feature/x')).toBe('Your checkout · commits on main')
   })
 
   it('draws its handback card with the branch its commits landed on, and no Landed line', () => {
@@ -200,6 +199,16 @@ describe('a failed worker in the lead’s chat', () => {
   it('draws the notice with what failed, and opens the worker’s chat', () => {
     const open = draw({ workerFailed: { workerId: 'w_head', label: 'Header', failure: 'container stopped unexpectedly' } }, [row({ status: 'failed' })])
     expect(screen.getByRole('status').textContent).toContain('Worker “Header” failed: container stopped unexpectedly')
+    fireEvent.click(screen.getByRole('button', { name: 'Open its chat' }))
+    expect(open).toHaveBeenCalledWith('w_head')
+  })
+})
+
+describe('a stalled worker in the lead’s chat (a-worker-never-shows-working-with-nothing-running decision 6)', () => {
+  it('draws the notice saying it stopped twice without handing back, and opens the worker’s chat', () => {
+    const open = draw({ workerStalled: { workerId: 'w_head', label: 'Header' } }, [row({ status: 'stalled', kind: 'on-its-own' })])
+    expect(screen.getByRole('status').textContent).toContain('Worker “Header” stalled: stopped twice without handing back')
+    expect(screen.getByRole('status').textContent).not.toContain('failed')
     fireEvent.click(screen.getByRole('button', { name: 'Open its chat' }))
     expect(open).toHaveBeenCalledWith('w_head')
   })

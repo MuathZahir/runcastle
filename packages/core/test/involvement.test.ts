@@ -27,6 +27,26 @@ describe('decidedWithoutYou', () => {
     ])
   })
 
+  it('reads ### entries under a brief.md’s ## Decisions, not the sections around them', () => {
+    const md = [
+      '## Purpose',
+      DECIDED_WITHOUT_YOU_MARK,
+      '',
+      '## Decisions',
+      '',
+      '### 1. Asked',
+      '**Decision:** a',
+      '',
+      '### 2. Screens stay',
+      '**Why:** b',
+      DECIDED_WITHOUT_YOU_MARK,
+      '',
+      '## Build notes',
+      'c',
+    ].join('\n')
+    expect(decidedWithoutYou(md)).toEqual([{ n: 2, title: 'Screens stay' }])
+  })
+
   it('is empty for a file with no marks', () => {
     expect(decidedWithoutYou('## 1. A\n**Decision:** b')).toEqual([])
   })

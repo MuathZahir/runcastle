@@ -6,13 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * Which queries a live frame refreshes — the resync allowlist in `useLiveSync`.
  *
- * `setup.imageBuildTarget` is the one under test. The machine-wide
- * `sandboxImage` clear and the doctor's heal of an orphaned project column both
- * emit `settings.updated`, and the AFK card's Build/Rebuild button reads its
- * Dockerfile and tag from that query — so a resync that skips it leaves the
- * button describing an image resolution has already left behind, until a hard
- * reload.
- *
  * The seam is the hook: the allowlist lives inside its effect, so what is
  * observable is which `utils.<router>.<query>.invalidate()` calls a stream frame
  * produces. `EventSource` is the one system boundary here, and is stubbed.
@@ -104,12 +97,11 @@ afterEach(() => {
 })
 
 describe('useLiveSync resync', () => {
-  it('re-resolves the image build target, so the Rebuild button follows a settings write', () => {
+  it('refreshes settings, and no longer asks for the retired image build target', () => {
     const paths = signalOneEvent()
 
-    expect(paths).toContain('setup.imageBuildTarget.invalidate')
-    // The write it has to follow is a settings write, which is already on the list.
     expect(paths).toContain('settings.get.invalidate')
+    expect(paths.filter((p) => p.startsWith('setup.imageBuildTarget'))).toEqual([])
   })
 
   it('refreshes the project notes, so the rail badge follows a jot or a triage', () => {

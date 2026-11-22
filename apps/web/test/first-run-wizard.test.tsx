@@ -56,11 +56,8 @@ vi.mock('../src/trpc', () => {
       }),
       setup: {
         doctor: query(() => ({ results: stub.probes })),
-        runtimeGuide: query(() => undefined),
-        imageBuildTarget: query(() => undefined),
         gitIdentity: mutation(),
         startTerminal: mutation(),
-        afkToken: mutation(),
         seedModelDefaults: mutation((input) => stub.seeded.push(input)),
       },
       settings: {
@@ -160,14 +157,15 @@ describe('FirstRunWizard', () => {
     expect(screen.getByRole('heading', { name: /driven through a pipeline/ })).toBeTruthy()
   })
 
-  it('goes back a step from the middle of setup', () => {
-    open([identity('ok'), ...codexSignedIn])
+  // sandboxes-are-removed decision 5: workers run on the host under the same
+  // sign-in, so there is no "Unattended workers" step between the two.
+  it('has no unattended-workers step on the rail', () => {
+    open([identity('unset')])
     click('Set up runcastle')
-    click('Continue')
-    expect(screen.getByRole('heading', { name: 'Run workers unattended?' })).toBeTruthy()
-
-    click('Back')
-    expect(screen.getByRole('heading', { name: 'Connect a coding agent' })).toBeTruthy()
+    const steps = [...(rail()?.querySelectorAll('li') ?? [])].map((li) => li.textContent ?? '')
+    expect(steps.some((t) => t.includes('Coding agents'))).toBe(true)
+    expect(steps.some((t) => t.includes('First project'))).toBe(true)
+    expect(rail()?.textContent).not.toMatch(/Unattended/i)
   })
 
   // sessions-never-pick-up-a-project-s-api-key, decision 6: the doctor's billing
@@ -189,51 +187,15 @@ describe('FirstRunWizard', () => {
     expect(screen.queryByText('Sessions use your Claude subscription.')).toBeNull()
   })
 
-  it('asks about unattended workers instead of showing their settings card', () => {
+  it('goes from the agents step straight to the first project, seeding the ready runtimes', () => {
     open([identity('ok'), ...codexSignedIn])
     click('Set up runcastle')
+    expect(screen.getByRole('heading', { name: 'Connect a coding agent' })).toBeTruthy()
     click('Continue')
-
-    expect(screen.getByText(/run in sandboxes, unattended/)).toBeTruthy()
-    expect(screen.queryByText('Ready for unattended workers')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Continue to your first project' })).toBeNull()
-  })
-
-  it('reveals the settings card in place, and takes the two answers away with it', () => {
-    open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle')
-    click('Continue')
-    click('Set up now')
-
-    // The card's own "Set up later" is now the step's single continue. The card
-    // is the prerequisites checklist Settings owns (flow-redesign-settings); its
-    // summary line is what says it arrived.
-    expect(screen.getByText('Ready for unattended workers')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Set up now' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Set up later' })).toBeTruthy()
-  })
-
-  it('skips AFK setup into the first-project screen, seeding the ready runtimes', () => {
-    open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle')
-    click('Continue')
-    click('Skip for now')
 
     expect(stub.seeded).toEqual([{ runtimes: ['codex'] }])
     expect(screen.getByRole('heading', { name: 'Open your first project' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
-  })
-
-  it('leaves through the card the same way', () => {
-    open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle')
-    click('Continue')
-    click('Set up now')
-    click('Set up later')
-
-    expect(stub.seeded).toEqual([{ runtimes: ['codex'] }])
-    expect(screen.getByRole('heading', { name: 'Open your first project' })).toBeTruthy()
   })
 
   // Legacy rules are unlayered and beat utilities (apps/web/STYLE.md), so a
@@ -249,7 +211,7 @@ describe('FirstRunWizard', () => {
       }
       cleanup()
     }
-    // Intro → identity, then intro → runtimes → AFK on a host that has one.
+    // Intro → identity, then intro → runtimes → first project on a host that has one.
     walk([identity('unset')], ['Set up runcastle'])
     walk([identity('ok'), ...codexSignedIn], ['Set up runcastle', 'Continue'])
   })

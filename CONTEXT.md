@@ -12,7 +12,7 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 
 1. **Audience: dogfood-first, product bones.** Dogfooded on real daily work. Core abstractions (thread store, workers, skill packs) are designed so a public product can grow out of it. No auth/onboarding until it survives real use.
 
-2. **Form factor: local web app.** A Bun server on the user's machine owns the agent threads, workers and their sandboxes, and the project's records; the browser UI at localhost is the IDE surface, on a phone too. Tauri-wrappable later.
+2. **Form factor: local web app.** A Bun server on the user's machine owns the agent threads, workers, and the project's records; the browser UI at localhost is the IDE surface, on a phone too. Tauri-wrappable later.
 
 3. **Agent conversations are runcastle's own.** Every conversation — the orchestrator, a feature's lead, a worker — is an ACP session the server owns, running the human's installed CLI through its official adapter, and runcastle renders it (ADR-0015). Processes are lazy: they start on a prompt and stop when idle. Terminals remain only for program output (dev servers, the design server, settings flows).
 
@@ -25,10 +25,10 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 
 5. **Session store: hybrid.** Knowledge (brief, decisions, spec, ADRs, notes) lives **in the target repo** at `docs/features/<slug>/` — versioned, agent-readable. Machinery (threads and their event logs, workers, holders, events) lives in the **app's SQLite**. The tickets, rounds and runs of features built before workers are kept as read-only history (ADR-0020).
 
-6. **Git topology: a worktree for each feature's talk, a sandbox for each worker, the main checkout for the human.**
+6. **Git topology: a folder (worktree) for each feature, shared by its lead and one worker; the main checkout for the human** (ADR-0023).
    - Each feature = a branch (`feature/<slug>`).
-   - A feature's lead works in the feature's worktree, which stays docs-only by guard except in design mode, where it renders screens with fake data.
-   - Each worker works in its own sandbox on its own copy of the feature branch; its commits come back to the host at handback and land through the feature's landing queue (ADR-0019, ADR-0020).
+   - A feature's lead works in the feature's folder and may build small things itself.
+   - One worker at a time builds in that folder, straight on the feature branch. A worker started while it holds the folder gets its own folder and branch, which the lead merges back after running the project's checks. Workers run on the host with no container; guards keep each inside its folder and refuse push, history rewrites, branch switches and `git stash`.
    - The main checkout is reserved for the human: the guarded test drive (one drive slot per project, ADR-0014) and final merges. The drive's two chats — Fix drive and the scenario chat — are the one kind of worker that runs there, in the human's checkout, because they need the drive's database and dev server (ADR-0019 §7b).
 
 7. **Retired: phases.** A feature has no stored phase; its state is derived from facts (`tickets-and-review-are-tools-not-phases`). Big intent is cut into several features by the orchestrator after a shape grill (ADR-0012).
@@ -43,13 +43,13 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 
 12. **Retired: the M1 tracer bullet** — the build-era plan of one feature through the whole pipeline before parallelism. Parallelism is how runcastle works now.
 
-13. **Stack:** Bun + Hono + tRPC (live updates over SSE, `GET /api/stream`) + Vite/React + Drizzle + local SQLite. Agents run over ACP adapters; workers run in Docker or Podman sandboxes built from a runcastle-managed image (ADR-0018). Program-output terminals run on Bun's own PTY, so Node is not a prerequisite (ADR-0017). Cross-platform: Windows, macOS, Linux.
+13. **Stack:** Bun + Hono + tRPC (live updates over SSE, `GET /api/stream`) + Vite/React + Drizzle + local SQLite. Agents run over ACP adapters; workers run on the host, and Docker is no longer needed (ADR-0023). Program-output terminals run on Bun's own PTY, so Node is not a prerequisite (ADR-0017). Cross-platform: Windows, macOS, Linux.
 
 14. **Name: runcastle.** Takes the runcastle.dev domain and brand.
 
 15. **Retired: laps.** A feature loops until the human is happy without a lap counter or mode: build, drive, tell the agent, it fixes (`tickets-and-review-are-tools-not-phases`).
 
-16. **Two levels: the orchestrator delegates to features, features delegate to workers** (ADR-0019). A worker is a thread with a label, an assignment, its own sandbox and branch, a status and a handback; the human can open any worker and talk to it. Workers replaced burn tickets, review tickets, conflict resolvers, drive chats and side chats. An agent's own in-reply subagents are not workers.
+16. **Two levels: the orchestrator delegates to features, features delegate to workers** (ADR-0019). A worker is a thread with a label, an assignment, a folder, a status and a handback; the human can open any worker and talk to it. Workers replaced burn tickets, review tickets, conflict resolvers, drive chats and side chats. An agent's own in-reply subagents are not workers.
 
 17. **Agents talk by tool call, never by mechanical pings** (ADR-0019 §6). A child tells its parent by calling a tool when it judges the parent needs to know. Events with no agent behind them — a restart, a usage limit, a container dying, a merge conflict — go only to the agent that owns the work. One exception: a merge is also told to the epic that cut the feature, so it can steer the siblings still in progress.
 
@@ -61,7 +61,7 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 - **Rules, not procedures.** Agents get a short set of rules and use judgement; no guide for every situation. When something goes wrong, sharpen an existing rule rather than add a paragraph or a mechanism. (Standing user directive, 2026-11-13.)
 - **The same page before any solution.** Agents never come up with the solution on their own and present it. Grilling exists so the agent and the human reach each conclusion together, the design and the cut included. (Standing user directive, 2026-11-17.)
 - **Flexible guidance over brittle machinery.** When in doubt, less mechanism. Guidance lives in skills and briefs; machinery only where an agent cannot be trusted to remember. (Standing user directive.)
-- **The feature loop is the product; the layer above it is plumbing.** A chat GUI over agent CLIs (T3 Code and the like) already gives threads, branches and diffs. What runcastle adds is the loop: a recorded plan the human says yes to, sandboxed workers, a Review worker that drives the app, the test drive, design mode. Spend effort making that loop visible, calm and trustworthy — not on reshaping the orchestrator or epic layer, which is grouping, not capability.
+- **The feature loop is the product; the layer above it is plumbing.** A chat GUI over agent CLIs (T3 Code and the like) already gives threads, branches and diffs. What runcastle adds is the loop: a recorded plan the human says yes to, workers, a Review worker that drives the app, the test drive, design mode. Spend effort making that loop visible, calm and trustworthy — not on reshaping the orchestrator or epic layer, which is grouping, not capability.
 - **Git abstracted behind product verbs** ("test this feature", "merge") — vibe-coder friendly as a principle, not a persona.
 - **Parallelization is a first-class goal** — the architecture never assumes one live feature or one worker.
 - **Individual developers first.** Design for one developer whose work all goes through runcastle. Teams come later, and only teams that all use runcastle; teammates working outside it are out of scope.
@@ -75,5 +75,5 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 - Multi-project — the full parallel multi-project UI ([GH #12](https://github.com/MuathZahir/runcastle/issues/12)).
 - Side-by-side dev servers for several drives at once, if one drive slot per project proves too tight.
 - Registry integration (runcastle marketplace inside the app).
-- The lighter feature loop of ADR-0023 (no sandboxes, no required plan, one involvement setting in place of autopilot) is agreed and not yet built; this charter is rewritten part by part as its features merge.
+- The lighter feature loop of ADR-0023 (no sandboxes, no required plan, one involvement setting in place of autopilot) is agreed and being built; this charter is rewritten part by part as its features merge. Built so far: no feature waits for a yes to a plan and the Plan tab is gone (`building-starts-without-a-plan-approval`, 2026-11-21); a new feature keeps one growing `brief.md` (the human's words, decisions, build notes, the review summary runcastle stamps at merge) with no separate spec or outcome, and gets one review sized to the change, with a second only after a large fix set (`one-file-per-feature-and-reviews-that-scale`, 2026-11-21). When features are open, nothing has run for ten minutes and nothing waits on the human, runcastle itself raises one "needs you" on the orchestrator chat saying why each stopped, and wakes no agent (`runcastle-says-when-nothing-is-running`, 2026-11-21). A worker shows "working" only while a turn actually runs; one whose turn ends with no handback is nudged once, then shows "stalled" and its lead is told, and workers a restart caught are resumed at boot (`a-worker-never-shows-working-with-nothing-running`, 2026-11-21). Workers run on the host in the feature's folder, as decision 6 now says (`workers-build-in-the-feature-s-folder`, 2026-11-21). The sandbox code, images and Docker prerequisite are gone; the first start after upgrading removes the container leftovers of finished workers only and lists the rest (`sandboxes-are-removed`, 2026-11-22). One number, "Workers and reviews at once" in Settings → General, limits how many worker and review turns run across all projects; it defaults to one per 4 GB of memory, between 2 and 8, and the sidebar foot shows who works and who waits, in order (`one-number-for-how-many-build-at-once`, 2026-11-22).
 - A setup page for choosing which of the human's skills, plugins and tool servers runcastle sessions load, if the per-turn cost of a full personal setup becomes a real complaint.

@@ -154,7 +154,7 @@ async function tellLead(ctx: AppCtx, feature: Feature, to: Involvement): Promise
         `The human changed "${INVOLVEMENT_NAME}" to ${label}; you no longer wait on them for decisions${designs}. ` +
         'If your wait is on something this level still asks (a design’s yes while designs are shown; money, accounts, ' +
         'anything outside git that cannot be undone, or what the brief names as the human’s), keep waiting. ' +
-        'Otherwise decide your open question yourself (your recommendation), record it in decisions.md with the mark ' +
+        'Otherwise decide your open question yourself (your recommendation), record it under your decisions with the mark ' +
         `${DECIDED_WITHOUT_YOU_MARK}, withdraw your wait (wait_for_you({ withdraw: true })) and carry on. ` +
         `From now on: ${INVOLVEMENT_STOPS_FOR[to]}`,
       background: true,
